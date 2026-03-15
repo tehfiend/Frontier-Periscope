@@ -1,6 +1,6 @@
+import type { EventId, SuiClient } from "@mysten/sui/client";
 import { Transaction } from "@mysten/sui/transactions";
-import type { SuiClient } from "@mysten/sui/client";
-import type { MarketListing, MarketInfo, BuyOrderInfo, OrgMarketInfo } from "./types";
+import type { BuyOrderInfo, MarketInfo, MarketListing, OrgMarketInfo } from "./types";
 
 function extractFields(content: unknown): Record<string, unknown> {
 	const c = content as { fields?: Record<string, unknown> };
@@ -240,9 +240,7 @@ export interface ConfirmBuyOrderFillParams {
 	senderAddress: string;
 }
 
-export function buildConfirmBuyOrderFill(
-	params: ConfirmBuyOrderFillParams,
-): Transaction {
+export function buildConfirmBuyOrderFill(params: ConfirmBuyOrderFillParams): Transaction {
 	const tx = new Transaction();
 	tx.setSender(params.senderAddress);
 
@@ -311,13 +309,8 @@ export function buildStockItems(params: StockItemsParams): Transaction {
 	// Step 1: Borrow OwnerCap from Character
 	const [ownerCap, receipt] = tx.moveCall({
 		target: "0x2bc0a986b4eb20965bd34a6f2de52f2516395e59::character::borrow_owner_cap",
-		typeArguments: [
-			"0x2bc0a986b4eb20965bd34a6f2de52f2516395e59::storage_unit::StorageUnit",
-		],
-		arguments: [
-			tx.object(params.characterObjectId),
-			tx.object(params.ownerCapReceivingId),
-		],
+		typeArguments: ["0x2bc0a986b4eb20965bd34a6f2de52f2516395e59::storage_unit::StorageUnit"],
+		arguments: [tx.object(params.characterObjectId), tx.object(params.ownerCapReceivingId)],
 	});
 
 	// Step 2: Withdraw items from owner inventory
@@ -345,14 +338,8 @@ export function buildStockItems(params: StockItemsParams): Transaction {
 	// Step 4: Return OwnerCap
 	tx.moveCall({
 		target: "0x2bc0a986b4eb20965bd34a6f2de52f2516395e59::character::return_owner_cap",
-		typeArguments: [
-			"0x2bc0a986b4eb20965bd34a6f2de52f2516395e59::storage_unit::StorageUnit",
-		],
-		arguments: [
-			tx.object(params.characterObjectId),
-			ownerCap,
-			receipt,
-		],
+		typeArguments: ["0x2bc0a986b4eb20965bd34a6f2de52f2516395e59::storage_unit::StorageUnit"],
+		arguments: [tx.object(params.characterObjectId), ownerCap, receipt],
 	});
 
 	return tx;
@@ -429,6 +416,47 @@ export async function queryOrgMarket(
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Discover an OrgMarket by querying OrgMarketCreatedEvent events and
+ * matching on the org's chain object ID. Returns the org_market_id
+ * from the most recent matching event, or null if none found.
+ */
+export async function discoverOrgMarket(
+	client: SuiClient,
+	ssuMarketPackageId: string,
+	orgObjectId: string,
+): Promise<string | null> {
+	let cursor: EventId | null = null;
+	let hasMore = true;
+	let latestMarketId: string | null = null;
+
+	while (hasMore) {
+		const page = await client.queryEvents({
+			query: {
+				MoveEventType: `${ssuMarketPackageId}::ssu_market::OrgMarketCreatedEvent`,
+			},
+			cursor: cursor ?? undefined,
+			limit: 50,
+		});
+
+		for (const evt of page.data) {
+			const parsed = evt.parsedJson as {
+				org_market_id: string;
+				org_id: string;
+				admin: string;
+			};
+			if (parsed.org_id === orgObjectId) {
+				latestMarketId = parsed.org_market_id;
+			}
+		}
+
+		hasMore = page.hasNextPage;
+		cursor = page.nextCursor ?? null;
+	}
+
+	return latestMarketId;
 }
 
 /**

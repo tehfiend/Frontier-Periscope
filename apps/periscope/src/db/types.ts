@@ -61,7 +61,13 @@ export interface SyncMeta {
 export type IntelSource = "chain" | "api" | "log" | "manual" | "sync" | "p2p";
 export type ThreatLevel = "unknown" | "friendly" | "neutral" | "hostile" | "critical";
 export type WatchStatus = "active" | "paused" | "archived";
-export type AssemblyStatus = "online" | "offline" | "anchoring" | "unanchoring" | "destroyed" | "unknown";
+export type AssemblyStatus =
+	| "online"
+	| "offline"
+	| "anchoring"
+	| "unanchoring"
+	| "destroyed"
+	| "unknown";
 
 export interface IntelBase extends SyncMeta {
 	id: string;
@@ -222,7 +228,13 @@ export type ExtensionStatus = "authorized" | "configured" | "failed";
 export interface ExtensionRecord extends SyncMeta {
 	id: string;
 	assemblyId: string;
-	assemblyType: "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot";
+	assemblyType:
+		| "turret"
+		| "gate"
+		| "storage_unit"
+		| "smart_storage_unit"
+		| "network_node"
+		| "protocol_depot";
 	templateId: string;
 	templateName: string;
 	status: ExtensionStatus;
@@ -288,7 +300,13 @@ export type SyncStatus = "draft" | "dirty" | "syncing" | "synced" | "error";
 export interface AssemblyPolicy extends SyncMeta {
 	id: string; // Same as assemblyId (1:1)
 	assemblyId: string;
-	assemblyType: "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot";
+	assemblyType:
+		| "turret"
+		| "gate"
+		| "storage_unit"
+		| "smart_storage_unit"
+		| "network_node"
+		| "protocol_depot";
 	mode: PolicyMode;
 	groupIds: string[]; // References to PermissionGroup.id
 	// Gate-specific
@@ -440,9 +458,19 @@ export interface OrganizationRecord extends SyncMeta {
 	id: string;
 	name: string;
 	chainObjectId?: string;
+	orgMarketId?: string;
 	creator: string;
 	createdAt: string;
 	updatedAt: string;
+}
+
+// ── Trade Node Types ────────────────────────────────────────────────────────
+
+export interface TradeNodeRecord {
+	id: string; // SSU objectId
+	name: string;
+	marketConfigId?: string;
+	enabledAt: string; // ISO timestamp
 }
 
 export interface OrgTierMember extends SyncMeta {

@@ -1,45 +1,46 @@
 import Dexie, { type EntityTable } from "dexie";
 import type {
-	SolarSystem,
-	Constellation,
-	Region,
-	Jump,
-	GameType,
-	CharacterRecord,
-	DeployableIntel,
-	AssemblyIntel,
-	PlayerIntel,
-	LocationIntel,
-	KillmailIntel,
-	NoteIntel,
 	ActivityIntel,
-	ChatIntelEntry,
-	TargetRecord,
-	TargetEvent,
-	InventoryDiff,
-	SettingsEntry,
-	CacheMetadataEntry,
-	LogOffset,
-	ExtensionRecord,
-	LogEvent,
-	LogSession,
-	PermissionGroup,
-	GroupMember,
+	AssemblyIntel,
 	AssemblyPolicy,
 	BetrayalAlert,
-	SyncPeer,
-	SyncLogEntry,
-	SharingGroup,
-	SyncMeta,
-	RadarWatch,
-	RadarEvent,
+	CacheMetadataEntry,
+	CharacterRecord,
+	ChatIntelEntry,
+	Constellation,
+	CurrencyRecord,
+	DeployableIntel,
+	ExtensionRecord,
+	GameType,
+	GroupMember,
+	InventoryDiff,
+	Jump,
+	KillmailIntel,
+	LocationIntel,
+	LogEvent,
+	LogOffset,
+	LogSession,
 	ManifestCharacter,
 	ManifestTribe,
-	OrganizationRecord,
+	NoteIntel,
 	OrgTierMember,
+	OrganizationRecord,
+	PermissionGroup,
+	PlayerIntel,
+	RadarEvent,
+	RadarWatch,
+	Region,
+	SettingsEntry,
+	SharingGroup,
+	SolarSystem,
+	SyncLogEntry,
+	SyncMeta,
+	SyncPeer,
 	SystemClaimRecord,
 	SystemNickname,
-	CurrencyRecord,
+	TargetEvent,
+	TargetRecord,
+	TradeNodeRecord,
 } from "./types";
 
 class PeriscopeDB extends Dexie {
@@ -106,6 +107,9 @@ class PeriscopeDB extends Dexie {
 	systemNicknames!: EntityTable<SystemNickname, "id">;
 	currencies!: EntityTable<CurrencyRecord, "id">;
 
+	// Trade
+	tradeNodes!: EntityTable<TradeNodeRecord, "id">;
+
 	constructor() {
 		super("frontier-periscope");
 
@@ -166,10 +170,7 @@ class PeriscopeDB extends Dexie {
 				// Try to find a characterId from existing log sessions
 				let characterId: string | undefined;
 				if (characterName) {
-					const sessions = await logSessions
-						.where("characterName")
-						.equals(characterName)
-						.toArray();
+					const sessions = await logSessions.where("characterName").equals(characterName).toArray();
 					if (sessions.length > 0 && sessions[0].characterId) {
 						characterId = sessions[0].characterId;
 					}
@@ -254,7 +255,8 @@ class PeriscopeDB extends Dexie {
 				killmails: "id, killmailId, victim, finalBlow, timestamp, _hlc, *tags",
 				notes: "id, title, updatedAt, _hlc, *tags, *linkedEntities",
 				activities: "id, activityType, sessionId, systemId, createdAt, _hlc, *tags",
-				chatIntel: "id, channel, reporter, systemId, createdAt, expiresAt, _hlc, *reportedPlayers, *tags",
+				chatIntel:
+					"id, channel, reporter, systemId, createdAt, expiresAt, _hlc, *reportedPlayers, *tags",
 				targets: "id, address, watchStatus, lastPolled, lastActivity, _hlc, *tags",
 				targetEvents: "id, targetId, timestamp, event, assemblyId, _hlc",
 				inventoryDiffs: "id, targetId, assemblyId, timestamp, typeId, _hlc",
@@ -274,10 +276,23 @@ class PeriscopeDB extends Dexie {
 
 				// Backfill _hlc, _deleted, _origin on all syncable tables
 				const syncTableNames = [
-					"deployables", "assemblies", "players", "locations", "killmails",
-					"notes", "activities", "chatIntel", "targets", "targetEvents",
-					"inventoryDiffs", "characters", "extensions", "permissionGroups",
-					"groupMembers", "assemblyPolicies", "betrayalAlerts",
+					"deployables",
+					"assemblies",
+					"players",
+					"locations",
+					"killmails",
+					"notes",
+					"activities",
+					"chatIntel",
+					"targets",
+					"targetEvents",
+					"inventoryDiffs",
+					"characters",
+					"extensions",
+					"permissionGroups",
+					"groupMembers",
+					"assemblyPolicies",
+					"betrayalAlerts",
 				];
 
 				const origin = instanceId.slice(0, 8);
@@ -314,27 +329,27 @@ class PeriscopeDB extends Dexie {
 		// V11: Character management — add source, tribeId, manifestId fields + backfill
 		this.version(11)
 			.stores({
-				characters: "id, characterName, suiAddress, isActive, updatedAt, _hlc, source, manifestId, tenant",
+				characters:
+					"id, characterName, suiAddress, isActive, updatedAt, _hlc, source, manifestId, tenant",
 			})
 			.upgrade(async (tx) => {
 				const characters = tx.table("characters");
 				const manifest = tx.table("manifestCharacters");
 
 				// Backfill source on existing characters
-				await characters.toCollection().modify((char: { source?: string; characterId?: string; suiAddress?: string }) => {
-					if (!char.source) {
-						char.source = char.characterId ? "log" : "manual";
-					}
-				});
+				await characters
+					.toCollection()
+					.modify((char: { source?: string; characterId?: string; suiAddress?: string }) => {
+						if (!char.source) {
+							char.source = char.characterId ? "log" : "manual";
+						}
+					});
 
 				// Auto-link: match existing characters to manifest entries by characterItemId
 				const allChars = await characters.toArray();
 				for (const char of allChars) {
 					if (char.characterId && !char.manifestId) {
-						const match = await manifest
-							.where("characterItemId")
-							.equals(char.characterId)
-							.first();
+						const match = await manifest.where("characterItemId").equals(char.characterId).first();
 						if (match) {
 							await characters.update(char.id, {
 								manifestId: match.id,
@@ -370,6 +385,11 @@ class PeriscopeDB extends Dexie {
 						c.orgTreasuryId = c.orgTreasuryId ?? "";
 					});
 			});
+
+		// V14: Trade — Trade Nodes table + orgMarketId on organizations (non-indexed)
+		this.version(14).stores({
+			tradeNodes: "id",
+		});
 	}
 }
 

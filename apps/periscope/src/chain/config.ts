@@ -91,7 +91,13 @@ export const FUEL_TYPES: Record<number, { name: string; efficiency: number }> = 
 
 // ── Extension Templates ─────────────────────────────────────────────────────
 
-export type AssemblyKind = "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot";
+export type AssemblyKind =
+	| "turret"
+	| "gate"
+	| "storage_unit"
+	| "smart_storage_unit"
+	| "network_node"
+	| "protocol_depot";
 
 export interface ExtensionTemplate {
 	id: string;
@@ -117,7 +123,8 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 	{
 		id: "turret_shoot_all",
 		name: "Shoot All",
-		description: "Target all players equally regardless of tribe. Fixes the default starter-corp turret behaviour where same-tribe players are ignored.",
+		description:
+			"Target all players equally regardless of tribe. Fixes the default starter-corp turret behaviour where same-tribe players are ignored.",
 		assemblyTypes: ["turret"],
 		hasConfig: false,
 		packageIds: {
@@ -130,7 +137,8 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 	{
 		id: "gate_tribe",
 		name: "Tribe Gate",
-		description: "Only allow characters from specified tribes to use the gate. Configure which tribe IDs are permitted and set the jump permit duration.",
+		description:
+			"Only allow characters from specified tribes to use the gate. Configure which tribe IDs are permitted and set the jump permit duration.",
 		assemblyTypes: ["gate"],
 		hasConfig: true,
 		packageIds: {
@@ -146,7 +154,8 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 	{
 		id: "gate_acl",
 		name: "Gate ACL",
-		description: "Control gate access by character and tribe. Supports allowlist and denylist modes with multi-admin delegation.",
+		description:
+			"Control gate access by character and tribe. Supports allowlist and denylist modes with multi-admin delegation.",
 		assemblyTypes: ["gate"],
 		hasConfig: true,
 		packageIds: {
@@ -162,7 +171,8 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 	{
 		id: "turret_priority",
 		name: "Turret Priority",
-		description: "Configurable friend/foe targeting with KOS lists, aggressor focus, low-HP finishing, and ship class bonuses. Config baked at publish time.",
+		description:
+			"Configurable friend/foe targeting with KOS lists, aggressor focus, low-HP finishing, and ship class bonuses. Config baked at publish time.",
 		assemblyTypes: ["turret"],
 		hasConfig: false,
 		packageIds: {
@@ -175,7 +185,8 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 	{
 		id: "gate_unified",
 		name: "Unified Gate",
-		description: "Group-based access control with optional toll. Create groups of tribes/characters, set allowlist/denylist per gate, and charge tolls with ally exemptions.",
+		description:
+			"Group-based access control with optional toll. Create groups of tribes/characters, set allowlist/denylist per gate, and charge tolls with ally exemptions.",
 		assemblyTypes: ["gate"],
 		hasConfig: true,
 		packageIds: {
@@ -191,7 +202,8 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 	{
 		id: "gate_toll",
 		name: "Toll Gate",
-		description: "Require Coin<T> payment to jump through the gate. Allies can be configured for free passage.",
+		description:
+			"Require Coin<T> payment to jump through the gate. Allies can be configured for free passage.",
 		assemblyTypes: ["gate"],
 		hasConfig: true,
 		packageIds: {
@@ -203,6 +215,20 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 			utopia: "0xb1f7ddda99a315704350b4f0a3d82626a4a62da4102afb20222c8a423657efd5",
 		},
 		witnessType: "gate_toll::TollAuth",
+	},
+	{
+		id: "ssu_market",
+		name: "SSU Market",
+		description:
+			"Enable trading on this SSU. Allows stocking items for sale and receiving buy order deliveries.",
+		assemblyTypes: ["storage_unit", "smart_storage_unit", "protocol_depot"],
+		hasConfig: false,
+		packageIds: {
+			stillness: "0xdb9df166063dc60ab0a450a768d4010f3e5939e554910d6aa1dc1b72e5dc8885",
+			utopia: "0xdb9df166063dc60ab0a450a768d4010f3e5939e554910d6aa1dc1b72e5dc8885",
+		},
+		configObjectIds: {},
+		witnessType: "ssu_market::MarketAuth",
 	},
 ];
 
