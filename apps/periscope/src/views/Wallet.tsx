@@ -107,7 +107,10 @@ export function Wallet() {
 						<WalletIcon size={24} className="text-cyan-500" />
 						Wallet
 					</h1>
-					<p className="mt-1 text-sm text-zinc-500">
+					<p className="mt-1 font-mono text-sm text-zinc-300">
+						{account.address}
+					</p>
+					<p className="mt-0.5 text-xs text-zinc-600">
 						{loading
 							? "Loading balances..."
 							: `${tokenCount} coin type${tokenCount !== 1 ? "s" : ""}`}
