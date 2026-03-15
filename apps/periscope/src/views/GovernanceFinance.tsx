@@ -66,7 +66,8 @@ export function GovernanceFinance() {
 	);
 
 	const [creating, setCreating] = useState(false);
-	const [importMode, setImportMode] = useState(false);
+	const gasStationUrl = TENANTS[tenant].gasStationUrl;
+	const [importMode, setImportMode] = useState(!gasStationUrl);
 	const [symbol, setSymbol] = useState("");
 	const [tokenName, setTokenName] = useState("");
 	const [description, setDescription] = useState("");
@@ -79,7 +80,6 @@ export function GovernanceFinance() {
 	const [importCoinType, setImportCoinType] = useState("");
 	const [importTreasuryCapId, setImportTreasuryCapId] = useState("");
 
-	const gasStationUrl = TENANTS[tenant].gasStationUrl;
 	const isProcessing =
 		buildStatus === "building" ||
 		buildStatus === "depositing" ||
