@@ -584,13 +584,11 @@ function CurrencyCard({
 	}
 
 	async function handleDeposit() {
-		if (
-			!currency.treasuryCapId ||
-			!currency.coinType ||
-			!org.chainObjectId ||
-			!account
-		)
+		if (!currency.treasuryCapId || !currency.coinType || !org.chainObjectId) return;
+		if (!account) {
+			onStatusChange("error", "Connect your wallet to deposit.");
 			return;
+		}
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
@@ -644,14 +642,12 @@ function CurrencyCard({
 	}
 
 	async function handleMint() {
-		if (
-			!mintAmount ||
-			!currency.orgTreasuryId ||
-			!currency.coinType ||
-			!org.chainObjectId ||
-			!account
-		)
+		if (!mintAmount || !currency.orgTreasuryId || !currency.coinType || !org.chainObjectId)
 			return;
+		if (!account) {
+			onStatusChange("error", "Connect your wallet to mint tokens.");
+			return;
+		}
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
@@ -696,8 +692,11 @@ function CurrencyCard({
 	}
 
 	async function handleBurn() {
-		if (!burnCoinId || !currency.orgTreasuryId || !currency.coinType || !account)
+		if (!burnCoinId || !currency.orgTreasuryId || !currency.coinType) return;
+		if (!account) {
+			onStatusChange("error", "Connect your wallet to burn tokens.");
 			return;
+		}
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
@@ -734,15 +733,12 @@ function CurrencyCard({
 	}
 
 	async function handlePostBounty() {
-		if (
-			!bountyTarget ||
-			!bountyAmount ||
-			!currency.orgTreasuryId ||
-			!currency.coinType ||
-			!org.chainObjectId ||
-			!account
-		)
+		if (!bountyTarget || !bountyAmount || !currency.orgTreasuryId || !currency.coinType || !org.chainObjectId)
 			return;
+		if (!account) {
+			onStatusChange("error", "Connect your wallet to post bounties.");
+			return;
+		}
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
