@@ -1,0 +1,9 @@
+[package]
+name = "bounty_board"
+edition = "2024"
+
+[dependencies]
+world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "v0.0.18" }
+
+[addresses]
+bounty_board = "0x0"

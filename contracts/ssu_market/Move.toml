@@ -1,0 +1,9 @@
+[package]
+name = "ssu_market"
+edition = "2024"
+
+[dependencies]
+world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "v0.0.18" }
+
+[addresses]
+ssu_market = "0x0"

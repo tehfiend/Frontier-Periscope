@@ -1,0 +1,28 @@
+{
+  "name": "@tehfrontier/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.1",
+    "@hono/trpc-server": "^0.3.3",
+    "@tehfrontier/db": "workspace:*",
+    "@tehfrontier/shared": "workspace:*",
+    "@trpc/server": "^11.0.0",
+    "hono": "^4.7.4",
+    "jose": "^6.0.11",
+    "superjson": "^2.2.2",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@tehfrontier/tsconfig": "workspace:*",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,1356 @@
+{
+  "87120": {
+    "facilityID": 87120,
+    "blueprints": [
+      {
+        "blueprintID": 1056,
+        "maxInputRuns": 116,
+        "maxOutputRuns": 120
+      },
+      {
+        "blueprintID": 1057,
+        "maxInputRuns": 51,
+        "maxOutputRuns": 51
+      },
+      {
+        "blueprintID": 1058,
+        "maxInputRuns": 13,
+        "maxOutputRuns": 13
+      },
+      {
+        "blueprintID": 1059,
+        "maxInputRuns": 20,
+        "maxOutputRuns": 20
+      },
+      {
+        "blueprintID": 1060,
+        "maxInputRuns": 3,
+        "maxOutputRuns": 4
+      },
+      {
+        "blueprintID": 1061,
+        "maxInputRuns": 287,
+        "maxOutputRuns": 308
+      },
+      {
+        "blueprintID": 1062,
+        "maxInputRuns": 167,
+        "maxOutputRuns": 308
+      },
+      {
+        "blueprintID": 1063,
+        "maxInputRuns": 200,
+        "maxOutputRuns": 308
+      },
+      {
+        "blueprintID": 1064,
+        "maxInputRuns": 25000,
+        "maxOutputRuns": 16667
+      },
+      {
+        "blueprintID": 1055,
+        "maxInputRuns": 20,
+        "maxOutputRuns": 20
+      }
+    ],
+    "inputCapacity": 20000,
+    "outputCapacity": 20000
+  },
+  "88064": {
+    "facilityID": 88064,
+    "blueprints": [
+      {
+        "blueprintID": 1180,
+        "maxInputRuns": 360,
+        "maxOutputRuns": 199500
+      },
+      {
+        "blueprintID": 1181,
+        "maxInputRuns": 336,
+        "maxOutputRuns": 479
+      },
+      {
+        "blueprintID": 1188,
+        "maxInputRuns": 400,
+        "maxOutputRuns": 211
+      },
+      {
+        "blueprintID": 1191,
+        "maxInputRuns": 1995,
+        "maxOutputRuns": 120
+      },
+      {
+        "blueprintID": 1193,
+        "maxInputRuns": 1995,
+        "maxOutputRuns": 120
+      },
+      {
+        "blueprintID": 1194,
+        "maxInputRuns": 19950,
+        "maxOutputRuns": 998
+      },
+      {
+        "blueprintID": 1195,
+        "maxInputRuns": 667,
+        "maxOutputRuns": 678
+      },
+      {
+        "blueprintID": 1196,
+        "maxInputRuns": 667,
+        "maxOutputRuns": 712
+      },
+      {
+        "blueprintID": 1197,
+        "maxInputRuns": 200,
+        "maxOutputRuns": 348
+      },
+      {
+        "blueprintID": 1198,
+        "maxInputRuns": 200,
+        "maxOutputRuns": 222
+      },
+      {
+        "blueprintID": 1199,
+        "maxInputRuns": 200,
+        "maxOutputRuns": 222
+      },
+      {
+        "blueprintID": 1200,
+        "maxInputRuns": 200,
+        "maxOutputRuns": 222
+      },
+      {
+        "blueprintID": 1205,
+        "maxInputRuns": 336,
+        "maxOutputRuns": 336
+      },
+      {
+        "blueprintID": 1209,
+        "maxInputRuns": 336,
+        "maxOutputRuns": 336
+      },
+      {
+        "blueprintID": 1212,
+        "maxInputRuns": 336,
+        "maxOutputRuns": 336
+      },
+      {
+        "blueprintID": 1220,
+        "maxInputRuns": 171,
+        "maxOutputRuns": 171
+      },
+      {
+        "blueprintID": 1221,
+        "maxInputRuns": 171,
+        "maxOutputRuns": 171
+      },
+      {
+        "blueprintID": 1222,
+        "maxInputRuns": 171,
+        "maxOutputRuns": 171
+      },
+      {
+        "blueprintID": 1223,
+        "maxInputRuns": 171,
+        "maxOutputRuns": 171
+      },
+      {
+        "blueprintID": 1480,
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
+      },
+      {
+        "blueprintID": 1481,
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
+      }
+    ],
+    "inputCapacity": 20000,
+    "outputCapacity": 20000
+  },
+  "88068": {
+    "facilityID": 88068,
+    "blueprints": [
+      {
+        "blueprintID": 1066,
+        "maxInputRuns": 12,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1067,
+        "maxInputRuns": 12,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1068,
+        "maxInputRuns": 5,
+        "maxOutputRuns": 21
+      },
+      {
+        "blueprintID": 1069,
+        "maxInputRuns": 83,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1070,
+        "maxInputRuns": 59,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1071,
+        "maxInputRuns": 49,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1072,
+        "maxInputRuns": 55,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1073,
+        "maxInputRuns": 65,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1074,
+        "maxInputRuns": 35,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1075,
+        "maxInputRuns": 48,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1076,
+        "maxInputRuns": 44,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1077,
+        "maxInputRuns": 62,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1078,
+        "maxInputRuns": 32,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1079,
+        "maxInputRuns": 41,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1080,
+        "maxInputRuns": 36,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1081,
+        "maxInputRuns": 11,
+        "maxOutputRuns": 27
+      },
+      {
+        "blueprintID": 1082,
+        "maxInputRuns": 11,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1083,
+        "maxInputRuns": 3,
+        "maxOutputRuns": 28
+      },
+      {
+        "blueprintID": 1084,
+        "maxInputRuns": 3,
+        "maxOutputRuns": 14
+      },
+      {
+        "blueprintID": 1085,
+        "maxInputRuns": 3,
+        "maxOutputRuns": 9
+      },
+      {
+        "blueprintID": 1086,
+        "maxInputRuns": 21,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1087,
+        "maxInputRuns": 9,
+        "maxOutputRuns": 42
+      },
+      {
+        "blueprintID": 1088,
+        "maxInputRuns": 8,
+        "maxOutputRuns": 42
+      },
+      {
+        "blueprintID": 1089,
+        "maxInputRuns": 15,
+        "maxOutputRuns": 112
+      },
+      {
+        "blueprintID": 1090,
+        "maxInputRuns": 10,
+        "maxOutputRuns": 77
+      },
+      {
+        "blueprintID": 1092,
+        "maxInputRuns": 22,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1094,
+        "maxInputRuns": 18,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1095,
+        "maxInputRuns": 10,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1096,
+        "maxInputRuns": 72,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1098,
+        "maxInputRuns": 10,
+        "maxOutputRuns": 42
+      },
+      {
+        "blueprintID": 1100,
+        "maxInputRuns": 18,
+        "maxOutputRuns": 17
+      },
+      {
+        "blueprintID": 1102,
+        "maxInputRuns": 10,
+        "maxOutputRuns": 42
+      },
+      {
+        "blueprintID": 1103,
+        "maxInputRuns": 10,
+        "maxOutputRuns": 42
+      },
+      {
+        "blueprintID": 1104,
+        "maxInputRuns": 97,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1105,
+        "maxInputRuns": 70,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1106,
+        "maxInputRuns": 63,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1107,
+        "maxInputRuns": 165,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1108,
+        "maxInputRuns": 129,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1109,
+        "maxInputRuns": 124,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1110,
+        "maxInputRuns": 95,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1111,
+        "maxInputRuns": 81,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1112,
+        "maxInputRuns": 109,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1113,
+        "maxInputRuns": 87,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1114,
+        "maxInputRuns": 72,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1115,
+        "maxInputRuns": 29,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1116,
+        "maxInputRuns": 250,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1117,
+        "maxInputRuns": 250,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1118,
+        "maxInputRuns": 179,
+        "maxOutputRuns": 56
+      },
+      {
+        "blueprintID": 1119,
+        "maxInputRuns": 179,
+        "maxOutputRuns": 56
+      },
+      {
+        "blueprintID": 1120,
+        "maxInputRuns": 250,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1121,
+        "maxInputRuns": 250,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1122,
+        "maxInputRuns": 34,
+        "maxOutputRuns": 120
+      },
+      {
+        "blueprintID": 1123,
+        "maxInputRuns": 21,
+        "maxOutputRuns": 60
+      },
+      {
+        "blueprintID": 1124,
+        "maxInputRuns": 11,
+        "maxOutputRuns": 30
+      },
+      {
+        "blueprintID": 1125,
+        "maxInputRuns": 57,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1126,
+        "maxInputRuns": 34,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1127,
+        "maxInputRuns": 18,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1128,
+        "maxInputRuns": 57,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1129,
+        "maxInputRuns": 40,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1130,
+        "maxInputRuns": 74,
+        "maxOutputRuns": 672
+      },
+      {
+        "blueprintID": 1131,
+        "maxInputRuns": 22,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1132,
+        "maxInputRuns": 34,
+        "maxOutputRuns": 120
+      },
+      {
+        "blueprintID": 1133,
+        "maxInputRuns": 21,
+        "maxOutputRuns": 60
+      },
+      {
+        "blueprintID": 1134,
+        "maxInputRuns": 11,
+        "maxOutputRuns": 30
+      },
+      {
+        "blueprintID": 1135,
+        "maxInputRuns": 35,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1136,
+        "maxInputRuns": 31,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1137,
+        "maxInputRuns": 25,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1138,
+        "maxInputRuns": 23,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1139,
+        "maxInputRuns": 20,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1140,
+        "maxInputRuns": 37,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1141,
+        "maxInputRuns": 33,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1142,
+        "maxInputRuns": 28,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1143,
+        "maxInputRuns": 25,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1144,
+        "maxInputRuns": 22,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1145,
+        "maxInputRuns": 10,
+        "maxOutputRuns": 9
+      },
+      {
+        "blueprintID": 1146,
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
+      },
+      {
+        "blueprintID": 1147,
+        "maxInputRuns": 3,
+        "maxOutputRuns": 3
+      },
+      {
+        "blueprintID": 1148,
+        "maxInputRuns": 2,
+        "maxOutputRuns": 2
+      },
+      {
+        "blueprintID": 1149,
+        "maxInputRuns": 7,
+        "maxOutputRuns": 28
+      },
+      {
+        "blueprintID": 1150,
+        "maxInputRuns": 19,
+        "maxOutputRuns": 70
+      },
+      {
+        "blueprintID": 1151,
+        "maxInputRuns": 7,
+        "maxOutputRuns": 28
+      },
+      {
+        "blueprintID": 1152,
+        "maxInputRuns": 19,
+        "maxOutputRuns": 70
+      },
+      {
+        "blueprintID": 1153,
+        "maxInputRuns": 7,
+        "maxOutputRuns": 28
+      },
+      {
+        "blueprintID": 1154,
+        "maxInputRuns": 8,
+        "maxOutputRuns": 56
+      },
+      {
+        "blueprintID": 1155,
+        "maxInputRuns": 7,
+        "maxOutputRuns": 56
+      },
+      {
+        "blueprintID": 1156,
+        "maxInputRuns": 14,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1157,
+        "maxInputRuns": 11,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1158,
+        "maxInputRuns": 9,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1159,
+        "maxInputRuns": 21,
+        "maxOutputRuns": 3360
+      },
+      {
+        "blueprintID": 1160,
+        "maxInputRuns": 16,
+        "maxOutputRuns": 2800
+      },
+      {
+        "blueprintID": 1161,
+        "maxInputRuns": 14,
+        "maxOutputRuns": 2400
+      },
+      {
+        "blueprintID": 1162,
+        "maxInputRuns": 12,
+        "maxOutputRuns": 2100
+      },
+      {
+        "blueprintID": 1163,
+        "maxInputRuns": 21,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1164,
+        "maxInputRuns": 18,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1165,
+        "maxInputRuns": 15,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1166,
+        "maxInputRuns": 32,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1167,
+        "maxInputRuns": 25,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1168,
+        "maxInputRuns": 21,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1169,
+        "maxInputRuns": 36,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1170,
+        "maxInputRuns": 42,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1171,
+        "maxInputRuns": 24,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1172,
+        "maxInputRuns": 34,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1173,
+        "maxInputRuns": 17,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1174,
+        "maxInputRuns": 36,
+        "maxOutputRuns": 105
+      },
+      {
+        "blueprintID": 1175,
+        "maxInputRuns": 37,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1176,
+        "maxInputRuns": 19,
+        "maxOutputRuns": 84
+      },
+      {
+        "blueprintID": 1177,
+        "maxInputRuns": 19,
+        "maxOutputRuns": 84
+      },
+      {
+        "blueprintID": 1178,
+        "maxInputRuns": 19,
+        "maxOutputRuns": 84
+      },
+      {
+        "blueprintID": 1001,
+        "maxInputRuns": 24,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1006,
+        "maxInputRuns": 63,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1008,
+        "maxInputRuns": 48,
+        "maxOutputRuns": 420
+      },
+      {
+        "blueprintID": 1011,
+        "maxInputRuns": 84,
+        "maxOutputRuns": 168
+      },
+      {
+        "blueprintID": 1012,
+        "maxInputRuns": 63,
+        "maxOutputRuns": 210
+      },
+      {
+        "blueprintID": 1014,
+        "maxInputRuns": 19,
+        "maxOutputRuns": 70
+      },
+      {
+        "blueprintID": 1479,
+        "maxInputRuns": 120,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1474,
+        "maxInputRuns": 120,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1472,
+        "maxInputRuns": 120,
+        "maxOutputRuns": 50
+      }
+    ],
+    "inputCapacity": 2500,
+    "outputCapacity": 8400
+  },
+  "87161": {
+    "facilityID": 87161,
+    "blueprints": [
+      {
+        "blueprintID": 1184,
+        "maxInputRuns": 25,
+        "maxOutputRuns": 25
+      },
+      {
+        "blueprintID": 1185,
+        "maxInputRuns": 2500,
+        "maxOutputRuns": 715
+      },
+      {
+        "blueprintID": 1179,
+        "maxInputRuns": 34,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1180,
+        "maxInputRuns": 9,
+        "maxOutputRuns": 5000
+      },
+      {
+        "blueprintID": 1181,
+        "maxInputRuns": 9,
+        "maxOutputRuns": 12
+      },
+      {
+        "blueprintID": 1182,
+        "maxInputRuns": 25,
+        "maxOutputRuns": 25
+      },
+      {
+        "blueprintID": 1183,
+        "maxInputRuns": 25,
+        "maxOutputRuns": 25
+      },
+      {
+        "blueprintID": 1480,
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
+      },
+      {
+        "blueprintID": 1481,
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
+      }
+    ],
+    "inputCapacity": 500,
+    "outputCapacity": 500
+  },
+  "88069": {
+    "facilityID": 88069,
+    "blueprints": [
+      {
+        "blueprintID": 1224,
+        "maxInputRuns": 2,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1009,
+        "maxInputRuns": 6,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1226,
+        "maxInputRuns": 2,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1227,
+        "maxInputRuns": 3,
+        "maxOutputRuns": 2
+      },
+      {
+        "blueprintID": 1471,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1470,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      }
+    ],
+    "inputCapacity": 2000,
+    "outputCapacity": 1000
+  },
+  "87162": {
+    "facilityID": 87162,
+    "blueprints": [
+      {
+        "blueprintID": 1000,
+        "maxInputRuns": 6,
+        "maxOutputRuns": 8
+      },
+      {
+        "blueprintID": 1001,
+        "maxInputRuns": 12,
+        "maxOutputRuns": 25
+      },
+      {
+        "blueprintID": 1002,
+        "maxInputRuns": 150,
+        "maxOutputRuns": 250
+      },
+      {
+        "blueprintID": 1003,
+        "maxInputRuns": 4,
+        "maxOutputRuns": 5
+      },
+      {
+        "blueprintID": 1004,
+        "maxInputRuns": 3,
+        "maxOutputRuns": 8
+      },
+      {
+        "blueprintID": 1005,
+        "maxInputRuns": 48,
+        "maxOutputRuns": 34
+      },
+      {
+        "blueprintID": 1006,
+        "maxInputRuns": 30,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1007,
+        "maxInputRuns": 400,
+        "maxOutputRuns": 500
+      },
+      {
+        "blueprintID": 1008,
+        "maxInputRuns": 23,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1009,
+        "maxInputRuns": 4,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1010,
+        "maxInputRuns": 50,
+        "maxOutputRuns": 34
+      },
+      {
+        "blueprintID": 1011,
+        "maxInputRuns": 40,
+        "maxOutputRuns": 20
+      },
+      {
+        "blueprintID": 1012,
+        "maxInputRuns": 30,
+        "maxOutputRuns": 25
+      },
+      {
+        "blueprintID": 1013,
+        "maxInputRuns": 37,
+        "maxOutputRuns": 20
+      },
+      {
+        "blueprintID": 1014,
+        "maxInputRuns": 9,
+        "maxOutputRuns": 9
+      },
+      {
+        "blueprintID": 1472,
+        "maxInputRuns": 120,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1473,
+        "maxInputRuns": 120,
+        "maxOutputRuns": 50
+      }
+    ],
+    "inputCapacity": 1200,
+    "outputCapacity": 1000
+  },
+  "88070": {
+    "facilityID": 88070,
+    "blueprints": [
+      {
+        "blueprintID": 1228,
+        "maxInputRuns": 3,
+        "maxOutputRuns": 2
+      },
+      {
+        "blueprintID": 1229,
+        "maxInputRuns": 2,
+        "maxOutputRuns": 2
+      },
+      {
+        "blueprintID": 1230,
+        "maxInputRuns": 2,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1231,
+        "maxInputRuns": 2,
+        "maxOutputRuns": 2
+      },
+      {
+        "blueprintID": 1232,
+        "maxInputRuns": 3,
+        "maxOutputRuns": 2
+      },
+      {
+        "blueprintID": 1483,
+        "maxInputRuns": 2,
+        "maxOutputRuns": 2
+      }
+    ],
+    "inputCapacity": 35000,
+    "outputCapacity": 5000
+  },
+  "91978": {
+    "facilityID": 91978,
+    "blueprints": [
+      {
+        "blueprintID": 1487,
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1475,
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1476,
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
+      }
+    ],
+    "inputCapacity": 100,
+    "outputCapacity": 100
+  },
+  "87119": {
+    "facilityID": 87119,
+    "blueprints": [
+      {
+        "blueprintID": 1026,
+        "maxInputRuns": 219,
+        "maxOutputRuns": 334
+      },
+      {
+        "blueprintID": 1027,
+        "maxInputRuns": 219,
+        "maxOutputRuns": 334
+      },
+      {
+        "blueprintID": 1029,
+        "maxInputRuns": 28,
+        "maxOutputRuns": 34
+      },
+      {
+        "blueprintID": 1030,
+        "maxInputRuns": 53,
+        "maxOutputRuns": 34
+      },
+      {
+        "blueprintID": 1031,
+        "maxInputRuns": 3000,
+        "maxOutputRuns": 10000
+      },
+      {
+        "blueprintID": 1032,
+        "maxInputRuns": 2000,
+        "maxOutputRuns": 10000
+      },
+      {
+        "blueprintID": 1005,
+        "maxInputRuns": 48,
+        "maxOutputRuns": 34
+      },
+      {
+        "blueprintID": 1007,
+        "maxInputRuns": 400,
+        "maxOutputRuns": 500
+      },
+      {
+        "blueprintID": 1010,
+        "maxInputRuns": 50,
+        "maxOutputRuns": 34
+      },
+      {
+        "blueprintID": 1013,
+        "maxInputRuns": 37,
+        "maxOutputRuns": 20
+      },
+      {
+        "blueprintID": 1015,
+        "maxInputRuns": 3,
+        "maxOutputRuns": 3
+      },
+      {
+        "blueprintID": 1016,
+        "maxInputRuns": 22,
+        "maxOutputRuns": 18
+      },
+      {
+        "blueprintID": 1017,
+        "maxInputRuns": 204,
+        "maxOutputRuns": 250
+      },
+      {
+        "blueprintID": 1019,
+        "maxInputRuns": 6,
+        "maxOutputRuns": 8
+      },
+      {
+        "blueprintID": 1020,
+        "maxInputRuns": 4,
+        "maxOutputRuns": 5
+      },
+      {
+        "blueprintID": 1021,
+        "maxInputRuns": 6,
+        "maxOutputRuns": 8
+      },
+      {
+        "blueprintID": 1022,
+        "maxInputRuns": 45,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1023,
+        "maxInputRuns": 1200,
+        "maxOutputRuns": 200
+      },
+      {
+        "blueprintID": 1482,
+        "maxInputRuns": 1200,
+        "maxOutputRuns": 200
+      }
+    ],
+    "inputCapacity": 1200,
+    "outputCapacity": 1000
+  },
+  "88063": {
+    "facilityID": 88063,
+    "blueprints": [
+      {
+        "blueprintID": 1180,
+        "maxInputRuns": 72,
+        "maxOutputRuns": 40000
+      },
+      {
+        "blueprintID": 1181,
+        "maxInputRuns": 67,
+        "maxOutputRuns": 96
+      },
+      {
+        "blueprintID": 1186,
+        "maxInputRuns": 200,
+        "maxOutputRuns": 200
+      },
+      {
+        "blueprintID": 1188,
+        "maxInputRuns": 80,
+        "maxOutputRuns": 44
+      },
+      {
+        "blueprintID": 1190,
+        "maxInputRuns": 200,
+        "maxOutputRuns": 200
+      },
+      {
+        "blueprintID": 1191,
+        "maxInputRuns": 400,
+        "maxOutputRuns": 24
+      },
+      {
+        "blueprintID": 1192,
+        "maxInputRuns": 400,
+        "maxOutputRuns": 200
+      },
+      {
+        "blueprintID": 1193,
+        "maxInputRuns": 400,
+        "maxOutputRuns": 24
+      },
+      {
+        "blueprintID": 1194,
+        "maxInputRuns": 4000,
+        "maxOutputRuns": 200
+      },
+      {
+        "blueprintID": 1195,
+        "maxInputRuns": 136,
+        "maxOutputRuns": 136
+      },
+      {
+        "blueprintID": 1196,
+        "maxInputRuns": 140,
+        "maxOutputRuns": 140
+      },
+      {
+        "blueprintID": 1197,
+        "maxInputRuns": 40,
+        "maxOutputRuns": 70
+      },
+      {
+        "blueprintID": 1198,
+        "maxInputRuns": 40,
+        "maxOutputRuns": 45
+      },
+      {
+        "blueprintID": 1199,
+        "maxInputRuns": 40,
+        "maxOutputRuns": 45
+      },
+      {
+        "blueprintID": 1200,
+        "maxInputRuns": 40,
+        "maxOutputRuns": 45
+      },
+      {
+        "blueprintID": 1201,
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
+      },
+      {
+        "blueprintID": 1202,
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
+      },
+      {
+        "blueprintID": 1203,
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
+      },
+      {
+        "blueprintID": 1204,
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
+      },
+      {
+        "blueprintID": 1480,
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
+      },
+      {
+        "blueprintID": 1481,
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
+      }
+    ],
+    "inputCapacity": 4000,
+    "outputCapacity": 4000
+  },
+  "88067": {
+    "facilityID": 88067,
+    "blueprints": [
+      {
+        "blueprintID": 1033,
+        "maxInputRuns": 24,
+        "maxOutputRuns": 24
+      },
+      {
+        "blueprintID": 1034,
+        "maxInputRuns": 1540,
+        "maxOutputRuns": 3336
+      },
+      {
+        "blueprintID": 1035,
+        "maxInputRuns": 40,
+        "maxOutputRuns": 40
+      },
+      {
+        "blueprintID": 1037,
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
+      },
+      {
+        "blueprintID": 1038,
+        "maxInputRuns": 28,
+        "maxOutputRuns": 28
+      },
+      {
+        "blueprintID": 1039,
+        "maxInputRuns": 40,
+        "maxOutputRuns": 40
+      },
+      {
+        "blueprintID": 1040,
+        "maxInputRuns": 213,
+        "maxOutputRuns": 200
+      },
+      {
+        "blueprintID": 1042,
+        "maxInputRuns": 287,
+        "maxOutputRuns": 200
+      },
+      {
+        "blueprintID": 1043,
+        "maxInputRuns": 7,
+        "maxOutputRuns": 12
+      },
+      {
+        "blueprintID": 1044,
+        "maxInputRuns": 20,
+        "maxOutputRuns": 36
+      },
+      {
+        "blueprintID": 1045,
+        "maxInputRuns": 287,
+        "maxOutputRuns": 200
+      },
+      {
+        "blueprintID": 1046,
+        "maxInputRuns": 287,
+        "maxOutputRuns": 200
+      },
+      {
+        "blueprintID": 1047,
+        "maxInputRuns": 20,
+        "maxOutputRuns": 36
+      },
+      {
+        "blueprintID": 1048,
+        "maxInputRuns": 20,
+        "maxOutputRuns": 36
+      },
+      {
+        "blueprintID": 1049,
+        "maxInputRuns": 667,
+        "maxOutputRuns": 800
+      },
+      {
+        "blueprintID": 1050,
+        "maxInputRuns": 667,
+        "maxOutputRuns": 800
+      },
+      {
+        "blueprintID": 1051,
+        "maxInputRuns": 176,
+        "maxOutputRuns": 136
+      },
+      {
+        "blueprintID": 1052,
+        "maxInputRuns": 93,
+        "maxOutputRuns": 136
+      },
+      {
+        "blueprintID": 1053,
+        "maxInputRuns": 93,
+        "maxOutputRuns": 136
+      },
+      {
+        "blueprintID": 1054,
+        "maxInputRuns": 9990,
+        "maxOutputRuns": 6668
+      },
+      {
+        "blueprintID": 1022,
+        "maxInputRuns": 150,
+        "maxOutputRuns": 200
+      },
+      {
+        "blueprintID": 1023,
+        "maxInputRuns": 4000,
+        "maxOutputRuns": 800
+      },
+      {
+        "blueprintID": 1482,
+        "maxInputRuns": 4000,
+        "maxOutputRuns": 800
+      }
+    ],
+    "inputCapacity": 4000,
+    "outputCapacity": 4000
+  },
+  "88071": {
+    "facilityID": 88071,
+    "blueprints": [
+      {
+        "blueprintID": 1233,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 2
+      },
+      {
+        "blueprintID": 1234,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      }
+    ],
+    "inputCapacity": 80000,
+    "outputCapacity": 15000
+  }
+}

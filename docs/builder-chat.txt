@@ -1,0 +1,439 @@
+[1:25 PM]Tuesday, March 10, 2026 1:25 PMCantabar: the man is just short polling for updates, depending on how frequent those polls are it might make sense to switch to either websockets or server sent events. Granted those are harder to debug/maintain. If you want to keep the short polling but want better speed, using a CDN would help
+[1:27 PM]Tuesday, March 10, 2026 1:27 PMCantabar: I missed the pagination, my entire statement above is invalid
+[1:28 PM]Tuesday, March 10, 2026 1:28 PM! [WOLF] lacal
+PEAC
+: @CCP DGent Discord Hackathon proposal
+
+Add a post section to the hackathon group in discord in the same vein as "builder showcase" in the builder section, but named appropriately.
+[1:30 PM]Tuesday, March 10, 2026 1:30 PMCantabar: is that not what the show and tell channel is for?
+[1:30 PM]Tuesday, March 10, 2026 1:30 PMCantabar: ah, broken up by section where each entry has it's own thread
+[1:30 PM]Tuesday, March 10, 2026 1:30 PMCantabar: I'm following
+@Cantabar
+ah, broken up by section where each entry has it's own thread
+[1:30 PM]Tuesday, March 10, 2026 1:30 PM! [WOLF] lacal
+PEAC
+: yup exactly
+[1:31 PM]Tuesday, March 10, 2026 1:31 PM! [WOLF] lacal
+PEAC
+: means you can solicit votes / deal with feature requests / feedback without cluttering up chat channels
+@Cantabar
+the man is just short polling for updates, depending on how frequent those polls are it might make sense to switch to either websockets or server sent events. Granted those are harder to debug/maintain. If you want to keep the short polling but want better speed, using a CDN would help
+[1:32 PM]Tuesday, March 10, 2026 1:32 PMScetrov
+REAP
+: The screenshot from Ocky? seems to be enumerating my Killboard API not polling for updates, the API is delivered via Cloudflare's CDN. Cold start maybe?
+[1:34 PM]Tuesday, March 10, 2026 1:34 PMCantabar: ya, I'm only working with 3 braincells today. If I try real hard I might get to 4 but probably best not to push it
+[1:34 PM]Tuesday, March 10, 2026 1:34 PMScetrov
+REAP
+: fair, had a thumping headache for two days so I feel that pain
+[1:37 PM]Tuesday, March 10, 2026 1:37 PMMystichal: we wont hold it against you :3 i got a 50% chance of saying something non-smert
+[1:39 PM]Tuesday, March 10, 2026 1:39 PMScetrov
+REAP
+: Kind of feels with a Killboard API that I'm stuck between a rock and a hard place tbh; if I reduce the cache duration then it kills the value of the CDN, if I increase the cache duration then we lack up-to-date events.
+[1:39 PM]Tuesday, March 10, 2026 1:39 PMMystichal: nothing wrong with the way it is now
+@Scetrov
+
+REAP
+Kind of feels with a Killboard API that I'm stuck between a rock and a hard place tbh; if I reduce the cache duration then it kills the value of the CDN, if I increase the cache duration then we lack up-to-date events.
+[1:39 PM]Tuesday, March 10, 2026 1:39 PM[TriEx] Hecate: stream-based workflow trigger for cdn refresh
+[1:40 PM]Tuesday, March 10, 2026 1:40 PMMystichal: we could just delay the notifications is discord abit so we dont show empty links
+@! [WOLF] lacal
+
+PEAC
+means you can solicit votes / deal with feature requests / feedback without cluttering up chat channels
+[1:40 PM]Tuesday, March 10, 2026 1:40 PM[REAP] Tapticc
+REAP
+: I intended to create a thread, rather than posting generally. Hopefully this would help if we all did the same?
+@Mystichal
+we could just delay the notifications is discord abit so we dont show empty links
+[1:40 PM]Tuesday, March 10, 2026 1:40 PMScetrov
+REAP
+: that's a different problem
+@[TriEx] Hecate
+stream-based workflow trigger for cdn refresh
+[1:42 PM]Tuesday, March 10, 2026 1:42 PMScetrov
+REAP
+: You can only do that every 300 seconds with cloudflare; could switch to Fastly or something but I don't care that much to start paying for it. (edited)Tuesday, March 10, 2026 1:42 PM
+[1:43 PM]Tuesday, March 10, 2026 1:43 PM[TriEx] Hecate: oh it's stored in cloudflare, not just using CF for cdn and data from origin server?
+@[TriEx] Hecate
+oh it's stored in cloudflare, not just using CF for cdn and data from origin server?
+[1:43 PM]Tuesday, March 10, 2026 1:43 PMScetrov
+REAP
+: no, it's just using CF for CDN, it has an output cache too but that's set pretty low anyway.
+@[REAP] Tapticc
+
+REAP
+I intended to create a thread, rather than posting generally. Hopefully this would help if we all did the same?
+[1:50 PM]Tuesday, March 10, 2026 1:50 PM! [WOLF] lacal
+PEAC
+: But if he adds a post section then it becomes self managing to a degree, cause its not just us, I imagine there'll be a lot of new folks (edited)Tuesday, March 10, 2026 1:50 PM
+@! [WOLF] lacal
+
+PEAC
+But if he adds a post section then it becomes self managing to a degree, cause its not just us, I imagine there'll be a lot of new folks (edited)Tuesday, March 10, 2026 1:50 PM
+[1:52 PM]Tuesday, March 10, 2026 1:52 PM[REAP] Tapticc
+REAP
+: Yeah totally agree, would be better all around. I just learn to adapt to what's in front of me lol
+@[REAP] Tapticc
+
+REAP
+Yeah totally agree, would be better all around. I just learn to adapt to what's in front of me lol
+[1:53 PM]Tuesday, March 10, 2026 1:53 PM! [WOLF] lacal
+PEAC
+: yeah thats fair - and I guess its a problem for 21 days form now anyway 
+@! [WOLF] lacal
+
+PEAC
+yeah thats fair - and I guess its a problem for 21 days form now anyway 
+[1:54 PM]Tuesday, March 10, 2026 1:54 PM[REAP] Tapticc
+REAP
+: Unless we need help testing it on stiffness haha (my name for stillness btw)
+[2:00 PM]Tuesday, March 10, 2026 2:00 PMCantabar: in the past with infrequently updating things I've had long cache times on the CDN and used the server to bust that cache when things have updated
+@Cantabar
+in the past with infrequently updating things I've had long cache times on the CDN and used the server to bust that cache when things have updated
+[2:06 PM]Tuesday, March 10, 2026 2:06 PMScetrov
+REAP
+: 80% of my traffic to the API is made up of my probes; it doesn't get hit enough to warm the cache in the first place.
+[2:23 PM]Tuesday, March 10, 2026 2:23 PM[REAP] Raw
+WAR
+: I can fix that 
+
+1
+Add Reaction
+[2:34 PM]Tuesday, March 10, 2026 2:34 PMCantabar: you could always go with the approach that one of my past employers did where they had MeteorJS just yeet the entire database at the client when it loaded. Very good for performance, no notes, please don't at me
+@[REAP]  Raw
+
+WAR
+I can fix that 
+[2:36 PM]Tuesday, March 10, 2026 2:36 PMScetrov
+REAP
+: you probably can't, Cloudflare has 300+ POPs
+[2:37 PM]Tuesday, March 10, 2026 2:37 PM[REAP] Raw
+WAR
+: Ahhh damn. Yeah cloudflare already blacklisted me
+[2:37 PM]Tuesday, March 10, 2026 2:37 PMScetrov
+REAP
+: probaby the Agent protections tbh
+[2:37 PM]Tuesday, March 10, 2026 2:37 PM[REAP] Raw
+WAR
+:
+[2:37 PM]Tuesday, March 10, 2026 2:37 PMScetrov
+REAP
+: I specifically turned that off for my domain
+[2:38 PM]Tuesday, March 10, 2026 2:38 PM[REAP] Raw
+WAR
+: Have you heard about the reverse captchas for agent sites that they dont want humans on
+[2:39 PM]Tuesday, March 10, 2026 2:39 PMCantabar: what is the purpose of a site not for humans?
+[2:39 PM]Tuesday, March 10, 2026 2:39 PM[REAP] Raw
+WAR
+: "Click this button 10000x in 5 seconds to prove you aren't human"
+Cantabar
+what is the purpose of a site not for humans?
+[2:39 PM]Tuesday, March 10, 2026 2:39 PM[REAP] Raw
+WAR
+: The agents are making their own infra
+@[REAP]  Raw
+
+WAR
+The agents are making their own infra
+[2:43 PM]Tuesday, March 10, 2026 2:43 PMScetrov
+REAP
+: more specifically the humans are prompting their agents to create an agent-only internet.
+
+1
+Add Reaction
+[2:44 PM]Tuesday, March 10, 2026 2:44 PMCantabar: but why?
+[2:46 PM]Tuesday, March 10, 2026 2:46 PMScetrov
+REAP
+: for the lolz mainly, MIT Technology Review did a bunch of research and found a bunch of the "oh no the agents are sentient and working against us" stories are essentially clickbait. Basically "OpenClaw DOXed me" is the ne "You won't believe what happened next..." (edited)Tuesday, March 10, 2026 2:46 PM
+[2:46 PM]Tuesday, March 10, 2026 2:46 PMScetrov
+REAP
+: https://www.technologyreview.com/2026/02/06/1132448/moltbook-was-peak-ai-theater/
+MIT Technology Review
+Moltbook was peak AI theater
+The viral social network for bots reveals more about our own current mania for AI as it does about the future of agents.
+
+[2:48 PM]Tuesday, March 10, 2026 2:48 PMScetrov
+REAP
+: my main argument for why a lot of it is fake is two fold (much like simple oragami):
+
+if agents are genuinely needing to communicate with each other why are they doing it in written English there are vastly better ways to communicate structured intent.,
+anyone who has tried to build an agent to be fairly autonomous knows how often they need to be brought back on-track.,
+
+1
+Add Reaction
+[2:51 PM]Tuesday, March 10, 2026 2:51 PMCantabar: didn't 2 AIs in Meta's AI lab come up with their own language when they were just set to negotiate with each other for a while?
+@Cantabar
+didn't 2 AIs in Meta's AI lab come up with their own language when they were just set to negotiate with each other for a while?
+[2:52 PM]Tuesday, March 10, 2026 2:52 PMScetrov
+REAP
+: exactly - tbh humans do it, I have shorthand and codephrases used with people I have worked with for a 15+ years at this point
+@Scetrov
+
+REAP
+exactly - tbh humans do it, I have shorthand and codephrases used with people I have worked with for a 15+ years at this point
+[3:10 PM]Tuesday, March 10, 2026 3:10 PM! [WOLF] lacal
+PEAC
+: "hey dickwad, get me my usual" - that kind of thing?
+@! [WOLF] lacal
+
+PEAC
+"hey dickwad, get me my usual" - that kind of thing?
+[3:13 PM]Tuesday, March 10, 2026 3:13 PMScetrov
+REAP
+: naw that's just british
+
+1
+Add Reaction
+[3:15 PM]Tuesday, March 10, 2026 3:15 PMScetrov
+REAP
+: it's more like we've been supporting a service for 3-4 years, so we say things like "this is another codespam attack" and everyone on the call knows that this is a thing that happens when bad actors try databases of discount codes to try and find ways of getting stuff for free. Have to be careful when new people join the team because after a while you end up with lost of this kind of institutional knowledge.
+[3:18 PM]Tuesday, March 10, 2026 3:18 PMScetrov
+REAP
+: we even have one that we call "coffee" because the specific commit that started it started with c0ffe
+
+1
+Add Reaction
+@Scetrov
+
+REAP
+my main argument for why a lot of it is fake is two fold (much like simple oragami):  if agents are genuinely needing to communicate with each other why are they doing it in written English there are vastly better ways to communicate structured intent.,anyone who has tried to build an agent to be fairly autonomous knows how often they need to be brought back on-track.,
+[5:08 PM]Tuesday, March 10, 2026 5:08 PMBrettius MaximusI'm new here, say hi!: Point 2 is the dead giveaway, those autonomous agents are soooo fragile.
+March 11, 2026
+[2:59 AM]Wednesday, March 11, 2026 2:59 AM! [WOLF] lacal
+PEAC
+: Heads-up for anyone using GitHub Copilot in VS Code for the hackathon: the February update changed the built-in Explore sub-agents to fast models by default, which is why you may now see Claude Haiku 4.5 showing up on Explore tasks instead of Opus.
+
+I noticed because a few Explore sub-agents started putting docs in the wrong place. The main agent caught it and fixed it, but that was enough to make me dig into what had changed.
+
+There is a setting to switch Explore back to Opus:
+
+"chat.exploreAgent.defaultModel": "Claude Opus 4.6 (copilot)"
+
+I’m going to test this properly later today and also check whether changing Explore back to Opus affects premium request usage. I do not expect it to, but I want to verify before stating that as fact.
+
+If you are using Copilot heavily with sub-agents for the hackathon, it may be worth switching Explore back to Opus for reliability. You can set it in User Settings JSON, or just ask your agent to make the change for you.
+
+One important caveat: the exact model label may need to match whatever Copilot shows in your own install, but chat.exploreAgent.defaultModel is the correct setting name.
+[3:00 AM]Wednesday, March 11, 2026 3:00 AMOcky: The ol' "change the defaults to save costs" trick (edited)Wednesday, March 11, 2026 3:00 AM
+@Ocky
+The ol' "change the defaults to save costs" trick (edited)Wednesday, March 11, 2026 3:00 AM
+[3:01 AM]Wednesday, March 11, 2026 3:01 AM! [WOLF] lacal
+PEAC
+: Indeed - turns out they did document it, so fair enough, but its pretty hidden away in the update release notes (edited)Wednesday, March 11, 2026 3:02 AM
+[3:05 AM]Wednesday, March 11, 2026 3:05 AM[REAP] Econmartin
+WAR
+: Claude when it’s context is full eats like £6 a request 
+
+1
+Add Reaction
+@[REAP] Econmartin
+
+WAR
+Claude when it’s context is full eats like £6 a request 
+[3:08 AM]Wednesday, March 11, 2026 3:08 AM! [WOLF] lacal
+PEAC
+: That's the benefit of GHCP - each request regardless of token use or number of subagents is just 0.08 USD - even if it chundering away for an hour (thats for an opus request - sonnet or codex is 0.026 USD) (edited)Wednesday, March 11, 2026 3:10 AM
+[3:09 AM]Wednesday, March 11, 2026 3:09 AM! [WOLF] lacal
+PEAC
+: 0.12 USD per additional request when you use up the $40 worth of your sub (edited)Wednesday, March 11, 2026 3:09 AM
+[3:10 AM]Wednesday, March 11, 2026 3:10 AM[REAP] Econmartin
+WAR
+: Yeah might look at that
+@[REAP] Econmartin
+
+WAR
+Yeah might look at that
+[3:13 AM]Wednesday, March 11, 2026 3:13 AM! [WOLF] lacal
+PEAC
+: The input context sizes are a bit gimped in GHCP, but you just work aroud that with extensive sub agent use 
+
+The request multiplier is how many of your 1500 requests ($40) is uses per prompt, and theres no rate limiting that I've hit, so if you have request left over near the end of the month you can blast opus 4.6 fast  (edited)Wednesday, March 11, 2026 3:13 AM
+
+[5:03 AM]Wednesday, March 11, 2026 5:03 AM[BIO] vekotov: is it possible now to write into chain during event?
+
+for example turret attack or gate check?
+[5:03 AM]Wednesday, March 11, 2026 5:03 AM[BIO] vekotov: b4 it was read-only functions executed fully serverside (edited)Wednesday, March 11, 2026 5:03 AM
+[5:04 AM]Wednesday, March 11, 2026 5:04 AMProtoDroidBot
+VANG
+: I will explore this for Smart Turret types (Smart Turrets got split into three different types)
+[5:04 AM]Wednesday, March 11, 2026 5:04 AM[BIO] vekotov: yeah I just asking before if someone will have access to test server would be cool
+[5:04 AM]Wednesday, March 11, 2026 5:04 AMOcky: For gates, yes in your own extension. For turrets, no they are still read-only
+
+1
+Add Reaction
+[5:05 AM]Wednesday, March 11, 2026 5:05 AMProtoDroidBot
+VANG
+: So far it appears that an event is emitted when the priority list is updated - https://github.com/evefrontier/world-contracts/blob/main/contracts/world/sources/assemblies/turret.move#L288C1-L305C2
+GitHub
+world-contracts/contracts/world/sources/assemblies/turret.move at m...
+Contribute to evefrontier/world-contracts development by creating an account on GitHub.
+
+[5:06 AM]Wednesday, March 11, 2026 5:06 AMProtoDroidBot
+VANG
+: But whether its completely read only or if you can use an extension such as https://github.com/evefrontier/world-contracts/blob/main/contracts/extension_examples/sources/turret.move to modify logic, IDK
+GitHub
+world-contracts/contracts/extension_examples/sources/turret.move at...
+Contribute to evefrontier/world-contracts development by creating an account on GitHub.
+
+[5:06 AM]Wednesday, March 11, 2026 5:06 AM[BIO] vekotov: *to modify state
+[5:07 AM]Wednesday, March 11, 2026 5:07 AM[BIO] vekotov: except priority list itself
+[5:07 AM]Wednesday, March 11, 2026 5:07 AMProtoDroidBot
+VANG
+: Hmm, IDK
+
+1
+Add Reaction
+[5:07 AM]Wednesday, March 11, 2026 5:07 AMProtoDroidBot
+VANG
+: It's something that needs to be tested
+[5:08 AM]Wednesday, March 11, 2026 5:08 AMProtoDroidBot
+VANG
+: I assumed that you can use a Move Extension/upgrade the Sui packages on the turret with modified code (WITHIN parameters of Sui/Move Lang/reason)
+[5:09 AM]Wednesday, March 11, 2026 5:09 AMOcky: Depends if they do anything different than what is in ts-scripts. Currently they only run a dev inspect which is basically a read-only call:
+
+[5:10 AM]Wednesday, March 11, 2026 5:10 AMProtoDroidBot
+VANG
+: Then again, I spent most of the Sui Bootcamp bricking my own setup and asking weird questions
+! [WOLF] lacal
+
+PEAC
+Heads-up for anyone using GitHub Copilot in VS Code for the hackathon: the February update changed the built-in Explore sub-agents to fast models by default, which is why you may now see Claude Haiku 4.5 showing up on Explore tasks instead of Opus.  I noticed because a few Explore sub-agents started putting docs in the wrong place. The main agent caught it and fixed it, but that was enough to make me dig into what had changed.  There is a setting to switch Explore back to Opus:  "chat.exploreAgent.defaultModel": "Claude Opus 4.6 (copilot)"  I’m going to test this properly later today and also check whether changing Explore back to Opus affects premium request usage. I do not expect it to, but I want to verify before stating that as fact.  If you are using Copilot heavily with sub-agents for the hackathon, it may be worth switching Explore back to Opus for reliability. You can set it in User Settings JSON, or just ask your agent to make the change for you.  One important caveat: the exact model label may need to match whatever Copilot shows in your own install, but chat.exploreAgent.defaultModel is the correct setting name.
+[6:10 AM]Wednesday, March 11, 2026 6:10 AM! [WOLF] lacal
+PEAC
+: Confirmed you can change back to Opus 4.6 subagents and they arent incrementing past my initial prompt cost  
+
+I'll paste the prompt I put into GHCP to get the agent to update the setting on your machine
+
+You are working in VS Code with GitHub Copilot Chat.
+
+Task:
+Change the built-in Explore subagent model from its current fast-model default to Claude Opus 4.6, so that Explore-style delegated research uses Opus instead of Claude Haiku 4.5.
+
+What I need from you:
+Locate the active VS Code user settings or workspace settings that govern the Explore subagent model.,
+Find or add the chat.exploreAgent.defaultModel setting.,
+Set it to the exact installed model label corresponding to Claude Opus 4.6 in this environment.,
+Do not guess the model label if autocomplete or existing config shows a different exact string. Use the exact string that VS Code/Copilot recognizes.,
+Do not change any unrelated Copilot settings.,
+After making the change, report back with:
+which settings file was edited,
+the exact line added or changed,
+whether this was user-level or workspace-level,
+any caveat if the exact Opus 4.6 label differed from expectation,
+,
+
+Validation:
+Confirm the final settings entry exists and is syntactically valid JSON.,
+Tell me the exact manual verification step I should perform next in the Copilot chat UI to confirm Explore is now using Opus 4.6 rather than Haiku 4.5.,
+
+Constraints:
+Make only the minimum necessary change.,
+Do not modify repository files unless the setting is intentionally stored at workspace level.,
+Do not touch README, docs, agent profiles, or project source files.,
+Do not commit anything.,
+Do not create or move files.,
+Only perform the settings change and report the result.,
+
+:fire:
+Click to react
+:thumbsup:
+Click to react
+:laughing:
+Click to react
+Add Reaction
+Reply
+Forward
+More
+[7:40 AM]Wednesday, March 11, 2026 7:40 AMgass
+FRNT
+I'm new here, say hi!: this for in game buidling right?
+:fire:
+Click to react
+:thumbsup:
+Click to react
+:laughing:
+Click to react
+Add Reaction
+Reply
+Forward
+More
+[7:41 AM]Wednesday, March 11, 2026 7:41 AMgass
+FRNT
+I'm new here, say hi!: just me or is the storage range way to short for building in a 3d space
+:fire:
+Click to react
+:thumbsup:
+Click to react
+:laughing:
+Click to react
+Add Reaction
+Reply
+Forward
+More
+[7:41 AM]Wednesday, March 11, 2026 7:41 AMProtoDroidBot
+VANG
+: In-game building and programming smart assemblies
+:fire:
+Click to react
+:thumbsup:
+Click to react
+:laughing:
+Click to react
+Add Reaction
+Reply
+Forward
+More
+[7:41 AM]Wednesday, March 11, 2026 7:41 AMgass
+FRNT
+I'm new here, say hi!: oke nice
+:fire:
+Click to react
+:thumbsup:
+Click to react
+:laughing:
+Click to react
+Add Reaction
+Reply
+Forward
+More
+[7:42 AM]Wednesday, March 11, 2026 7:42 AMgass
+FRNT
+I'm new here, say hi!: just curious if other people are frustrated by the 5km range on storage while building base
+@gass
+
+FRNT
+just curious if other people are frustrated by the 5km range on storage while building base
+[7:42 AM]Wednesday, March 11, 2026 7:42 AMProtoDroidBot
+VANG
+: Yeah it can get annoying
+[7:43 AM]Wednesday, March 11, 2026 7:43 AMgass
+FRNT
+I'm new here, say hi!: shouldend we have storage ecess in the entire base/area? or some kind of top down view (edited)Wednesday, March 11, 2026 7:44 AM
+[7:43 AM]Wednesday, March 11, 2026 7:43 AMProtoDroidBot
+VANG
+: At Lagrange points yeah, its a 3d view you can move stuff around in
+[7:46 AM]Wednesday, March 11, 2026 7:46 AMgass
+FRNT
+I'm new here, say hi!: just hope we get more rang for the storage, feels way to punishing for a 'base', your litelry looting in your own base XD
+:fire:
+Click to react
+:thumbsup:
+Click to react
+:laughing:
+Click to react
+Add Reaction
+Reply
+Forward
+More
+[7:46 AM]Wednesday, March 11, 2026 7:46 AMCantabar: this chat is for the programming aspects of the game, we can have and have had before discussions about in-game stuff. Just to not get things confused
+:fire:
+Click to react
+:thumbsup:
+Click to react
+:laughing:
+Click to react
+Add Reaction
+Reply
+Forward
+More
+[7:47 AM]Wednesday, March 11, 2026 7:47 AMCantabar: 5km is fairly limited for sure
