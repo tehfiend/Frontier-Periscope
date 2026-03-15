@@ -136,20 +136,19 @@ export function GovernanceFinance() {
 			});
 
 			// User signs with their wallet (EVE Vault sponsors gas)
-			const result = await signAndExecute({ transaction: tx });
+			const result = await signAndExecute({
+				transaction: tx,
+				options: { showObjectChanges: true },
+			});
 
 			// Parse the published package details from objectChanges
-			const changes = result.effects?.created
-				? [] // fallback
-				: [];
-			const objectChanges =
-				(result as Record<string, unknown>).objectChanges as Array<{
-					type: string;
-					packageId?: string;
-					objectType?: string;
-					objectId?: string;
-					modules?: string[];
-				}> ?? [];
+			const objectChanges = (result.objectChanges ?? []) as Array<{
+				type: string;
+				packageId?: string;
+				objectType?: string;
+				objectId?: string;
+				modules?: string[];
+			}>;
 
 			const parsed = parsePublishResult(objectChanges);
 			if (!parsed) {
