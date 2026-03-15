@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { CONTRACT_ADDRESSES } from "@tehfrontier/chain-shared";
 
 // ── Gas Station Configuration ────────────────────────────────────────────────
@@ -15,6 +17,35 @@ export function getPrivateKey(): string {
 		throw new Error("GAS_STATION_PRIVATE_KEY environment variable is required");
 	}
 	return key;
+}
+
+// ── Dynamic Whitelist ────────────────────────────────────────────────────────
+
+const publishedTokensPath = join(__dirname, "../published-tokens.json");
+const dynamicAllowedPackages = new Set<string>();
+
+// Load persisted token packages on startup
+try {
+	const data = readFileSync(publishedTokensPath, "utf-8");
+	for (const pkg of JSON.parse(data)) dynamicAllowedPackages.add(pkg);
+} catch {
+	/* file may not exist yet */
+}
+
+// Support EXTRA_ALLOWED_PACKAGES env var (comma-separated)
+const extra = process.env.EXTRA_ALLOWED_PACKAGES?.split(",") ?? [];
+for (const pkg of extra) if (pkg.trim()) dynamicAllowedPackages.add(pkg.trim());
+
+/**
+ * Add a newly published package to the dynamic whitelist and persist to disk.
+ */
+export function addDynamicAllowedPackage(packageId: string): void {
+	dynamicAllowedPackages.add(packageId);
+	writeFileSync(
+		publishedTokensPath,
+		JSON.stringify([...dynamicAllowedPackages]),
+		"utf-8",
+	);
 }
 
 /**
@@ -40,6 +71,11 @@ export function getAllowedPackageIds(): Set<string> {
 		"0x353988e063b4683580e3603dbe9e91fefd8f6a06263a646d43fd3a2f3ef6b8c1", // nebula
 	];
 	for (const pkg of worldPackages) {
+		allowed.add(pkg);
+	}
+
+	// Include dynamically registered packages (published tokens, env var)
+	for (const pkg of dynamicAllowedPackages) {
 		allowed.add(pkg);
 	}
 
