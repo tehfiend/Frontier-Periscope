@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import {
+	useCurrentAccount,
 	useSignAndExecuteTransaction,
 	useSuiClient,
 } from "@mysten/dapp-kit";
+import { ConnectButton } from "@mysten/dapp-kit";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Coins,
@@ -48,6 +50,7 @@ type BuildStatus =
 	| "error";
 
 export function GovernanceFinance() {
+	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
@@ -369,21 +372,25 @@ export function GovernanceFinance() {
 							/>
 						</div>
 						<div className="flex gap-2">
-							<button
-								type="button"
-								onClick={handleCreateCurrency}
-								disabled={!symbol.trim() || !tokenName.trim() || isProcessing}
-								className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								{isProcessing ? (
-									<span className="flex items-center gap-2">
-										<Loader2 size={14} className="animate-spin" />{" "}
-										Publishing...
-									</span>
-								) : (
-									"Create Currency"
-								)}
-							</button>
+							{account ? (
+								<button
+									type="button"
+									onClick={handleCreateCurrency}
+									disabled={!symbol.trim() || !tokenName.trim() || isProcessing}
+									className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									{isProcessing ? (
+										<span className="flex items-center gap-2">
+											<Loader2 size={14} className="animate-spin" />{" "}
+											Publishing...
+										</span>
+									) : (
+										"Create Currency"
+									)}
+								</button>
+							) : (
+								<ConnectButton className="!rounded-lg !bg-cyan-600 !px-4 !py-2 !text-sm !font-medium !text-white hover:!bg-cyan-500" />
+							)}
 							<button
 								type="button"
 								onClick={() => setCreating(false)}
@@ -497,6 +504,7 @@ function CurrencyCard({
 	suiAddress: string;
 	onStatusChange: (status: BuildStatus, error?: string) => void;
 }) {
+	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 	const suiClient = useSuiClient();
 
@@ -828,14 +836,18 @@ function CurrencyCard({
 								-- the TreasuryCap cannot be extracted once
 								deposited.
 							</p>
-							<button
-								type="button"
-								onClick={handleDeposit}
-								className="flex items-center gap-1.5 rounded bg-amber-600/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-600/30"
-							>
-								<ArrowDownToLine size={12} />
-								Deposit to OrgTreasury
-							</button>
+							{account ? (
+								<button
+									type="button"
+									onClick={handleDeposit}
+									className="flex items-center gap-1.5 rounded bg-amber-600/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-600/30"
+								>
+									<ArrowDownToLine size={12} />
+									Deposit to OrgTreasury
+								</button>
+							) : (
+								<ConnectButton className="!rounded !bg-amber-600/20 !px-3 !py-1.5 !text-xs !font-medium !text-amber-400 hover:!bg-amber-600/30" />
+							)}
 						</div>
 					)}
 
@@ -990,14 +1002,18 @@ function CurrencyCard({
 										<p className="text-xs text-zinc-600">
 											Mints to your wallet ({suiAddress.slice(0, 8)}...)
 										</p>
-										<button
-											type="button"
-											onClick={handleMint}
-											disabled={!mintAmount}
-											className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-										>
-											Mint {currency.symbol}
-										</button>
+										{account ? (
+											<button
+												type="button"
+												onClick={handleMint}
+												disabled={!mintAmount}
+												className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+											>
+												Mint {currency.symbol}
+											</button>
+										) : (
+											<ConnectButton className="!rounded !bg-cyan-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-cyan-500" />
+										)}
 									</div>
 								</div>
 							)}
@@ -1056,14 +1072,18 @@ function CurrencyCard({
 													</option>
 												))}
 											</select>
-											<button
-												type="button"
-												onClick={handleBurn}
-												disabled={!burnCoinId}
-												className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
-											>
-												Burn Selected Coin
-											</button>
+											{account ? (
+												<button
+													type="button"
+													onClick={handleBurn}
+													disabled={!burnCoinId}
+													className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+												>
+													Burn Selected Coin
+												</button>
+											) : (
+												<ConnectButton className="!rounded !bg-red-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-red-500" />
+											)}
 										</div>
 									)}
 								</div>
@@ -1127,6 +1147,7 @@ function CurrencyCard({
 												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
 											/>
 										</div>
+										{account ? (
 										<button
 											type="button"
 											onClick={handlePostBounty}
@@ -1138,6 +1159,9 @@ function CurrencyCard({
 										>
 											Mint &amp; Post Bounty
 										</button>
+									) : (
+										<ConnectButton className="!rounded !bg-amber-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-amber-500" />
+									)}
 									</div>
 								</div>
 							)}
