@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-	useCurrentAccount,
 	useSignAndExecuteTransaction,
 	useSuiClient,
 } from "@mysten/dapp-kit";
@@ -49,7 +48,6 @@ type BuildStatus =
 	| "error";
 
 export function GovernanceFinance() {
-	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
@@ -300,7 +298,7 @@ export function GovernanceFinance() {
 							currency={c}
 							org={org}
 							tenant={tenant}
-							account={account ?? undefined}
+
 							suiAddress={suiAddress}
 							onStatusChange={(s, e) => {
 								setBuildStatus(s);
@@ -490,14 +488,12 @@ function CurrencyCard({
 	currency,
 	org,
 	tenant,
-	account,
 	suiAddress,
 	onStatusChange,
 }: {
 	currency: CurrencyRecord;
 	org: { id: string; name: string; chainObjectId?: string };
 	tenant: string;
-	account?: { address: string };
 	suiAddress: string;
 	onStatusChange: (status: BuildStatus, error?: string) => void;
 }) {
@@ -590,7 +586,7 @@ function CurrencyCard({
 				orgObjectId: org.chainObjectId,
 				treasuryCapId: currency.treasuryCapId,
 				coinType: currency.coinType,
-				senderAddress: account.address,
+				senderAddress: suiAddress,
 			});
 
 			const result = await signAndExecute({ transaction: tx });
@@ -654,7 +650,7 @@ function CurrencyCard({
 				coinType: currency.coinType,
 				amount,
 				recipient: suiAddress,
-				senderAddress: account.address,
+				senderAddress: suiAddress,
 			});
 
 			await signAndExecute({ transaction: tx });
@@ -692,7 +688,7 @@ function CurrencyCard({
 				orgTreasuryId: currency.orgTreasuryId,
 				coinType: currency.coinType,
 				coinObjectId: burnCoinId,
-				senderAddress: account.address,
+				senderAddress: suiAddress,
 			});
 
 			await signAndExecute({ transaction: tx });
@@ -749,7 +745,7 @@ function CurrencyCard({
 				rewardAmount,
 				targetCharacterId: Number(bountyTarget),
 				expiresAt,
-				senderAddress: account.address,
+				senderAddress: suiAddress,
 			});
 
 			await signAndExecute({ transaction: tx });
