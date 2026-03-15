@@ -53,3 +53,9 @@
   - **Archived plans (01, 03, 04):** Verified complete, no changes needed.
   - **Superseded plan (02):** Verified, no changes needed.
   - No plans moved between directories (06 remains in active/ due to deployment blockers; 05 remains in pending/ with open questions).
+
+## 2026-03-15 — trade-page-improvements
+- **Action:** UPDATE
+- **File:** docs/plans/active/08-trade-page-improvements.md
+- **Passes:** 2
+- **Result:** active — Plan verified against codebase for execution readiness. All file paths, line numbers (20+ references), types, component signatures, and patterns confirmed accurate. Minor fix: line count 1478 corrected to 1477. Added comprehensive Verification Log documenting every checked reference. No open questions remain (both were previously resolved). Key findings: (1) All referenced functions, types, and patterns exist exactly as described. (2) `discoverOrgMarket()` follows proven `queryClaimEvents()` pattern from governance.ts. (3) `ssu_market` extension template does not exist yet in EXTENSION_TEMPLATES (correctly identified as to-be-added in Phase 2). (4) DB at V13, V14 slot available. (5) `OwnedAssembly.type` is always "storage_unit" for all SSU variants (defensive filter in plan is harmless). Plan spans 2 modules (chain-shared, periscope), 8 files (3 new, 5 modified), 5 phases. Execution-ready.
