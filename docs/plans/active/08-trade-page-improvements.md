@@ -1,8 +1,9 @@
 # Plan: Trade Page UX Improvements
 
-**Status:** Active
+**Status:** Active — execution-ready
 **Created:** 2026-03-15
 **Updated:** 2026-03-15
+**Reviewed:** 2026-03-15 (all file paths, line numbers, types, and patterns verified against codebase)
 **Module:** periscope, chain-shared
 
 ## Overview
@@ -17,7 +18,7 @@ The changes span two modules: `chain-shared` gets a new OrgMarket discovery quer
 
 ## Current State
 
-### GovernanceTrade.tsx (1478 lines)
+### GovernanceTrade.tsx (1477 lines)
 
 The main trade view at `apps/periscope/src/views/GovernanceTrade.tsx` has two tabs:
 
@@ -308,3 +309,24 @@ For the sell orders tab, add:
 - **SSU inventory real-time updates** -- Inventory is fetched once on selection. Real-time subscription (via Sui events) deferred.
 - **On-chain Trade Node naming** -- Custom names are stored locally in IndexedDB only. On-chain naming would require a contract change (dynamic field on MarketConfig or a separate registry). Deferred to post-hackathon.
 - **Trade Node status sync** -- Extension authorization status is checked once on page load. Real-time extension status subscription deferred.
+
+## Verification Log (2026-03-15)
+
+All file paths, line numbers, types, and patterns verified against the codebase:
+
+- **GovernanceTrade.tsx**: 1477 lines. `SellOrdersTab` at lines 194-515, `BuyOrdersTab` at lines 519-1414. All referenced line numbers (`orgMarketId` at 539, manual input at 842-894, `orderSsuId` at 1076-1088, `orderTypeId` at 1090-1102, `Type #{order.typeId}` at 1238, confirm fill at 1290-1371, tab buttons at 153, tab content at 155) verified correct.
+- **ssu-market.ts**: `queryOrgMarket` at lines 406-432, `queryBuyOrders` at lines 438-490. No `discoverOrgMarket` function exists (to be added). Exported via `packages/chain-shared/src/index.ts`.
+- **treasury.ts**: `buildFundBuyOrder` at lines 195-227. Confirmed.
+- **ssu_market.move**: `MarketAuth` witness at line 44, `MarketConfig` at lines 47-51, `OrgMarket` at lines 62-68, `OrgMarketCreatedEvent` at lines 93-97. All confirmed.
+- **db/index.ts**: Current version is V13. V14 slot available for `tradeNodes` table.
+- **db/types.ts**: `OrganizationRecord` at lines 439-446. `orgMarketId` field does not exist yet (to be added). No `TradeNodeRecord` type exists yet.
+- **config.ts (periscope)**: `EXTENSION_TEMPLATES` at lines 116-207 (6 templates). No `ssu_market` template exists yet. `getTemplate()` at line 213.
+- **config.ts (chain-shared)**: `getContractAddresses()` returns `ContractAddresses` with `ssuMarket?: { packageId: string }`. Package ID `0xdb9df1...` confirmed for both stillness and utopia.
+- **queries.ts**: `OwnedAssembly` type at lines 6-13 with `objectId`, `type`, `typeId`, `status`, `extensionType?`, `ownerCapId?`. Confirmed.
+- **useOwnedAssemblies.ts**: Returns React Query result wrapping `{ character: CharacterInfo | null, assemblies: OwnedAssembly[] }`. Confirmed.
+- **useExtensionDeploy.ts**: `deploy()` takes `{ template, assemblyId, assemblyType, characterId, ownerCapId, tenant, config? }`. Returns `{ deploy, reset, status, txDigest, error }`. Confirmed.
+- **transactions.ts**: `buildAuthorizeExtension()` maps `smart_storage_unit` and `protocol_depot` to `storage_unit::StorageUnit` Move type (lines 48-55). Confirmed.
+- **inventory.ts**: `fetchAssemblyInventory(client, assemblyId, assemblyType)` returns `Promise<AssemblyInventory[]>`. `AssemblyInventory` has `items: InventoryItem[]` with `typeId` and `quantity`. Confirmed.
+- **Assets.tsx**: `typeNameMap` pattern at lines 32-41 using `useLiveQuery(() => db.gameTypes.toArray())` + `useMemo`. Confirmed.
+- **governance.ts**: `queryClaimEvents()` at lines 246-316. Uses `client.queryEvents()` with `MoveEventType` filter, `EventId` cursor, pagination. Pattern confirmed for reuse in `discoverOrgMarket()`.
+- **Note**: `OwnedAssembly.type` is always `"storage_unit"` for SSUs (Smart Storage Units and Protocol Depots both map to `storage_unit` in `parseAssemblyType`). The plan's defensive filter for `"smart_storage_unit" | "protocol_depot"` is harmless but won't match in practice.
