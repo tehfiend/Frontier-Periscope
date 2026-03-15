@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { useCurrentAccount, useSuiClient } from "@mysten/dapp-kit";
-import { Wallet as WalletIcon, Loader2, RefreshCw, ExternalLink, Info } from "lucide-react";
-import { WalletConnect } from "@/components/WalletConnect";
+import { useSuiClient } from "@mysten/dapp-kit";
+import { Wallet as WalletIcon, Loader2, RefreshCw, ExternalLink, Info, AlertCircle } from "lucide-react";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -40,8 +40,10 @@ function isSuiCoin(coinType: string): boolean {
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function Wallet() {
-	const account = useCurrentAccount();
+	const { activeCharacter } = useActiveCharacter();
 	const client = useSuiClient();
+
+	const suiAddress = activeCharacter?.suiAddress;
 
 	const [balances, setBalances] = useState<CoinBalance[]>([]);
 	const [loading, setLoading] = useState(false);
@@ -49,11 +51,11 @@ export function Wallet() {
 	const [error, setError] = useState<string | null>(null);
 
 	const fetchBalances = useCallback(async () => {
-		if (!account) return;
+		if (!suiAddress) return;
 		setFetching(true);
 		setError(null);
 		try {
-			const allBalances = await client.getAllBalances({ owner: account.address });
+			const allBalances = await client.getAllBalances({ owner: suiAddress });
 			setBalances(allBalances as CoinBalance[]);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
@@ -61,31 +63,36 @@ export function Wallet() {
 			setFetching(false);
 			setLoading(false);
 		}
-	}, [account, client]);
+	}, [suiAddress, client]);
 
 	useEffect(() => {
-		if (account) {
+		if (suiAddress) {
 			setLoading(true);
 			fetchBalances();
 		} else {
 			setBalances([]);
 			setLoading(false);
 		}
-	}, [account, fetchBalances]);
+	}, [suiAddress, fetchBalances]);
 
-	// ── Wallet guard ────────────────────────────────────────────────────────
+	// ── No character selected ───────────────────────────────────────────────
 
-	if (!account) {
+	if (!activeCharacter || !suiAddress) {
 		return (
 			<div className="flex h-full items-center justify-center">
 				<div className="text-center">
 					<WalletIcon size={48} className="mx-auto mb-4 text-zinc-700" />
 					<p className="text-sm text-zinc-500">
-						Connect your wallet to view balances
+						{!activeCharacter
+							? "Select a character to view their wallet"
+							: "No Sui address linked to this character"}
 					</p>
-					<div className="mt-4">
-						<WalletConnect />
-					</div>
+					<a
+						href="/manifest"
+						className="mt-2 inline-block text-xs text-cyan-400 hover:text-cyan-300"
+					>
+						Go to Manifest &rarr;
+					</a>
 				</div>
 			</div>
 		);
@@ -108,30 +115,29 @@ export function Wallet() {
 						Wallet
 					</h1>
 					<p className="mt-1 font-mono text-sm text-zinc-300">
-						{account.address}
+						{suiAddress}
 					</p>
 					<p className="mt-0.5 text-xs text-zinc-600">
+						{activeCharacter.characterName ?? "Unknown character"}
+						{" \u00b7 "}
 						{loading
 							? "Loading balances..."
 							: `${tokenCount} coin type${tokenCount !== 1 ? "s" : ""}`}
 					</p>
 				</div>
-				<div className="flex items-center gap-3">
-					<button
-						type="button"
-						onClick={fetchBalances}
-						disabled={fetching}
-						className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
-					>
-						{fetching ? (
-							<Loader2 size={14} className="animate-spin" />
-						) : (
-							<RefreshCw size={14} />
-						)}
-						Refresh
-					</button>
-					<WalletConnect />
-				</div>
+				<button
+					type="button"
+					onClick={fetchBalances}
+					disabled={fetching}
+					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+				>
+					{fetching ? (
+						<Loader2 size={14} className="animate-spin" />
+					) : (
+						<RefreshCw size={14} />
+					)}
+					Refresh
+				</button>
 			</div>
 
 			{/* Error banner */}
@@ -169,7 +175,7 @@ export function Wallet() {
 								Get free SUI tokens for testing on the Sui testnet faucet.
 							</p>
 							<a
-								href={`https://faucet.sui.io/?address=${account.address}`}
+								href={`https://faucet.sui.io/?address=${suiAddress}`}
 								target="_blank"
 								rel="noopener noreferrer"
 								className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-cyan-400 transition-colors hover:text-cyan-300"
@@ -248,18 +254,13 @@ export function Wallet() {
 					<div className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-4">
 						<div className="flex items-start gap-3">
 							<Info size={16} className="mt-0.5 shrink-0 text-zinc-600" />
-							<div className="text-xs text-zinc-500">
-								<p>
-									This is a read-only view of your on-chain wallet.
-									Transactions are signed via EVE Vault.
-								</p>
-								<p className="mt-1">
-									Connected address:{" "}
-									<span className="font-mono text-zinc-400">
-										{account.address}
-									</span>
-								</p>
-							</div>
+							<p className="text-xs text-zinc-500">
+								Read-only view of on-chain balances for{" "}
+								<span className="text-zinc-400">
+									{activeCharacter.characterName}
+								</span>
+								. Connect EVE Vault only when signing transactions.
+							</p>
 						</div>
 					</div>
 				</>
