@@ -2,15 +2,16 @@
 
 **Status:** Active
 **Created:** 2026-03-15
+**Updated:** 2026-03-15 (plan review: Plan 06 execution reflected, item statuses updated)
 **Module:** multi
 
 ## Overview
 
 The EVE Frontier x Sui Hackathon ("A Toolkit for Civilization") runs March 11-31, 2026, with an $80K prize pool. Community voting follows April 1-15, judging April 15-22, and winners announced April 24. With 16 days remaining (March 15 to March 31), this plan provides a comprehensive audit of every module, plan, and deliverable to map what has been built, what remains, and what the critical path to a compelling hackathon submission looks like.
 
-The project has made substantial progress: 13 Move contracts written and 12 published to Sui testnet, a 107-file Periscope SPA with 29 views (28 routes + root layout), a working gas station API, a governance system with 4-tier organizations and claims deployed on-chain, and a full chain-shared package with TX builders for every contract. The monorepo infrastructure is solid (Turborepo, pnpm, Biome, 5 shared packages). However, the project has never had a verified end-to-end build (`pnpm build` has not been confirmed to succeed), the market/currency system (Plan 06) has not been implemented in contracts yet, and several Periscope features are UI shells awaiting chain integration or data population.
+The project has made substantial progress: 13 Move contracts written and 12 published to Sui testnet, a 107-file Periscope SPA with 29 views (28 routes + root layout), a working gas station API, a governance system with 4-tier organizations and claims deployed on-chain, and a full chain-shared package with TX builders for every contract. The monorepo infrastructure is solid (Turborepo, pnpm, Biome, 5 shared packages). However, the project has never had a verified end-to-end build (`pnpm build` has not been confirmed to succeed), and while all Plan 06 code has been written (Move contracts, TX builders, UI views), the contracts have NOT been deployed/upgraded on-chain yet (`governance_ext` unpublished, `ssu_market` un-upgraded), so the Finance and Trade views will fail at runtime until deployment.
 
-The hackathon theme is "A Toolkit for Civilization." The strongest submission angle is the governance organization system (Plan 04, complete) combined with the closed-loop economy (Plan 06, active) and the Periscope intel tool. The critical path is: verify build, publish `governance_ext` treasury contract, implement Plan 06 gas station token endpoint, wire the Finance view to chain, and polish for a demo recording.
+The hackathon theme is "A Toolkit for Civilization." The strongest submission angle is the governance organization system (Plan 04, complete) combined with the closed-loop economy (Plan 06, code complete) and the Periscope intel tool. The critical path is: verify build, publish `governance_ext` treasury contract, upgrade `ssu_market` on-chain, test E2E flows, and polish for a demo recording. Gas station is now optional (CLI token creation via `scripts/create-token.sh` + GovernanceFinance "Import Token" mode).
 
 ## Current State — Module Audit
 
@@ -27,16 +28,16 @@ All contracts are located in `contracts/` with one `sources/` directory each.
 | `gate_toll` | Yes | `0xcef451...e1f6a8` | Toll gate extension |
 | `gate_unified` | Yes | `0x364f68...36210f` | Groups + per-gate config + toll (most capable gate) |
 | `exchange` | Yes | `0x72928e...48315d` | Order book DEX (lacks `match_orders()`) |
-| `ssu_market` | Yes | `0xdb9df1...c8885` | SSU vending machine (sell-only, no buy orders or `buy_and_withdraw`) |
+| `ssu_market` | Yes (v1) | `0xdb9df1...c8885` | SSU vending machine. **v2 code written** (OrgMarket, buy orders, stock_items, buy_and_withdraw) but NOT upgraded on-chain yet |
 | `bounty_board` | Yes | `0xf55f78...1b4bf` | Generic bounty escrow (works with any `Coin<T>`) |
 | `lease` | Yes | `0x9920af...bc7ce` | SSU rental system |
 | `token_template` | Yes | `0x38e749...65ccf` | Template token (init creates TreasuryCap) |
 | `governance` | Yes | `0x8bef45...a578cb` | 4-tier Organization + ClaimsRegistry, 9 tests |
-| `governance_ext` | **No** | empty | `treasury.move` written, depends on `governance`. NOT yet published. |
+| `governance_ext` | **No** | empty | `treasury.move` written (138 lines), depends on `governance`. NOT yet published. Blocks GovernanceFinance treasury flows. |
 
-**Key gaps:**
-- `governance_ext` not published (needed for OrgTreasury)
-- `ssu_market` needs upgrade for buy orders + `buy_and_withdraw<T>()` (Plan 06)
+**Key gaps (deployment only — all code is written):**
+- `governance_ext` not published (needed for OrgTreasury runtime)
+- `ssu_market` v2 code written but needs on-chain upgrade for buy orders + `buy_and_withdraw<T>()` (UpgradeCap: `0xa803...3eaf`)
 - `exchange` lacks `match_orders()` (deferred, not critical for hackathon)
 
 ### apps/periscope/ — Frontier Periscope Intel Tool (107 source files)
@@ -53,7 +54,7 @@ The primary deliverable. 29 views across 28 routes, IndexedDB with 13 schema ver
 | `GovernanceDashboard.tsx` | 539 | Org creation, 4 tier panels, wired to chain TX |
 | `GovernanceClaims.tsx` | 483 | Claims + nicknames, wired to chain TX |
 | `GovernanceTurrets.tsx` | 351 | Public/private mode, gas station build+deploy |
-| `GovernanceFinance.tsx` | 1171 | Currency creation via gas station, deposit TreasuryCap, mint/burn/bounty UI |
+| `GovernanceFinance.tsx` | 1330 | Currency creation via gas station OR import mode (CLI), deposit TreasuryCap, mint/burn/bounty UI. Gas station now optional. |
 | `GovernanceTrade.tsx` | 1467 | Sell orders + buy orders tabs, SSU market management |
 | `Locations.tsx` | 432 | Location bookmarking and notes |
 | `Settings.tsx` | 635 | DB management, encryption, backup, polling config |
@@ -82,10 +83,10 @@ The primary deliverable. 29 views across 28 routes, IndexedDB with 13 schema ver
 - 8 sync modules (hlc, peerManager, signaling, syncEngine, webrtcConnection, encryptionP2P, types, index)
 - DB: 13 versions, ~35 tables, CRDT sync fields on all intel tables
 
-**Status assessment:** The Periscope app is feature-rich. The main gaps:
-- GovernanceFinance (1171 lines) references treasury functions from `chain-shared/treasury.ts` that require `governance_ext` to be published. The gas station `/build-token` call and OrgTreasury deposit/mint/burn flows will fail at runtime until `governance_ext` packageId is filled.
-- GovernanceTrade (1467 lines) references both `ssu-market.ts` functions (OrgMarket, buy orders) and `treasury.ts` functions (`buildFundBuyOrder`). The OrgMarket/buy-order functions call Move functions that do NOT exist in the currently deployed `ssu_market` contract. The sell-order tab may work with existing `ssu_market`, but the buy-order tab requires a contract upgrade. Even the sell-order tab needs testing since `buy_and_withdraw<T>()` is not in the deployed contract.
-- Both views will COMPILE (chain-shared TS exports exist) but will FAIL AT RUNTIME until contracts are deployed/upgraded.
+**Status assessment:** The Periscope app is feature-rich. All Plan 06 code has been written and integrated. The remaining gaps are **deployment only**:
+- GovernanceFinance (1330 lines) is fully coded with gas station integration AND a manual "Import Token" mode (via `scripts/create-token.sh`). OrgTreasury deposit/mint/burn flows will fail at runtime until `governance_ext` is published and `governanceExt.packageId` is filled in config.ts. The gas station is now optional.
+- GovernanceTrade (1467 lines) is fully coded with sell orders + buy orders tabs. The buy-order tab requires `ssu_market` to be upgraded on-chain (UpgradeCap available). The sell-order tab needs `buy_and_withdraw<T>()` which is also in the upgrade.
+- Both views COMPILE (all chain-shared TS exports exist) but will FAIL AT RUNTIME until contracts are deployed/upgraded on-chain.
 
 ### apps/gas-station/ — Gas Station API (5 source files)
 
@@ -97,7 +98,7 @@ The primary deliverable. 29 views across 28 routes, IndexedDB with 13 schema ver
 | `sponsor.ts` | 112 | TX sponsorship: validate targets against allowed package whitelist, co-sign |
 | `config.ts` | 83 | Allowed package config: static whitelist from CONTRACT_ADDRESSES + dynamic additions |
 
-**Status:** Fully implemented for its current scope. All 5 endpoints are registered and coded. The `/build-token` endpoint uses source generation (not bytecode patching), matching the proven turret build pattern. Not yet tested end-to-end (requires gas station running with `GAS_STATION_PRIVATE_KEY`). Gas station URL is configured in Periscope for Stillness (`http://localhost:3100`) but not for Utopia.
+**Status:** Fully implemented for its current scope. All 5 endpoints are registered and coded. The `/build-token` endpoint uses source generation (not bytecode patching), matching the proven turret build pattern. Not yet tested end-to-end (requires gas station running with `GAS_STATION_PRIVATE_KEY`). Gas station URL is configured in Periscope for Stillness (`http://localhost:3100`) but not for Utopia. **Gas station is now optional** — tokens can be created via CLI (`scripts/create-token.sh`) and imported manually in GovernanceFinance.
 
 ### apps/web/ — Next.js Frontend (10 source files)
 
@@ -126,12 +127,12 @@ Scaffold only. Single auth router with TODO comments for JWT verification and si
 
 | File | Description | Status |
 |------|-------------|--------|
-| `config.ts` | Contract addresses per tenant | Complete; `governanceExt.packageId` empty |
-| `types.ts` | 178 lines of TypeScript interfaces | Complete |
+| `config.ts` | Contract addresses per tenant | Complete; `governanceExt.packageId` empty (awaits deploy) |
+| `types.ts` | TypeScript interfaces | Complete (includes OrgMarketInfo, BuyOrderInfo) |
 | `governance.ts` | Org + claims TX builders | Complete, wired to Periscope |
-| `treasury.ts` | OrgTreasury TX builders | Written, awaits `governance_ext` publish |
+| `treasury.ts` | OrgTreasury TX builders (275 lines) | Complete, awaits `governance_ext` publish for runtime |
 | `turret-priority.ts` | Turret source generator + org config | Complete |
-| `ssu-market.ts` | Market TX builders | Extended with OrgMarket/buy order builders, awaits contract upgrade |
+| `ssu-market.ts` | Market TX builders (490 lines) | Complete with 10 new functions (OrgMarket, buy orders, stock_items, buy_and_withdraw), awaits contract upgrade for runtime |
 | `exchange.ts` | DEX TX builders | Complete (no match_orders) |
 | `bounty.ts` | Bounty TX builders | Complete |
 | `token-factory.ts` | Bytecode patching (legacy) | `TEMPLATE_BYTECODES` is null — superseded by gas station source generation |
@@ -178,8 +179,8 @@ Base, library, and nextjs configs.
 | 03 — Turret Config + Sponsored TX | `archive/` | Complete | 100% | None (all 3 milestones done) |
 | 04 — Governance System | `archive/` | Complete | ~95% | Step 13 cleanup (low priority): delete `TenantSwitcher.tsx`, redirect `/extensions` |
 | 05 — Governance Phase 2 | `pending/` | Draft | 0% | All 5 workstreams (post-hackathon) |
-| 06 — Market & Currency System | `active/` | Active | ~40% | gas station token endpoint written, treasury.move written, ssu_market needs upgrade, GovernanceTrade/Finance views coded but awaiting contract deployment |
-| **07 — Hackathon Remaining Work** | `pending/` | **This plan** | — | — |
+| 06 — Market & Currency System | `active/` | Code Complete | ~90% | All code written (contracts, TX builders, views, scripts). Remaining: publish `governance_ext`, upgrade `ssu_market` on-chain, fill config packageId, E2E test |
+| **07 — Hackathon Remaining Work** | `active/` | **This plan** | — | — |
 
 ## Remaining Work
 
@@ -196,13 +197,13 @@ These items are required for a functional demo submission.
    - Dependency: `contracts/governance_ext/Move.toml` already depends on published `governance` package
    - Command: `cd contracts/governance_ext && sui client publish --skip-dependency-verification --json`
 
-3. **Test gas station `/build-token` end-to-end** (~1 hour) — Start gas station locally with `GAS_STATION_PRIVATE_KEY`, call `/build-token` with test params, verify packageId + treasuryCapId returned.
-   - Files: `apps/gas-station/src/index.ts` (route already registered at line 74)
-   - Verify: `apps/gas-station/src/buildToken.ts` generates valid Move source, `sui move build` succeeds, `sui client publish` returns objectChanges with TreasuryCap
+3. **Test token creation end-to-end** (~1 hour) — Either via gas station (`/build-token` with `GAS_STATION_PRIVATE_KEY`) or via CLI (`scripts/create-token.sh`). Verify packageId + treasuryCapId returned. Gas station is now optional.
+   - Files: `apps/gas-station/src/buildToken.ts` (gas station path) or `scripts/create-token.sh` (CLI path)
+   - GovernanceFinance supports both: gas station mode and "Import Token" mode for CLI-created tokens
 
-4. **Wire GovernanceFinance view to chain** (~2 hours) — The view (1171 lines) is already coded with gas station calls, OrgTreasury deposit, mint/burn. After items 2-3 complete, test the full flow: create currency via gas station, deposit TreasuryCap into OrgTreasury, mint tokens, burn tokens.
+4. **Test GovernanceFinance E2E** (~2 hours) — The view (1330 lines) is fully coded with gas station calls, import mode, OrgTreasury deposit, mint/burn. After items 2-3 complete, test the full flow: create currency (or import), deposit TreasuryCap into OrgTreasury, mint tokens, burn tokens.
    - Files: `apps/periscope/src/views/GovernanceFinance.tsx` (may need minor fixes after testing)
-   - Dependency: governance_ext published, gas station running
+   - Dependency: governance_ext published, token created via gas station OR CLI
 
 5. **Demo recording** (~2-3 hours) — Record screen captures of key flows:
    - Organization creation + tier management (GovernanceDashboard)
@@ -221,10 +222,10 @@ These items are required for a functional demo submission.
 
 These items significantly strengthen the submission but are not blocking.
 
-7. **SSU Market contract upgrade for buy orders** (~4-6 hours) — Upgrade deployed `ssu_market` to add `OrgMarket`, `create_org_market()`, `create_buy_order()`, `confirm_buy_order_fill()`, `buy_and_withdraw<T>()`. This is the core of Plan 06 Phase 2.
-   - Files: `contracts/ssu_market/sources/ssu_market.move` (major additions)
-   - Risk: UpgradeCap must exist for `ssu_market` package. Verify with `sui client object <UpgradeCap-ID>`.
-   - Dependency: GovernanceTrade view already coded assuming these functions exist
+7. **SSU Market contract upgrade on-chain** (~1-2 hours) — Move code is ALREADY WRITTEN in `contracts/ssu_market/sources/ssu_market.move` (426 lines, includes OrgMarket, buy orders, stock_items, buy_and_withdraw). Just needs to be upgraded on-chain using `scripts/upgrade-contract.sh` and UpgradeCap `0xa803...3eaf`.
+   - Files: `contracts/ssu_market/sources/ssu_market.move` (already complete, 426 lines)
+   - TX builders: `packages/chain-shared/src/ssu-market.ts` (already complete, 490 lines with 10 new functions)
+   - GovernanceTrade view already coded and wired
 
 8. **Token factory bytecode extraction** (~1 hour) — Extract compiled bytecodes from `contracts/token_template/build/` and embed in `packages/chain-shared/src/token-factory.ts`. This makes the standalone `buildPublishToken()` function work without the gas station.
    - Files: `packages/chain-shared/src/token-factory.ts` (replace null with actual bytecodes)
@@ -311,16 +312,18 @@ These items significantly strengthen the submission but are not blocking.
 |------|--------|-------------|
 | `packages/chain-shared/src/config.ts` | MODIFY | Fill `governanceExt.packageId` after publishing |
 | `contracts/governance_ext/sources/treasury.move` | VERIFY | Compile and publish to testnet |
-| `apps/gas-station/src/buildToken.ts` | VERIFY | End-to-end test of token build pipeline |
-| `apps/gas-station/src/index.ts` | VERIFY | Confirm `/build-token` route is registered |
-| `apps/periscope/src/views/GovernanceFinance.tsx` | TEST/FIX | Runtime test of full currency lifecycle |
-| `apps/periscope/src/views/GovernanceTrade.tsx` | TEST/FIX | Runtime test (may need contract deployment first) |
+| `apps/gas-station/src/buildToken.ts` | VERIFY | End-to-end test of token build pipeline (gas station is now optional) |
+| `apps/gas-station/src/index.ts` | VERIFY | `/build-token` route confirmed registered |
+| `scripts/create-token.sh` | VERIFY | CLI alternative to gas station for token creation |
+| `apps/periscope/src/views/GovernanceFinance.tsx` | TEST/FIX | Runtime test of full currency lifecycle (gas station + import mode) |
+| `apps/periscope/src/views/GovernanceTrade.tsx` | TEST/FIX | Runtime test (requires `ssu_market` upgrade on-chain) |
 | `apps/periscope/src/views/GovernanceDashboard.tsx` | TEST | Verify org creation + tier management |
 | `apps/periscope/src/views/GovernanceClaims.tsx` | TEST | Verify claims CRUD |
 | `apps/periscope/src/views/GovernanceTurrets.tsx` | TEST | Verify turret build + deploy |
 | `apps/periscope/src/router.tsx` | OPTIONAL | Add lazy loading for governance views |
 | `apps/periscope/src/components/TenantSwitcher.tsx` | OPTIONAL DELETE | Dead code (no imports) |
-| `contracts/ssu_market/sources/ssu_market.move` | STRETCH | Add buy orders + buy_and_withdraw (Plan 06) |
+| `contracts/ssu_market/sources/ssu_market.move` | DEPLOY | Code complete (426 lines). Upgrade on-chain via UpgradeCap. |
+| `scripts/upgrade-contract.sh` | USE | Reusable contract upgrade helper |
 | `packages/chain-shared/src/token-factory.ts` | STRETCH | Embed compiled template bytecodes |
 
 ## Open Questions
@@ -336,7 +339,7 @@ These items significantly strengthen the submission but are not blocking.
 ## Deferred
 
 - **Plan 05 (Governance Phase 2)** — All 5 workstreams (gates, finance expansion, trade, claims improvements, alliances/voting). Post-hackathon.
-- **Plan 06 Phase 2-3 (Market & Currency advanced)** — SSU market upgrade, bounty integration, exchange matching. Partially stretch goals for hackathon, fully deferred if behind schedule.
+- **Plan 06 deployment** — All code is written. Remaining: deploy `governance_ext`, upgrade `ssu_market` on-chain, test E2E. These are operational tasks, not coding tasks.
 - **apps/web/ and apps/api/** — Server-side stack. Not part of hackathon deliverable. Periscope handles everything client-side.
 - **packages/db/** — PostgreSQL schema. Only relevant if web/api become active.
 - **P2P sync production testing** — Sync engine is written but untested in multi-instance scenarios.

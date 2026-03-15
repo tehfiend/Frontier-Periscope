@@ -1,8 +1,8 @@
 # Plan: Market & Currency System
 
-**Status:** Active
+**Status:** Code Complete — Awaiting Contract Deployment
 **Created:** 2026-03-14
-**Updated:** 2026-03-15 (review pass 2)
+**Updated:** 2026-03-15 (plan review: all code implemented, contracts not yet deployed)
 **Module:** multi (contracts, chain-shared, periscope, gas-station)
 
 ## Overview
@@ -50,6 +50,56 @@ The economy loop is: **Faucets** (currency enters player hands) — buy orders l
 - **Build pipeline:** `apps/gas-station/src/buildTurret.ts` — Pattern: generate source → write temp dir → `sui move build` → `sui client publish --json` → parse `objectChanges` → cleanup.
 - **Sponsor:** `apps/gas-station/src/sponsor.ts` — Validates transaction targets against allowed package ID whitelist.
 - **Config:** `apps/gas-station/src/config.ts` — `getAllowedPackageIds()` collects static package IDs from `CONTRACT_ADDRESSES`. No dynamic registration.
+
+> **NOTE:** The "Current State" section above describes the state BEFORE Plan 06 execution. See "Implementation Status" below for what has been built.
+
+## Implementation Status (2026-03-15)
+
+All code across all 3 phases has been written and committed. The plan is **code-complete** but contracts have NOT been deployed/upgraded on-chain.
+
+### Phase 1: Token Lifecycle + OrgTreasury — CODE COMPLETE
+| Deliverable | File | Status |
+|-------------|------|--------|
+| Treasury Move contract | `contracts/governance_ext/sources/treasury.move` (138 lines) | Written, NOT published |
+| Treasury TX builders | `packages/chain-shared/src/treasury.ts` (275 lines) | Complete |
+| Gas station `/build-token` | `apps/gas-station/src/buildToken.ts` (194 lines) | Complete |
+| Gas station route | `apps/gas-station/src/index.ts` (line 74) | Registered |
+| Dynamic sponsor whitelist | `apps/gas-station/src/config.ts` | Complete (EXTRA_ALLOWED_PACKAGES + published-tokens.json) |
+| GovernanceFinance overhaul | `apps/periscope/src/views/GovernanceFinance.tsx` (1330 lines) | Complete (gas station + import mode) |
+| DB V13 migration | `apps/periscope/src/db/index.ts` | Complete (description, moduleName, orgTreasuryId) |
+| DB types update | `apps/periscope/src/db/types.ts` | Complete |
+| Zod schemas | `packages/shared/src/schemas/trading.ts` | Complete (buildTokenRequest/Response) |
+| Chain-shared exports | `packages/chain-shared/src/index.ts` | Complete (treasury export added) |
+| Types | `packages/chain-shared/src/types.ts` | Complete (OrgMarketInfo, BuyOrderInfo) |
+| Config placeholder | `packages/chain-shared/src/config.ts` | governanceExt.packageId = "" (awaits deploy) |
+
+### Phase 2: Bidirectional SSU Market — CODE COMPLETE
+| Deliverable | File | Status |
+|-------------|------|--------|
+| SSU Market upgrade (Move) | `contracts/ssu_market/sources/ssu_market.move` (426 lines) | Written (OrgMarket, buy orders, stock_items, buy_and_withdraw), NOT upgraded on-chain |
+| SSU Market Move.toml | `contracts/ssu_market/Move.toml` | Updated (published-at, governance dep) |
+| SSU Market TX builders | `packages/chain-shared/src/ssu-market.ts` (490 lines) | Complete (10 new functions: OrgMarket, buy orders, stock_items, buy_and_withdraw) |
+| GovernanceTrade view | `apps/periscope/src/views/GovernanceTrade.tsx` (1467 lines) | Complete |
+| Router | `apps/periscope/src/router.tsx` | /governance/trade route added |
+| Sidebar | `apps/periscope/src/components/Sidebar.tsx` | Trade nav item added |
+| Dashboard | `apps/periscope/src/views/GovernanceDashboard.tsx` | Trade quick action added |
+
+### Phase 3: Integration — CODE COMPLETE
+| Deliverable | Status |
+|-------------|--------|
+| GovernanceFinance gas station integration | Complete |
+| GovernanceFinance OrgTreasury deposit/mint/burn UI | Complete |
+| GovernanceFinance import mode (manual token import) | Complete |
+
+### Deployment Blockers
+1. **`governance_ext` NOT published** — `governanceExt.packageId` is empty in config.ts. GovernanceFinance treasury functions will fail at runtime.
+2. **`ssu_market` NOT upgraded on-chain** — OrgMarket/buy-order Move functions do not exist in the deployed contract. GovernanceTrade buy-order tab fails at runtime. Sell-order tab may partially work.
+3. **Gas station NOT tested E2E** — `/build-token` endpoint coded but never tested with a real wallet.
+
+### Additional Artifacts (not in original plan)
+- `scripts/create-token.sh` (151 lines) — CLI alternative to gas station for token creation
+- `scripts/upgrade-contract.sh` (124 lines) — Reusable contract upgrade helper
+- Gas station is now **optional** — GovernanceFinance supports "Import Token" mode for tokens created via CLI or other means
 
 ## Target State
 

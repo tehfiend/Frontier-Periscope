@@ -2,6 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-03-14
+**Updated:** 2026-03-15 (plan review: Phase 2b/2c partially superseded by Plan 06 execution)
 **Module:** multi (contracts, chain-shared, periscope, gas-station)
 
 ## Overview
@@ -30,9 +31,14 @@ Gate integration uses a dedicated `governance_ext::gate_permit` module that chec
 | DB types | `apps/periscope/src/db/types.ts` | OrganizationRecord, OrgTierMember, SystemClaimRecord, SystemNickname, CurrencyRecord |
 | Dashboard | `apps/periscope/src/views/GovernanceDashboard.tsx` | Org creation + tier panels, wired to chain |
 | Turrets | `apps/periscope/src/views/GovernanceTurrets.tsx` | Public/private mode, gas station build |
-| Finance | `apps/periscope/src/views/GovernanceFinance.tsx` | Local currency creation only |
+| Finance | `apps/periscope/src/views/GovernanceFinance.tsx` | Currency creation (gas station + import mode), OrgTreasury deposit, mint/burn (Plan 06 implemented) |
+| Trade | `apps/periscope/src/views/GovernanceTrade.tsx` | Sell + buy orders, SSU market management (Plan 06 implemented) |
 | Claims | `apps/periscope/src/views/GovernanceClaims.tsx` | Claims + nicknames, wired to chain |
-| Gas station | `apps/gas-station/src/index.ts` | POST /build-governance-turret endpoint |
+| Gas station | `apps/gas-station/src/index.ts` | POST /build-governance-turret, POST /build-token (gas station now optional) |
+| Treasury contract | `contracts/governance_ext/sources/treasury.move` | OrgTreasury shared object (Plan 06, not yet published) |
+| Treasury TX builders | `packages/chain-shared/src/treasury.ts` | OrgTreasury deposit/mint/burn builders (Plan 06 implemented) |
+| SSU Market v2 | `contracts/ssu_market/sources/ssu_market.move` | OrgMarket + buy orders code (Plan 06, not yet upgraded on-chain) |
+| Market TX builders | `packages/chain-shared/src/ssu-market.ts` | 10 new functions for OrgMarket, buy orders, stock_items, buy_and_withdraw (Plan 06 implemented) |
 | Turret generator | `packages/chain-shared/src/turret-priority.ts` | generateOrgTurretConfig() |
 | Shared schemas | `packages/shared/src/schemas/governance.ts`, `claims.ts` | Zod schemas |
 
@@ -129,19 +135,13 @@ After Phase 2, the governance system provides:
 
 **Goal:** Full token lifecycle, faucet distribution, and org treasury management.
 
+> **NOTE (2026-03-15):** Steps 1-4 below have been **implemented by Plan 06**. Gas station `/build-token` endpoint is coded, GovernanceFinance is wired to chain with gas station + import mode, OrgTreasury shared object pattern is in `governance_ext/treasury.move`. Gas station is now optional (CLI token creation via `scripts/create-token.sh`). Remaining items in this phase: faucet module and dues/taxes.
+
 **Steps:**
 
-1. **Gas station `POST /build-token`** — Sponsored token publishing
-   - Accept: `{ symbol, name, description, decimals, senderAddress }`
-   - Gas station calls `buildPublishToken()` from `packages/chain-shared/src/token-factory.ts`
-   - Station pays gas, sender gets TreasuryCap
-   - File: `apps/gas-station/src/index.ts` (new endpoint), `apps/gas-station/src/buildToken.ts` (new)
+1. ~~**Gas station `POST /build-token`**~~ — **DONE (Plan 06)**. `apps/gas-station/src/buildToken.ts` (194 lines), route registered in index.ts.
 
-2. **Wire GovernanceFinance to chain** — Connect the existing local-only currency creation to on-chain publish
-   - After creating CurrencyRecord locally, call gas station `/build-token`
-   - Parse response to fill `packageId`, `coinType`, `treasuryCapId` in CurrencyRecord
-   - Add mint/burn buttons per currency using `buildMintTokens()`/`buildBurnTokens()` from token-factory.ts
-   - File: `apps/periscope/src/views/GovernanceFinance.tsx`
+2. ~~**Wire GovernanceFinance to chain**~~ — **DONE (Plan 06)**. GovernanceFinance (1330 lines) has gas station integration + import mode + OrgTreasury deposit + mint/burn UI.
 
 3. **Faucet module** — New Move contract in a `governance_ext` package
    - Depends on original `governance` package (imports `governance::org::Organization`)
@@ -172,19 +172,13 @@ After Phase 2, the governance system provides:
 
 **Goal:** Tier-restricted SSU markets where org members trade at preferential rates.
 
+> **NOTE (2026-03-15):** Steps 1-2 below have been **implemented by Plan 06**. GovernanceTrade view (1467 lines) is at `/governance/trade` with sell orders + buy orders tabs. ssu-market.ts has 10 new functions (OrgMarket, buy orders, stock_items, buy_and_withdraw). SSU Market Move contract v2 is written but NOT upgraded on-chain. Remaining: tier-restricted pricing (Periscope-side tier check), exchange integration.
+
 **Steps:**
 
-1. **GovernanceTrade view** — New view at `/governance/trade`
-   - List org-owned SSU assemblies
-   - Per-SSU market config: list items, set prices, enable/disable
-   - Tier-based pricing: member price vs public price
-   - File: `apps/periscope/src/views/GovernanceTrade.tsx` (new)
+1. ~~**GovernanceTrade view**~~ — **DONE (Plan 06)**. `apps/periscope/src/views/GovernanceTrade.tsx` (1467 lines), route + sidebar added.
 
-2. **Tier-restricted market** — Use existing `ssu_market` contract
-   - Periscope-side tier check: before building buy TX, verify buyer is in a qualifying tier
-   - Two price tiers: `memberPrice` (for stakeholders/members/serfs) and `publicPrice` (for everyone else)
-   - Stored as two listings per item in SSU market config
-   - File: Extend `packages/chain-shared/src/ssu-market.ts` with governance-aware helpers
+2. ~~**Tier-restricted market basics**~~ — **PARTIALLY DONE (Plan 06)**. `ssu-market.ts` extended with OrgMarket/buy order builders. OrgMarket contract code written. Remaining: Periscope-side tier check for preferential pricing not yet implemented.
 
 3. **Exchange integration** — Org currency pairs
    - Create trading pairs between org currencies and SUI
@@ -295,13 +289,13 @@ After Phase 2, the governance system provides:
 | `packages/chain-shared/src/token-factory.ts` | MODIFY | Extract and embed actual template bytecodes |
 | `packages/chain-shared/src/types.ts` | MODIFY | Add Alliance, Proposal, Vote, FaucetConfig types |
 | `packages/chain-shared/src/config.ts` | MODIFY | Update governance packageId after republish |
-| `apps/gas-station/src/index.ts` | MODIFY | Add POST /build-token endpoint |
-| `apps/gas-station/src/buildToken.ts` | CREATE | Token build+publish handler |
+| `apps/gas-station/src/index.ts` | ~~MODIFY~~ DONE | POST /build-token endpoint added (Plan 06) |
+| `apps/gas-station/src/buildToken.ts` | ~~CREATE~~ DONE | Token build+publish handler created (Plan 06) |
 | `apps/periscope/src/views/GovernanceGates.tsx` | CREATE | Gate access control tied to org tiers |
-| `apps/periscope/src/views/GovernanceTrade.tsx` | CREATE | Tier-restricted SSU markets + exchange |
+| `apps/periscope/src/views/GovernanceTrade.tsx` | ~~CREATE~~ DONE | Sell + buy orders tabs created (Plan 06). Remaining: tier pricing, exchange integration |
 | `apps/periscope/src/views/GovernanceAlliances.tsx` | CREATE | Alliance management |
 | `apps/periscope/src/views/GovernanceVoting.tsx` | CREATE | Proposal creation and voting |
-| `apps/periscope/src/views/GovernanceFinance.tsx` | MODIFY | Wire to gas station /build-token, add mint/burn, treasury |
+| `apps/periscope/src/views/GovernanceFinance.tsx` | ~~MODIFY~~ DONE | Wired to gas station + import mode, mint/burn, OrgTreasury (Plan 06) |
 | `apps/periscope/src/views/GovernanceClaims.tsx` | MODIFY | Auto-weight, org discovery, P2P sync toggle |
 | `apps/periscope/src/views/GovernanceDashboard.tsx` | MODIFY | Org discovery for non-creators |
 | `apps/periscope/src/db/index.ts` | MODIFY | V13 schema: alliances, proposals, votes, orgDues |
