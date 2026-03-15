@@ -20,6 +20,7 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		lease: { packageId: "0x9920aff314ff7dd22e86488fd44e9db7af55479a7f2240f06c97ded05c7bc7ce", registryObjectId: "0x074ba40c24c3bea181ef628ccf6e24273d1309d9a257c3e2ab69b6ccc7e13947" },
 		tokenTemplate: { packageId: "0x38e749bfd487ca48633df45126820e23eddfbba8e0fc391f0f7a748dcb665ccf" },
 		governance: { packageId: "0x8bef45b3006c3112cbc4aa930a6aa521fc586cc8609c89514c4e14f514a578cb", claimsRegistryObjectId: "0xa443242e14ddcdbfa0b6ad63305df464ac110fb6abc59b2ed59db8a37f42082f" },
+		governanceExt: { packageId: "" },
 	},
 	utopia: {
 		gateUnified: { packageId: "0x364f68ad3272d9815f2fce74776a854af1e3cb8de58ad1a1d7a0e67ad436210f", configObjectId: "0x1b5bec5f6346ec165e66b5e5cb75665f4ff44ba9a1df5b318bbf755777daf01a" },
@@ -34,6 +35,7 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		lease: { packageId: "0x9920aff314ff7dd22e86488fd44e9db7af55479a7f2240f06c97ded05c7bc7ce", registryObjectId: "0x074ba40c24c3bea181ef628ccf6e24273d1309d9a257c3e2ab69b6ccc7e13947" },
 		tokenTemplate: { packageId: "0x38e749bfd487ca48633df45126820e23eddfbba8e0fc391f0f7a748dcb665ccf" },
 		governance: { packageId: "0x8bef45b3006c3112cbc4aa930a6aa521fc586cc8609c89514c4e14f514a578cb", claimsRegistryObjectId: "0xa443242e14ddcdbfa0b6ad63305df464ac110fb6abc59b2ed59db8a37f42082f" },
+		governanceExt: { packageId: "" },
 	},
 	nebula: {},
 };

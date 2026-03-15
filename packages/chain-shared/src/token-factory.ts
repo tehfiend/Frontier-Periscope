@@ -1,4 +1,5 @@
 import { Transaction } from "@mysten/sui/transactions";
+import type { SuiClient } from "@mysten/sui/client";
 import type { TokenInfo } from "./types";
 
 /**
@@ -210,4 +211,52 @@ export function buildBurnTokens(params: {
 	});
 
 	return tx;
+}
+
+// ── Query Helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Query total supply for a coin type.
+ * Uses the CoinMetadata or TreasuryCap supply on chain.
+ */
+export async function queryTokenSupply(
+	client: SuiClient,
+	coinType: string,
+): Promise<{ totalSupply: bigint }> {
+	const supply = await client.getTotalSupply({ coinType });
+	return { totalSupply: BigInt(supply.value) };
+}
+
+/**
+ * Query owned coins of a specific type for an address.
+ */
+export async function queryOwnedCoins(
+	client: SuiClient,
+	owner: string,
+	coinType: string,
+): Promise<Array<{ objectId: string; balance: bigint }>> {
+	const coins: Array<{ objectId: string; balance: bigint }> = [];
+	let cursor: string | null = null;
+	let hasMore = true;
+
+	while (hasMore) {
+		const page = await client.getCoins({
+			owner,
+			coinType,
+			cursor: cursor ?? undefined,
+			limit: 50,
+		});
+
+		for (const coin of page.data) {
+			coins.push({
+				objectId: coin.coinObjectId,
+				balance: BigInt(coin.balance),
+			});
+		}
+
+		hasMore = page.hasNextPage;
+		cursor = page.nextCursor ?? null;
+	}
+
+	return coins;
 }

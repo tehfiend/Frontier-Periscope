@@ -37,7 +37,24 @@ export const marketSnapshotSchema = z.object({
 	snapshotAt: z.date(),
 });
 
+export const buildTokenRequestSchema = z.object({
+	symbol: z.string().min(1).max(10).regex(/^[A-Z0-9]+$/),
+	name: z.string().min(1).max(100),
+	description: z.string().max(500).optional().default(""),
+	decimals: z.number().int().min(0).max(18).default(9),
+	senderAddress: suiAddressSchema,
+});
+
+export const buildTokenResponseSchema = z.object({
+	packageId: z.string(),
+	coinType: z.string(),
+	treasuryCapId: z.string(),
+	moduleName: z.string(),
+});
+
 export type ContractStatus = z.infer<typeof contractStatusSchema>;
 export type TradeContract = z.infer<typeof tradeContractSchema>;
 export type CreateTradeContract = z.infer<typeof createTradeContractSchema>;
 export type MarketSnapshot = z.infer<typeof marketSnapshotSchema>;
+export type BuildTokenRequest = z.infer<typeof buildTokenRequestSchema>;
+export type BuildTokenResponse = z.infer<typeof buildTokenResponseSchema>;

@@ -46,6 +46,25 @@ export interface MarketInfo {
 	ssuId: string;
 }
 
+// ── OrgMarket Types ────────────────────────────────────────────────────────
+
+export interface OrgMarketInfo {
+	objectId: string;
+	orgId: string;
+	admin: string;
+	authorizedSsus: string[];
+	nextOrderId: number;
+}
+
+export interface BuyOrderInfo {
+	orderId: number;
+	ssuId: string;
+	typeId: number;
+	pricePerUnit: number;
+	quantity: number;
+	poster: string;
+}
+
 // ── Toll Types ──────────────────────────────────────────────────────────────
 
 export interface TollInfo {
@@ -155,4 +174,5 @@ export interface ContractAddresses {
 	lease?: { packageId: string; registryObjectId: string };
 	tokenTemplate?: { packageId: string };
 	governance?: { packageId: string; claimsRegistryObjectId: string };
+	governanceExt?: { packageId: string };
 }

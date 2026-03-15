@@ -9,3 +9,4 @@ export * from "./bounty";
 export * from "./lease";
 export * from "./turret-priority";
 export * from "./governance";
+export * from "./treasury";
