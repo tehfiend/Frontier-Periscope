@@ -1,23 +1,24 @@
 import { Transaction } from "@mysten/sui/transactions";
 import type { SuiClient } from "@mysten/sui/client";
+import { bcs } from "@mysten/bcs";
 
 // WASM module — needs async init before use
 let wasmReady: Promise<void> | null = null;
-let updateIdentifiers: typeof import("@mysten/move-bytecode-template").update_identifiers;
-let updateConstants: typeof import("@mysten/move-bytecode-template").update_constants;
+let wasmMod: typeof import("@mysten/move-bytecode-template") | null = null;
 
-async function ensureWasmReady(): Promise<void> {
-	if (wasmReady) return wasmReady;
-	wasmReady = (async () => {
-		const mod = await import("@mysten/move-bytecode-template");
-		// The web build exports a default init function that loads the WASM
-		if (typeof mod.default === "function") {
-			await mod.default();
-		}
-		updateIdentifiers = mod.update_identifiers;
-		updateConstants = mod.update_constants;
-	})();
-	return wasmReady;
+async function ensureWasmReady(): Promise<typeof import("@mysten/move-bytecode-template")> {
+	if (wasmMod) return wasmMod;
+	if (!wasmReady) {
+		wasmReady = (async () => {
+			const mod = await import("@mysten/move-bytecode-template");
+			if (typeof mod.default === "function") {
+				await mod.default();
+			}
+			wasmMod = mod;
+		})();
+	}
+	await wasmReady;
+	return wasmMod!;
 }
 
 /**
@@ -76,8 +77,7 @@ export interface PublishTokenResult {
 export async function buildPublishToken(params: CreateTokenParams): Promise<Transaction> {
 	const { symbol, name, description, decimals = 9 } = params;
 
-	// Ensure WASM module is loaded
-	await ensureWasmReady();
+	const mod = await ensureWasmReady();
 
 	// Derive module name from symbol: "GOLD" → "GOLD_TOKEN"
 	const moduleName = `${symbol.toUpperCase()}_TOKEN`;
@@ -85,26 +85,57 @@ export async function buildPublishToken(params: CreateTokenParams): Promise<Tran
 	let bytecodes = getTemplateBytecodes();
 
 	// 1. Update identifiers: TOKEN_TEMPLATE → GOLD_TOKEN (module name + OTW struct)
+	// Also update the lowercase address alias: token_template → gold_token
 	bytecodes = new Uint8Array(
-		updateIdentifiers(bytecodes, {
+		mod.update_identifiers(bytecodes, {
 			TOKEN_TEMPLATE: moduleName,
+			token_template: `${symbol.toLowerCase()}_token`,
 		}),
 	);
 
-	// 2. Update constants: symbol, name, description, decimals
+	// 2. Update constants one at a time (API takes one constant per call)
+	// Values must be BCS-encoded Uint8Arrays
+	// Symbol: "TMPL" → user symbol
 	bytecodes = new Uint8Array(
-		updateConstants(
+		mod.update_constants(
 			bytecodes,
-			// Each entry: [newValue, newType, oldValue, oldType]
-			// Types: "Vector(U8)" for byte vectors, "U8" for decimals
-			[
-				[strToBytes(symbol.toUpperCase()), "Vector(U8)", strToBytes("TMPL"), "Vector(U8)"],
-				[strToBytes(name), "Vector(U8)", strToBytes("Template Token"), "Vector(U8)"],
-				[strToBytes(description), "Vector(U8)", strToBytes("A faction token"), "Vector(U8)"],
-				[[decimals], "U8", [9], "U8"],
-			],
+			bcsBytes(symbol.toUpperCase()),
+			bcsBytes("TMPL"),
+			"Vector(U8)",
 		),
 	);
+
+	// Name: "Template Token" → user name
+	bytecodes = new Uint8Array(
+		mod.update_constants(
+			bytecodes,
+			bcsBytes(name),
+			bcsBytes("Template Token"),
+			"Vector(U8)",
+		),
+	);
+
+	// Description: "A faction token" → user description
+	bytecodes = new Uint8Array(
+		mod.update_constants(
+			bytecodes,
+			bcsBytes(description || name),
+			bcsBytes("A faction token"),
+			"Vector(U8)",
+		),
+	);
+
+	// Decimals: 9 → user decimals
+	if (decimals !== 9) {
+		bytecodes = new Uint8Array(
+			mod.update_constants(
+				bytecodes,
+				new Uint8Array([decimals]),
+				new Uint8Array([9]),
+				"U8",
+			),
+		);
+	}
 
 	const tx = new Transaction();
 
@@ -122,9 +153,9 @@ export async function buildPublishToken(params: CreateTokenParams): Promise<Tran
 	return tx;
 }
 
-/** Convert a string to a BCS-compatible byte array for constant patching. */
-function strToBytes(s: string): number[] {
-	return Array.from(new TextEncoder().encode(s));
+/** BCS-encode a string as vector<u8> for constant patching. */
+function bcsBytes(s: string): Uint8Array {
+	return bcs.vector(bcs.u8()).serialize(Array.from(new TextEncoder().encode(s))).toBytes();
 }
 
 /**

@@ -1,9 +1,12 @@
 import {
 	ConnectButton,
 	useCurrentAccount,
+	useConnectWallet,
 	useDisconnectWallet,
+	useWallets,
 } from "@mysten/dapp-kit";
 import { LogOut, Wallet } from "lucide-react";
+import { useEffect } from "react";
 
 function truncateAddress(address: string): string {
 	return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -12,6 +15,17 @@ function truncateAddress(address: string): string {
 export function WalletConnect() {
 	const account = useCurrentAccount();
 	const { mutate: disconnect } = useDisconnectWallet();
+	const { mutate: connect } = useConnectWallet();
+	const wallets = useWallets();
+
+	// Auto-connect to EVE Vault if available and not yet connected
+	useEffect(() => {
+		if (account) return;
+		const eveVault = wallets.find((w) => w.name === "EVE Vault");
+		if (eveVault) {
+			connect({ wallet: eveVault });
+		}
+	}, [account, wallets, connect]);
 
 	if (!account) {
 		return <ConnectButton className="!rounded-lg !bg-cyan-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-cyan-500" />;
