@@ -1,8 +1,7 @@
 import {
+	ConnectButton,
 	useCurrentAccount,
-	useConnectWallet,
 	useDisconnectWallet,
-	useWallets,
 } from "@mysten/dapp-kit";
 import { LogOut, Wallet } from "lucide-react";
 
@@ -11,33 +10,18 @@ function truncateAddress(address: string): string {
 }
 
 /**
- * Connect button that auto-selects EVE Vault (skips the wallet picker).
- * Falls back to showing wallet name if EVE Vault isn't found.
+ * Styled connect button. Uses dapp-kit's ConnectButton internally
+ * which handles wallet discovery and connection.
  */
 export function ConnectWalletButton({ className }: { className?: string }) {
-	const { mutate: connect, isPending } = useConnectWallet();
-	const wallets = useWallets();
-
-	function handleConnect() {
-		const eveVault = wallets.find((w) => w.name === "EVE Vault");
-		const wallet = eveVault ?? wallets[0];
-		if (wallet) {
-			connect({ wallet });
-		}
-	}
-
 	return (
-		<button
-			type="button"
-			onClick={handleConnect}
-			disabled={isPending || wallets.length === 0}
+		<ConnectButton
+			connectText="Connect Wallet"
 			className={
 				className ??
-				"rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+				"!rounded-lg !bg-cyan-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-cyan-500"
 			}
-		>
-			{isPending ? "Connecting..." : "Connect Wallet"}
-		</button>
+		/>
 	);
 }
 
