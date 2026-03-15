@@ -76,25 +76,28 @@ The primary deliverable. 29 views across 28 routes, IndexedDB with 13 schema ver
 | `Setup.tsx` | 105 | First-launch setup wizard |
 
 **Key infrastructure:**
-- 10 hooks (useActiveCharacter, useOwnedAssemblies, useExtensionDeploy, useSponsoredTransaction, useLogWatcher, useKillmailMonitor, etc.)
-- 9 lib modules (pathfinder, logParser, encryption, chatLinkParser, autoBackup, dataExport, etc.)
-- 7 chain modules (client, config, queries, transactions, sync, permissions, inventory)
-- 7 sync modules (hlc, peerManager, signaling, syncEngine, webrtcConnection, etc.)
+- 15 hooks (useActiveCharacter, useOwnedAssemblies, useExtensionDeploy, useSponsoredTransaction, useLogWatcher, useKillmailMonitor, useRadar, usePeerSync, useTaskWorker, useKeyboardShortcuts, useNotifications, usePermissionGroups, usePermissionSync, useAssemblyPolicies, useBetrayalResponse)
+- 10 lib modules (pathfinder, logParser, logFileAccess, encryption, chatLinkParser, autoBackup, dataExport, worldApi, constants, taskWorker)
+- 9 chain modules (client, config, queries, transactions, sync, permissions, inventory, manifest, index)
+- 8 sync modules (hlc, peerManager, signaling, syncEngine, webrtcConnection, encryptionP2P, types, index)
 - DB: 13 versions, ~35 tables, CRDT sync fields on all intel tables
 
-**Status assessment:** The Periscope app is feature-rich. The main gap is that GovernanceFinance and GovernanceTrade views reference chain-shared functions that depend on `governance_ext` being published (treasury functions) and `ssu_market` being upgraded (buy orders, OrgMarket). These views are fully coded UI but will fail at runtime until the contracts are deployed.
+**Status assessment:** The Periscope app is feature-rich. The main gaps:
+- GovernanceFinance (1171 lines) references treasury functions from `chain-shared/treasury.ts` that require `governance_ext` to be published. The gas station `/build-token` call and OrgTreasury deposit/mint/burn flows will fail at runtime until `governance_ext` packageId is filled.
+- GovernanceTrade (1467 lines) references both `ssu-market.ts` functions (OrgMarket, buy orders) and `treasury.ts` functions (`buildFundBuyOrder`). The OrgMarket/buy-order functions call Move functions that do NOT exist in the currently deployed `ssu_market` contract. The sell-order tab may work with existing `ssu_market`, but the buy-order tab requires a contract upgrade. Even the sell-order tab needs testing since `buy_and_withdraw<T>()` is not in the deployed contract.
+- Both views will COMPILE (chain-shared TS exports exist) but will FAIL AT RUNTIME until contracts are deployed/upgraded.
 
 ### apps/gas-station/ — Gas Station API (5 source files)
 
 | File | Lines | Status |
 |------|-------|--------|
-| `index.ts` | Express server | 3 endpoints: POST /build-turret, POST /build-governance-turret, POST /build-token, POST /sponsor, GET /health |
-| `buildTurret.ts` | Turret build pipeline | Working: generate source, sui move build, sui client publish |
-| `buildToken.ts` | Token build pipeline | Written: same pattern as turret, includes source generation |
-| `sponsor.ts` | TX sponsorship | Written: validate + co-sign with gas wallet |
-| `config.ts` | Allowed package config | Package ID whitelist + dynamic additions |
+| `index.ts` | 183 | Express server, 5 endpoints: POST /build-turret, POST /build-governance-turret, POST /build-token, POST /sponsor, GET /health |
+| `buildTurret.ts` | 163 | Turret build pipeline: generate source, sui move build, sui client publish |
+| `buildToken.ts` | 194 | Token build pipeline: same pattern as turret, includes source generation with mint/burn bootstrap |
+| `sponsor.ts` | 112 | TX sponsorship: validate targets against allowed package whitelist, co-sign |
+| `config.ts` | 83 | Allowed package config: static whitelist from CONTRACT_ADDRESSES + dynamic additions |
 
-**Status:** Fully implemented for its current scope. The `/build-token` endpoint exists and follows the proven turret build pattern. Not yet tested end-to-end (requires gas station running with wallet key).
+**Status:** Fully implemented for its current scope. All 5 endpoints are registered and coded. The `/build-token` endpoint uses source generation (not bytecode patching), matching the proven turret build pattern. Not yet tested end-to-end (requires gas station running with `GAS_STATION_PRIVATE_KEY`). Gas station URL is configured in Periscope for Stillness (`http://localhost:3100`) but not for Utopia.
 
 ### apps/web/ — Next.js Frontend (10 source files)
 
@@ -117,7 +120,7 @@ Scaffold only. Single auth router with TODO comments for JWT verification and si
 | `AdminPanel.tsx` | 285 | Admin/admin-tribe management |
 | `AssemblySelector.tsx` | 55 | Object ID input + auto-discover |
 
-**Status:** Functional standalone dApp for managing gate ACLs directly from wallet. Uses chain-shared. Could be submitted as a secondary tool alongside Periscope. Has no `dist/` directory yet — may need build verification.
+**Status:** Functional standalone dApp for managing gate ACLs directly from wallet. Uses chain-shared. Has a built `dist/` directory (previously compiled). Could be submitted as a secondary tool alongside Periscope.
 
 ### packages/chain-shared/ — Move Contract Types & TX Builders (13 source files)
 
@@ -194,8 +197,8 @@ These items are required for a functional demo submission.
    - Command: `cd contracts/governance_ext && sui client publish --skip-dependency-verification --json`
 
 3. **Test gas station `/build-token` end-to-end** (~1 hour) — Start gas station locally with `GAS_STATION_PRIVATE_KEY`, call `/build-token` with test params, verify packageId + treasuryCapId returned.
-   - Files: `apps/gas-station/src/index.ts` (may need the `/build-token` route registered if not already)
-   - Verify: `apps/gas-station/src/buildToken.ts` works with `sui` CLI
+   - Files: `apps/gas-station/src/index.ts` (route already registered at line 74)
+   - Verify: `apps/gas-station/src/buildToken.ts` generates valid Move source, `sui move build` succeeds, `sui client publish` returns objectChanges with TreasuryCap
 
 4. **Wire GovernanceFinance view to chain** (~2 hours) — The view (1171 lines) is already coded with gas station calls, OrgTreasury deposit, mint/burn. After items 2-3 complete, test the full flow: create currency via gas station, deposit TreasuryCap into OrgTreasury, mint tokens, burn tokens.
    - Files: `apps/periscope/src/views/GovernanceFinance.tsx` (may need minor fixes after testing)
@@ -255,9 +258,8 @@ These items significantly strengthen the submission but are not blocking.
 ### Phase 1: Build Verification & Contract Deployment (Day 1)
 
 1. Run `pnpm install && pnpm build` from project root. Fix all TypeScript compilation errors.
-2. Run `sui move build` in `contracts/governance_ext/`. Fix any Move compilation errors.
-3. Run `sui move test` in `contracts/governance_ext/` to verify treasury tests pass.
-4. Publish `governance_ext` to testnet: `sui client publish --skip-dependency-verification --json`.
+2. Run `sui move build` in `contracts/governance_ext/`. Fix any Move compilation errors. Note: `treasury.move` is 139 lines with no Move tests (unlike `governance` which has 9 tests). Consider adding basic tests before publishing, or publish without tests if time-constrained.
+3. Publish `governance_ext` to testnet: `sui client publish --skip-dependency-verification --json`.
 5. Extract `packageId` from publish output, fill `governanceExt.packageId` in `packages/chain-shared/src/config.ts` for both `stillness` and `utopia`.
 6. Verify `pnpm build` still passes after config change.
 
