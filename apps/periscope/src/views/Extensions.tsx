@@ -17,7 +17,7 @@ import {
 	Package,
 	Database,
 } from "lucide-react";
-import { WalletConnect } from "@/components/WalletConnect";
+
 import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPanel";
 import { useOwnedAssemblies, useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
@@ -69,7 +69,6 @@ export function Extensions() {
 							<p className="text-xs text-zinc-600">
 								Connect your wallet to auto-link, or add an address in Settings
 							</p>
-							<WalletConnect />
 						</>
 					) : (
 						<>
@@ -77,7 +76,6 @@ export function Extensions() {
 							<p className="text-sm text-zinc-500">
 								Select a character or connect your wallet
 							</p>
-							<WalletConnect />
 						</>
 					)}
 				</div>
@@ -149,7 +147,6 @@ export function Extensions() {
 						{!account && (
 							<div className="flex items-center gap-2 text-xs text-zinc-600">
 								<span>Connect wallet to deploy extensions</span>
-								<WalletConnect />
 							</div>
 						)}
 					</div>
@@ -197,7 +194,6 @@ function Header() {
 					<span className="ml-2 rounded bg-zinc-800 px-1.5 py-0.5 text-xs capitalize">{tenant}</span>
 				</p>
 			</div>
-			<WalletConnect />
 		</div>
 	);
 }

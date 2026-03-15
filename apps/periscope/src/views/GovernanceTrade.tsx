@@ -16,7 +16,7 @@ import {
 	Info,
 	RefreshCw,
 } from "lucide-react";
-import { WalletConnect } from "@/components/WalletConnect";
+
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
@@ -185,7 +185,6 @@ function Header() {
 					SSU market management and org procurement
 				</p>
 			</div>
-			<WalletConnect />
 		</div>
 	);
 }

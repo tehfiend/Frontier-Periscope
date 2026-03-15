@@ -19,7 +19,7 @@ import {
 	ChevronUp,
 	RefreshCw,
 } from "lucide-react";
-import { WalletConnect } from "@/components/WalletConnect";
+
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
@@ -428,7 +428,6 @@ function Header() {
 					Create and manage organization currencies
 				</p>
 			</div>
-			<WalletConnect />
 		</div>
 	);
 }

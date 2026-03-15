@@ -11,7 +11,7 @@ import {
 	MapPin,
 	Info,
 } from "lucide-react";
-import { WalletConnect } from "@/components/WalletConnect";
+
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
@@ -68,7 +68,6 @@ export function GovernanceClaims() {
 						System sovereignty claims and personal nicknames
 					</p>
 				</div>
-				<WalletConnect />
 			</div>
 
 			{/* Tabs */}

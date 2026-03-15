@@ -17,7 +17,7 @@ import {
 	Info,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { WalletConnect } from "@/components/WalletConnect";
+
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
@@ -289,7 +289,6 @@ function Header({ orgName }: { orgName?: string }) {
 					{orgName ? "Organization Dashboard" : "Manage your governance organization"}
 				</p>
 			</div>
-			<WalletConnect />
 		</div>
 	);
 }

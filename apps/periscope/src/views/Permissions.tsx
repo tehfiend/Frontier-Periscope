@@ -9,7 +9,7 @@ import {
 	AlertTriangle,
 	UserX,
 } from "lucide-react";
-import { WalletConnect } from "@/components/WalletConnect";
+
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { GroupCard } from "@/components/permissions/GroupCard";
 import { GroupEditor } from "@/components/permissions/GroupEditor";
@@ -181,18 +181,15 @@ export function Permissions() {
 						Manage who can access your smart assemblies
 					</p>
 				</div>
-				<div className="flex items-center gap-2">
-					<button
-						type="button"
-						onClick={() => setShowReportDialog(true)}
-						className="flex items-center gap-1.5 rounded-md border border-red-900/50 bg-red-950/30 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-900/40 hover:text-red-300"
-						title="Manually report a hostile player or tribe"
-					>
-						<UserX size={14} />
-						Report Hostile
-					</button>
-					<WalletConnect />
-				</div>
+				<button
+					type="button"
+					onClick={() => setShowReportDialog(true)}
+					className="flex items-center gap-1.5 rounded-md border border-red-900/50 bg-red-950/30 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-900/40 hover:text-red-300"
+					title="Manually report a hostile player or tribe"
+				>
+					<UserX size={14} />
+					Report Hostile
+				</button>
 			</div>
 
 			{/* Betrayal Alerts */}
@@ -263,7 +260,6 @@ export function Permissions() {
 						<div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-xs text-zinc-500">
 							<Shield size={14} />
 							<span>Connect wallet to sync policies to chain</span>
-							<WalletConnect />
 						</div>
 					)}
 
