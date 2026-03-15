@@ -646,7 +646,6 @@ function CurrencyCard({
 	async function handleMint() {
 		if (
 			!mintAmount ||
-			!mintRecipient ||
 			!currency.orgTreasuryId ||
 			!currency.coinType ||
 			!org.chainObjectId ||
@@ -668,20 +667,20 @@ function CurrencyCard({
 					Number(mintAmount) * 10 ** currency.decimals,
 				),
 			);
+			// Mint to the connected wallet (stakeholder mints to self)
 			const tx = buildMintAndTransfer({
 				governanceExtPackageId: addresses.governanceExt.packageId,
 				orgTreasuryId: currency.orgTreasuryId,
 				orgObjectId: org.chainObjectId,
 				coinType: currency.coinType,
 				amount,
-				recipient: mintRecipient.trim(),
+				recipient: suiAddress,
 				senderAddress: account.address,
 			});
 
 			await signAndExecute({ transaction: tx });
 			setShowMint(false);
 			setMintAmount("");
-			setMintRecipient("");
 			onStatusChange("done");
 
 			// Refresh treasury info
@@ -1019,32 +1018,16 @@ function CurrencyCard({
 												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 											/>
 										</div>
-										<div>
-											<label className="mb-1 block text-xs text-zinc-500">
-												Recipient Address
-											</label>
-											<input
-												type="text"
-												value={mintRecipient}
-												onChange={(e) =>
-													setMintRecipient(
-														e.target.value,
-													)
-												}
-												placeholder="0x..."
-												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-											/>
-										</div>
+										<p className="text-xs text-zinc-600">
+											Mints to your wallet ({suiAddress.slice(0, 8)}...)
+										</p>
 										<button
 											type="button"
 											onClick={handleMint}
-											disabled={
-												!mintAmount ||
-												!mintRecipient.trim()
-											}
+											disabled={!mintAmount}
 											className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
 										>
-											Mint &amp; Transfer
+											Mint {currency.symbol}
 										</button>
 									</div>
 								</div>
