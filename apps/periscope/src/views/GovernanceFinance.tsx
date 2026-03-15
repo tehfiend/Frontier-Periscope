@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
 	useCurrentAccount,
 	useSignAndExecuteTransaction,
@@ -74,12 +74,82 @@ export function GovernanceFinance() {
 	const [buildStatus, setBuildStatus] = useState<BuildStatus>("idle");
 	const [buildError, setBuildError] = useState("");
 
+	const suiClient = useSuiClient();
+
 	const isProcessing =
 		buildStatus === "building" ||
 		buildStatus === "depositing" ||
 		buildStatus === "minting" ||
 		buildStatus === "burning" ||
 		buildStatus === "posting-bounty";
+
+	// Sync TreasuryCaps from chain — discovers tokens created outside the app
+	// or tokens that failed to save locally after publishing
+	const syncTreasuryCaps = useCallback(async () => {
+		if (!suiAddress || !org) return;
+		try {
+			let cursor: string | null = null;
+			let hasMore = true;
+			while (hasMore) {
+				const page = await suiClient.getOwnedObjects({
+					owner: suiAddress,
+					filter: { StructType: "0x2::coin::TreasuryCap" },
+					options: { showType: true },
+					cursor: cursor ?? undefined,
+					limit: 50,
+				});
+				for (const item of page.data) {
+					const objectType = item.data?.type;
+					const objectId = item.data?.objectId;
+					if (!objectType || !objectId) continue;
+
+					// Extract coinType from TreasuryCap<0xpkg::module::STRUCT>
+					const match = objectType.match(/TreasuryCap<(.+)>/);
+					if (!match) continue;
+					const coinType = match[1];
+
+					// Check if already in local DB
+					const existing = await db.currencies
+						.where("coinType")
+						.equals(coinType)
+						.first();
+					if (existing) continue;
+
+					// Derive metadata from coinType: "0xpkg::gold_token::GOLD_TOKEN"
+					const parts = coinType.split("::");
+					const packageId = parts[0] ?? "";
+					const moduleName = parts.length >= 2 ? parts[1] : "";
+					const structName = parts.length >= 3 ? parts[2] : moduleName;
+					// Derive symbol: "GOLD_TOKEN" → "GOLD" (strip _TOKEN suffix)
+					const symbol = structName.replace(/_TOKEN$/, "");
+
+					const now = new Date().toISOString();
+					await db.currencies.add({
+						id: crypto.randomUUID(),
+						orgId: org.id,
+						symbol,
+						name: `${symbol} Token`,
+						description: "",
+						moduleName,
+						coinType,
+						packageId,
+						treasuryCapId: objectId,
+						decimals: 9,
+						createdAt: now,
+						updatedAt: now,
+					});
+				}
+				hasMore = page.hasNextPage;
+				cursor = page.nextCursor ?? null;
+			}
+		} catch {
+			// Silent — sync is best-effort
+		}
+	}, [suiAddress, org, suiClient]);
+
+	useEffect(() => {
+		syncTreasuryCaps();
+	}, [syncTreasuryCaps]);
 
 	if (!activeCharacter || !suiAddress) {
 		return (
