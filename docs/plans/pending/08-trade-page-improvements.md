@@ -132,13 +132,15 @@ For the sell orders tab, add:
 
 1. **Add `orgMarketId` field to `OrganizationRecord`** in `apps/periscope/src/db/types.ts` -- add `orgMarketId?: string` to the interface.
 2. **Add DB migration V14** in `apps/periscope/src/db/index.ts` -- re-declare `organizations` table schema with same indexes (field is optional, no index needed). Upgrade function: no-op (existing records get `undefined`).
-3. **Add `discoverOrgMarket()` query** in `packages/chain-shared/src/ssu-market.ts` -- use `client.queryEvents()` filtering on `ssu_market::OrgMarketCreatedEvent` where `org_id` matches the org's chain object ID. Return the `org_market_id` from the event. Handle pagination (max 50 events per query).
+3. **Add `discoverOrgMarket()` query** in `packages/chain-shared/src/ssu-market.ts` -- use `client.queryEvents({ query: { MoveEventType: "<ssuMarketPkgId>::ssu_market::OrgMarketCreatedEvent" } })` to fetch all OrgMarket creation events, then client-side filter where `parsedJson.org_id` matches the target org's chain object ID. Return the `org_market_id` from the matching event. Handle pagination (max 50 events per query). Signature: `discoverOrgMarket(client: SuiClient, ssuMarketPackageId: string, orgObjectId: string): Promise<string | null>`. Follows the exact same pattern as `queryClaims()` in `governance.ts` (lines 256-310).
 4. **Create `useOrgMarket()` hook** in `apps/periscope/src/hooks/useOrgMarket.ts` -- React Query hook that:
    - First checks `org.orgMarketId` from local DB
+   - If set, verify it still exists on chain via `queryOrgMarket()` -- if null, clear the cached ID and fall through to discovery
    - If not set, calls `discoverOrgMarket()` on chain
    - If discovered, persists to `db.organizations.update()`
-   - Returns `{ orgMarketId, orgMarketInfo, isLoading, createOrgMarket() }`
-5. **Refactor `BuyOrdersTab`** to use `useOrgMarket()` instead of manual `orgMarketId` state. Remove the manual ID input section. Show loading state during discovery. Keep "Create New OrgMarket" as fallback.
+   - Returns `{ orgMarketId, orgMarketInfo, buyOrders, isLoading, error, createOrgMarket(), refreshOrders() }`
+   - Uses `@tanstack/react-query` with `staleTime: 60_000` (consistent with other chain queries)
+5. **Refactor `BuyOrdersTab`** to use `useOrgMarket()` instead of manual `orgMarketId` state. Remove the manual ID input section (lines 842-894). Show loading state during discovery. Keep "Create New OrgMarket" as fallback when no OrgMarket is discovered. Add a small "Advanced: Enter ID manually" toggle for edge cases.
 6. **Update `handleCreateOrgMarket()`** to persist the new OrgMarket ID to the org record.
 
 ### Phase 2: Item Type Autocomplete Component
@@ -152,6 +154,7 @@ For the sell orders tab, add:
    - Keyboard navigation (arrow keys, enter to select, escape to close)
    - When selected: show chip with item name and X to clear
    - Click outside closes dropdown
+   - Handle empty `gameTypes` table: show "Item data loading..." hint if no types available yet
 2. **Replace type ID inputs in `SellOrdersTab`** -- swap `listingTypeId` raw input for `TypeSearchInput`
 3. **Replace type ID input in `BuyOrdersTab`** -- swap `orderTypeId` raw input for `TypeSearchInput`
 4. **Resolve type names in buy order list** -- add `typeNameMap` lookup (same pattern as Assets view) to show item names instead of raw `Type #{typeId}`
@@ -166,9 +169,10 @@ For the sell orders tab, add:
 
 1. **Add inventory fetch to SellOrdersTab** -- when user selects an SSU (for create-market or listing), fetch its inventory using `fetchAssemblyInventory()`.
 2. **Create `SsuInventoryPanel` component** at `apps/periscope/src/components/SsuInventoryPanel.tsx`:
-   - Props: `assemblyId: string`, `onSelectItem: (typeId: number) => void`
-   - Fetches inventory on mount using `fetchAssemblyInventory()`
-   - Displays items in a compact list: item name (from gameTypes), quantity, "Select" button
+   - Props: `assemblyId: string`, `assemblyType: string`, `onSelectItem: (typeId: number) => void`
+   - Fetches inventory on mount using `fetchAssemblyInventory(client, assemblyId, assemblyType)` (requires `useSuiClient()` internally)
+   - Displays items in a compact list: item name (from gameTypes via `useLiveQuery`), quantity, "Select" button
+   - Shows loading spinner during fetch, "No items in this SSU" if inventory is empty
    - "Select" triggers `onSelectItem(typeId)` which pre-fills the listing form
 3. **Integrate into SellOrdersTab** -- show inventory panel when creating a listing, below the SSU selector. Clicking an inventory item populates `listingTypeId`.
 4. **Track MarketConfig IDs locally** -- after `handleCreateMarket()` succeeds, store `{ ssuId, marketConfigId }` in a new `marketConfigs` settings key so the listing form can auto-fill `listingConfigId` for known SSUs.
