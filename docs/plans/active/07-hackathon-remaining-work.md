@@ -2,16 +2,16 @@
 
 **Status:** Active
 **Created:** 2026-03-15
-**Updated:** 2026-03-15 (plan review: Plan 06 execution reflected, item statuses updated)
+**Updated:** 2026-03-15 (governance_ext published, config updated, two UI tasks added)
 **Module:** multi
 
 ## Overview
 
 The EVE Frontier x Sui Hackathon ("A Toolkit for Civilization") runs March 11-31, 2026, with an $80K prize pool. Community voting follows April 1-15, judging April 15-22, and winners announced April 24. With 16 days remaining (March 15 to March 31), this plan provides a comprehensive audit of every module, plan, and deliverable to map what has been built, what remains, and what the critical path to a compelling hackathon submission looks like.
 
-The project has made substantial progress: 13 Move contracts written and 12 published to Sui testnet, a 107-file Periscope SPA with 29 views (28 routes + root layout), a working gas station API, a governance system with 4-tier organizations and claims deployed on-chain, and a full chain-shared package with TX builders for every contract. The monorepo infrastructure is solid (Turborepo, pnpm, Biome, 5 shared packages). However, the project has never had a verified end-to-end build (`pnpm build` has not been confirmed to succeed), and while all Plan 06 code has been written (Move contracts, TX builders, UI views), the contracts have NOT been deployed/upgraded on-chain yet (`governance_ext` unpublished, `ssu_market` un-upgraded), so the Finance and Trade views will fail at runtime until deployment.
+The project has made substantial progress: 13 Move contracts written and **all 13 published** to Sui testnet (including `governance_ext` as of 2026-03-15), a 107-file Periscope SPA with 29 views (28 routes + root layout), a working gas station API, a governance system with 4-tier organizations and claims deployed on-chain, and a full chain-shared package with TX builders for every contract. The monorepo infrastructure is solid (Turborepo, pnpm, Biome, 5 shared packages) and the build passes (9/9 packages). The `ssu_market` contract still needs an on-chain upgrade for buy orders, but the GovernanceFinance treasury flows are now unblocked.
 
-The hackathon theme is "A Toolkit for Civilization." The strongest submission angle is the governance organization system (Plan 04, complete) combined with the closed-loop economy (Plan 06, code complete) and the Periscope intel tool. The critical path is: verify build, publish `governance_ext` treasury contract, upgrade `ssu_market` on-chain, test E2E flows, and polish for a demo recording. Gas station is now optional (CLI token creation via `scripts/create-token.sh` + GovernanceFinance "Import Token" mode).
+The hackathon theme is "A Toolkit for Civilization." The strongest submission angle is the governance organization system (Plan 04, complete) combined with the closed-loop economy (Plan 06, code complete) and the Periscope intel tool. The critical path is: test E2E flows, upgrade `ssu_market` on-chain, polish UI (ServerSwitcher relocation, Wallet view), and record a demo. Gas station is now optional (CLI token creation via `scripts/create-token.sh` + GovernanceFinance "Import Token" mode).
 
 ## Current State — Module Audit
 
@@ -33,10 +33,10 @@ All contracts are located in `contracts/` with one `sources/` directory each.
 | `lease` | Yes | `0x9920af...bc7ce` | SSU rental system |
 | `token_template` | Yes | `0x38e749...65ccf` | Template token (init creates TreasuryCap) |
 | `governance` | Yes | `0x8bef45...a578cb` | 4-tier Organization + ClaimsRegistry, 9 tests |
-| `governance_ext` | **No** | empty | `treasury.move` written (138 lines), depends on `governance`. NOT yet published. Blocks GovernanceFinance treasury flows. |
+| `governance_ext` | **Yes** | `0x670b84...bec349` | `treasury.move` (138 lines), OrgTreasury shared object. Published 2026-03-15. |
 
 **Key gaps (deployment only — all code is written):**
-- `governance_ext` not published (needed for OrgTreasury runtime)
+- ~~`governance_ext` not published~~ **DONE** — published at `0x670b8491481ab8f88a47f708918c83a6ba17427861d7d8a82e2a513176bec349`, config.ts updated for both stillness and utopia
 - `ssu_market` v2 code written but needs on-chain upgrade for buy orders + `buy_and_withdraw<T>()` (UpgradeCap: `0xa803...3eaf`)
 - `exchange` lacks `match_orders()` (deferred, not critical for hackathon)
 
@@ -83,10 +83,10 @@ The primary deliverable. 29 views across 28 routes, IndexedDB with 13 schema ver
 - 8 sync modules (hlc, peerManager, signaling, syncEngine, webrtcConnection, encryptionP2P, types, index)
 - DB: 13 versions, ~35 tables, CRDT sync fields on all intel tables
 
-**Status assessment:** The Periscope app is feature-rich. All Plan 06 code has been written and integrated. The remaining gaps are **deployment only**:
-- GovernanceFinance (1330 lines) is fully coded with gas station integration AND a manual "Import Token" mode (via `scripts/create-token.sh`). OrgTreasury deposit/mint/burn flows will fail at runtime until `governance_ext` is published and `governanceExt.packageId` is filled in config.ts. The gas station is now optional.
+**Status assessment:** The Periscope app is feature-rich. All Plan 06 code has been written and integrated. The remaining gaps are:
+- GovernanceFinance (1330 lines) is fully coded with gas station integration AND a manual "Import Token" mode (via `scripts/create-token.sh`). `governance_ext` is now published and `governanceExt.packageId` is filled in config.ts. OrgTreasury deposit/mint/burn flows should be functional — **needs E2E testing**. The gas station is now optional.
 - GovernanceTrade (1467 lines) is fully coded with sell orders + buy orders tabs. The buy-order tab requires `ssu_market` to be upgraded on-chain (UpgradeCap available). The sell-order tab needs `buy_and_withdraw<T>()` which is also in the upgrade.
-- Both views COMPILE (all chain-shared TS exports exist) but will FAIL AT RUNTIME until contracts are deployed/upgraded on-chain.
+- GovernanceFinance should work at runtime (governance_ext published). GovernanceTrade will FAIL AT RUNTIME until `ssu_market` is upgraded on-chain.
 
 ### apps/gas-station/ — Gas Station API (5 source files)
 
@@ -127,10 +127,10 @@ Scaffold only. Single auth router with TODO comments for JWT verification and si
 
 | File | Description | Status |
 |------|-------------|--------|
-| `config.ts` | Contract addresses per tenant | Complete; `governanceExt.packageId` empty (awaits deploy) |
+| `config.ts` | Contract addresses per tenant | Complete; `governanceExt.packageId` filled (`0x670b84...bec349`) |
 | `types.ts` | TypeScript interfaces | Complete (includes OrgMarketInfo, BuyOrderInfo) |
 | `governance.ts` | Org + claims TX builders | Complete, wired to Periscope |
-| `treasury.ts` | OrgTreasury TX builders (275 lines) | Complete, awaits `governance_ext` publish for runtime |
+| `treasury.ts` | OrgTreasury TX builders (275 lines) | Complete, `governance_ext` now published — needs E2E testing |
 | `turret-priority.ts` | Turret source generator + org config | Complete |
 | `ssu-market.ts` | Market TX builders (490 lines) | Complete with 10 new functions (OrgMarket, buy orders, stock_items, buy_and_withdraw), awaits contract upgrade for runtime |
 | `exchange.ts` | DEX TX builders | Complete (no match_orders) |
@@ -179,7 +179,7 @@ Base, library, and nextjs configs.
 | 03 — Turret Config + Sponsored TX | `archive/` | Complete | 100% | None (all 3 milestones done) |
 | 04 — Governance System | `archive/` | Complete | ~95% | Step 13 cleanup (low priority): delete `TenantSwitcher.tsx`, redirect `/extensions` |
 | 05 — Governance Phase 2 | `pending/` | Draft | 0% | All 5 workstreams (post-hackathon) |
-| 06 — Market & Currency System | `active/` | Code Complete | ~90% | All code written (contracts, TX builders, views, scripts). Remaining: publish `governance_ext`, upgrade `ssu_market` on-chain, fill config packageId, E2E test |
+| 06 — Market & Currency System | `active/` | Code Complete | ~95% | All code written, `governance_ext` published, config filled. Remaining: upgrade `ssu_market` on-chain, E2E test |
 | **07 — Hackathon Remaining Work** | `active/` | **This plan** | — | — |
 
 ## Remaining Work
@@ -188,14 +188,9 @@ Base, library, and nextjs configs.
 
 These items are required for a functional demo submission.
 
-1. **Build verification** (~1 hour) — Run `pnpm install && pnpm build` and fix any compilation errors. This has never been verified. All downstream work depends on this.
-   - Files: potentially any file with TS errors
-   - Risk: moderate — 107+ source files, many cross-package imports
+1. ~~**Build verification**~~ **DONE** — Build passes (9/9 packages).
 
-2. **Publish `governance_ext` to testnet** (~30 min) — `treasury.move` is written and compiles (`sui move build` in `contracts/governance_ext/`). Publish it and fill `governanceExt.packageId` in `packages/chain-shared/src/config.ts`.
-   - Files: `packages/chain-shared/src/config.ts` (fill packageId for stillness + utopia)
-   - Dependency: `contracts/governance_ext/Move.toml` already depends on published `governance` package
-   - Command: `cd contracts/governance_ext && sui client publish --skip-dependency-verification --json`
+2. ~~**Publish `governance_ext` to testnet**~~ **DONE** — Published at `0x670b8491481ab8f88a47f708918c83a6ba17427861d7d8a82e2a513176bec349`. Config updated in `packages/chain-shared/src/config.ts` for both stillness and utopia.
 
 3. **Test token creation end-to-end** (~1 hour) — Either via gas station (`/build-token` with `GAS_STATION_PRIVATE_KEY`) or via CLI (`scripts/create-token.sh`). Verify packageId + treasuryCapId returned. Gas station is now optional.
    - Files: `apps/gas-station/src/buildToken.ts` (gas station path) or `scripts/create-token.sh` (CLI path)
@@ -237,32 +232,55 @@ These items significantly strengthen the submission but are not blocking.
 10. **Cross-view navigation polish** (~2 hours) — Ensure navigation between views works smoothly (e.g., Players -> "Add to tier", Killmails -> "Mark hostile", GovernanceDashboard -> "Go to Turrets/Finance/Claims").
     - Files: Various view files in `apps/periscope/src/views/`
 
+11. **Move ServerSwitcher to Manifest page** (~30 min) — The `ServerSwitcher` component currently renders in the Sidebar (`apps/periscope/src/components/Sidebar.tsx`, line 140), above the `CharacterSwitcher`. This is confusing because the selected character determines the server (tenant) — they are logically coupled. The ServerSwitcher should be relocated to the Manifest page (`apps/periscope/src/views/Manifest.tsx`), which is where characters and chain data are managed. This makes the Sidebar cleaner (one fewer widget) and puts server selection where it semantically belongs.
+    - **Current state:** `ServerSwitcher` is rendered as `<ServerSwitcher />` in `Sidebar.tsx` (line 140), between the logo header and `CharacterSwitcher`. It reads `db.settings.get("tenant")` and writes via `db.settings.put()`. It also checks `useAppStore((s) => s.sidebarCollapsed)` for responsive layout.
+    - **Target state:** Remove `<ServerSwitcher />` from `Sidebar.tsx`. Add it to the Manifest page header area, styled as a section header or inline selector next to the tenant badge that already shows `<span className="...capitalize">{tenant}</span>` (Manifest.tsx line 381). The component itself stays in `apps/periscope/src/components/ServerSwitcher.tsx` — only the render location changes.
+    - **Files:**
+      - `apps/periscope/src/components/Sidebar.tsx` — MODIFY: remove `<ServerSwitcher />` and its import
+      - `apps/periscope/src/views/Manifest.tsx` — MODIFY: import and render `ServerSwitcher` in the header
+      - `apps/periscope/src/components/ServerSwitcher.tsx` — MODIFY: remove `sidebarCollapsed` responsive logic (no longer in sidebar), adjust styling for inline/page context
+
+12. **Wallet view** (~2-3 hours) — New read-only view at `/wallet` showing the active character's SUI balance, owned coins (SUI + any org tokens), and a faucet link. This adds tangible utility for players managing gas and org tokens, and is visually impressive for the demo.
+    - **Data source:** Sui SDK `client.getBalance()` for SUI balance, `client.getAllBalances()` for all coin types, `client.getCoins()` for individual coin objects. These are standard JSON-RPC methods available on `SuiClient` (already wrapped in `apps/periscope/src/chain/client.ts` via `@tehfrontier/sui-client`). The `@mysten/dapp-kit` `useSuiClient()` hook provides the client instance, same pattern used by `Assets.tsx` and `Manifest.tsx`.
+    - **Address resolution:** Use `useActiveCharacter()` to get the active character's `suiAddress`, falling back to `useCurrentAccount()?.address` from dapp-kit (same pattern as `useOwnedAssemblies`).
+    - **UI design:** Follow the `Assets.tsx` pattern — header with icon + title + subtitle, summary stat cards (SUI balance, token count, total coin objects), then a `DataGrid` table of all coin balances. Include:
+      - SUI balance card with formatted MIST-to-SUI conversion (`balance / 1e9`)
+      - Faucet button linking to `https://faucet.sui.io/` (external link, opens in new tab)
+      - Token balances table: coin type, balance (formatted with decimals), object count
+      - Refresh button using React Query `refetch()`
+    - **Route:** Add `/wallet` route in `apps/periscope/src/router.tsx`, import `Wallet` from `@/views/Wallet`
+    - **Sidebar:** Add "Wallet" nav item to the "Assets" group in `apps/periscope/src/components/Sidebar.tsx`, using the `Wallet` icon from lucide-react (already imported in `CharacterSwitcher.tsx`)
+    - **Files:**
+      - `apps/periscope/src/views/Wallet.tsx` — CREATE: new view (~200-250 lines, following Assets.tsx pattern)
+      - `apps/periscope/src/router.tsx` — MODIFY: add walletRoute + import
+      - `apps/periscope/src/components/Sidebar.tsx` — MODIFY: add Wallet nav item to Assets group
+
 ### Nice to Have (stretch goals)
 
-11. **Exchange `match_orders()` implementation** (~4-6 hours) — Add order matching to the DEX contract. Not needed for core demo but would showcase a full trading loop.
+13. **Exchange `match_orders()` implementation** (~4-6 hours) — Add order matching to the DEX contract. Not needed for core demo but would showcase a full trading loop.
     - Files: `contracts/exchange/sources/exchange.move`
 
-12. **Bounty board UI in GovernanceFinance** (~2 hours) — GovernanceFinance already has `buildFundBounty` import and "posting-bounty" status. Wire the bounty posting flow.
+14. **Bounty board UI in GovernanceFinance** (~2 hours) — GovernanceFinance already has `buildFundBounty` import and "posting-bounty" status. Wire the bounty posting flow.
     - Files: `apps/periscope/src/views/GovernanceFinance.tsx`
 
-13. **P2P sync demo** (~3 hours) — Show two Periscope instances syncing intel via WebRTC. The sync engine (`apps/periscope/src/sync/`) is written but untested.
+15. **P2P sync demo** (~3 hours) — Show two Periscope instances syncing intel via WebRTC. The sync engine (`apps/periscope/src/sync/`) is written but untested.
     - Files: `apps/periscope/src/sync/`, `apps/periscope/src/views/PeerSync.tsx`
 
-14. **Lazy-load remaining views** (~1 hour) — Currently only StarMap, Logs, and PeerSync are lazy-loaded. Lazy-load all governance views (heavy imports).
+16. **Lazy-load remaining views** (~1 hour) — Currently only StarMap, Logs, and PeerSync are lazy-loaded. Lazy-load all governance views (heavy imports).
     - Files: `apps/periscope/src/router.tsx`
 
-15. **Delete legacy files** (~15 min) — Remove `TenantSwitcher.tsx` (dead code), redirect `/extensions` to `/governance`.
+17. **Delete legacy files** (~15 min) — Remove `TenantSwitcher.tsx` (dead code), redirect `/extensions` to `/governance`.
     - Files: `apps/periscope/src/components/TenantSwitcher.tsx`, `apps/periscope/src/router.tsx`
 
 ## Implementation Phases
 
-### Phase 1: Build Verification & Contract Deployment (Day 1)
+### Phase 1: Build Verification & Contract Deployment (Day 1) — COMPLETE
 
-1. Run `pnpm install && pnpm build` from project root. Fix all TypeScript compilation errors.
-2. Run `sui move build` in `contracts/governance_ext/`. Fix any Move compilation errors. Note: `treasury.move` is 139 lines with no Move tests (unlike `governance` which has 9 tests). Consider adding basic tests before publishing, or publish without tests if time-constrained.
-3. Publish `governance_ext` to testnet: `sui client publish --skip-dependency-verification --json`.
-4. Extract `packageId` from publish output, fill `governanceExt.packageId` in `packages/chain-shared/src/config.ts` for both `stillness` and `utopia`.
-5. Verify `pnpm build` still passes after config change.
+1. ~~Run `pnpm install && pnpm build` from project root.~~ **DONE** — Build passes (9/9 packages).
+2. ~~Run `sui move build` in `contracts/governance_ext/`.~~ **DONE** — Compiles clean.
+3. ~~Publish `governance_ext` to testnet.~~ **DONE** — `0x670b8491481ab8f88a47f708918c83a6ba17427861d7d8a82e2a513176bec349`.
+4. ~~Fill `governanceExt.packageId` in config.ts.~~ **DONE** — Both stillness and utopia populated.
+5. ~~Verify `pnpm build` still passes.~~ **DONE**.
 
 ### Phase 2: Gas Station Token Pipeline (Day 2)
 
@@ -284,17 +302,19 @@ These items significantly strengthen the submission but are not blocking.
 7. Fix any runtime errors discovered during testing.
 8. If time permits: test GovernanceTrade sell order flow.
 
-### Phase 4: Polish & Demo (Days 5-7)
+### Phase 4: UI Polish & Demo (Days 5-7)
 
-1. Fix any remaining UI issues found during testing.
-2. Prepare demo script — ordered list of features to show.
-3. Record demo video (screen capture with narration).
-4. Write/update README with:
+1. Move `ServerSwitcher` from Sidebar to Manifest page (item 11).
+2. Create Wallet view at `/wallet` with balance display + faucet link (item 12).
+3. Fix any remaining UI issues found during testing.
+4. Prepare demo script — ordered list of features to show.
+5. Record demo video (screen capture with narration).
+6. Write/update README with:
    - Project description (governance toolkit for EVE Frontier)
    - Setup instructions (prerequisites, env vars, commands)
    - Architecture overview (monorepo, Sui contracts, Periscope SPA)
    - Demo video link
-5. Submit to hackathon.
+7. Submit to hackathon.
 
 ### Phase 5: Stretch Goals (Days 8-16, if ahead of schedule)
 
@@ -302,16 +322,16 @@ These items significantly strengthen the submission but are not blocking.
 2. Wire GovernanceTrade to upgraded contract.
 3. Token factory bytecode extraction (item 8).
 4. Permissions dApp verification (item 9).
-5. Bounty board integration in GovernanceFinance (item 12).
-6. Lazy-load optimization (item 14).
-7. Legacy cleanup (item 15).
+5. Bounty board integration in GovernanceFinance (item 14).
+6. Lazy-load optimization (item 16).
+7. Legacy cleanup (item 17).
 
 ## File Summary
 
 | File | Action | Description |
 |------|--------|-------------|
-| `packages/chain-shared/src/config.ts` | MODIFY | Fill `governanceExt.packageId` after publishing |
-| `contracts/governance_ext/sources/treasury.move` | VERIFY | Compile and publish to testnet |
+| `packages/chain-shared/src/config.ts` | ~~MODIFY~~ DONE | `governanceExt.packageId` filled (`0x670b84...bec349`) for stillness + utopia |
+| `contracts/governance_ext/sources/treasury.move` | ~~VERIFY~~ DONE | Published to testnet |
 | `apps/gas-station/src/buildToken.ts` | VERIFY | End-to-end test of token build pipeline (gas station is now optional) |
 | `apps/gas-station/src/index.ts` | VERIFY | `/build-token` route confirmed registered |
 | `scripts/create-token.sh` | VERIFY | CLI alternative to gas station for token creation |
@@ -320,7 +340,11 @@ These items significantly strengthen the submission but are not blocking.
 | `apps/periscope/src/views/GovernanceDashboard.tsx` | TEST | Verify org creation + tier management |
 | `apps/periscope/src/views/GovernanceClaims.tsx` | TEST | Verify claims CRUD |
 | `apps/periscope/src/views/GovernanceTurrets.tsx` | TEST | Verify turret build + deploy |
-| `apps/periscope/src/router.tsx` | OPTIONAL | Add lazy loading for governance views |
+| `apps/periscope/src/components/Sidebar.tsx` | MODIFY | Remove `ServerSwitcher` render + import; add Wallet nav item to Assets group |
+| `apps/periscope/src/views/Manifest.tsx` | MODIFY | Import and render `ServerSwitcher` in header area |
+| `apps/periscope/src/components/ServerSwitcher.tsx` | MODIFY | Remove sidebar-collapsed responsive logic, restyle for page context |
+| `apps/periscope/src/views/Wallet.tsx` | CREATE | New Wallet view (~200-250 lines): SUI balance, all coin balances, faucet link |
+| `apps/periscope/src/router.tsx` | MODIFY | Add `/wallet` route; optionally add lazy loading for governance views |
 | `apps/periscope/src/components/TenantSwitcher.tsx` | OPTIONAL DELETE | Dead code (no imports) |
 | `contracts/ssu_market/sources/ssu_market.move` | DEPLOY | Code complete (426 lines). Upgrade on-chain via UpgradeCap. |
 | `scripts/upgrade-contract.sh` | USE | Reusable contract upgrade helper |
@@ -328,9 +352,9 @@ These items significantly strengthen the submission but are not blocking.
 
 ## Open Questions
 
-1. **Has `pnpm build` ever succeeded?** This is the single biggest unknown. The project has 107+ TypeScript files across 10 packages/apps with many cross-package imports. Build failures could cascade. This should be the very first thing attempted.
+1. ~~**Has `pnpm build` ever succeeded?**~~ **RESOLVED** — Yes, build passes (9/9 packages).
 
-2. **Does the gas station wallet have sufficient SUI balance?** Last known: 1.78 SUI. Token publishing + treasury deployment could consume significant gas. May need faucet top-up.
+2. **Does the gas station wallet have sufficient SUI balance?** Last known: 1.78 SUI. Token publishing + treasury deployment could consume significant gas. May need faucet top-up. (Note: `governance_ext` publish consumed gas, so balance is lower now.)
 
 3. **Are UpgradeCaps available for deployed contracts?** Plan 06 requires upgrading `ssu_market`. If the UpgradeCap was destroyed or transferred, the contract is immutable and a new package must be published instead. Check: `sui client objects --json | grep UpgradeCap`.
 
@@ -339,7 +363,7 @@ These items significantly strengthen the submission but are not blocking.
 ## Deferred
 
 - **Plan 05 (Governance Phase 2)** — All 5 workstreams (gates, finance expansion, trade, claims improvements, alliances/voting). Post-hackathon.
-- **Plan 06 deployment** — All code is written. Remaining: deploy `governance_ext`, upgrade `ssu_market` on-chain, test E2E. These are operational tasks, not coding tasks.
+- **Plan 06 deployment** — All code is written. `governance_ext` published. Remaining: upgrade `ssu_market` on-chain, test E2E. These are operational tasks, not coding tasks.
 - **apps/web/ and apps/api/** — Server-side stack. Not part of hackathon deliverable. Periscope handles everything client-side.
 - **packages/db/** — PostgreSQL schema. Only relevant if web/api become active.
 - **P2P sync production testing** — Sync engine is written but untested in multi-instance scenarios.

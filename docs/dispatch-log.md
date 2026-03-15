@@ -30,6 +30,18 @@
 - **Passes:** 2 (converged — pass 2 found 1 minor fix, all else verified clean)
 - **Result:** Comprehensive pre-execution review with 21 changes across 2 review agents + 1 refinement pass. **Critical discoveries:** (1) SSU item binding constraint — `parent_id` locks items to originating SSU, making cross-SSU transfers impossible. Redesigned buy orders from automated `fill_buy_order` to stakeholder-confirmed `confirm_buy_order_fill`. (2) Missing `governance` source dependency in Move.toml files — both `governance_ext` and `ssu_market` upgrade had `governance` address in `[addresses]` but no source path in `[dependencies]`, preventing compilation. Fixed with `governance = { local = "../governance" }`. (3) Missing `stock_items()` function — sell orders need items in extension inventory but no function existed to move them there. Added `stock_items` with full PTB stocking flow. (4) Template mint/burn omission — gas station template contradicted resolved question #4. Added bootstrap mint/burn. (5) Mutable borrow conflict in Move code — `confirm_buy_order_fill` held `&mut record` while calling `dynamic_field::remove(&mut market.id)`. Fixed with block-scoped borrow. 1 non-blocking open question remains (game client deposit inventory target). Plan stays in active/.
 
+## 2026-03-15 — hackathon-remaining-work update (governance_ext + UI tasks)
+- **Action:** UPDATE
+- **File:** docs/plans/active/07-hackathon-remaining-work.md
+- **Passes:** 2 (initial update + refinement verification)
+- **Result:** Updated Plan 07 to reflect governance_ext deployment and added two new UI tasks. Key changes:
+  - **governance_ext published:** Contract table updated (No→Yes), package ID `0x670b84...bec349`, config.ts status updated (empty→filled). Critical path items 1-2 marked DONE. Phase 1 marked COMPLETE. Plan 06 completion bumped to ~95%.
+  - **Build passes:** 9/9 packages confirmed. Open Question #1 resolved.
+  - **Gas station optional:** Already noted in prior update; no change needed.
+  - **ServerSwitcher relocation (item 11):** New High Value task. `ServerSwitcher` currently renders in Sidebar.tsx (line 140, between logo and CharacterSwitcher). Should move to Manifest.tsx header area where tenant is already displayed. 3 files affected: Sidebar.tsx (remove), Manifest.tsx (add), ServerSwitcher.tsx (restyle).
+  - **Wallet view (item 12):** New High Value task. Read-only `/wallet` route showing SUI balance, all coin balances, faucet link. Uses `client.getBalance()` / `client.getAllBalances()` from Sui SDK. Follows Assets.tsx pattern (header + stat cards + DataGrid). 3 files affected: Wallet.tsx (create), router.tsx (add route), Sidebar.tsx (add nav item).
+  - Nice to Have items renumbered 13-17 (was 11-15). File Summary table expanded with 4 new entries. Phase 4 updated to include UI tasks before demo recording.
+
 ## 2026-03-15 — plan review (all plans)
 - **Action:** REVIEW + UPDATE (3 plans updated)
 - **Files:** docs/plans/active/06-market-currency-system.md, docs/plans/active/07-hackathon-remaining-work.md, docs/plans/pending/05-governance-phase2.md
