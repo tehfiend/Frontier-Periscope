@@ -166,7 +166,7 @@ export function Wallet() {
 								Get free SUI tokens for testing on the Sui testnet faucet.
 							</p>
 							<a
-								href="https://faucet.sui.io/"
+								href={`https://faucet.sui.io/?address=${account.address}`}
 								target="_blank"
 								rel="noopener noreferrer"
 								className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-cyan-400 transition-colors hover:text-cyan-300"
