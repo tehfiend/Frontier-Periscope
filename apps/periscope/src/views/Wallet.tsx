@@ -11,15 +11,22 @@ interface CoinBalance {
 	coinObjectCount: number;
 }
 
+interface CoinMeta {
+	decimals: number;
+	symbol: string;
+	name: string;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Convert MIST (raw balance string) to human-readable SUI. */
-function formatSui(mist: string): string {
-	const raw = BigInt(mist);
-	const whole = raw / 1_000_000_000n;
-	const frac = raw % 1_000_000_000n;
+/** Convert raw balance to human-readable with given decimals. */
+function formatBalance(raw: string, decimals: number): string {
+	const value = BigInt(raw);
+	const divisor = 10n ** BigInt(decimals);
+	const whole = value / divisor;
+	const frac = value % divisor;
 	if (frac === 0n) return whole.toLocaleString();
-	const fracStr = frac.toString().padStart(9, "0").replace(/0+$/, "");
+	const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
 	return `${whole.toLocaleString()}.${fracStr}`;
 }
 
@@ -46,6 +53,7 @@ export function Wallet() {
 	const suiAddress = activeCharacter?.suiAddress;
 
 	const [balances, setBalances] = useState<CoinBalance[]>([]);
+	const [coinMeta, setCoinMeta] = useState<Record<string, CoinMeta>>({});
 	const [loading, setLoading] = useState(false);
 	const [fetching, setFetching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -57,6 +65,25 @@ export function Wallet() {
 		try {
 			const allBalances = await client.getAllBalances({ owner: suiAddress });
 			setBalances(allBalances as CoinBalance[]);
+
+			// Fetch metadata for each coin type (decimals, symbol, name)
+			const metaMap: Record<string, CoinMeta> = {};
+			for (const b of allBalances) {
+				if (metaMap[b.coinType]) continue;
+				try {
+					const meta = await client.getCoinMetadata({ coinType: b.coinType });
+					if (meta) {
+						metaMap[b.coinType] = {
+							decimals: meta.decimals,
+							symbol: meta.symbol,
+							name: meta.name,
+						};
+					}
+				} catch {
+					// Fallback if metadata not available
+				}
+			}
+			setCoinMeta(metaMap);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
 		} finally {
@@ -102,7 +129,7 @@ export function Wallet() {
 
 	const suiBalance = balances.find((b) => isSuiCoin(b.coinType));
 	const suiMist = suiBalance?.totalBalance ?? "0";
-	const suiHuman = formatSui(suiMist);
+	const suiHuman = formatBalance(suiMist, 9);
 	const tokenCount = balances.length;
 
 	return (
@@ -210,10 +237,11 @@ export function Wallet() {
 								</thead>
 								<tbody>
 									{balances.map((b) => {
-										const name = extractTokenName(b.coinType);
+										const meta = coinMeta[b.coinType];
+										const name = meta?.symbol || extractTokenName(b.coinType);
+										const decimals = meta?.decimals ?? 9;
 										const isSui = isSuiCoin(b.coinType);
-										// All Sui coins default to 9 decimals
-										const displayBalance = `${formatSui(b.totalBalance)} ${isSui ? "SUI" : name}`;
+										const displayBalance = `${formatBalance(b.totalBalance, decimals)} ${isSui ? "SUI" : name}`;
 
 										return (
 											<tr
@@ -222,8 +250,13 @@ export function Wallet() {
 											>
 												<td className="px-4 py-3">
 													<span className="font-medium text-zinc-200">
-														{name}
+														{meta?.name || name}
 													</span>
+													{meta?.symbol && meta.symbol !== (meta.name || name) && (
+														<span className="ml-1.5 text-xs text-zinc-500">
+															({meta.symbol})
+														</span>
+													)}
 													{!isSui && (
 														<span
 															className="ml-2 block truncate font-mono text-xs text-zinc-600"
