@@ -27,7 +27,7 @@ Gate integration uses a dedicated `governance_ext::gate_permit` module that chec
 | TX builders | `packages/chain-shared/src/governance.ts` | buildCreateOrg, buildAddToTier, buildRemoveFromTier, buildCreateClaim, buildRemoveClaim, queryOrganization, queryClaimEvents |
 | Types | `packages/chain-shared/src/types.ts` | OrgTier, OrgTierData, OrganizationInfo, OnChainClaim, ContractAddresses.governance |
 | Config | `packages/chain-shared/src/config.ts` | governance field in stillness + utopia |
-| DB schema | `apps/periscope/src/db/index.ts` | V12: organizations, orgTierMembers, systemClaims, systemNicknames, currencies |
+| DB schema | `apps/periscope/src/db/index.ts` | V13: organizations, orgTierMembers, systemClaims, systemNicknames, currencies (V13 added description, moduleName, orgTreasuryId to currencies — Plan 06) |
 | DB types | `apps/periscope/src/db/types.ts` | OrganizationRecord, OrgTierMember, SystemClaimRecord, SystemNickname, CurrencyRecord |
 | Dashboard | `apps/periscope/src/views/GovernanceDashboard.tsx` | Org creation + tier panels, wired to chain |
 | Turrets | `apps/periscope/src/views/GovernanceTurrets.tsx` | Public/private mode, gas station build |
@@ -48,7 +48,7 @@ Gate integration uses a dedicated `governance_ext::gate_permit` module that chec
 |-----------|----------|-----------------|
 | Gate Unified | `contracts/gate_unified/` | Group-based ACL + toll, ExtensionConfig with dynamic field per-gate configs |
 | Gate Toll | `packages/chain-shared/src/gate-toll.ts` | queryTollConfig(), buildSetToll() |
-| SSU Market | `packages/chain-shared/src/ssu-market.ts` | queryMarketConfig(), buildCreateMarket(), buildSetListing(), buildBuyItem() |
+| SSU Market | `packages/chain-shared/src/ssu-market.ts` | queryMarketConfig(), buildCreateMarket(), buildSetListing(), buildBuyItem() + 10 new functions (OrgMarket, buy orders, stock_items, buy_and_withdraw — Plan 06) |
 | Exchange | `packages/chain-shared/src/exchange.ts` | buildCreatePair(), buildPlaceBid/Ask(), buildCancelBid/Ask() |
 | Token Factory | `packages/chain-shared/src/token-factory.ts` | buildPublishToken() (bytecode patching), buildMintTokens(), buildBurnTokens() |
 | Lease | `packages/chain-shared/src/lease.ts` | Existing lease contract for SSU rental |
@@ -186,7 +186,7 @@ After Phase 2, the governance system provides:
    - GovernanceTrade view includes exchange order book section
    - File: Extend GovernanceTrade view
 
-4. **Sidebar + Router** — Add "Trade" nav item under Governance group (icon: `ShoppingBag` or `ArrowLeftRight`)
+4. ~~**Sidebar + Router**~~ — **DONE (Plan 06)**. Trade nav item added to sidebar (ShoppingBag icon), `/governance/trade` route added to router.
 
 **Dependencies:** None. Uses existing ssu_market and exchange contracts.
 
@@ -264,7 +264,7 @@ After Phase 2, the governance system provides:
    - Active/expired/passed/failed tabs
    - File: `apps/periscope/src/views/GovernanceVoting.tsx` (new)
 
-5. **DB schema V13** — New tables for alliance + voting local cache
+5. **DB schema V14** — New tables for alliance + voting local cache (V13 already taken by Plan 06)
    - `alliances`, `allianceMembers`, `proposals`, `votes`
    - File: `apps/periscope/src/db/index.ts` (version bump)
 
@@ -298,10 +298,10 @@ After Phase 2, the governance system provides:
 | `apps/periscope/src/views/GovernanceFinance.tsx` | ~~MODIFY~~ DONE | Wired to gas station + import mode, mint/burn, OrgTreasury (Plan 06) |
 | `apps/periscope/src/views/GovernanceClaims.tsx` | MODIFY | Auto-weight, org discovery, P2P sync toggle |
 | `apps/periscope/src/views/GovernanceDashboard.tsx` | MODIFY | Org discovery for non-creators |
-| `apps/periscope/src/db/index.ts` | MODIFY | V13 schema: alliances, proposals, votes, orgDues |
+| `apps/periscope/src/db/index.ts` | MODIFY | V14 schema: alliances, proposals, votes, orgDues (V13 taken by Plan 06) |
 | `apps/periscope/src/db/types.ts` | MODIFY | Add AllianceRecord, ProposalRecord, VoteRecord, OrgDuesRecord |
-| `apps/periscope/src/router.tsx` | MODIFY | Add /governance/gates, /governance/trade, /governance/alliances, /governance/voting routes |
-| `apps/periscope/src/components/Sidebar.tsx` | MODIFY | Add Gates, Trade, Alliances, Voting nav items |
+| `apps/periscope/src/router.tsx` | MODIFY | Add /governance/gates, /governance/alliances, /governance/voting routes (/governance/trade already added — Plan 06) |
+| `apps/periscope/src/components/Sidebar.tsx` | MODIFY | Add Gates, Alliances, Voting nav items (Trade already added — Plan 06) |
 | `packages/shared/src/schemas/governance.ts` | MODIFY | Add alliance, proposal, vote Zod schemas |
 
 ## Open Questions
