@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import {
 	useCurrentAccount,
 	useSignAndExecuteTransaction,
+	useConnectWallet,
+	useWallets,
 	useSuiClient,
 } from "@mysten/dapp-kit";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -51,6 +53,8 @@ type BuildStatus =
 export function GovernanceFinance() {
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+	const { mutate: connectWallet } = useConnectWallet();
+	const wallets = useWallets();
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
@@ -192,7 +196,13 @@ export function GovernanceFinance() {
 	}
 
 	async function handleCreateCurrency() {
-		if (!symbol.trim() || !tokenName.trim() || !org || !account) return;
+		if (!symbol.trim() || !tokenName.trim() || !org) return;
+		if (!account) {
+			// Trigger wallet connection, user retries after connecting
+			const eveVault = wallets.find((w) => w.name === "EVE Vault");
+			if (eveVault) connectWallet({ wallet: eveVault });
+			return;
+		}
 
 		setBuildStatus("building");
 		setBuildError("");
@@ -513,7 +523,21 @@ function CurrencyCard({
 	onStatusChange: (status: BuildStatus, error?: string) => void;
 }) {
 	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+	const { mutate: connectWallet } = useConnectWallet();
+	const wallets = useWallets();
 	const suiClient = useSuiClient();
+
+	/** Connect wallet if not connected. Returns true if connected after call. */
+	function ensureWallet(): boolean {
+		if (account) return true;
+		const eveVault = wallets.find((w) => w.name === "EVE Vault");
+		if (eveVault) {
+			connectWallet({ wallet: eveVault });
+		} else {
+			onStatusChange("error", "No wallet found. Install EVE Vault.");
+		}
+		return false;
+	}
 
 	const [expanded, setExpanded] = useState(false);
 	const [treasuryInfo, setTreasuryInfo] = useState<{
@@ -585,10 +609,7 @@ function CurrencyCard({
 
 	async function handleDeposit() {
 		if (!currency.treasuryCapId || !currency.coinType || !org.chainObjectId) return;
-		if (!account) {
-			onStatusChange("error", "Connect your wallet to deposit.");
-			return;
-		}
+		if (!ensureWallet()) return;
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
@@ -644,10 +665,7 @@ function CurrencyCard({
 	async function handleMint() {
 		if (!mintAmount || !currency.orgTreasuryId || !currency.coinType || !org.chainObjectId)
 			return;
-		if (!account) {
-			onStatusChange("error", "Connect your wallet to mint tokens.");
-			return;
-		}
+		if (!ensureWallet()) return;
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
@@ -693,10 +711,7 @@ function CurrencyCard({
 
 	async function handleBurn() {
 		if (!burnCoinId || !currency.orgTreasuryId || !currency.coinType) return;
-		if (!account) {
-			onStatusChange("error", "Connect your wallet to burn tokens.");
-			return;
-		}
+		if (!ensureWallet()) return;
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
@@ -735,10 +750,7 @@ function CurrencyCard({
 	async function handlePostBounty() {
 		if (!bountyTarget || !bountyAmount || !currency.orgTreasuryId || !currency.coinType || !org.chainObjectId)
 			return;
-		if (!account) {
-			onStatusChange("error", "Connect your wallet to post bounties.");
-			return;
-		}
+		if (!ensureWallet()) return;
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
