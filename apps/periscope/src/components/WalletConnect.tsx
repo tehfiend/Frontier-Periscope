@@ -1,7 +1,8 @@
 import {
-	ConnectButton,
 	useCurrentAccount,
+	useConnectWallet,
 	useDisconnectWallet,
+	useWallets,
 } from "@mysten/dapp-kit";
 import { LogOut, Wallet } from "lucide-react";
 
@@ -9,15 +10,43 @@ function truncateAddress(address: string): string {
 	return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
+/**
+ * Connect button that auto-selects EVE Vault (skips the wallet picker).
+ * Falls back to showing wallet name if EVE Vault isn't found.
+ */
+export function ConnectWalletButton({ className }: { className?: string }) {
+	const { mutate: connect, isPending } = useConnectWallet();
+	const wallets = useWallets();
+
+	function handleConnect() {
+		const eveVault = wallets.find((w) => w.name === "EVE Vault");
+		const wallet = eveVault ?? wallets[0];
+		if (wallet) {
+			connect({ wallet });
+		}
+	}
+
+	return (
+		<button
+			type="button"
+			onClick={handleConnect}
+			disabled={isPending || wallets.length === 0}
+			className={
+				className ??
+				"rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+			}
+		>
+			{isPending ? "Connecting..." : "Connect Wallet"}
+		</button>
+	);
+}
+
 export function WalletConnect() {
 	const account = useCurrentAccount();
 	const { mutate: disconnect } = useDisconnectWallet();
-	// Auto-connect is handled by WalletProvider (autoConnect: true).
-	// The ConnectButton below only shows when not connected, letting
-	// the user explicitly choose to connect when they need to sign.
 
 	if (!account) {
-		return <ConnectButton className="!rounded-lg !bg-cyan-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-cyan-500" />;
+		return <ConnectWalletButton />;
 	}
 
 	return (

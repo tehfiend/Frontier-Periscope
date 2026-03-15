@@ -4,7 +4,7 @@ import {
 	useSignAndExecuteTransaction,
 	useSuiClient,
 } from "@mysten/dapp-kit";
-import { ConnectButton } from "@mysten/dapp-kit";
+import { ConnectWalletButton } from "@/components/WalletConnect";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Coins,
@@ -389,7 +389,7 @@ export function GovernanceFinance() {
 									)}
 								</button>
 							) : (
-								<ConnectButton className="!rounded-lg !bg-cyan-600 !px-4 !py-2 !text-sm !font-medium !text-white hover:!bg-cyan-500" />
+								<ConnectWalletButton className="!rounded-lg !bg-cyan-600 !px-4 !py-2 !text-sm !font-medium !text-white hover:!bg-cyan-500" />
 							)}
 							<button
 								type="button"
@@ -846,7 +846,7 @@ function CurrencyCard({
 									Deposit to OrgTreasury
 								</button>
 							) : (
-								<ConnectButton className="!rounded !bg-amber-600/20 !px-3 !py-1.5 !text-xs !font-medium !text-amber-400 hover:!bg-amber-600/30" />
+								<ConnectWalletButton className="!rounded !bg-amber-600/20 !px-3 !py-1.5 !text-xs !font-medium !text-amber-400 hover:!bg-amber-600/30" />
 							)}
 						</div>
 					)}
@@ -1012,7 +1012,7 @@ function CurrencyCard({
 												Mint {currency.symbol}
 											</button>
 										) : (
-											<ConnectButton className="!rounded !bg-cyan-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-cyan-500" />
+											<ConnectWalletButton className="!rounded !bg-cyan-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-cyan-500" />
 										)}
 									</div>
 								</div>
@@ -1082,7 +1082,7 @@ function CurrencyCard({
 													Burn Selected Coin
 												</button>
 											) : (
-												<ConnectButton className="!rounded !bg-red-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-red-500" />
+												<ConnectWalletButton className="!rounded !bg-red-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-red-500" />
 											)}
 										</div>
 									)}
@@ -1160,7 +1160,7 @@ function CurrencyCard({
 											Mint &amp; Post Bounty
 										</button>
 									) : (
-										<ConnectButton className="!rounded !bg-amber-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-amber-500" />
+										<ConnectWalletButton className="!rounded !bg-amber-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-amber-500" />
 									)}
 									</div>
 								</div>
