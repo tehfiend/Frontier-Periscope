@@ -13,7 +13,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 	return (
 		<SuiClientProvider networks={networks} defaultNetwork="testnet">
 			<DappKitWalletProvider
-				autoConnect={true}
+				autoConnect={false}
 				preferredWallets={["EVE Vault"]}
 			>
 				{children}
