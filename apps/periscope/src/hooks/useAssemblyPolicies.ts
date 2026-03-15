@@ -1,6 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, notDeleted } from "@/db";
 import type { AssemblyPolicy, PolicyMode, SyncStatus } from "@/db/types";
+import type { AssemblyKind } from "@/chain/config";
 
 export function useAssemblyPolicies() {
 	const policies = useLiveQuery(() => db.assemblyPolicies.filter(notDeleted).toArray()) ?? [];
@@ -15,7 +16,7 @@ export function useAssemblyPolicies() {
 
 	async function createPolicy(data: {
 		assemblyId: string;
-		assemblyType: "turret" | "gate" | "storage_unit" | "network_node";
+		assemblyType: AssemblyKind;
 		extensionTemplateId?: string;
 	}): Promise<string> {
 		const now = new Date().toISOString();

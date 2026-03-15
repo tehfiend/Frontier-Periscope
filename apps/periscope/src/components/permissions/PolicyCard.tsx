@@ -1,4 +1,4 @@
-import { Crosshair, DoorOpen, Box, Wifi, WifiOff, Loader2, ExternalLink } from "lucide-react";
+import { Crosshair, DoorOpen, Box, Wifi, WifiOff, Loader2, ExternalLink, Package, Database } from "lucide-react";
 import { SyncBadge } from "./SyncBadge";
 import { GroupSelector } from "./GroupSelector";
 import type { AssemblyPolicy, PermissionGroup, PolicyMode } from "@/db/types";
@@ -8,14 +8,18 @@ const assemblyIcons = {
 	turret: Crosshair,
 	gate: DoorOpen,
 	storage_unit: Box,
+	smart_storage_unit: Package,
 	network_node: Wifi,
+	protocol_depot: Database,
 } as const;
 
 const assemblyLabels = {
 	turret: "Turret",
 	gate: "Gate",
 	storage_unit: "Storage Unit",
+	smart_storage_unit: "Smart Storage Unit",
 	network_node: "Network Node",
+	protocol_depot: "Protocol Depot",
 } as const;
 
 interface PolicyCardProps {

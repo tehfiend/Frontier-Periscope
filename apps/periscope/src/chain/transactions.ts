@@ -1,12 +1,12 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { type TenantId, TENANTS, type ExtensionTemplate } from "./config";
+import { type AssemblyKind, type TenantId, TENANTS, type ExtensionTemplate } from "./config";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
 interface AuthorizeExtensionParams {
 	tenant: TenantId;
 	template: ExtensionTemplate;
-	assemblyType: "turret" | "gate" | "storage_unit" | "network_node";
+	assemblyType: AssemblyKind;
 	assemblyId: string;
 	characterId: string;
 	ownerCapId: string;
@@ -45,12 +45,14 @@ export function buildAuthorizeExtension(params: AuthorizeExtensionParams): Trans
 	tx.setSender(senderAddress);
 
 	// Map assembly type to Move module + type
-	const assemblyModuleMap = {
+	const assemblyModuleMap: Record<AssemblyKind, { module: string; type: string }> = {
 		turret: { module: "turret", type: "Turret" },
 		gate: { module: "gate", type: "Gate" },
 		storage_unit: { module: "storage_unit", type: "StorageUnit" },
+		smart_storage_unit: { module: "storage_unit", type: "StorageUnit" },
 		network_node: { module: "network_node", type: "NetworkNode" },
-	} as const;
+		protocol_depot: { module: "storage_unit", type: "StorageUnit" },
+	};
 
 	const { module: assemblyModule, type: assemblyMoveType } = assemblyModuleMap[assemblyType];
 	const fullAssemblyType = `${worldPkg}::${assemblyModule}::${assemblyMoveType}`;

@@ -14,6 +14,8 @@ import {
 	WifiOff,
 	Link2,
 	User,
+	Package,
+	Database,
 } from "lucide-react";
 import { WalletConnect } from "@/components/WalletConnect";
 import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPanel";
@@ -27,14 +29,18 @@ const assemblyIcons = {
 	turret: Crosshair,
 	gate: DoorOpen,
 	storage_unit: Box,
+	smart_storage_unit: Package,
 	network_node: Wifi,
+	protocol_depot: Database,
 } as const;
 
 const assemblyLabels = {
 	turret: "Turret",
 	gate: "Gate",
 	storage_unit: "Storage Unit",
+	smart_storage_unit: "Smart Storage Unit",
 	network_node: "Network Node",
+	protocol_depot: "Protocol Depot",
 } as const;
 
 export function Extensions() {

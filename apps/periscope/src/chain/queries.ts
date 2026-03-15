@@ -5,7 +5,7 @@ import { type TenantId, moveType } from "./config";
 
 export interface OwnedAssembly {
 	objectId: string;
-	type: "turret" | "gate" | "storage_unit" | "network_node";
+	type: "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot";
 	typeId: number;
 	status: string;
 	extensionType?: string;

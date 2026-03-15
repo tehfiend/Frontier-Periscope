@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { buildAuthorizeExtension, buildConfigureTribeGate } from "@/chain/transactions";
-import type { ExtensionTemplate, TenantId } from "@/chain/config";
+import type { AssemblyKind, ExtensionTemplate, TenantId } from "@/chain/config";
 import { db } from "@/db";
 
 export type DeployStatus = "idle" | "building" | "signing" | "confirming" | "done" | "error";
@@ -20,7 +20,7 @@ export function useExtensionDeploy() {
 	async function deploy(params: {
 		template: ExtensionTemplate;
 		assemblyId: string;
-		assemblyType: "turret" | "gate" | "storage_unit" | "network_node";
+		assemblyType: AssemblyKind;
 		characterId: string;
 		ownerCapId: string;
 		tenant: TenantId;

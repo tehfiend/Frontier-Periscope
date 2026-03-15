@@ -91,7 +91,7 @@ export const FUEL_TYPES: Record<number, { name: string; efficiency: number }> = 
 
 // ── Extension Templates ─────────────────────────────────────────────────────
 
-export type AssemblyKind = "turret" | "gate" | "storage_unit" | "network_node";
+export type AssemblyKind = "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot";
 
 export interface ExtensionTemplate {
 	id: string;

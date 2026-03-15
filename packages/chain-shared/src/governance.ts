@@ -7,6 +7,7 @@
  */
 
 import { Transaction } from "@mysten/sui/transactions";
+import type { EventId } from "@mysten/sui/client";
 import { SuiClient } from "@mysten/sui/client";
 import type { OrganizationInfo, OrgTier, OrgTierData, OnChainClaim } from "./types";
 
@@ -253,7 +254,7 @@ export async function queryClaimEvents(
 	const removed: Array<{ orgId: string; systemId: number; registryId: string }> = [];
 
 	// Query ClaimCreatedEvent
-	let cursor: string | null = null;
+	let cursor: EventId | null = null;
 	let hasMore = true;
 	while (hasMore) {
 		const page = await client.queryEvents({

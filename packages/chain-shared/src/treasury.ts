@@ -120,7 +120,7 @@ export interface MintParams {
  * The caller can pass the result to subsequent moveCall arguments in the same TX.
  */
 export function buildMint(params: MintParams, tx: Transaction): TransactionResult {
-	const [mintedCoin] = tx.moveCall({
+	const result = tx.moveCall({
 		target: `${params.governanceExtPackageId}::treasury::mint`,
 		typeArguments: [params.coinType],
 		arguments: [
@@ -131,7 +131,7 @@ export function buildMint(params: MintParams, tx: Transaction): TransactionResul
 		],
 	});
 
-	return mintedCoin;
+	return result;
 }
 
 // ── Query Helpers ───────────────────────────────────────────────────────────

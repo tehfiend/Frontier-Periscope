@@ -222,7 +222,7 @@ export type ExtensionStatus = "authorized" | "configured" | "failed";
 export interface ExtensionRecord extends SyncMeta {
 	id: string;
 	assemblyId: string;
-	assemblyType: "turret" | "gate" | "storage_unit" | "network_node";
+	assemblyType: "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot";
 	templateId: string;
 	templateName: string;
 	status: ExtensionStatus;
@@ -288,7 +288,7 @@ export type SyncStatus = "draft" | "dirty" | "syncing" | "synced" | "error";
 export interface AssemblyPolicy extends SyncMeta {
 	id: string; // Same as assemblyId (1:1)
 	assemblyId: string;
-	assemblyType: "turret" | "gate" | "storage_unit" | "network_node";
+	assemblyType: "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot";
 	mode: PolicyMode;
 	groupIds: string[]; // References to PermissionGroup.id
 	// Gate-specific

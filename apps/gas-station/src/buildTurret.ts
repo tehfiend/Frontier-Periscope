@@ -79,7 +79,7 @@ export async function buildGovernanceTurret(
 		if (ttInfo) {
 			config.effectiveClasses = ttInfo.effective
 				.map((key) => SHIP_CLASSES[key]?.groupId)
-				.filter((id): id is number => id != null);
+				.filter((id) => id != null);
 		}
 	}
 

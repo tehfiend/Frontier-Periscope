@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.9",
+    "@tehfrontier/api": "workspace:*",
     "@tehfrontier/tsconfig": "workspace:*",
     "@types/node": "^22.13.5",
     "@types/react": "^19.0.10",
