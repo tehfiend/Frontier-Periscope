@@ -19,19 +19,35 @@ import { Setup } from "@/views/Setup";
 import { Assets } from "@/views/Assets";
 import { Radar } from "@/views/Radar";
 import { JumpPlanner } from "@/views/JumpPlanner";
-import { Manifest } from "@/views/Manifest";
-import { Wallet } from "@/views/Wallet";
 import { Workers } from "@/views/Workers";
-import { GovernanceDashboard } from "@/views/GovernanceDashboard";
-import { GovernanceTurrets } from "@/views/GovernanceTurrets";
-import { GovernanceFinance } from "@/views/GovernanceFinance";
-import { GovernanceClaims } from "@/views/GovernanceClaims";
-import { GovernanceTrade } from "@/views/GovernanceTrade";
 
 // Lazy-load heavy views that pull in large deps
 const LazyStarMap = lazy(() => import("@/views/StarMap").then((m) => ({ default: m.StarMap })));
 const LazyLogs = lazy(() => import("@/views/Logs").then((m) => ({ default: m.Logs })));
-const LazyPeerSync = lazy(() => import("@/views/PeerSync").then((m) => ({ default: m.PeerSync })));
+const LazyPeerSync = lazy(() =>
+	import("@/views/PeerSync").then((m) => ({ default: m.PeerSync })),
+);
+const LazyManifest = lazy(() =>
+	import("@/views/Manifest").then((m) => ({ default: m.Manifest })),
+);
+const LazyWallet = lazy(() =>
+	import("@/views/Wallet").then((m) => ({ default: m.Wallet })),
+);
+const LazyGovernanceDashboard = lazy(() =>
+	import("@/views/GovernanceDashboard").then((m) => ({ default: m.GovernanceDashboard })),
+);
+const LazyGovernanceTurrets = lazy(() =>
+	import("@/views/GovernanceTurrets").then((m) => ({ default: m.GovernanceTurrets })),
+);
+const LazyGovernanceFinance = lazy(() =>
+	import("@/views/GovernanceFinance").then((m) => ({ default: m.GovernanceFinance })),
+);
+const LazyGovernanceClaims = lazy(() =>
+	import("@/views/GovernanceClaims").then((m) => ({ default: m.GovernanceClaims })),
+);
+const LazyGovernanceTrade = lazy(() =>
+	import("@/views/GovernanceTrade").then((m) => ({ default: m.GovernanceTrade })),
+);
 
 function LoadingFallback() {
 	return (
@@ -61,6 +77,62 @@ function PeerSyncPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
 			<LazyPeerSync />
+		</Suspense>
+	);
+}
+
+function ManifestPage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyManifest />
+		</Suspense>
+	);
+}
+
+function WalletPage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyWallet />
+		</Suspense>
+	);
+}
+
+function GovernanceDashboardPage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyGovernanceDashboard />
+		</Suspense>
+	);
+}
+
+function GovernanceTurretsPage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyGovernanceTurrets />
+		</Suspense>
+	);
+}
+
+function GovernanceFinancePage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyGovernanceFinance />
+		</Suspense>
+	);
+}
+
+function GovernanceClaimsPage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyGovernanceClaims />
+		</Suspense>
+	);
+}
+
+function GovernanceTradePage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyGovernanceTrade />
 		</Suspense>
 	);
 }
@@ -172,31 +244,31 @@ const turretConfigRoute = createRoute({
 const governanceRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/governance",
-	component: GovernanceDashboard,
+	component: GovernanceDashboardPage,
 });
 
 const governanceTurretsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/governance/turrets",
-	component: GovernanceTurrets,
+	component: GovernanceTurretsPage,
 });
 
 const governanceFinanceRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/governance/finance",
-	component: GovernanceFinance,
+	component: GovernanceFinancePage,
 });
 
 const governanceClaimsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/governance/claims",
-	component: GovernanceClaims,
+	component: GovernanceClaimsPage,
 });
 
 const governanceTradeRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/governance/trade",
-	component: GovernanceTrade,
+	component: GovernanceTradePage,
 });
 
 const settingsRoute = createRoute({
@@ -220,13 +292,13 @@ const assetsRoute = createRoute({
 const manifestRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/manifest",
-	component: Manifest,
+	component: ManifestPage,
 });
 
 const walletRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/wallet",
-	component: Wallet,
+	component: WalletPage,
 });
 
 const jumpPlannerRoute = createRoute({
