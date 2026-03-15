@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useAppStore } from "@/stores/appStore";
 import { CharacterSwitcher } from "./CharacterSwitcher";
-import { ServerSwitcher } from "./ServerSwitcher";
 import {
 	LayoutDashboard,
 	Map,
@@ -135,9 +134,6 @@ export function Sidebar() {
 				<img src="/periscope.svg" alt="Periscope" className="h-6 w-6 shrink-0" style={{ filter: "invert(73%) sepia(65%) saturate(500%) hue-rotate(140deg) brightness(95%)" }} />
 				{!collapsed && <span className="text-sm font-semibold text-zinc-100">EF Periscope</span>}
 			</div>
-
-			{/* Server Switcher */}
-			<ServerSwitcher />
 
 			{/* Character Switcher */}
 			<CharacterSwitcher />

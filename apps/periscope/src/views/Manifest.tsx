@@ -13,6 +13,7 @@ import {
 import { enqueueTask } from "@/lib/taskWorker";
 import { useTaskWorker } from "@/hooks/useTaskWorker";
 import { DataGrid, excelFilterFn, type ColumnDef } from "@/components/DataGrid";
+import { ServerSwitcher } from "@/components/ServerSwitcher";
 import {
 	Database,
 	RefreshCw,
@@ -371,15 +372,17 @@ export function Manifest() {
 		<div className="p-6">
 			{/* Header */}
 			<div className="mb-6 flex items-center justify-between">
-				<div>
-					<h1 className="flex items-center gap-2 text-2xl font-bold text-zinc-100">
-						<Database size={24} className="text-violet-500" />
-						Manifest
-					</h1>
-					<p className="mt-1 text-sm text-zinc-500">
-						{characters.length} characters &middot; {tribes.length} tribes &middot; {tribeCounts} unique tribes in characters
-						<span className="ml-2 rounded bg-zinc-800 px-1.5 py-0.5 text-xs capitalize">{tenant}</span>
-					</p>
+				<div className="flex items-center gap-4">
+					<div>
+						<h1 className="flex items-center gap-2 text-2xl font-bold text-zinc-100">
+							<Database size={24} className="text-violet-500" />
+							Manifest
+						</h1>
+						<p className="mt-1 text-sm text-zinc-500">
+							{characters.length} characters &middot; {tribes.length} tribes &middot; {tribeCounts} unique tribes in characters
+						</p>
+					</div>
+					<ServerSwitcher />
 				</div>
 				<div className="flex items-center gap-2">
 					{syncStatus && <span className="max-w-xs truncate text-xs text-zinc-500">{syncStatus}</span>}
