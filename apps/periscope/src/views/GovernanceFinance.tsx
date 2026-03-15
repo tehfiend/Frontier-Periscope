@@ -502,8 +502,7 @@ export function GovernanceFinance() {
 						</div>
 					)}
 				</div>
-			) : (
-				{gasStationUrl ? (
+			) : gasStationUrl ? (
 					<div className="flex gap-2">
 						<button
 							type="button"
@@ -532,7 +531,6 @@ export function GovernanceFinance() {
 						Add Currency
 					</button>
 				)}
-			)}
 		</div>
 	);
 }
