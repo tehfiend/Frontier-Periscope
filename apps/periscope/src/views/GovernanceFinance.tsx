@@ -661,14 +661,17 @@ function CurrencyCard({
 				senderAddress: suiAddress,
 			});
 
-			await signAndExecute({ transaction: tx });
+			await signAndExecute({
+				transaction: tx,
+				options: { showEffects: true },
+			});
 			setShowMint(false);
 			setMintAmount("");
 			onStatusChange("done");
 
-			// Refresh treasury info
+			// Refresh treasury info after a short delay for chain consistency
 			if (currency.orgTreasuryId) {
-				loadTreasuryInfo();
+				setTimeout(() => loadTreasuryInfo(), 1500);
 			}
 		} catch (err) {
 			onStatusChange(
@@ -699,14 +702,14 @@ function CurrencyCard({
 				senderAddress: suiAddress,
 			});
 
-			await signAndExecute({ transaction: tx });
+			await signAndExecute({ transaction: tx, options: { showEffects: true } });
 			setShowBurn(false);
 			setBurnCoinId("");
 			onStatusChange("done");
 
-			// Refresh
+			// Refresh after chain consistency delay
 			if (currency.orgTreasuryId) {
-				loadTreasuryInfo();
+				setTimeout(() => loadTreasuryInfo(), 1500);
 			}
 		} catch (err) {
 			onStatusChange(
