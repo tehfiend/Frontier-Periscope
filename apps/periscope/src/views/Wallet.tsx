@@ -212,9 +212,8 @@ export function Wallet() {
 									{balances.map((b) => {
 										const name = extractTokenName(b.coinType);
 										const isSui = isSuiCoin(b.coinType);
-										const displayBalance = isSui
-											? `${formatSui(b.totalBalance)} SUI`
-											: `${BigInt(b.totalBalance).toLocaleString()} ${name}`;
+										// All Sui coins default to 9 decimals
+										const displayBalance = `${formatSui(b.totalBalance)} ${isSui ? "SUI" : name}`;
 
 										return (
 											<tr
