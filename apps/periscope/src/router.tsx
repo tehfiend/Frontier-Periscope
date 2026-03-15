@@ -20,6 +20,7 @@ import { Assets } from "@/views/Assets";
 import { Radar } from "@/views/Radar";
 import { JumpPlanner } from "@/views/JumpPlanner";
 import { Manifest } from "@/views/Manifest";
+import { Wallet } from "@/views/Wallet";
 import { Workers } from "@/views/Workers";
 import { GovernanceDashboard } from "@/views/GovernanceDashboard";
 import { GovernanceTurrets } from "@/views/GovernanceTurrets";
@@ -222,6 +223,12 @@ const manifestRoute = createRoute({
 	component: Manifest,
 });
 
+const walletRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/wallet",
+	component: Wallet,
+});
+
 const jumpPlannerRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/jump-planner",
@@ -270,6 +277,7 @@ const routeTree = rootRoute.addChildren([
 	governanceTradeRoute,
 	assetsRoute,
 	manifestRoute,
+	walletRoute,
 	jumpPlannerRoute,
 	radarRoute,
 	peersRoute,
