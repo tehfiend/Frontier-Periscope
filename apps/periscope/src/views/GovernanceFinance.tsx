@@ -297,13 +297,15 @@ export function GovernanceFinance() {
 						<h2 className="text-lg font-medium text-zinc-100">
 							{importMode ? "Import Token" : "Create Currency"}
 						</h2>
-						<button
-							type="button"
-							onClick={() => setImportMode(!importMode)}
-							className="text-xs text-cyan-400 hover:text-cyan-300"
-						>
-							{importMode ? "Use gas station instead" : "Import existing token"}
-						</button>
+						{gasStationUrl && (
+							<button
+								type="button"
+								onClick={() => setImportMode(!importMode)}
+								className="text-xs text-cyan-400 hover:text-cyan-300"
+							>
+								{importMode ? "Use gas station instead" : "Import existing token"}
+							</button>
+						)}
 					</div>
 
 					{importMode ? (
@@ -501,24 +503,35 @@ export function GovernanceFinance() {
 					)}
 				</div>
 			) : (
-				<div className="flex gap-2">
-					<button
-						type="button"
-						onClick={() => { setCreating(true); setImportMode(false); }}
-						className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-700 py-3 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
-					>
-						<Plus size={16} />
-						{gasStationUrl ? "Create Currency" : "Add Currency"}
-					</button>
+				{gasStationUrl ? (
+					<div className="flex gap-2">
+						<button
+							type="button"
+							onClick={() => { setCreating(true); setImportMode(false); }}
+							className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-700 py-3 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
+						>
+							<Plus size={16} />
+							Create Currency
+						</button>
+						<button
+							type="button"
+							onClick={() => { setCreating(true); setImportMode(true); }}
+							className="flex items-center gap-2 rounded-lg border border-dashed border-zinc-700 px-4 py-3 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
+						>
+							<ArrowDownToLine size={16} />
+							Import
+						</button>
+					</div>
+				) : (
 					<button
 						type="button"
 						onClick={() => { setCreating(true); setImportMode(true); }}
-						className="flex items-center gap-2 rounded-lg border border-dashed border-zinc-700 px-4 py-3 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
+						className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-700 py-3 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
 					>
-						<ArrowDownToLine size={16} />
-						Import
+						<Plus size={16} />
+						Add Currency
 					</button>
-				</div>
+				)}
 			)}
 		</div>
 	);
