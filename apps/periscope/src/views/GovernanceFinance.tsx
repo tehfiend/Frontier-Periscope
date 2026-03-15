@@ -11,7 +11,6 @@ import {
 	Loader2,
 	AlertCircle,
 	Package,
-	ArrowDownToLine,
 	Send,
 	Flame,
 	Target,
@@ -24,7 +23,6 @@ import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
 import type { CurrencyRecord } from "@/db/types";
-import { TENANTS } from "@/chain/config";
 import {
 	buildDepositTreasuryCap,
 	buildMintAndTransfer,
@@ -34,6 +32,8 @@ import {
 	getContractAddresses,
 	queryTokenSupply,
 	queryOwnedCoins,
+	buildPublishToken,
+	parsePublishResult,
 	type TenantId as ChainTenantId,
 } from "@tehfrontier/chain-shared";
 
@@ -66,19 +66,12 @@ export function GovernanceFinance() {
 	);
 
 	const [creating, setCreating] = useState(false);
-	const gasStationUrl = TENANTS[tenant].gasStationUrl;
-	const [importMode, setImportMode] = useState(!gasStationUrl);
 	const [symbol, setSymbol] = useState("");
 	const [tokenName, setTokenName] = useState("");
 	const [description, setDescription] = useState("");
 	const [decimals, setDecimals] = useState(9);
 	const [buildStatus, setBuildStatus] = useState<BuildStatus>("idle");
 	const [buildError, setBuildError] = useState("");
-
-	// Import form fields (manual entry for tokens created via CLI)
-	const [importPackageId, setImportPackageId] = useState("");
-	const [importCoinType, setImportCoinType] = useState("");
-	const [importTreasuryCapId, setImportTreasuryCapId] = useState("");
 
 	const isProcessing =
 		buildStatus === "building" ||
@@ -126,86 +119,43 @@ export function GovernanceFinance() {
 		);
 	}
 
-	async function handleImportCurrency() {
-		if (!importPackageId.trim() || !importCoinType.trim() || !importTreasuryCapId.trim() || !org)
-			return;
-		if (!symbol.trim() || !tokenName.trim()) return;
-
-		try {
-			// Derive module name from coinType: "0xabc::MODULE::MODULE" → "MODULE"
-			const parts = importCoinType.trim().split("::");
-			const moduleName = parts.length >= 2 ? parts[1] : "";
-
-			const now = new Date().toISOString();
-			await db.currencies.add({
-				id: crypto.randomUUID(),
-				orgId: org.id,
-				symbol: symbol.trim().toUpperCase(),
-				name: tokenName.trim(),
-				description: description.trim(),
-				moduleName,
-				coinType: importCoinType.trim(),
-				packageId: importPackageId.trim(),
-				treasuryCapId: importTreasuryCapId.trim(),
-				decimals,
-				createdAt: now,
-				updatedAt: now,
-			});
-
-			setSymbol("");
-			setTokenName("");
-			setDescription("");
-			setImportPackageId("");
-			setImportCoinType("");
-			setImportTreasuryCapId("");
-			setCreating(false);
-			setImportMode(false);
-			setBuildStatus("done");
-		} catch (err) {
-			setBuildStatus("error");
-			setBuildError(err instanceof Error ? err.message : String(err));
-		}
-	}
-
 	async function handleCreateCurrency() {
-		if (!symbol.trim() || !tokenName.trim() || !org || !account || !suiAddress) return;
-		if (!gasStationUrl) {
-			setBuildError("Gas station not configured for this server.");
-			setBuildStatus("error");
-			return;
-		}
+		if (!symbol.trim() || !tokenName.trim() || !org || !account) return;
 
 		setBuildStatus("building");
 		setBuildError("");
 
 		try {
-			const res = await fetch(`${gasStationUrl}/build-token`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					symbol: symbol.trim().toUpperCase(),
-					name: tokenName.trim(),
-					description: description.trim(),
-					decimals,
-					senderAddress: account.address,
-				}),
+			// Build publish transaction in-browser (no server needed)
+			const tx = buildPublishToken({
+				symbol: symbol.trim().toUpperCase(),
+				name: tokenName.trim(),
+				description: description.trim() || `${tokenName.trim()} token`,
+				decimals,
 			});
 
-			if (!res.ok) {
-				const err = await res
-					.json()
-					.catch(() => ({ error: "Token build failed" }));
+			// User signs with their wallet (EVE Vault sponsors gas)
+			const result = await signAndExecute({ transaction: tx });
+
+			// Parse the published package details from objectChanges
+			const changes = result.effects?.created
+				? [] // fallback
+				: [];
+			const objectChanges =
+				(result as Record<string, unknown>).objectChanges as Array<{
+					type: string;
+					packageId?: string;
+					objectType?: string;
+					objectId?: string;
+					modules?: string[];
+				}> ?? [];
+
+			const parsed = parsePublishResult(objectChanges);
+			if (!parsed) {
 				throw new Error(
-					err.error ?? `Token build failed: ${res.status}`,
+					"Token published but could not parse result. Check transaction on explorer.",
 				);
 			}
-
-			const result = (await res.json()) as {
-				packageId: string;
-				coinType: string;
-				treasuryCapId: string;
-				moduleName: string;
-			};
 
 			const now = new Date().toISOString();
 			await db.currencies.add({
@@ -214,10 +164,10 @@ export function GovernanceFinance() {
 				symbol: symbol.trim().toUpperCase(),
 				name: tokenName.trim(),
 				description: description.trim(),
-				moduleName: result.moduleName,
-				coinType: result.coinType,
-				packageId: result.packageId,
-				treasuryCapId: result.treasuryCapId,
+				moduleName: parsed.moduleName,
+				coinType: parsed.coinType,
+				packageId: parsed.packageId,
+				treasuryCapId: parsed.treasuryCapId,
 				decimals,
 				createdAt: now,
 				updatedAt: now,
@@ -290,247 +240,117 @@ export function GovernanceFinance() {
 				</div>
 			)}
 
-			{/* Create / Import Currency */}
+			{/* Create Currency */}
 			{creating ? (
 				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
-					<div className="mb-4 flex items-center justify-between">
-						<h2 className="text-lg font-medium text-zinc-100">
-							{importMode ? "Import Token" : "Create Currency"}
-						</h2>
-						{gasStationUrl && (
+					<h2 className="mb-4 text-lg font-medium text-zinc-100">
+						Create Currency
+					</h2>
+					<div className="space-y-4">
+						<div>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
+								Symbol
+							</label>
+							<input
+								type="text"
+								value={symbol}
+								onChange={(e) => setSymbol(e.target.value)}
+								placeholder="e.g., GOLD"
+								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+								maxLength={10}
+							/>
+						</div>
+						<div>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
+								Name
+							</label>
+							<input
+								type="text"
+								value={tokenName}
+								onChange={(e) => setTokenName(e.target.value)}
+								placeholder="e.g., Organization Gold"
+								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+								maxLength={100}
+							/>
+						</div>
+						<div>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
+								Description
+							</label>
+							<textarea
+								value={description}
+								onChange={(e) => setDescription(e.target.value)}
+								placeholder="e.g., Official currency of our organization"
+								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+								maxLength={500}
+								rows={2}
+							/>
+						</div>
+						<div>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
+								Decimals
+							</label>
+							<input
+								type="number"
+								value={decimals}
+								onChange={(e) => setDecimals(Number(e.target.value))}
+								min={0}
+								max={18}
+								className="w-32 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
+							/>
+						</div>
+						{!account && (
+							<div className="rounded border border-amber-900/50 bg-amber-950/20 p-3">
+								<p className="text-xs text-amber-400">
+									Connect your wallet to publish this token on-chain.
+								</p>
+								<div className="mt-2">
+									<WalletConnect />
+								</div>
+							</div>
+						)}
+						<div className="flex gap-2">
 							<button
 								type="button"
-								onClick={() => setImportMode(!importMode)}
-								className="text-xs text-cyan-400 hover:text-cyan-300"
+								onClick={handleCreateCurrency}
+								disabled={!symbol.trim() || !tokenName.trim() || isProcessing || !account}
+								className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
 							>
-								{importMode ? "Use gas station instead" : "Import existing token"}
+								{isProcessing ? (
+									<span className="flex items-center gap-2">
+										<Loader2 size={14} className="animate-spin" />{" "}
+										Publishing...
+									</span>
+								) : (
+									"Create Currency"
+								)}
 							</button>
+							<button
+								type="button"
+								onClick={() => setCreating(false)}
+								className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:text-zinc-300"
+							>
+								Cancel
+							</button>
+						</div>
+						{isProcessing && (
+							<p className="text-xs text-zinc-500">
+								Your wallet will prompt you to sign. The token will be
+								published directly to Sui testnet.
+							</p>
 						)}
 					</div>
-
-					{importMode ? (
-						<div className="space-y-4">
-							<p className="text-xs text-zinc-500">
-								Paste token details from <code className="rounded bg-zinc-800 px-1">./scripts/create-token.sh</code> or any Sui coin publish.
-							</p>
-							<div className="grid grid-cols-2 gap-4">
-								<div>
-									<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-										Symbol
-									</label>
-									<input
-										type="text"
-										value={symbol}
-										onChange={(e) => setSymbol(e.target.value)}
-										placeholder="e.g., GOLD"
-										className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-										maxLength={10}
-									/>
-								</div>
-								<div>
-									<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-										Name
-									</label>
-									<input
-										type="text"
-										value={tokenName}
-										onChange={(e) => setTokenName(e.target.value)}
-										placeholder="e.g., Organization Gold"
-										className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-										maxLength={100}
-									/>
-								</div>
-							</div>
-							<div>
-								<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-									Package ID
-								</label>
-								<input
-									type="text"
-									value={importPackageId}
-									onChange={(e) => setImportPackageId(e.target.value)}
-									placeholder="0x..."
-									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-								/>
-							</div>
-							<div>
-								<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-									Coin Type
-								</label>
-								<input
-									type="text"
-									value={importCoinType}
-									onChange={(e) => setImportCoinType(e.target.value)}
-									placeholder="0x...::MODULE::MODULE"
-									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-								/>
-							</div>
-							<div>
-								<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-									Treasury Cap ID
-								</label>
-								<input
-									type="text"
-									value={importTreasuryCapId}
-									onChange={(e) => setImportTreasuryCapId(e.target.value)}
-									placeholder="0x..."
-									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-								/>
-							</div>
-							<div className="flex gap-2">
-								<button
-									type="button"
-									onClick={handleImportCurrency}
-									disabled={
-										!symbol.trim() ||
-										!tokenName.trim() ||
-										!importPackageId.trim() ||
-										!importCoinType.trim() ||
-										!importTreasuryCapId.trim()
-									}
-									className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-								>
-									Import Token
-								</button>
-								<button
-									type="button"
-									onClick={() => { setCreating(false); setImportMode(false); }}
-									className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:text-zinc-300"
-								>
-									Cancel
-								</button>
-							</div>
-						</div>
-					) : (
-						<div className="space-y-4">
-							{!gasStationUrl && (
-								<div className="rounded border border-amber-900/50 bg-amber-950/20 p-3">
-									<p className="text-xs text-amber-400">
-										Gas station not available. Use{" "}
-										<button type="button" onClick={() => setImportMode(true)} className="underline hover:text-amber-300">Import Token</button>
-										{" "}to add a token created via CLI.
-									</p>
-								</div>
-							)}
-							<div>
-								<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-									Symbol
-								</label>
-								<input
-									type="text"
-									value={symbol}
-									onChange={(e) => setSymbol(e.target.value)}
-									placeholder="e.g., GOLD"
-									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-									maxLength={10}
-								/>
-							</div>
-							<div>
-								<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-									Name
-								</label>
-								<input
-									type="text"
-									value={tokenName}
-									onChange={(e) => setTokenName(e.target.value)}
-									placeholder="e.g., Organization Gold"
-									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-									maxLength={100}
-								/>
-							</div>
-							<div>
-								<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-									Description
-								</label>
-								<textarea
-									value={description}
-									onChange={(e) => setDescription(e.target.value)}
-									placeholder="e.g., Official currency of our organization"
-									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-									maxLength={500}
-									rows={2}
-								/>
-							</div>
-							<div>
-								<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-									Decimals
-								</label>
-								<input
-									type="number"
-									value={decimals}
-									onChange={(e) => setDecimals(Number(e.target.value))}
-									min={0}
-									max={18}
-									className="w-32 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
-								/>
-							</div>
-							<div className="flex gap-2">
-								<button
-									type="button"
-									onClick={handleCreateCurrency}
-									disabled={
-										!symbol.trim() ||
-										!tokenName.trim() ||
-										isProcessing ||
-										!gasStationUrl
-									}
-									className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-								>
-									{isProcessing ? (
-										<span className="flex items-center gap-2">
-											<Loader2 size={14} className="animate-spin" />{" "}
-											Publishing token...
-										</span>
-									) : (
-										"Publish Currency"
-									)}
-								</button>
-								<button
-									type="button"
-									onClick={() => setCreating(false)}
-									className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:text-zinc-300"
-								>
-									Cancel
-								</button>
-							</div>
-							{isProcessing && (
-								<p className="text-xs text-zinc-500">
-									Building and publishing your token on-chain.
-									This may take 30-60 seconds...
-								</p>
-							)}
-						</div>
-					)}
 				</div>
-			) : gasStationUrl ? (
-					<div className="flex gap-2">
-						<button
-							type="button"
-							onClick={() => { setCreating(true); setImportMode(false); }}
-							className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-700 py-3 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
-						>
-							<Plus size={16} />
-							Create Currency
-						</button>
-						<button
-							type="button"
-							onClick={() => { setCreating(true); setImportMode(true); }}
-							className="flex items-center gap-2 rounded-lg border border-dashed border-zinc-700 px-4 py-3 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
-						>
-							<ArrowDownToLine size={16} />
-							Import
-						</button>
-					</div>
-				) : (
-					<button
-						type="button"
-						onClick={() => { setCreating(true); setImportMode(true); }}
-						className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-700 py-3 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
-					>
-						<Plus size={16} />
-						Add Currency
-					</button>
-				)}
+			) : (
+				<button
+					type="button"
+					onClick={() => setCreating(true)}
+					className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-700 py-3 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
+				>
+					<Plus size={16} />
+					Create Currency
+				</button>
+			)}
 		</div>
 	);
 }

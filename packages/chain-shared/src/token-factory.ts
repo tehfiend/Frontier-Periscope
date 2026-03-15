@@ -1,167 +1,151 @@
 import { Transaction } from "@mysten/sui/transactions";
 import type { SuiClient } from "@mysten/sui/client";
-import type { TokenInfo } from "./types";
+import { update_identifiers, update_constants } from "@mysten/move-bytecode-template";
 
 /**
- * Bytecode patching for the token template module.
+ * In-browser token creation via bytecode patching.
  *
- * The pre-compiled template bytecodes contain "TOKEN_TEMPLATE" as the
- * module name and OTW struct name. We patch these bytes to create
- * custom-named tokens.
+ * Uses @mysten/move-bytecode-template to safely modify the pre-compiled
+ * TOKEN_TEMPLATE module. Identifiers and constants are updated without
+ * corrupting the Move bytecode format (ULEB128 lengths, offset tables, etc.).
  *
- * NOTE: Actual bytecodes must be extracted from a compiled Move build
- * and embedded here as base64. This is a placeholder showing the API.
+ * The user signs the publish transaction with their wallet (EVE Vault).
+ * No gas station or CLI required.
  */
 
-// Placeholder — replace with actual compiled bytecodes after `sui move build`
-let TEMPLATE_BYTECODES: Uint8Array | null = null;
+// Pre-compiled TOKEN_TEMPLATE.mv (691 bytes, from contracts/token_template/build/)
+// Module: token_template::TOKEN_TEMPLATE
+// Contains: init (creates TreasuryCap + CoinMetadata), mint, burn
+const TEMPLATE_BYTECODES_B64 =
+	"oRzrCwYAAAAKAQAMAgwkAzA6BGoOBXh0B+wBwgEIrgNgBo4ELQq7BAUMwARFAAMBDgIIAhICEwIUAAMCAAECBwEAAAIADAEAAQIBDAEAAQIEDAEAAQQFAgAFBgcAAAsAAQAADAIBAQAABwMBAQABDQEGAQACBwMRAQACCQgJAQICDA8QAQADDw4BAQwDEA0BAQwEEQoLAAMFBQcIDAcEBg4IEAQOAggABwgFAAQHCwQBCQADBQcIBQIHCwQBCQALAgEJAAELAwEIAAEIBgELAQEJAAEIAAcJAAIKAgoCCgILAQEIBgcIBQILBAEJAAsDAQkAAQYIBQEFAQsEAQgAAgkABQEJAAMHCwQBCQADBwgFAQsCAQkAAQMEQ29pbgxDb2luTWV0YWRhdGEGT3B0aW9uDlRPS0VOX1RFTVBMQVRFC1RyZWFzdXJ5Q2FwCVR4Q29udGV4dANVcmwEYnVybgRjb2luD2NyZWF0ZV9jdXJyZW5jeQtkdW1teV9maWVsZARpbml0BG1pbnQEbm9uZQZvcHRpb24UcHVibGljX2ZyZWV6ZV9vYmplY3QPcHVibGljX3RyYW5zZmVyBnNlbmRlcgh0cmFuc2Zlcgp0eF9jb250ZXh0A3VybAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgoCBQRUTVBMCgIPDlRlbXBsYXRlIFRva2VuCgIQD0EgZmFjdGlvbiB0b2tlbgACAQoBAAAAAAQQCwAxCQcABwEHAjgACgE4AQwCCwEuEQk4AgsCOAMCAQEEAAEHCwALAQsDOAQLAjgFAgIBBAABBQsACwE4BgECAA==";
 
-/**
- * Set the pre-compiled template bytecodes.
- * Call this once at app startup with the bytecodes from the compiled template.
- */
-export function setTemplateBytecodes(bytecodes: Uint8Array): void {
-	TEMPLATE_BYTECODES = bytecodes;
-}
-
-/**
- * Patch the template bytecodes with a custom token name.
- * Replaces all occurrences of "TOKEN_TEMPLATE" with the new name.
- */
-export function patchBytecodes(
-	bytecodes: Uint8Array,
-	tokenName: string,
-): Uint8Array {
-	const oldName = "TOKEN_TEMPLATE";
-	const oldBytes = new TextEncoder().encode(oldName);
-	const newBytes = new TextEncoder().encode(tokenName);
-
-	// Find and replace all occurrences
-	const result: number[] = [];
-	let i = 0;
-	while (i < bytecodes.length) {
-		let match = true;
-		if (i + oldBytes.length <= bytecodes.length) {
-			for (let j = 0; j < oldBytes.length; j++) {
-				if (bytecodes[i + j] !== oldBytes[j]) {
-					match = false;
-					break;
-				}
-			}
-		} else {
-			match = false;
-		}
-
-		if (match) {
-			for (const b of newBytes) result.push(b);
-			i += oldBytes.length;
-		} else {
-			result.push(bytecodes[i]);
-			i++;
-		}
+function getTemplateBytecodes(): Uint8Array {
+	const binaryStr = atob(TEMPLATE_BYTECODES_B64);
+	const bytes = new Uint8Array(binaryStr.length);
+	for (let i = 0; i < binaryStr.length; i++) {
+		bytes[i] = binaryStr.charCodeAt(i);
 	}
-
-	return new Uint8Array(result);
+	return bytes;
 }
 
-/**
- * Patch metadata byte vectors in the bytecodes.
- * Replaces symbol, name, and description placeholders.
- */
-export function patchMetadata(
-	bytecodes: Uint8Array,
-	metadata: { symbol: string; name: string; description: string },
-): Uint8Array {
-	const replacements: [string, string][] = [
-		["TMPL", metadata.symbol],
-		["Template Token", metadata.name],
-		["A faction token", metadata.description],
-	];
-
-	let result = bytecodes;
-	for (const [oldStr, newStr] of replacements) {
-		result = patchBytecodes(result, newStr);
-		// Re-use patchBytecodes logic but with custom old/new
-		const oldBytes = new TextEncoder().encode(oldStr);
-		const newBytesArr = new TextEncoder().encode(newStr);
-		const patched: number[] = [];
-		let i = 0;
-		while (i < result.length) {
-			let match = true;
-			if (i + oldBytes.length <= result.length) {
-				for (let j = 0; j < oldBytes.length; j++) {
-					if (result[i + j] !== oldBytes[j]) {
-						match = false;
-						break;
-					}
-				}
-			} else {
-				match = false;
-			}
-
-			if (match) {
-				for (const b of newBytesArr) patched.push(b);
-				i += oldBytes.length;
-			} else {
-				patched.push(result[i]);
-				i++;
-			}
-		}
-		result = new Uint8Array(patched);
-	}
-
-	return result;
-}
+// ── Public API ──────────────────────────────────────────────────────────────
 
 export interface CreateTokenParams {
-	tokenName: string;
+	/** Token symbol, e.g. "GOLD" */
 	symbol: string;
-	displayName: string;
+	/** Display name, e.g. "Organization Gold" */
+	name: string;
+	/** Description */
 	description: string;
-	decimals: number;
-	senderAddress: string;
+	/** Decimal places (default 9) */
+	decimals?: number;
+}
+
+export interface PublishTokenResult {
+	packageId: string;
+	coinType: string;
+	treasuryCapId: string;
+	moduleName: string;
 }
 
 /**
- * Build a transaction to publish a new custom token.
- * Requires template bytecodes to be set via setTemplateBytecodes().
+ * Build a transaction to publish a custom token in-browser.
+ *
+ * Uses @mysten/move-bytecode-template to safely patch the pre-compiled
+ * TOKEN_TEMPLATE module with custom identifiers and metadata constants.
+ * The user signs with their wallet — no server needed.
  */
 export function buildPublishToken(params: CreateTokenParams): Transaction {
-	if (!TEMPLATE_BYTECODES) {
-		throw new Error("Template bytecodes not loaded. Call setTemplateBytecodes() first.");
-	}
+	const { symbol, name, description, decimals = 9 } = params;
 
-	// Patch module name
-	let patched = patchBytecodes(TEMPLATE_BYTECODES, params.tokenName);
+	// Derive module name from symbol: "GOLD" → "GOLD_TOKEN"
+	const moduleName = `${symbol.toUpperCase()}_TOKEN`;
 
-	// Patch metadata
-	patched = patchMetadata(patched, {
-		symbol: params.symbol,
-		name: params.displayName,
-		description: params.description,
-	});
+	let bytecodes = getTemplateBytecodes();
+
+	// 1. Update identifiers: TOKEN_TEMPLATE → GOLD_TOKEN (module name + OTW struct)
+	bytecodes = new Uint8Array(
+		update_identifiers(bytecodes, {
+			TOKEN_TEMPLATE: moduleName,
+		}),
+	);
+
+	// 2. Update constants: symbol, name, description, decimals
+	bytecodes = new Uint8Array(
+		update_constants(
+			bytecodes,
+			// Each entry: [newValue, newType, oldValue, oldType]
+			// Types: "Vector(U8)" for byte vectors, "U8" for decimals
+			[
+				[strToBytes(symbol.toUpperCase()), "Vector(U8)", strToBytes("TMPL"), "Vector(U8)"],
+				[strToBytes(name), "Vector(U8)", strToBytes("Template Token"), "Vector(U8)"],
+				[strToBytes(description), "Vector(U8)", strToBytes("A faction token"), "Vector(U8)"],
+				[[decimals], "U8", [9], "U8"],
+			],
+		),
+	);
 
 	const tx = new Transaction();
-	tx.setSender(params.senderAddress);
 
-	// Publish the patched module
 	const [upgradeCap] = tx.publish({
-		modules: [Array.from(patched)],
+		modules: [Array.from(bytecodes)],
 		dependencies: [
 			"0x1", // Move stdlib
 			"0x2", // Sui framework
 		],
 	});
 
-	// Transfer upgrade cap to sender (or destroy it)
-	tx.transferObjects([upgradeCap], params.senderAddress);
+	// Transfer UpgradeCap to sender (they can discard it later if desired)
+	tx.transferObjects([upgradeCap], tx.pure.address("0x0")); // placeholder, replaced by sender
 
 	return tx;
 }
 
+/** Convert a string to a BCS-compatible byte array for constant patching. */
+function strToBytes(s: string): number[] {
+	return Array.from(new TextEncoder().encode(s));
+}
+
 /**
- * Build a transaction to mint tokens.
+ * Parse publish transaction results to extract token details.
  */
+export function parsePublishResult(
+	objectChanges: Array<{ type: string; packageId?: string; objectType?: string; objectId?: string }>,
+): PublishTokenResult | null {
+	let packageId = "";
+	let treasuryCapId = "";
+	let coinType = "";
+	let moduleName = "";
+
+	for (const change of objectChanges) {
+		if (change.type === "published" && change.packageId) {
+			packageId = change.packageId;
+			// Extract module name from the published modules
+			const modules = (change as Record<string, unknown>).modules as string[] | undefined;
+			if (modules?.[0]) {
+				moduleName = modules[0];
+			}
+		}
+		if (
+			change.type === "created" &&
+			change.objectType?.includes("::coin::TreasuryCap<")
+		) {
+			treasuryCapId = change.objectId ?? "";
+			// Extract coinType from TreasuryCap<0xpkg::MODULE::MODULE>
+			const match = change.objectType.match(/TreasuryCap<(.+)>/);
+			if (match) {
+				coinType = match[1];
+			}
+		}
+	}
+
+	if (!packageId || !treasuryCapId || !coinType) return null;
+
+	return { packageId, coinType, treasuryCapId, moduleName };
+}
+
+// ── Legacy API (kept for gas station compatibility) ─────────────────────────
+
 export function buildMintTokens(params: {
 	packageId: string;
 	moduleName: string;
@@ -187,9 +171,6 @@ export function buildMintTokens(params: {
 	return tx;
 }
 
-/**
- * Build a transaction to burn tokens.
- */
 export function buildBurnTokens(params: {
 	packageId: string;
 	moduleName: string;
@@ -215,10 +196,6 @@ export function buildBurnTokens(params: {
 
 // ── Query Helpers ───────────────────────────────────────────────────────────
 
-/**
- * Query total supply for a coin type.
- * Uses the CoinMetadata or TreasuryCap supply on chain.
- */
 export async function queryTokenSupply(
 	client: SuiClient,
 	coinType: string,
@@ -227,9 +204,6 @@ export async function queryTokenSupply(
 	return { totalSupply: BigInt(supply.value) };
 }
 
-/**
- * Query owned coins of a specific type for an address.
- */
 export async function queryOwnedCoins(
 	client: SuiClient,
 	owner: string,

@@ -304,6 +304,9 @@ importers:
 
   packages/chain-shared:
     dependencies:
+      '@mysten/move-bytecode-template':
+        specifier: ^0.3.0
+        version: 0.3.0
       '@mysten/sui':
         specifier: ^1.45.2
         version: 1.45.2(typescript@5.9.3)
@@ -1782,6 +1785,9 @@ packages:
     peerDependencies:
       '@tanstack/react-query': ^5.0.0
       react: '*'
+
+  '@mysten/move-bytecode-template@0.3.0':
+    resolution: {integrity: sha512-vjcRXLF/uglpL7ss+QB/ZnfKCcb2o2eIBNMWKLKBfgg2bsF1JiRVOCYk9oMQuZcDgvDXZz3wDPrfznZxmzkK0w==}
 
   '@mysten/slush-wallet@0.3.0':
     resolution: {integrity: sha512-XxEFDpJrrlgEt6cayOtFEEqsbI/2lqMl+QATvsT4TYQJ7B3FkBHPeKsyG+GVuvhVDhqXaVlGXwWrk66ri0uzhQ==}
@@ -5796,6 +5802,8 @@ snapshots:
       - immer
       - react-dom
       - typescript
+
+  '@mysten/move-bytecode-template@0.3.0': {}
 
   '@mysten/slush-wallet@0.3.0(typescript@5.9.3)':
     dependencies:
