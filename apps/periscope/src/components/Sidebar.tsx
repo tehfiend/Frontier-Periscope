@@ -29,6 +29,7 @@ import {
 	Building2,
 	Coins,
 	Flag,
+	ShoppingBag,
 	type LucideIcon,
 } from "lucide-react";
 
@@ -58,6 +59,7 @@ const navGroups: NavGroup[] = [
 			{ to: "/governance", icon: Building2, label: "Organization" },
 			{ to: "/governance/turrets", icon: Crosshair, label: "Turrets" },
 			{ to: "/governance/finance", icon: Coins, label: "Finance" },
+			{ to: "/governance/trade", icon: ShoppingBag, label: "Trade" },
 			{ to: "/governance/claims", icon: Flag, label: "Claims" },
 		],
 	},

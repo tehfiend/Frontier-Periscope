@@ -482,9 +482,12 @@ export interface CurrencyRecord extends SyncMeta {
 	orgId: string;
 	symbol: string;
 	name: string;
+	description?: string;
+	moduleName?: string;
 	coinType: string;
 	packageId: string;
 	treasuryCapId: string;
+	orgTreasuryId?: string;
 	decimals: number;
 	createdAt: string;
 	updatedAt: string;

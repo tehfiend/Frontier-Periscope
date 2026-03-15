@@ -25,6 +25,7 @@ import { GovernanceDashboard } from "@/views/GovernanceDashboard";
 import { GovernanceTurrets } from "@/views/GovernanceTurrets";
 import { GovernanceFinance } from "@/views/GovernanceFinance";
 import { GovernanceClaims } from "@/views/GovernanceClaims";
+import { GovernanceTrade } from "@/views/GovernanceTrade";
 
 // Lazy-load heavy views that pull in large deps
 const LazyStarMap = lazy(() => import("@/views/StarMap").then((m) => ({ default: m.StarMap })));
@@ -191,6 +192,12 @@ const governanceClaimsRoute = createRoute({
 	component: GovernanceClaims,
 });
 
+const governanceTradeRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/governance/trade",
+	component: GovernanceTrade,
+});
+
 const settingsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/settings",
@@ -260,6 +267,7 @@ const routeTree = rootRoute.addChildren([
 	governanceTurretsRoute,
 	governanceFinanceRoute,
 	governanceClaimsRoute,
+	governanceTradeRoute,
 	assetsRoute,
 	manifestRoute,
 	jumpPlannerRoute,

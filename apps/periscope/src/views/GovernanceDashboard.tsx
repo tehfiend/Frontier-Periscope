@@ -11,6 +11,7 @@ import {
 	Crosshair,
 	Coins,
 	Flag,
+	ShoppingBag,
 	AlertCircle,
 	Trash2,
 	Info,
@@ -228,9 +229,10 @@ export function GovernanceDashboard() {
 			<Header orgName={org.name} />
 
 			{/* Quick Actions */}
-			<div className="mb-6 grid grid-cols-3 gap-3">
+			<div className="mb-6 grid grid-cols-4 gap-3">
 				<QuickAction to="/governance/turrets" icon={Crosshair} label="Turrets" />
 				<QuickAction to="/governance/finance" icon={Coins} label="Finance" />
+				<QuickAction to="/governance/trade" icon={ShoppingBag} label="Trade" />
 				<QuickAction to="/governance/claims" icon={Flag} label="Claims" />
 			</div>
 

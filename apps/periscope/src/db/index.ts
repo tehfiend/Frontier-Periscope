@@ -354,6 +354,22 @@ class PeriscopeDB extends Dexie {
 			systemNicknames: "id, systemId",
 			currencies: "id, orgId, symbol, packageId, treasuryCapId, updatedAt, _hlc",
 		});
+
+		// V13: Currency — add description, moduleName, orgTreasuryId + coinType index
+		this.version(13)
+			.stores({
+				currencies: "id, orgId, symbol, coinType, packageId",
+			})
+			.upgrade(async (tx) => {
+				await tx
+					.table("currencies")
+					.toCollection()
+					.modify((c: { description?: string; moduleName?: string; orgTreasuryId?: string }) => {
+						c.description = c.description ?? "";
+						c.moduleName = c.moduleName ?? "";
+						c.orgTreasuryId = c.orgTreasuryId ?? "";
+					});
+			});
 	}
 }
 

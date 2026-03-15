@@ -1,16 +1,64 @@
-import { useState } from "react";
-import { useCurrentAccount } from "@mysten/dapp-kit";
+import { useState, useEffect } from "react";
+import {
+	useCurrentAccount,
+	useSignAndExecuteTransaction,
+	useSuiClient,
+} from "@mysten/dapp-kit";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Coins, Plus, Loader2, AlertCircle, Package } from "lucide-react";
+import {
+	Coins,
+	Plus,
+	Loader2,
+	AlertCircle,
+	Package,
+	ArrowDownToLine,
+	Send,
+	Flame,
+	Target,
+	ChevronDown,
+	ChevronUp,
+	RefreshCw,
+} from "lucide-react";
 import { WalletConnect } from "@/components/WalletConnect";
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
 import type { CurrencyRecord } from "@/db/types";
+import { TENANTS } from "@/chain/config";
+import {
+	buildDepositTreasuryCap,
+	buildMintAndTransfer,
+	buildBurn,
+	buildFundBounty,
+	queryOrgTreasury,
+	getContractAddresses,
+	queryTokenSupply,
+	queryOwnedCoins,
+	type TenantId as ChainTenantId,
+} from "@tehfrontier/chain-shared";
+
+type BuildStatus =
+	| "idle"
+	| "building"
+	| "depositing"
+	| "minting"
+	| "burning"
+	| "posting-bounty"
+	| "done"
+	| "error";
 
 export function GovernanceFinance() {
 	const account = useCurrentAccount();
+	const tenant = useActiveTenant();
 	const org = useLiveQuery(() => db.organizations.filter(notDeleted).first());
 	const currencies = useLiveQuery(
-		() => org ? db.currencies.where("orgId").equals(org.id).filter(notDeleted).toArray() : [],
+		() =>
+			org
+				? db.currencies
+						.where("orgId")
+						.equals(org.id)
+						.filter(notDeleted)
+						.toArray()
+				: [],
 		[org?.id],
 	);
 
@@ -19,14 +67,25 @@ export function GovernanceFinance() {
 	const [tokenName, setTokenName] = useState("");
 	const [description, setDescription] = useState("");
 	const [decimals, setDecimals] = useState(9);
-	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [buildStatus, setBuildStatus] = useState<BuildStatus>("idle");
+	const [buildError, setBuildError] = useState("");
+
+	const gasStationUrl = TENANTS[tenant].gasStationUrl;
+	const isProcessing =
+		buildStatus === "building" ||
+		buildStatus === "depositing" ||
+		buildStatus === "minting" ||
+		buildStatus === "burning" ||
+		buildStatus === "posting-bounty";
 
 	if (!account) {
 		return (
 			<div className="flex h-full items-center justify-center">
 				<div className="text-center">
 					<Coins size={48} className="mx-auto mb-4 text-zinc-700" />
-					<p className="text-sm text-zinc-500">Connect your wallet to manage finance</p>
+					<p className="text-sm text-zinc-500">
+						Connect your wallet to manage finance
+					</p>
 					<div className="mt-4">
 						<WalletConnect />
 					</div>
@@ -41,12 +100,14 @@ export function GovernanceFinance() {
 				<Header />
 				<div className="flex flex-col items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 py-16">
 					<AlertCircle size={32} className="text-zinc-600" />
-					<p className="text-sm text-zinc-500">Create an organization first</p>
+					<p className="text-sm text-zinc-500">
+						Create an organization first
+					</p>
 					<a
 						href="/governance"
 						className="text-xs text-cyan-400 hover:text-cyan-300"
 					>
-						Go to Organization →
+						Go to Organization &rarr;
 					</a>
 				</div>
 			</div>
@@ -54,21 +115,56 @@ export function GovernanceFinance() {
 	}
 
 	async function handleCreateCurrency() {
-		if (!symbol.trim() || !tokenName.trim() || !org) return;
-		setIsSubmitting(true);
+		if (!symbol.trim() || !tokenName.trim() || !org || !account) return;
+		if (!gasStationUrl) {
+			setBuildError("Gas station not configured for this server.");
+			setBuildStatus("error");
+			return;
+		}
+
+		setBuildStatus("building");
+		setBuildError("");
 
 		try {
-			// Phase 1: store locally. User pays gas for on-chain token publish (via token-factory).
-			// Full integration with buildPublishToken() deferred until gas station supports it.
+			const res = await fetch(`${gasStationUrl}/build-token`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					symbol: symbol.trim().toUpperCase(),
+					name: tokenName.trim(),
+					description: description.trim(),
+					decimals,
+					senderAddress: account.address,
+				}),
+			});
+
+			if (!res.ok) {
+				const err = await res
+					.json()
+					.catch(() => ({ error: "Token build failed" }));
+				throw new Error(
+					err.error ?? `Token build failed: ${res.status}`,
+				);
+			}
+
+			const result = (await res.json()) as {
+				packageId: string;
+				coinType: string;
+				treasuryCapId: string;
+				moduleName: string;
+			};
+
 			const now = new Date().toISOString();
 			await db.currencies.add({
 				id: crypto.randomUUID(),
 				orgId: org.id,
 				symbol: symbol.trim().toUpperCase(),
 				name: tokenName.trim(),
-				coinType: "", // Filled after on-chain publish
-				packageId: "", // Filled after on-chain publish
-				treasuryCapId: "", // Filled after on-chain publish
+				description: description.trim(),
+				moduleName: result.moduleName,
+				coinType: result.coinType,
+				packageId: result.packageId,
+				treasuryCapId: result.treasuryCapId,
 				decimals,
 				createdAt: now,
 				updatedAt: now,
@@ -78,8 +174,10 @@ export function GovernanceFinance() {
 			setTokenName("");
 			setDescription("");
 			setCreating(false);
-		} finally {
-			setIsSubmitting(false);
+			setBuildStatus("done");
+		} catch (err) {
+			setBuildStatus("error");
+			setBuildError(err instanceof Error ? err.message : String(err));
 		}
 	}
 
@@ -87,12 +185,41 @@ export function GovernanceFinance() {
 		<div className="mx-auto max-w-3xl p-6">
 			<Header />
 
-			<div className="mb-6 rounded-lg border border-amber-900/50 bg-amber-950/20 p-4">
-				<p className="text-sm text-amber-400">
-					Phase 1: Currency creation records are stored locally. On-chain token publishing requires
-					user-paid gas via wallet. Gas station sponsorship for token publish coming in Phase 2.
-				</p>
-			</div>
+			{!gasStationUrl && (
+				<div className="mb-6 rounded-lg border border-amber-900/50 bg-amber-950/20 p-4">
+					<p className="text-sm text-amber-400">
+						Gas station not configured for this server. Token
+						publishing requires a running gas station.
+					</p>
+				</div>
+			)}
+
+			{/* Status Banner */}
+			{buildStatus !== "idle" && buildStatus !== "done" && (
+				<StatusBanner
+					status={buildStatus}
+					error={buildError}
+					onDismiss={() => {
+						setBuildStatus("idle");
+						setBuildError("");
+					}}
+				/>
+			)}
+
+			{buildStatus === "done" && (
+				<div className="mb-6 rounded-lg border border-green-900/50 bg-green-950/20 p-4">
+					<p className="text-sm text-green-400">
+						Operation completed successfully.
+					</p>
+					<button
+						type="button"
+						onClick={() => setBuildStatus("idle")}
+						className="mt-2 text-xs text-zinc-400 hover:text-zinc-300"
+					>
+						Dismiss
+					</button>
+				</div>
+			)}
 
 			{/* Currency List */}
 			{(currencies ?? []).length > 0 && (
@@ -101,7 +228,17 @@ export function GovernanceFinance() {
 						Currencies ({currencies?.length})
 					</h2>
 					{currencies?.map((c) => (
-						<CurrencyCard key={c.id} currency={c} />
+						<CurrencyCard
+							key={c.id}
+							currency={c}
+							org={org}
+							tenant={tenant}
+							account={account}
+							onStatusChange={(s, e) => {
+								setBuildStatus(s);
+								setBuildError(e ?? "");
+							}}
+						/>
 					))}
 				</div>
 			)}
@@ -109,10 +246,14 @@ export function GovernanceFinance() {
 			{/* Create Currency */}
 			{creating ? (
 				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
-					<h2 className="mb-4 text-lg font-medium text-zinc-100">Create Currency</h2>
+					<h2 className="mb-4 text-lg font-medium text-zinc-100">
+						Create Currency
+					</h2>
 					<div className="space-y-4">
 						<div>
-							<label className="mb-1.5 block text-xs font-medium text-zinc-400">Symbol</label>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
+								Symbol
+							</label>
 							<input
 								type="text"
 								value={symbol}
@@ -123,7 +264,9 @@ export function GovernanceFinance() {
 							/>
 						</div>
 						<div>
-							<label className="mb-1.5 block text-xs font-medium text-zinc-400">Name</label>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
+								Name
+							</label>
 							<input
 								type="text"
 								value={tokenName}
@@ -134,11 +277,28 @@ export function GovernanceFinance() {
 							/>
 						</div>
 						<div>
-							<label className="mb-1.5 block text-xs font-medium text-zinc-400">Decimals</label>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
+								Description
+							</label>
+							<textarea
+								value={description}
+								onChange={(e) => setDescription(e.target.value)}
+								placeholder="e.g., Official currency of our organization"
+								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+								maxLength={500}
+								rows={2}
+							/>
+						</div>
+						<div>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
+								Decimals
+							</label>
 							<input
 								type="number"
 								value={decimals}
-								onChange={(e) => setDecimals(Number(e.target.value))}
+								onChange={(e) =>
+									setDecimals(Number(e.target.value))
+								}
 								min={0}
 								max={18}
 								className="w-32 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
@@ -148,15 +308,24 @@ export function GovernanceFinance() {
 							<button
 								type="button"
 								onClick={handleCreateCurrency}
-								disabled={!symbol.trim() || !tokenName.trim() || isSubmitting}
+								disabled={
+									!symbol.trim() ||
+									!tokenName.trim() ||
+									isProcessing ||
+									!gasStationUrl
+								}
 								className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
 							>
-								{isSubmitting ? (
+								{isProcessing ? (
 									<span className="flex items-center gap-2">
-										<Loader2 size={14} className="animate-spin" /> Creating...
+										<Loader2
+											size={14}
+											className="animate-spin"
+										/>{" "}
+										Publishing token...
 									</span>
 								) : (
-									"Create Currency"
+									"Publish Currency"
 								)}
 							</button>
 							<button
@@ -167,6 +336,12 @@ export function GovernanceFinance() {
 								Cancel
 							</button>
 						</div>
+						{isProcessing && (
+							<p className="text-xs text-zinc-500">
+								Building and publishing your token on-chain.
+								This may take 30-60 seconds...
+							</p>
+						)}
 					</div>
 				</div>
 			) : (
@@ -200,30 +375,797 @@ function Header() {
 	);
 }
 
-function CurrencyCard({ currency }: { currency: CurrencyRecord }) {
+function StatusBanner({
+	status,
+	error,
+	onDismiss,
+}: {
+	status: BuildStatus;
+	error: string;
+	onDismiss: () => void;
+}) {
+	const messages: Record<string, string> = {
+		building: "Building and publishing token on-chain...",
+		depositing: "Depositing TreasuryCap to OrgTreasury...",
+		minting: "Minting tokens...",
+		burning: "Burning tokens...",
+		"posting-bounty": "Posting bounty...",
+		error: "Operation failed",
+	};
+
+	const isError = status === "error";
+
 	return (
-		<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-			<div className="flex items-center justify-between">
+		<div
+			className={`mb-6 rounded-lg border p-4 ${
+				isError
+					? "border-red-900/50 bg-red-950/20"
+					: "border-cyan-900/50 bg-cyan-950/20"
+			}`}
+		>
+			<div className="flex items-center gap-2">
+				{isError ? (
+					<AlertCircle size={16} className="text-red-400" />
+				) : (
+					<Loader2 size={16} className="animate-spin text-cyan-400" />
+				)}
+				<span
+					className={`text-sm ${isError ? "text-red-300" : "text-cyan-300"}`}
+				>
+					{messages[status] ?? "Processing..."}
+				</span>
+			</div>
+			{error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+			{isError && (
+				<button
+					type="button"
+					onClick={onDismiss}
+					className="mt-2 text-xs text-zinc-400 hover:text-zinc-300"
+				>
+					Dismiss
+				</button>
+			)}
+		</div>
+	);
+}
+
+function CurrencyCard({
+	currency,
+	org,
+	tenant,
+	account,
+	onStatusChange,
+}: {
+	currency: CurrencyRecord;
+	org: { id: string; name: string; chainObjectId?: string };
+	tenant: string;
+	account: { address: string };
+	onStatusChange: (status: BuildStatus, error?: string) => void;
+}) {
+	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+	const suiClient = useSuiClient();
+
+	const [expanded, setExpanded] = useState(false);
+	const [treasuryInfo, setTreasuryInfo] = useState<{
+		totalSupply: bigint;
+	} | null>(null);
+	const [loadingTreasury, setLoadingTreasury] = useState(false);
+
+	// Mint state
+	const [showMint, setShowMint] = useState(false);
+	const [mintAmount, setMintAmount] = useState("");
+	const [mintRecipient, setMintRecipient] = useState("");
+
+	// Burn state
+	const [showBurn, setShowBurn] = useState(false);
+	const [burnCoinId, setBurnCoinId] = useState("");
+	const [ownedCoins, setOwnedCoins] = useState<
+		Array<{ objectId: string; balance: bigint }>
+	>([]);
+	const [loadingCoins, setLoadingCoins] = useState(false);
+
+	// Bounty state
+	const [showBounty, setShowBounty] = useState(false);
+	const [bountyTarget, setBountyTarget] = useState("");
+	const [bountyAmount, setBountyAmount] = useState("");
+	const [bountyExpiry, setBountyExpiry] = useState("");
+
+	const isPublished = !!currency.packageId;
+	const hasTreasury = !!currency.orgTreasuryId;
+	const addresses = getContractAddresses(tenant as ChainTenantId);
+
+	useEffect(() => {
+		if (expanded && hasTreasury && currency.orgTreasuryId) {
+			loadTreasuryInfo();
+		}
+	}, [expanded, hasTreasury, currency.orgTreasuryId]);
+
+	async function loadTreasuryInfo() {
+		if (!currency.orgTreasuryId) return;
+		setLoadingTreasury(true);
+		try {
+			const info = await queryOrgTreasury(
+				suiClient,
+				currency.orgTreasuryId,
+			);
+			setTreasuryInfo(info);
+		} catch {
+			setTreasuryInfo(null);
+		} finally {
+			setLoadingTreasury(false);
+		}
+	}
+
+	async function loadOwnedCoins() {
+		if (!currency.coinType) return;
+		setLoadingCoins(true);
+		try {
+			const coins = await queryOwnedCoins(
+				suiClient,
+				account.address,
+				currency.coinType,
+			);
+			setOwnedCoins(coins);
+		} catch {
+			setOwnedCoins([]);
+		} finally {
+			setLoadingCoins(false);
+		}
+	}
+
+	async function handleDeposit() {
+		if (
+			!currency.treasuryCapId ||
+			!currency.coinType ||
+			!org.chainObjectId
+		)
+			return;
+		if (!addresses.governanceExt?.packageId) {
+			onStatusChange(
+				"error",
+				"GovernanceExt contract not deployed yet.",
+			);
+			return;
+		}
+
+		onStatusChange("depositing");
+		try {
+			const tx = buildDepositTreasuryCap({
+				governanceExtPackageId: addresses.governanceExt.packageId,
+				orgObjectId: org.chainObjectId,
+				treasuryCapId: currency.treasuryCapId,
+				coinType: currency.coinType,
+				senderAddress: account.address,
+			});
+
+			const result = await signAndExecute({ transaction: tx });
+
+			// Parse objectChanges to find OrgTreasury
+			const txResponse = await suiClient.waitForTransaction({
+				digest: result.digest,
+				options: { showObjectChanges: true },
+			});
+
+			const treasuryCreated = txResponse.objectChanges?.find(
+				(change) =>
+					change.type === "created" &&
+					change.objectType.includes("::treasury::OrgTreasury"),
+			);
+			const orgTreasuryId =
+				treasuryCreated && treasuryCreated.type === "created"
+					? treasuryCreated.objectId
+					: undefined;
+
+			if (orgTreasuryId) {
+				await db.currencies.update(currency.id, {
+					orgTreasuryId,
+					updatedAt: new Date().toISOString(),
+				});
+			}
+
+			onStatusChange("done");
+		} catch (err) {
+			onStatusChange(
+				"error",
+				err instanceof Error ? err.message : String(err),
+			);
+		}
+	}
+
+	async function handleMint() {
+		if (
+			!mintAmount ||
+			!mintRecipient ||
+			!currency.orgTreasuryId ||
+			!currency.coinType ||
+			!org.chainObjectId
+		)
+			return;
+		if (!addresses.governanceExt?.packageId) {
+			onStatusChange(
+				"error",
+				"GovernanceExt contract not deployed yet.",
+			);
+			return;
+		}
+
+		onStatusChange("minting");
+		try {
+			const amount = BigInt(
+				Math.floor(
+					Number(mintAmount) * 10 ** currency.decimals,
+				),
+			);
+			const tx = buildMintAndTransfer({
+				governanceExtPackageId: addresses.governanceExt.packageId,
+				orgTreasuryId: currency.orgTreasuryId,
+				orgObjectId: org.chainObjectId,
+				coinType: currency.coinType,
+				amount,
+				recipient: mintRecipient.trim(),
+				senderAddress: account.address,
+			});
+
+			await signAndExecute({ transaction: tx });
+			setShowMint(false);
+			setMintAmount("");
+			setMintRecipient("");
+			onStatusChange("done");
+
+			// Refresh treasury info
+			if (currency.orgTreasuryId) {
+				loadTreasuryInfo();
+			}
+		} catch (err) {
+			onStatusChange(
+				"error",
+				err instanceof Error ? err.message : String(err),
+			);
+		}
+	}
+
+	async function handleBurn() {
+		if (!burnCoinId || !currency.orgTreasuryId || !currency.coinType)
+			return;
+		if (!addresses.governanceExt?.packageId) {
+			onStatusChange(
+				"error",
+				"GovernanceExt contract not deployed yet.",
+			);
+			return;
+		}
+
+		onStatusChange("burning");
+		try {
+			const tx = buildBurn({
+				governanceExtPackageId: addresses.governanceExt.packageId,
+				orgTreasuryId: currency.orgTreasuryId,
+				coinType: currency.coinType,
+				coinObjectId: burnCoinId,
+				senderAddress: account.address,
+			});
+
+			await signAndExecute({ transaction: tx });
+			setShowBurn(false);
+			setBurnCoinId("");
+			onStatusChange("done");
+
+			// Refresh
+			if (currency.orgTreasuryId) {
+				loadTreasuryInfo();
+			}
+		} catch (err) {
+			onStatusChange(
+				"error",
+				err instanceof Error ? err.message : String(err),
+			);
+		}
+	}
+
+	async function handlePostBounty() {
+		if (
+			!bountyTarget ||
+			!bountyAmount ||
+			!currency.orgTreasuryId ||
+			!currency.coinType ||
+			!org.chainObjectId
+		)
+			return;
+		if (!addresses.governanceExt?.packageId) {
+			onStatusChange(
+				"error",
+				"GovernanceExt contract not deployed yet.",
+			);
+			return;
+		}
+		if (!addresses.bountyBoard?.packageId || !addresses.bountyBoard?.boardObjectId) {
+			onStatusChange("error", "Bounty board contract not configured.");
+			return;
+		}
+
+		onStatusChange("posting-bounty");
+		try {
+			const rewardAmount = BigInt(
+				Math.floor(
+					Number(bountyAmount) * 10 ** currency.decimals,
+				),
+			);
+			const expiresAt = bountyExpiry
+				? Math.floor(new Date(bountyExpiry).getTime() / 1000)
+				: Math.floor(Date.now() / 1000) + 7 * 24 * 3600; // Default 7 days
+
+			const tx = buildFundBounty({
+				governanceExtPackageId: addresses.governanceExt.packageId,
+				bountyBoardPackageId: addresses.bountyBoard.packageId,
+				orgTreasuryId: currency.orgTreasuryId,
+				orgObjectId: org.chainObjectId,
+				boardObjectId: addresses.bountyBoard.boardObjectId,
+				coinType: currency.coinType,
+				rewardAmount,
+				targetCharacterId: Number(bountyTarget),
+				expiresAt,
+				senderAddress: account.address,
+			});
+
+			await signAndExecute({ transaction: tx });
+			setShowBounty(false);
+			setBountyTarget("");
+			setBountyAmount("");
+			setBountyExpiry("");
+			onStatusChange("done");
+
+			if (currency.orgTreasuryId) {
+				loadTreasuryInfo();
+			}
+		} catch (err) {
+			onStatusChange(
+				"error",
+				err instanceof Error ? err.message : String(err),
+			);
+		}
+	}
+
+	return (
+		<div className="rounded-lg border border-zinc-800 bg-zinc-900/50">
+			{/* Header row */}
+			<button
+				type="button"
+				onClick={() => setExpanded(!expanded)}
+				className="flex w-full items-center justify-between p-4"
+			>
 				<div className="flex items-center gap-3">
 					<div className="rounded-lg bg-zinc-800 p-2">
 						<Package size={16} className="text-cyan-500" />
 					</div>
-					<div>
+					<div className="text-left">
 						<div className="flex items-center gap-2">
-							<span className="text-sm font-medium text-zinc-200">{currency.symbol}</span>
-							<span className="text-xs text-zinc-500">{currency.name}</span>
+							<span className="text-sm font-medium text-zinc-200">
+								{currency.symbol}
+							</span>
+							<span className="text-xs text-zinc-500">
+								{currency.name}
+							</span>
+							{hasTreasury && (
+								<span className="rounded bg-green-500/10 px-1.5 py-0.5 text-xs text-green-400">
+									Treasury
+								</span>
+							)}
 						</div>
-						{currency.packageId ? (
+						{isPublished ? (
 							<p className="font-mono text-xs text-zinc-600">
-								{currency.packageId.slice(0, 10)}...{currency.packageId.slice(-6)}
+								{currency.packageId.slice(0, 10)}...
+								{currency.packageId.slice(-6)}
 							</p>
 						) : (
-							<p className="text-xs text-amber-500">Not published yet</p>
+							<p className="text-xs text-amber-500">
+								Not published yet
+							</p>
 						)}
 					</div>
 				</div>
-				<span className="text-xs text-zinc-600">{currency.decimals} decimals</span>
-			</div>
+				<div className="flex items-center gap-2">
+					<span className="text-xs text-zinc-600">
+						{currency.decimals} decimals
+					</span>
+					{expanded ? (
+						<ChevronUp size={14} className="text-zinc-500" />
+					) : (
+						<ChevronDown size={14} className="text-zinc-500" />
+					)}
+				</div>
+			</button>
+
+			{/* Expanded content */}
+			{expanded && (
+				<div className="border-t border-zinc-800 p-4">
+					{/* Deposit TreasuryCap (when published but no treasury) */}
+					{isPublished && !hasTreasury && org.chainObjectId && (
+						<div className="mb-4 rounded-lg border border-amber-900/30 bg-amber-950/10 p-3">
+							<p className="mb-2 text-xs text-amber-400">
+								Deposit the TreasuryCap into an OrgTreasury to
+								enable stakeholder minting. This is irreversible
+								-- the TreasuryCap cannot be extracted once
+								deposited.
+							</p>
+							<button
+								type="button"
+								onClick={handleDeposit}
+								className="flex items-center gap-1.5 rounded bg-amber-600/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-600/30"
+							>
+								<ArrowDownToLine size={12} />
+								Deposit to OrgTreasury
+							</button>
+						</div>
+					)}
+
+					{isPublished && !hasTreasury && !org.chainObjectId && (
+						<div className="mb-4 text-xs text-amber-400/80">
+							Publish your organization to chain first to deposit
+							TreasuryCap.
+						</div>
+					)}
+
+					{/* Treasury Dashboard */}
+					{hasTreasury && (
+						<div className="space-y-4">
+							{/* Supply info */}
+							<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
+								<div className="mb-2 flex items-center justify-between">
+									<h4 className="text-xs font-medium text-zinc-400">
+										Treasury Overview
+									</h4>
+									<button
+										type="button"
+										onClick={loadTreasuryInfo}
+										className="text-zinc-500 hover:text-zinc-300"
+										title="Refresh"
+									>
+										<RefreshCw size={12} />
+									</button>
+								</div>
+								{loadingTreasury ? (
+									<div className="flex items-center gap-2 text-xs text-zinc-500">
+										<Loader2
+											size={12}
+											className="animate-spin"
+										/>
+										Loading...
+									</div>
+								) : treasuryInfo ? (
+									<div className="grid grid-cols-2 gap-3">
+										<div>
+											<p className="text-xs text-zinc-500">
+												Total Supply
+											</p>
+											<p className="text-sm font-medium text-zinc-200">
+												{formatTokenAmount(
+													treasuryInfo.totalSupply,
+													currency.decimals,
+												)}{" "}
+												{currency.symbol}
+											</p>
+										</div>
+										<div>
+											<p className="text-xs text-zinc-500">
+												Treasury ID
+											</p>
+											<p className="font-mono text-xs text-zinc-400">
+												{currency.orgTreasuryId?.slice(
+													0,
+													10,
+												)}
+												...
+												{currency.orgTreasuryId?.slice(
+													-6,
+												)}
+											</p>
+										</div>
+									</div>
+								) : (
+									<p className="text-xs text-zinc-600">
+										Click refresh to load treasury data
+									</p>
+								)}
+							</div>
+
+							{/* Action buttons */}
+							<div className="flex flex-wrap gap-2">
+								<button
+									type="button"
+									onClick={() => {
+										setShowMint(!showMint);
+										setShowBurn(false);
+										setShowBounty(false);
+									}}
+									className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+										showMint
+											? "bg-cyan-600/20 text-cyan-400"
+											: "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+									}`}
+								>
+									<Send size={12} />
+									Mint
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										setShowBurn(!showBurn);
+										setShowMint(false);
+										setShowBounty(false);
+										if (!showBurn) loadOwnedCoins();
+									}}
+									className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+										showBurn
+											? "bg-red-600/20 text-red-400"
+											: "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+									}`}
+								>
+									<Flame size={12} />
+									Burn
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										setShowBounty(!showBounty);
+										setShowMint(false);
+										setShowBurn(false);
+									}}
+									className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+										showBounty
+											? "bg-amber-600/20 text-amber-400"
+											: "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+									}`}
+								>
+									<Target size={12} />
+									Post Bounty
+								</button>
+							</div>
+
+							{/* Mint Form */}
+							{showMint && (
+								<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
+									<h4 className="mb-3 text-xs font-medium text-zinc-400">
+										Mint {currency.symbol}
+									</h4>
+									<div className="space-y-3">
+										<div>
+											<label className="mb-1 block text-xs text-zinc-500">
+												Amount
+											</label>
+											<input
+												type="number"
+												value={mintAmount}
+												onChange={(e) =>
+													setMintAmount(
+														e.target.value,
+													)
+												}
+												placeholder="e.g., 1000"
+												min={0}
+												step="any"
+												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+											/>
+										</div>
+										<div>
+											<label className="mb-1 block text-xs text-zinc-500">
+												Recipient Address
+											</label>
+											<input
+												type="text"
+												value={mintRecipient}
+												onChange={(e) =>
+													setMintRecipient(
+														e.target.value,
+													)
+												}
+												placeholder="0x..."
+												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+											/>
+										</div>
+										<button
+											type="button"
+											onClick={handleMint}
+											disabled={
+												!mintAmount ||
+												!mintRecipient.trim()
+											}
+											className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+										>
+											Mint &amp; Transfer
+										</button>
+									</div>
+								</div>
+							)}
+
+							{/* Burn Form */}
+							{showBurn && (
+								<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
+									<h4 className="mb-3 text-xs font-medium text-zinc-400">
+										Burn {currency.symbol}
+									</h4>
+									{loadingCoins ? (
+										<div className="flex items-center gap-2 text-xs text-zinc-500">
+											<Loader2
+												size={12}
+												className="animate-spin"
+											/>
+											Loading your coins...
+										</div>
+									) : ownedCoins.length === 0 ? (
+										<p className="text-xs text-zinc-600">
+											No {currency.symbol} coins in your
+											wallet.
+										</p>
+									) : (
+										<div className="space-y-2">
+											<label className="mb-1 block text-xs text-zinc-500">
+												Select Coin to Burn
+											</label>
+											<select
+												value={burnCoinId}
+												onChange={(e) =>
+													setBurnCoinId(
+														e.target.value,
+													)
+												}
+												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
+											>
+												<option value="">
+													Choose a coin...
+												</option>
+												{ownedCoins.map((c) => (
+													<option
+														key={c.objectId}
+														value={c.objectId}
+													>
+														{formatTokenAmount(
+															c.balance,
+															currency.decimals,
+														)}{" "}
+														{currency.symbol} (
+														{c.objectId.slice(
+															0,
+															10,
+														)}
+														...)
+													</option>
+												))}
+											</select>
+											<button
+												type="button"
+												onClick={handleBurn}
+												disabled={!burnCoinId}
+												className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+											>
+												Burn Selected Coin
+											</button>
+										</div>
+									)}
+								</div>
+							)}
+
+							{/* Bounty Form */}
+							{showBounty && (
+								<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
+									<h4 className="mb-3 text-xs font-medium text-zinc-400">
+										Post Bounty (funded from Treasury)
+									</h4>
+									<div className="space-y-3">
+										<div>
+											<label className="mb-1 block text-xs text-zinc-500">
+												Target Character ID
+											</label>
+											<input
+												type="number"
+												value={bountyTarget}
+												onChange={(e) =>
+													setBountyTarget(
+														e.target.value,
+													)
+												}
+												placeholder="e.g., 2112077599"
+												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+											/>
+										</div>
+										<div>
+											<label className="mb-1 block text-xs text-zinc-500">
+												Reward Amount (
+												{currency.symbol})
+											</label>
+											<input
+												type="number"
+												value={bountyAmount}
+												onChange={(e) =>
+													setBountyAmount(
+														e.target.value,
+													)
+												}
+												placeholder="e.g., 100"
+												min={0}
+												step="any"
+												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+											/>
+										</div>
+										<div>
+											<label className="mb-1 block text-xs text-zinc-500">
+												Expiration (optional, default 7
+												days)
+											</label>
+											<input
+												type="datetime-local"
+												value={bountyExpiry}
+												onChange={(e) =>
+													setBountyExpiry(
+														e.target.value,
+													)
+												}
+												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
+											/>
+										</div>
+										<button
+											type="button"
+											onClick={handlePostBounty}
+											disabled={
+												!bountyTarget ||
+												!bountyAmount
+											}
+											className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+										>
+											Mint &amp; Post Bounty
+										</button>
+									</div>
+								</div>
+							)}
+						</div>
+					)}
+
+					{/* Coin type info for published currencies */}
+					{isPublished && currency.coinType && (
+						<div className="mt-3 space-y-1 border-t border-zinc-800 pt-3 text-xs text-zinc-600">
+							<p>
+								<span className="text-zinc-500">
+									Coin Type:
+								</span>{" "}
+								<span className="font-mono">
+									{currency.coinType}
+								</span>
+							</p>
+							{currency.moduleName && (
+								<p>
+									<span className="text-zinc-500">
+										Module:
+									</span>{" "}
+									<span className="font-mono">
+										{currency.moduleName}
+									</span>
+								</p>
+							)}
+							{currency.treasuryCapId && !hasTreasury && (
+								<p>
+									<span className="text-zinc-500">
+										TreasuryCap:
+									</span>{" "}
+									<span className="font-mono">
+										{currency.treasuryCapId.slice(0, 10)}
+										...
+										{currency.treasuryCapId.slice(-6)}
+									</span>
+								</p>
+							)}
+						</div>
+					)}
+				</div>
+			)}
 		</div>
 	);
+}
+
+function formatTokenAmount(raw: bigint, decimals: number): string {
+	if (decimals === 0) return raw.toString();
+	const divisor = 10n ** BigInt(decimals);
+	const whole = raw / divisor;
+	const frac = raw % divisor;
+	if (frac === 0n) return whole.toString();
+	const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
+	return `${whole}.${fracStr}`;
 }
