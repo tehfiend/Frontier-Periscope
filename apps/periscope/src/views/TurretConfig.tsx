@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 import { Loader2, CheckCircle2, AlertCircle, ExternalLink, Crosshair } from "lucide-react";
 import { db } from "@/db";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant, useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
 import { useExtensionDeploy } from "@/hooks/useExtensionDeploy";
 import { TurretPriorityForm } from "@/components/extensions/TurretPriorityForm";
@@ -21,6 +22,8 @@ const statusMessages: Record<BuildStatus, string> = {
 
 export function TurretConfig() {
 	const account = useCurrentAccount();
+	const { activeCharacter } = useActiveCharacter();
+	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
 	const { data: discovery, isLoading: loadingAssemblies } = useOwnedAssemblies();
 
@@ -115,7 +118,7 @@ export function TurretConfig() {
 				status: "configured",
 				configuration: config as unknown as Record<string, unknown>,
 				authorizedAt: now,
-				owner: account.address,
+				owner: suiAddress,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -131,12 +134,18 @@ export function TurretConfig() {
 		setTxDigest("");
 	}
 
-	if (!account) {
+	if (!activeCharacter || !suiAddress) {
 		return (
 			<div className="flex h-full items-center justify-center">
 				<div className="text-center">
 					<Crosshair size={48} className="mx-auto mb-4 text-zinc-700" />
-					<p className="text-sm text-zinc-500">Connect your wallet to configure turrets</p>
+					<p className="text-sm text-zinc-500">Select a character to configure turrets</p>
+					<a
+						href="/manifest"
+						className="mt-2 inline-block text-xs text-cyan-400 hover:text-cyan-300"
+					>
+						Go to Manifest &rarr;
+					</a>
 				</div>
 			</div>
 		);

@@ -20,6 +20,7 @@ import {
 	RefreshCw,
 } from "lucide-react";
 import { WalletConnect } from "@/components/WalletConnect";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
 import type { CurrencyRecord } from "@/db/types";
@@ -48,6 +49,8 @@ type BuildStatus =
 
 export function GovernanceFinance() {
 	const account = useCurrentAccount();
+	const { activeCharacter } = useActiveCharacter();
+	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
 	const org = useLiveQuery(() => db.organizations.filter(notDeleted).first());
 	const currencies = useLiveQuery(
@@ -84,17 +87,20 @@ export function GovernanceFinance() {
 		buildStatus === "burning" ||
 		buildStatus === "posting-bounty";
 
-	if (!account) {
+	if (!activeCharacter || !suiAddress) {
 		return (
 			<div className="flex h-full items-center justify-center">
 				<div className="text-center">
 					<Coins size={48} className="mx-auto mb-4 text-zinc-700" />
 					<p className="text-sm text-zinc-500">
-						Connect your wallet to manage finance
+						Select a character to manage finance
 					</p>
-					<div className="mt-4">
-						<WalletConnect />
-					</div>
+					<a
+						href="/manifest"
+						className="mt-2 inline-block text-xs text-cyan-400 hover:text-cyan-300"
+					>
+						Go to Manifest &rarr;
+					</a>
 				</div>
 			</div>
 		);
@@ -162,7 +168,7 @@ export function GovernanceFinance() {
 	}
 
 	async function handleCreateCurrency() {
-		if (!symbol.trim() || !tokenName.trim() || !org || !account) return;
+		if (!symbol.trim() || !tokenName.trim() || !org || !account || !suiAddress) return;
 		if (!gasStationUrl) {
 			setBuildError("Gas station not configured for this server.");
 			setBuildStatus("error");
@@ -273,7 +279,8 @@ export function GovernanceFinance() {
 							currency={c}
 							org={org}
 							tenant={tenant}
-							account={account}
+							account={account ?? undefined}
+							suiAddress={suiAddress}
 							onStatusChange={(s, e) => {
 								setBuildStatus(s);
 								setBuildError(e ?? "");
@@ -593,12 +600,14 @@ function CurrencyCard({
 	org,
 	tenant,
 	account,
+	suiAddress,
 	onStatusChange,
 }: {
 	currency: CurrencyRecord;
 	org: { id: string; name: string; chainObjectId?: string };
 	tenant: string;
-	account: { address: string };
+	account?: { address: string };
+	suiAddress: string;
 	onStatusChange: (status: BuildStatus, error?: string) => void;
 }) {
 	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
@@ -661,7 +670,7 @@ function CurrencyCard({
 		try {
 			const coins = await queryOwnedCoins(
 				suiClient,
-				account.address,
+				suiAddress,
 				currency.coinType,
 			);
 			setOwnedCoins(coins);
@@ -676,7 +685,8 @@ function CurrencyCard({
 		if (
 			!currency.treasuryCapId ||
 			!currency.coinType ||
-			!org.chainObjectId
+			!org.chainObjectId ||
+			!account
 		)
 			return;
 		if (!addresses.governanceExt?.packageId) {
@@ -737,7 +747,8 @@ function CurrencyCard({
 			!mintRecipient ||
 			!currency.orgTreasuryId ||
 			!currency.coinType ||
-			!org.chainObjectId
+			!org.chainObjectId ||
+			!account
 		)
 			return;
 		if (!addresses.governanceExt?.packageId) {
@@ -784,7 +795,7 @@ function CurrencyCard({
 	}
 
 	async function handleBurn() {
-		if (!burnCoinId || !currency.orgTreasuryId || !currency.coinType)
+		if (!burnCoinId || !currency.orgTreasuryId || !currency.coinType || !account)
 			return;
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
@@ -827,7 +838,8 @@ function CurrencyCard({
 			!bountyAmount ||
 			!currency.orgTreasuryId ||
 			!currency.coinType ||
-			!org.chainObjectId
+			!org.chainObjectId ||
+			!account
 		)
 			return;
 		if (!addresses.governanceExt?.packageId) {

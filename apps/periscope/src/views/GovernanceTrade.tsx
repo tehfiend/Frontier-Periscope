@@ -17,6 +17,7 @@ import {
 	RefreshCw,
 } from "lucide-react";
 import { WalletConnect } from "@/components/WalletConnect";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
@@ -45,6 +46,8 @@ type OpStatus = "idle" | "processing" | "done" | "error";
 
 export function GovernanceTrade() {
 	const account = useCurrentAccount();
+	const { activeCharacter } = useActiveCharacter();
+	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
 	const [tab, setTab] = useState<Tab>("sell");
 
@@ -65,7 +68,7 @@ export function GovernanceTrade() {
 		(c) => c.packageId && c.orgTreasuryId,
 	);
 
-	if (!account) {
+	if (!activeCharacter || !suiAddress) {
 		return (
 			<div className="flex h-full items-center justify-center">
 				<div className="text-center">
@@ -74,11 +77,14 @@ export function GovernanceTrade() {
 						className="mx-auto mb-4 text-zinc-700"
 					/>
 					<p className="text-sm text-zinc-500">
-						Connect your wallet to manage trade
+						Select a character to manage trade
 					</p>
-					<div className="mt-4">
-						<WalletConnect />
-					</div>
+					<a
+						href="/manifest"
+						className="mt-2 inline-block text-xs text-cyan-400 hover:text-cyan-300"
+					>
+						Go to Manifest &rarr;
+					</a>
 				</div>
 			</div>
 		);
@@ -151,7 +157,7 @@ export function GovernanceTrade() {
 					org={org}
 					currencies={publishedCurrencies}
 					tenant={tenant}
-					account={account}
+					account={account ?? undefined}
 				/>
 			)}
 
@@ -160,7 +166,7 @@ export function GovernanceTrade() {
 					org={org}
 					currencies={publishedCurrencies}
 					tenant={tenant}
-					account={account}
+					account={account ?? undefined}
 				/>
 			)}
 		</div>
@@ -195,7 +201,7 @@ function SellOrdersTab({
 	org: { id: string; name: string; chainObjectId?: string };
 	currencies: CurrencyRecord[];
 	tenant: string;
-	account: { address: string };
+	account?: { address: string };
 }) {
 	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 	const suiClient = useSuiClient();
@@ -225,7 +231,7 @@ function SellOrdersTab({
 		) ?? [];
 
 	async function handleCreateMarket() {
-		if (!marketSsuId || !addresses.ssuMarket?.packageId) return;
+		if (!marketSsuId || !addresses.ssuMarket?.packageId || !account) return;
 
 		setOpStatus("processing");
 		setOpError("");
@@ -267,7 +273,8 @@ function SellOrdersTab({
 			!listingConfigId ||
 			!listingTypeId ||
 			!listingPrice ||
-			!addresses.ssuMarket?.packageId
+			!addresses.ssuMarket?.packageId ||
+			!account
 		)
 			return;
 
@@ -519,7 +526,7 @@ function BuyOrdersTab({
 	org: { id: string; name: string; chainObjectId?: string };
 	currencies: CurrencyRecord[];
 	tenant: string;
-	account: { address: string };
+	account?: { address: string };
 }) {
 	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 	const suiClient = useSuiClient();
@@ -602,7 +609,7 @@ function BuyOrdersTab({
 	}, [orgMarketId, loadOrgMarket, loadBuyOrders]);
 
 	async function handleCreateOrgMarket() {
-		if (!org.chainObjectId || !addresses.ssuMarket?.packageId) return;
+		if (!org.chainObjectId || !addresses.ssuMarket?.packageId || !account) return;
 
 		setOpStatus("processing");
 		setOpError("");
@@ -643,7 +650,8 @@ function BuyOrdersTab({
 			!ssuToAdd ||
 			!orgMarketId ||
 			!org.chainObjectId ||
-			!addresses.ssuMarket?.packageId
+			!addresses.ssuMarket?.packageId ||
+			!account
 		)
 			return;
 
@@ -673,7 +681,8 @@ function BuyOrdersTab({
 		if (
 			!orgMarketId ||
 			!org.chainObjectId ||
-			!addresses.ssuMarket?.packageId
+			!addresses.ssuMarket?.packageId ||
+			!account
 		)
 			return;
 
@@ -704,7 +713,8 @@ function BuyOrdersTab({
 			!orderPrice ||
 			!orderQuantity ||
 			!orgMarketId ||
-			!org.chainObjectId
+			!org.chainObjectId ||
+			!account
 		)
 			return;
 
@@ -753,7 +763,7 @@ function BuyOrdersTab({
 	}
 
 	async function handleCancelOrder(orderId: number) {
-		if (!orgMarketId || !org.chainObjectId) return;
+		if (!orgMarketId || !org.chainObjectId || !account) return;
 
 		const currency = currencies.find((c) => c.id === orderCurrency);
 		if (!currency?.coinType || !addresses.ssuMarket?.packageId) return;
@@ -784,7 +794,8 @@ function BuyOrdersTab({
 			!fillSellerAddress ||
 			!fillQuantity ||
 			!orgMarketId ||
-			!org.chainObjectId
+			!org.chainObjectId ||
+			!account
 		)
 			return;
 

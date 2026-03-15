@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Flag,
@@ -12,6 +12,7 @@ import {
 	Info,
 } from "lucide-react";
 import { WalletConnect } from "@/components/WalletConnect";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
 import type { SystemClaimRecord, SystemNickname } from "@/db/types";
@@ -25,7 +26,8 @@ import {
 type Tab = "claims" | "nicknames";
 
 export function GovernanceClaims() {
-	const account = useCurrentAccount();
+	const { activeCharacter } = useActiveCharacter();
+	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
 	const [tab, setTab] = useState<Tab>("claims");
 
@@ -37,15 +39,18 @@ export function GovernanceClaims() {
 	const nicknames = useLiveQuery(() => db.systemNicknames.toArray());
 	const systems = useLiveQuery(() => db.solarSystems.toArray());
 
-	if (!account) {
+	if (!activeCharacter || !suiAddress) {
 		return (
 			<div className="flex h-full items-center justify-center">
 				<div className="text-center">
 					<Flag size={48} className="mx-auto mb-4 text-zinc-700" />
-					<p className="text-sm text-zinc-500">Connect your wallet to manage claims</p>
-					<div className="mt-4">
-						<WalletConnect />
-					</div>
+					<p className="text-sm text-zinc-500">Select a character to manage claims</p>
+					<a
+						href="/manifest"
+						className="mt-2 inline-block text-xs text-cyan-400 hover:text-cyan-300"
+					>
+						Go to Manifest &rarr;
+					</a>
 				</div>
 			</div>
 		);

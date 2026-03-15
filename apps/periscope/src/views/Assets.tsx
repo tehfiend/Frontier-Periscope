@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
-import { useCurrentAccount, useSuiClient } from "@mysten/dapp-kit";
+import { useSuiClient } from "@mysten/dapp-kit";
 import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Boxes, Loader2, RefreshCw } from "lucide-react";
 import { DataGrid, excelFilterFn, type ColumnDef } from "@/components/DataGrid";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant, useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
 import { fetchAssemblyInventory, type InventoryItem, type AssemblyInventory } from "@/chain/inventory";
 import { db } from "@/db";
@@ -24,7 +25,8 @@ interface AssetRow {
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function Assets() {
-	const account = useCurrentAccount();
+	const { activeCharacter } = useActiveCharacter();
+	const suiAddress = activeCharacter?.suiAddress;
 	const client = useSuiClient();
 	const { data: discovery, isLoading: loadingAssemblies } = useOwnedAssemblies();
 	const gameTypes = useLiveQuery(() => db.gameTypes.toArray()) ?? [];
@@ -135,12 +137,18 @@ export function Assets() {
 		},
 	];
 
-	if (!account) {
+	if (!activeCharacter || !suiAddress) {
 		return (
 			<div className="flex h-full items-center justify-center">
 				<div className="text-center">
 					<Boxes size={48} className="mx-auto mb-4 text-zinc-700" />
-					<p className="text-sm text-zinc-500">Connect your wallet to view assets</p>
+					<p className="text-sm text-zinc-500">Select a character to view assets</p>
+					<a
+						href="/manifest"
+						className="mt-2 inline-block text-xs text-cyan-400 hover:text-cyan-300"
+					>
+						Go to Manifest &rarr;
+					</a>
 				</div>
 			</div>
 		);

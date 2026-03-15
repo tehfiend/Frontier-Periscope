@@ -10,6 +10,7 @@ import {
 	UserX,
 } from "lucide-react";
 import { WalletConnect } from "@/components/WalletConnect";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { GroupCard } from "@/components/permissions/GroupCard";
 import { GroupEditor } from "@/components/permissions/GroupEditor";
 import { PolicyCard } from "@/components/permissions/PolicyCard";
@@ -27,6 +28,8 @@ type Tab = "groups" | "policies";
 
 export function Permissions() {
 	const account = useCurrentAccount();
+	const { activeCharacter } = useActiveCharacter();
+	const suiAddress = activeCharacter?.suiAddress;
 	const navigate = useNavigate();
 	const [tab, setTab] = useState<Tab>("groups");
 	const [editingGroup, setEditingGroup] = useState<PermissionGroup | null>(null);
@@ -257,102 +260,96 @@ export function Permissions() {
 			{tab === "policies" && (
 				<div className="space-y-6">
 					{!account && (
-						<div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 py-12">
-							<Shield size={48} className="text-zinc-700" />
-							<p className="text-sm text-zinc-500">
-								Connect your wallet to manage assembly policies
-							</p>
+						<div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-xs text-zinc-500">
+							<Shield size={14} />
+							<span>Connect wallet to sync policies to chain</span>
 							<WalletConnect />
 						</div>
 					)}
 
-					{account && (
-						<>
-							{/* Auto-create missing policies */}
-							{missingPolicies.length > 0 && (
-								<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
-									<div className="flex items-center gap-2 text-xs text-amber-400">
-										<AlertTriangle size={14} />
-										{missingPolicies.length} assembl{missingPolicies.length === 1 ? "y has" : "ies have"} ACL extensions but no policy configured.
-									</div>
-									<button
-										type="button"
-										onClick={async () => {
-											for (const a of missingPolicies) {
-												await createPolicy({
-													assemblyId: a.objectId,
-													assemblyType: a.type,
-													extensionTemplateId: a.type === "gate" ? "gate_acl" : "turret_acl",
-												});
-											}
-										}}
-										className="mt-2 text-xs text-cyan-400 hover:text-cyan-300"
-									>
-										Create default policies →
-									</button>
-								</div>
-							)}
+					{/* Auto-create missing policies */}
+					{missingPolicies.length > 0 && (
+						<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
+							<div className="flex items-center gap-2 text-xs text-amber-400">
+								<AlertTriangle size={14} />
+								{missingPolicies.length} assembl{missingPolicies.length === 1 ? "y has" : "ies have"} ACL extensions but no policy configured.
+							</div>
+							<button
+								type="button"
+								onClick={async () => {
+									for (const a of missingPolicies) {
+										await createPolicy({
+											assemblyId: a.objectId,
+											assemblyType: a.type,
+											extensionTemplateId: a.type === "gate" ? "gate_acl" : "turret_acl",
+										});
+									}
+								}}
+								className="mt-2 text-xs text-cyan-400 hover:text-cyan-300"
+							>
+								Create default policies &rarr;
+							</button>
+						</div>
+					)}
 
-							{/* Gate policies */}
-							{gatePolicies.length > 0 && (
-								<div>
-									<h2 className="mb-3 text-sm font-medium text-zinc-400">
-										Gates ({gatePolicies.length})
-									</h2>
-									<div className="space-y-3">
-										{gatePolicies.map((policy) => (
-											<PolicyCard
-												key={policy.id}
-												policy={policy}
-												assembly={assemblies.find((a) => a.objectId === policy.assemblyId)}
-												groups={groups}
-												hasExtension={assemblyHasAclExtension(policy.assemblyId)}
-												isSyncing={isSyncing}
-												onUpdatePolicy={(data) => updatePolicy(policy.assemblyId, data)}
-												onSync={() => syncPolicy(policy.assemblyId, tenant)}
-												onGoToExtensions={() => navigate({ to: "/extensions" })}
-											/>
-										))}
-									</div>
-								</div>
-							)}
+					{/* Gate policies */}
+					{gatePolicies.length > 0 && (
+						<div>
+							<h2 className="mb-3 text-sm font-medium text-zinc-400">
+								Gates ({gatePolicies.length})
+							</h2>
+							<div className="space-y-3">
+								{gatePolicies.map((policy) => (
+									<PolicyCard
+										key={policy.id}
+										policy={policy}
+										assembly={assemblies.find((a) => a.objectId === policy.assemblyId)}
+										groups={groups}
+										hasExtension={assemblyHasAclExtension(policy.assemblyId)}
+										isSyncing={isSyncing}
+										onUpdatePolicy={(data) => updatePolicy(policy.assemblyId, data)}
+										onSync={() => syncPolicy(policy.assemblyId, tenant)}
+										onGoToExtensions={() => navigate({ to: "/extensions" })}
+									/>
+								))}
+							</div>
+						</div>
+					)}
 
-							{/* Turret policies */}
-							{turretPolicies.length > 0 && (
-								<div>
-									<h2 className="mb-3 text-sm font-medium text-zinc-400">
-										Turrets ({turretPolicies.length})
-									</h2>
-									<div className="space-y-3">
-										{turretPolicies.map((policy) => (
-											<PolicyCard
-												key={policy.id}
-												policy={policy}
-												assembly={assemblies.find((a) => a.objectId === policy.assemblyId)}
-												groups={groups}
-												hasExtension={assemblyHasAclExtension(policy.assemblyId)}
-												isSyncing={isSyncing}
-												onUpdatePolicy={(data) => updatePolicy(policy.assemblyId, data)}
-												onSync={() => syncPolicy(policy.assemblyId, tenant)}
-												onGoToExtensions={() => navigate({ to: "/extensions" })}
-											/>
-										))}
-									</div>
-								</div>
-							)}
+					{/* Turret policies */}
+					{turretPolicies.length > 0 && (
+						<div>
+							<h2 className="mb-3 text-sm font-medium text-zinc-400">
+								Turrets ({turretPolicies.length})
+							</h2>
+							<div className="space-y-3">
+								{turretPolicies.map((policy) => (
+									<PolicyCard
+										key={policy.id}
+										policy={policy}
+										assembly={assemblies.find((a) => a.objectId === policy.assemblyId)}
+										groups={groups}
+										hasExtension={assemblyHasAclExtension(policy.assemblyId)}
+										isSyncing={isSyncing}
+										onUpdatePolicy={(data) => updatePolicy(policy.assemblyId, data)}
+										onSync={() => syncPolicy(policy.assemblyId, tenant)}
+										onGoToExtensions={() => navigate({ to: "/extensions" })}
+									/>
+								))}
+							</div>
+						</div>
+					)}
 
-							{policies.length === 0 && missingPolicies.length === 0 && (
-								<div className="flex flex-col items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 py-12">
-									<ShieldCheck size={48} className="text-zinc-700" />
-									<p className="text-sm text-zinc-500">
-										No assembly policies configured yet
-									</p>
-									<p className="text-xs text-zinc-600">
-										Deploy an ACL extension on your assemblies first, then configure permissions here
-									</p>
-								</div>
-							)}
-						</>
+					{policies.length === 0 && missingPolicies.length === 0 && (
+						<div className="flex flex-col items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 py-12">
+							<ShieldCheck size={48} className="text-zinc-700" />
+							<p className="text-sm text-zinc-500">
+								No assembly policies configured yet
+							</p>
+							<p className="text-xs text-zinc-600">
+								Deploy an ACL extension on your assemblies first, then configure permissions here
+							</p>
+						</div>
 					)}
 				</div>
 			)}

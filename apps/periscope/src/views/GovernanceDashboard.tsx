@@ -139,15 +139,20 @@ export function GovernanceDashboard() {
 		}
 	}
 
-	// No wallet / character
-	if (!address) {
+	// No character selected
+	if (!activeCharacter || !address) {
 		return (
 			<div className="mx-auto max-w-3xl p-6">
 				<Header />
 				<div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 py-16">
 					<Building2 size={48} className="text-zinc-700" />
-					<p className="text-sm text-zinc-500">Connect your wallet to manage your organization</p>
-					<WalletConnect />
+					<p className="text-sm text-zinc-500">Select a character to manage your organization</p>
+					<a
+						href="/manifest"
+						className="text-xs text-cyan-400 hover:text-cyan-300"
+					>
+						Go to Manifest &rarr;
+					</a>
 				</div>
 			</div>
 		);
