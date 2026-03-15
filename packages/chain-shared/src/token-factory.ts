@@ -1,6 +1,24 @@
 import { Transaction } from "@mysten/sui/transactions";
 import type { SuiClient } from "@mysten/sui/client";
-import { update_identifiers, update_constants } from "@mysten/move-bytecode-template";
+
+// WASM module — needs async init before use
+let wasmReady: Promise<void> | null = null;
+let updateIdentifiers: typeof import("@mysten/move-bytecode-template").update_identifiers;
+let updateConstants: typeof import("@mysten/move-bytecode-template").update_constants;
+
+async function ensureWasmReady(): Promise<void> {
+	if (wasmReady) return wasmReady;
+	wasmReady = (async () => {
+		const mod = await import("@mysten/move-bytecode-template");
+		// The web build exports a default init function that loads the WASM
+		if (typeof mod.default === "function") {
+			await mod.default();
+		}
+		updateIdentifiers = mod.update_identifiers;
+		updateConstants = mod.update_constants;
+	})();
+	return wasmReady;
+}
 
 /**
  * In-browser token creation via bytecode patching.
@@ -55,8 +73,11 @@ export interface PublishTokenResult {
  * TOKEN_TEMPLATE module with custom identifiers and metadata constants.
  * The user signs with their wallet — no server needed.
  */
-export function buildPublishToken(params: CreateTokenParams): Transaction {
+export async function buildPublishToken(params: CreateTokenParams): Promise<Transaction> {
 	const { symbol, name, description, decimals = 9 } = params;
+
+	// Ensure WASM module is loaded
+	await ensureWasmReady();
 
 	// Derive module name from symbol: "GOLD" → "GOLD_TOKEN"
 	const moduleName = `${symbol.toUpperCase()}_TOKEN`;
@@ -65,14 +86,14 @@ export function buildPublishToken(params: CreateTokenParams): Transaction {
 
 	// 1. Update identifiers: TOKEN_TEMPLATE → GOLD_TOKEN (module name + OTW struct)
 	bytecodes = new Uint8Array(
-		update_identifiers(bytecodes, {
+		updateIdentifiers(bytecodes, {
 			TOKEN_TEMPLATE: moduleName,
 		}),
 	);
 
 	// 2. Update constants: symbol, name, description, decimals
 	bytecodes = new Uint8Array(
-		update_constants(
+		updateConstants(
 			bytecodes,
 			// Each entry: [newValue, newType, oldValue, oldType]
 			// Types: "Vector(U8)" for byte vectors, "U8" for decimals

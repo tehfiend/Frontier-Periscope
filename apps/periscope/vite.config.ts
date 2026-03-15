@@ -54,6 +54,9 @@ export default defineConfig({
 			"@": resolve(__dirname, "./src"),
 		},
 	},
+	optimizeDeps: {
+		exclude: ["@mysten/move-bytecode-template"],
+	},
 	build: {
 		chunkSizeWarningLimit: 1000,
 		rollupOptions: {

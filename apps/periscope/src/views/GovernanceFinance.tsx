@@ -127,7 +127,7 @@ export function GovernanceFinance() {
 
 		try {
 			// Build publish transaction in-browser (no server needed)
-			const tx = buildPublishToken({
+			const tx = await buildPublishToken({
 				symbol: symbol.trim().toUpperCase(),
 				name: tokenName.trim(),
 				description: description.trim() || `${tokenName.trim()} token`,
