@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import {
 	useCurrentAccount,
 	useSignAndExecuteTransaction,
-	useConnectWallet,
-	useWallets,
 	useSuiClient,
 } from "@mysten/dapp-kit";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -53,8 +51,6 @@ type BuildStatus =
 export function GovernanceFinance() {
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
-	const { mutate: connectWallet } = useConnectWallet();
-	const wallets = useWallets();
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
@@ -197,12 +193,6 @@ export function GovernanceFinance() {
 
 	async function handleCreateCurrency() {
 		if (!symbol.trim() || !tokenName.trim() || !org) return;
-		if (!account) {
-			// Trigger wallet connection, user retries after connecting
-			const eveVault = wallets.find((w) => w.name === "EVE Vault");
-			if (eveVault) connectWallet({ wallet: eveVault });
-			return;
-		}
 
 		setBuildStatus("building");
 		setBuildError("");
@@ -380,21 +370,11 @@ export function GovernanceFinance() {
 								className="w-32 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
 							/>
 						</div>
-						{!account && (
-							<div className="rounded border border-amber-900/50 bg-amber-950/20 p-3">
-								<p className="text-xs text-amber-400">
-									Connect your wallet to publish this token on-chain.
-								</p>
-								<div className="mt-2">
-									<WalletConnect />
-								</div>
-							</div>
-						)}
 						<div className="flex gap-2">
 							<button
 								type="button"
 								onClick={handleCreateCurrency}
-								disabled={!symbol.trim() || !tokenName.trim() || isProcessing || !account}
+								disabled={!symbol.trim() || !tokenName.trim() || isProcessing}
 								className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								{isProcessing ? (
@@ -523,21 +503,7 @@ function CurrencyCard({
 	onStatusChange: (status: BuildStatus, error?: string) => void;
 }) {
 	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
-	const { mutate: connectWallet } = useConnectWallet();
-	const wallets = useWallets();
 	const suiClient = useSuiClient();
-
-	/** Connect wallet if not connected. Returns true if connected after call. */
-	function ensureWallet(): boolean {
-		if (account) return true;
-		const eveVault = wallets.find((w) => w.name === "EVE Vault");
-		if (eveVault) {
-			connectWallet({ wallet: eveVault });
-		} else {
-			onStatusChange("error", "No wallet found. Install EVE Vault.");
-		}
-		return false;
-	}
 
 	const [expanded, setExpanded] = useState(false);
 	const [treasuryInfo, setTreasuryInfo] = useState<{
@@ -609,7 +575,7 @@ function CurrencyCard({
 
 	async function handleDeposit() {
 		if (!currency.treasuryCapId || !currency.coinType || !org.chainObjectId) return;
-		if (!ensureWallet()) return;
+
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
@@ -665,7 +631,7 @@ function CurrencyCard({
 	async function handleMint() {
 		if (!mintAmount || !currency.orgTreasuryId || !currency.coinType || !org.chainObjectId)
 			return;
-		if (!ensureWallet()) return;
+
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
@@ -711,7 +677,7 @@ function CurrencyCard({
 
 	async function handleBurn() {
 		if (!burnCoinId || !currency.orgTreasuryId || !currency.coinType) return;
-		if (!ensureWallet()) return;
+
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
@@ -750,7 +716,7 @@ function CurrencyCard({
 	async function handlePostBounty() {
 		if (!bountyTarget || !bountyAmount || !currency.orgTreasuryId || !currency.coinType || !org.chainObjectId)
 			return;
-		if (!ensureWallet()) return;
+
 		if (!addresses.governanceExt?.packageId) {
 			onStatusChange(
 				"error",
