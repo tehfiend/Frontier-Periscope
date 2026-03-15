@@ -49,6 +49,7 @@ type BuildStatus =
 
 export function GovernanceFinance() {
 	const account = useCurrentAccount();
+	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
