@@ -18,6 +18,12 @@
 - **Passes:** 3
 - **Result:** Detailed implementation plan for market and currency systems — extracts and focuses Phase 2b (finance) and Phase 2c (trade) from 05-governance-phase2.md into an execution-ready document. 3 phases, 13 files (2 new, 11 modified). Key findings: (1) Token template bytecodes exist at 691 bytes (contracts/token_template/build/), ready for extraction. (2) Gas station source-generation approach preferred over bytecode patching — matches proven turret build pipeline. (3) ssu_market and exchange contracts both published with UpgradeCaps. (4) TreasuryCap ownership transfer via hardcoded address in init() needs testnet validation (Open Question #3). (5) MarketAuth witness construction gap in ssu_market.move needs investigation (Open Question #2). (6) Exchange contract lacks order matching (Open Question #1). 4 open questions remain; plan placed in pending/.
 
+## 2026-03-15 — hackathon-remaining-work
+- **Action:** CREATE
+- **File:** docs/plans/active/07-hackathon-remaining-work.md
+- **Passes:** 3 (converged — pass 3 found 1 numbering fix, all facts verified)
+- **Result:** Comprehensive audit of entire project state for hackathon deadline (March 31). Module-by-module assessment: 13 contracts (12 published, `governance_ext` pending), 107-file Periscope SPA (29 views), gas station (5 endpoints), permissions-dapp (built), chain-shared (13 files, 2492 lines). Key findings: (1) Build never verified — `pnpm build` has never been run successfully end-to-end. (2) `governance_ext/treasury.move` is written (139 lines, no tests) but not published — blocks GovernanceFinance runtime. (3) GovernanceTrade (1467 lines) compiles but OrgMarket/buy-order Move functions don't exist in deployed `ssu_market` — buy tab fails at runtime. (4) Gas station `/build-token` route is registered and coded, just needs E2E test. (5) 6 critical path items, 4 high-value items, 5 stretch goals identified. Critical path estimated at ~7 days total. Plan placed in active/.
+
 ## 2026-03-15 — market-currency-system execution review
 - **Action:** UPDATE (execution review)
 - **File:** docs/plans/active/06-market-currency-system.md

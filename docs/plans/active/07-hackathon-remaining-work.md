@@ -1,6 +1,6 @@
 # Plan: Hackathon Remaining Work
 
-**Status:** Draft
+**Status:** Active
 **Created:** 2026-03-15
 **Module:** multi
 
@@ -260,8 +260,8 @@ These items significantly strengthen the submission but are not blocking.
 1. Run `pnpm install && pnpm build` from project root. Fix all TypeScript compilation errors.
 2. Run `sui move build` in `contracts/governance_ext/`. Fix any Move compilation errors. Note: `treasury.move` is 139 lines with no Move tests (unlike `governance` which has 9 tests). Consider adding basic tests before publishing, or publish without tests if time-constrained.
 3. Publish `governance_ext` to testnet: `sui client publish --skip-dependency-verification --json`.
-5. Extract `packageId` from publish output, fill `governanceExt.packageId` in `packages/chain-shared/src/config.ts` for both `stillness` and `utopia`.
-6. Verify `pnpm build` still passes after config change.
+4. Extract `packageId` from publish output, fill `governanceExt.packageId` in `packages/chain-shared/src/config.ts` for both `stillness` and `utopia`.
+5. Verify `pnpm build` still passes after config change.
 
 ### Phase 2: Gas Station Token Pipeline (Day 2)
 
