@@ -30,6 +30,7 @@ import {
 	Coins,
 	Flag,
 	ShoppingBag,
+	Wallet,
 	type LucideIcon,
 } from "lucide-react";
 
@@ -51,6 +52,7 @@ const navGroups: NavGroup[] = [
 			{ to: "/", icon: LayoutDashboard, label: "Dashboard" },
 			{ to: "/map", icon: Map, label: "Star Map" },
 			{ to: "/jump-planner", icon: Route, label: "Jump Planner" },
+			{ to: "/wallet", icon: Wallet, label: "Wallet" },
 		],
 	},
 	{
