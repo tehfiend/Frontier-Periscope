@@ -1,25 +1,20 @@
 import { Transaction } from "@mysten/sui/transactions";
-import type { SuiClient } from "@mysten/sui/client";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import type { TollInfo } from "./types";
-
-function extractFields(content: unknown): Record<string, unknown> {
-	const c = content as { fields?: Record<string, unknown> };
-	return c?.fields ?? {};
-}
+import { getDynamicFieldJson } from "./graphql-queries";
 
 export async function queryTollConfig(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	configObjectId: string,
 	gateId: string,
 ): Promise<TollInfo | null> {
 	try {
-		const df = await client.getDynamicFieldObject({
-			parentId: configObjectId,
-			name: { type: "0x2::object::ID", value: gateId },
+		const fields = await getDynamicFieldJson(client, configObjectId, {
+			type: "0x2::object::ID",
+			value: gateId,
 		});
-		if (!df.data?.content) return null;
+		if (!fields) return null;
 
-		const fields = extractFields(df.data.content);
 		return {
 			fee: Number(fields.fee ?? 0),
 			feeRecipient: (fields.fee_recipient as string) ?? "",

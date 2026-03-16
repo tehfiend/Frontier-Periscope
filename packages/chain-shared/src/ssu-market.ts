@@ -1,22 +1,20 @@
-import type { EventId, SuiClient } from "@mysten/sui/client";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { Transaction } from "@mysten/sui/transactions";
 import type { BuyOrderInfo, MarketInfo, MarketListing, OrgMarketInfo } from "./types";
-
-function extractFields(content: unknown): Record<string, unknown> {
-	const c = content as { fields?: Record<string, unknown> };
-	return c?.fields ?? {};
-}
+import {
+	getDynamicFieldJson,
+	getObjectJson,
+	listDynamicFieldsGql,
+	queryEventsGql,
+} from "./graphql-queries";
 
 export async function queryMarketConfig(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	configObjectId: string,
 ): Promise<MarketInfo | null> {
 	try {
-		const obj = await client.getObject({
-			id: configObjectId,
-			options: { showContent: true },
-		});
-		const fields = extractFields(obj.data?.content);
+		const obj = await getObjectJson(client, configObjectId);
+		const fields = obj.json ?? {};
 		return {
 			objectId: configObjectId,
 			admin: (fields.admin as string) ?? "",
@@ -28,18 +26,17 @@ export async function queryMarketConfig(
 }
 
 export async function queryListing(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	configObjectId: string,
 	typeId: number,
 ): Promise<MarketListing | null> {
 	try {
-		const df = await client.getDynamicFieldObject({
-			parentId: configObjectId,
-			name: { type: "u64", value: String(typeId) },
+		const fields = await getDynamicFieldJson(client, configObjectId, {
+			type: "u64",
+			value: String(typeId),
 		});
-		if (!df.data?.content) return null;
+		if (!fields) return null;
 
-		const fields = extractFields(df.data.content);
 		return {
 			typeId: Number(fields.type_id ?? typeId),
 			pricePerUnit: Number(fields.price_per_unit ?? 0),
@@ -391,20 +388,17 @@ export function buildBuyAndWithdraw(params: BuyAndWithdrawParams): Transaction {
  * Query an OrgMarket shared object for its state.
  */
 export async function queryOrgMarket(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	orgMarketId: string,
 ): Promise<OrgMarketInfo | null> {
 	try {
-		const obj = await client.getObject({
-			id: orgMarketId,
-			options: { showContent: true },
-		});
+		const obj = await getObjectJson(client, orgMarketId);
 
-		if (!obj.data?.content || obj.data.content.dataType !== "moveObject") {
+		if (!obj.json) {
 			return null;
 		}
 
-		const fields = obj.data.content.fields as Record<string, unknown>;
+		const fields = obj.json;
 
 		return {
 			objectId: orgMarketId,
@@ -424,22 +418,20 @@ export async function queryOrgMarket(
  * from the most recent matching event, or null if none found.
  */
 export async function discoverOrgMarket(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	ssuMarketPackageId: string,
 	orgObjectId: string,
 ): Promise<string | null> {
-	let cursor: EventId | null = null;
+	let cursor: string | null = null;
 	let hasMore = true;
 	let latestMarketId: string | null = null;
 
 	while (hasMore) {
-		const page = await client.queryEvents({
-			query: {
-				MoveEventType: `${ssuMarketPackageId}::ssu_market::OrgMarketCreatedEvent`,
-			},
-			cursor: cursor ?? undefined,
-			limit: 50,
-		});
+		const page = await queryEventsGql(
+			client,
+			`${ssuMarketPackageId}::ssu_market::OrgMarketCreatedEvent`,
+			{ cursor, limit: 50 },
+		);
 
 		for (const evt of page.data) {
 			const parsed = evt.parsedJson as {
@@ -453,7 +445,7 @@ export async function discoverOrgMarket(
 		}
 
 		hasMore = page.hasNextPage;
-		cursor = page.nextCursor ?? null;
+		cursor = page.nextCursor;
 	}
 
 	return latestMarketId;
@@ -464,7 +456,7 @@ export async function discoverOrgMarket(
  * Iterates dynamic fields keyed by order_id (u64 < 1_000_000_000).
  */
 export async function queryBuyOrders(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	orgMarketId: string,
 ): Promise<BuyOrderInfo[]> {
 	const orders: BuyOrderInfo[] = [];
@@ -474,26 +466,25 @@ export async function queryBuyOrders(
 		let hasMore = true;
 
 		while (hasMore) {
-			const page = await client.getDynamicFields({
-				parentId: orgMarketId,
-				cursor: cursor ?? undefined,
+			const page = await listDynamicFieldsGql(client, orgMarketId, {
+				cursor,
 				limit: 50,
 			});
 
-			for (const df of page.data) {
+			for (const df of page.entries) {
 				// Buy order records have u64 keys < 1_000_000_000
 				// Coin escrows have keys >= 1_000_000_000
-				const key = Number(df.name.value);
+				if (df.nameType !== "u64") continue;
+				const key = Number(df.nameJson);
 				if (key >= 1_000_000_000) continue;
 
 				try {
-					const dfObj = await client.getDynamicFieldObject({
-						parentId: orgMarketId,
-						name: df.name,
+					const fields = await getDynamicFieldJson(client, orgMarketId, {
+						type: "u64",
+						value: String(key),
 					});
-					if (!dfObj.data?.content) continue;
+					if (!fields) continue;
 
-					const fields = extractFields(dfObj.data.content);
 					orders.push({
 						orderId: Number(fields.order_id ?? key),
 						ssuId: String(fields.ssu_id ?? ""),
@@ -508,7 +499,7 @@ export async function queryBuyOrders(
 			}
 
 			hasMore = page.hasNextPage;
-			cursor = page.nextCursor ?? null;
+			cursor = page.cursor;
 		}
 	} catch {
 		// Return whatever we've collected so far

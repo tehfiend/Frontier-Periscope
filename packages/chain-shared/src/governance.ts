@@ -7,9 +7,9 @@
  */
 
 import { Transaction } from "@mysten/sui/transactions";
-import type { EventId } from "@mysten/sui/client";
-import { SuiClient } from "@mysten/sui/client";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import type { OrganizationInfo, OrgTier, OrgTierData, OnChainClaim } from "./types";
+import { getObjectJson, queryEventsGql } from "./graphql-queries";
 
 // ── Organization TX Builders ─────────────────────────────────────────────────
 
@@ -214,19 +214,16 @@ function parseTierData(fields: Record<string, unknown>): OrgTierData {
  * Fetch an Organization object from chain and parse its tier data.
  */
 export async function queryOrganization(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	orgObjectId: string,
 ): Promise<OrganizationInfo> {
-	const result = await client.getObject({
-		id: orgObjectId,
-		options: { showContent: true },
-	});
+	const obj = await getObjectJson(client, orgObjectId);
 
-	if (!result.data?.content || result.data.content.dataType !== "moveObject") {
+	if (!obj.json) {
 		throw new Error(`Organization ${orgObjectId} not found or not a Move object`);
 	}
 
-	const fields = result.data.content.fields as Record<string, unknown>;
+	const fields = obj.json;
 
 	return {
 		objectId: orgObjectId,
@@ -244,7 +241,7 @@ export async function queryOrganization(
  * Returns all claims that have been created (caller filters removed ones).
  */
 export async function queryClaimEvents(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	packageId: string,
 ): Promise<{
 	created: Array<OnChainClaim & { registryId: string }>;
@@ -254,14 +251,14 @@ export async function queryClaimEvents(
 	const removed: Array<{ orgId: string; systemId: number; registryId: string }> = [];
 
 	// Query ClaimCreatedEvent
-	let cursor: EventId | null = null;
+	let cursor: string | null = null;
 	let hasMore = true;
 	while (hasMore) {
-		const page = await client.queryEvents({
-			query: { MoveEventType: `${packageId}::claims::ClaimCreatedEvent` },
-			cursor: cursor ?? undefined,
-			limit: 50,
-		});
+		const page = await queryEventsGql(
+			client,
+			`${packageId}::claims::ClaimCreatedEvent`,
+			{ cursor, limit: 50 },
+		);
 
 		for (const evt of page.data) {
 			const parsed = evt.parsedJson as {
@@ -282,18 +279,18 @@ export async function queryClaimEvents(
 		}
 
 		hasMore = page.hasNextPage;
-		cursor = page.nextCursor ?? null;
+		cursor = page.nextCursor;
 	}
 
 	// Query ClaimRemovedEvent
 	cursor = null;
 	hasMore = true;
 	while (hasMore) {
-		const page = await client.queryEvents({
-			query: { MoveEventType: `${packageId}::claims::ClaimRemovedEvent` },
-			cursor: cursor ?? undefined,
-			limit: 50,
-		});
+		const page = await queryEventsGql(
+			client,
+			`${packageId}::claims::ClaimRemovedEvent`,
+			{ cursor, limit: 50 },
+		);
 
 		for (const evt of page.data) {
 			const parsed = evt.parsedJson as {
@@ -309,7 +306,7 @@ export async function queryClaimEvents(
 		}
 
 		hasMore = page.hasNextPage;
-		cursor = page.nextCursor ?? null;
+		cursor = page.nextCursor;
 	}
 
 	return { created, removed };

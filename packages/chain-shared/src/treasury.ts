@@ -11,7 +11,8 @@
  */
 
 import { Transaction, type TransactionResult } from "@mysten/sui/transactions";
-import type { SuiClient } from "@mysten/sui/client";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import { getObjectJson } from "./graphql-queries";
 
 // ── OrgTreasury Types ───────────────────────────────────────────────────────
 
@@ -136,34 +137,26 @@ export function buildMint(params: MintParams, tx: Transaction): TransactionResul
 
 // ── Query Helpers ───────────────────────────────────────────────────────────
 
-function extractFields(content: unknown): Record<string, unknown> {
-	const c = content as { fields?: Record<string, unknown> };
-	return c?.fields ?? {};
-}
-
 /**
  * Query an OrgTreasury shared object for its org ID and total supply.
  */
 export async function queryOrgTreasury(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	treasuryId: string,
 ): Promise<OrgTreasuryInfo> {
-	const result = await client.getObject({
-		id: treasuryId,
-		options: { showContent: true },
-	});
+	const obj = await getObjectJson(client, treasuryId);
 
-	if (!result.data?.content || result.data.content.dataType !== "moveObject") {
+	if (!obj.json) {
 		throw new Error(`OrgTreasury ${treasuryId} not found or not a Move object`);
 	}
 
-	const fields = result.data.content.fields as Record<string, unknown>;
+	const fields = obj.json;
 
-	// treasury_cap is nested; total_supply is accessible via the coin module
-	// but on-chain the TreasuryCap fields include supply.fields.value
-	const treasuryCapFields = extractFields(fields.treasury_cap);
-	const supplyFields = extractFields(treasuryCapFields.total_supply);
-	const totalSupply = BigInt(String(supplyFields.value ?? "0"));
+	// In GraphQL JSON, nested structs are returned as nested objects directly
+	// treasury_cap.total_supply.value
+	const treasuryCap = (fields.treasury_cap as Record<string, unknown>) ?? {};
+	const totalSupplyObj = (treasuryCap.total_supply as Record<string, unknown>) ?? {};
+	const totalSupply = BigInt(String(totalSupplyObj.value ?? "0"));
 
 	return {
 		orgId: String(fields.org_id ?? ""),

@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./config";
+export * from "./graphql-queries";
 export * from "./permissions";
 export * from "./token-factory";
 export * from "./exchange";

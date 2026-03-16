@@ -1,27 +1,20 @@
 import { Transaction } from "@mysten/sui/transactions";
-import type { SuiClient } from "@mysten/sui/client";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import type { AclConfig, AdminConfig } from "./types";
 import { type TenantId, getContractAddresses } from "./config";
+import { getDynamicFieldJson, getObjectJson } from "./graphql-queries";
 
 // ── Query Functions ─────────────────────────────────────────────────────────
-
-function extractFields(content: unknown): Record<string, unknown> {
-	const c = content as { fields?: Record<string, unknown> };
-	return c?.fields ?? {};
-}
 
 /**
  * Read the admin config from the ExtensionConfig shared object.
  */
 export async function queryAdminConfig(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	configObjectId: string,
 ): Promise<AdminConfig> {
-	const obj = await client.getObject({
-		id: configObjectId,
-		options: { showContent: true },
-	});
-	const fields = extractFields(obj.data?.content);
+	const obj = await getObjectJson(client, configObjectId);
+	const fields = obj.json ?? {};
 
 	return {
 		owner: (fields.owner as string) ?? "",
@@ -34,18 +27,17 @@ export async function queryAdminConfig(
  * Read the ACL config for a specific gate from dynamic fields.
  */
 export async function queryAclConfig(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	configObjectId: string,
 	gateId: string,
 ): Promise<AclConfig | null> {
 	try {
-		const df = await client.getDynamicFieldObject({
-			parentId: configObjectId,
-			name: { type: "0x2::object::ID", value: gateId },
+		const fields = await getDynamicFieldJson(client, configObjectId, {
+			type: "0x2::object::ID",
+			value: gateId,
 		});
-		if (!df.data?.content) return null;
+		if (!fields) return null;
 
-		const fields = extractFields(df.data.content);
 		return {
 			isAllowlist: (fields.is_allowlist as boolean) ?? true,
 			tribeIds: (fields.allowed_tribes as number[]) ?? [],

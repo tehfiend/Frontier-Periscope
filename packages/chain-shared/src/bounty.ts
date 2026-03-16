@@ -1,25 +1,20 @@
 import { Transaction } from "@mysten/sui/transactions";
-import type { SuiClient } from "@mysten/sui/client";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import type { BountyInfo } from "./types";
-
-function extractFields(content: unknown): Record<string, unknown> {
-	const c = content as { fields?: Record<string, unknown> };
-	return c?.fields ?? {};
-}
+import { getDynamicFieldJson } from "./graphql-queries";
 
 export async function queryBounty(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	boardObjectId: string,
 	bountyId: number,
 ): Promise<BountyInfo | null> {
 	try {
-		const df = await client.getDynamicFieldObject({
-			parentId: boardObjectId,
-			name: { type: "u64", value: String(bountyId) },
+		const fields = await getDynamicFieldJson(client, boardObjectId, {
+			type: "u64",
+			value: String(bountyId),
 		});
-		if (!df.data?.content) return null;
+		if (!fields) return null;
 
-		const fields = extractFields(df.data.content);
 		return {
 			bountyId,
 			poster: (fields.poster as string) ?? "",

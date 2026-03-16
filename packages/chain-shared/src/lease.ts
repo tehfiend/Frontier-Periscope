@@ -1,25 +1,20 @@
 import { Transaction } from "@mysten/sui/transactions";
-import type { SuiClient } from "@mysten/sui/client";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import type { LeaseInfo } from "./types";
-
-function extractFields(content: unknown): Record<string, unknown> {
-	const c = content as { fields?: Record<string, unknown> };
-	return c?.fields ?? {};
-}
+import { getDynamicFieldJson } from "./graphql-queries";
 
 export async function queryLease(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	registryObjectId: string,
 	assemblyId: string,
 ): Promise<LeaseInfo | null> {
 	try {
-		const df = await client.getDynamicFieldObject({
-			parentId: registryObjectId,
-			name: { type: "0x2::object::ID", value: assemblyId },
+		const fields = await getDynamicFieldJson(client, registryObjectId, {
+			type: "0x2::object::ID",
+			value: assemblyId,
 		});
-		if (!df.data?.content) return null;
+		if (!fields) return null;
 
-		const fields = extractFields(df.data.content);
 		return {
 			tenant: (fields.tenant as string) ?? "",
 			tenantTribe: Number(fields.tenant_tribe ?? 0),

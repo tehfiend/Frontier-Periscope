@@ -1,6 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
-import type { SuiClient } from "@mysten/sui/client";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { bcs } from "@mysten/bcs";
+import { getCoinSupply, listCoinsGql } from "./graphql-queries";
 
 // WASM module — needs async init before use
 let wasmReady: Promise<void> | null = null;
@@ -249,15 +250,15 @@ export function buildBurnTokens(params: {
 // ── Query Helpers ───────────────────────────────────────────────────────────
 
 export async function queryTokenSupply(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	coinType: string,
 ): Promise<{ totalSupply: bigint }> {
-	const supply = await client.getTotalSupply({ coinType });
+	const supply = await getCoinSupply(client, coinType);
 	return { totalSupply: BigInt(supply.value) };
 }
 
 export async function queryOwnedCoins(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	owner: string,
 	coinType: string,
 ): Promise<Array<{ objectId: string; balance: bigint }>> {
@@ -266,22 +267,20 @@ export async function queryOwnedCoins(
 	let hasMore = true;
 
 	while (hasMore) {
-		const page = await client.getCoins({
-			owner,
-			coinType,
-			cursor: cursor ?? undefined,
+		const page = await listCoinsGql(client, owner, coinType, {
+			cursor,
 			limit: 50,
 		});
 
-		for (const coin of page.data) {
+		for (const coin of page.coins) {
 			coins.push({
-				objectId: coin.coinObjectId,
+				objectId: coin.objectId,
 				balance: BigInt(coin.balance),
 			});
 		}
 
 		hasMore = page.hasNextPage;
-		cursor = page.nextCursor ?? null;
+		cursor = page.cursor;
 	}
 
 	return coins;
