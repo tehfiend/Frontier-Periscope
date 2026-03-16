@@ -1,11 +1,11 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { useSuiClient } from "@mysten/dapp-kit";
+import { useCurrentClient } from "@mysten/dapp-kit-react";
+import { queryEventsGql } from "@tehfrontier/chain-shared";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/db";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { TENANTS } from "@/chain/config";
 import type { RadarWatch, RadarEvent, RadarEventKind } from "@/db/types";
-import type { SuiEvent } from "@mysten/sui/client";
 
 // ── Event Types ─────────────────────────────────────────────────────────────
 
@@ -19,20 +19,29 @@ function getEventTypes(worldPkg: string) {
 	};
 }
 
+// Parsed event shape from queryEventsGql
+interface ParsedEvent {
+	parsedJson: Record<string, unknown>;
+	sender: string;
+	timestampMs: string;
+}
+
 // ── Radar Hook ──────────────────────────────────────────────────────────────
 
+const POLL_INTERVAL_MS = 15_000; // Poll every 15 seconds
+
 export function useRadar() {
-	const client = useSuiClient();
+	const client = useCurrentClient();
 	const tenant = useActiveTenant();
 	const worldPkg = TENANTS[tenant].worldPackageId;
 	const watches = useLiveQuery(() => db.radarWatches.toArray()) ?? [];
 	const [connected, setConnected] = useState(false);
-	const unsubRef = useRef<(() => void)[]>([]);
+	const cursorsRef = useRef<Map<string, string | null>>(new Map());
 
 	// Match an event against our watch list
 	const matchEvent = useCallback(
-		(event: SuiEvent, kind: RadarEventKind): RadarWatch | null => {
-			const parsed = event.parsedJson as Record<string, unknown> | undefined;
+		(event: ParsedEvent, kind: RadarEventKind): RadarWatch | null => {
+			const parsed = event.parsedJson;
 			if (!parsed) return null;
 
 			for (const watch of watches) {
@@ -72,10 +81,10 @@ export function useRadar() {
 		[watches],
 	);
 
-	// Create radar event from a matched Sui event
+	// Create radar event from a matched event
 	const processEvent = useCallback(
-		async (event: SuiEvent, kind: RadarEventKind, watch: RadarWatch) => {
-			const parsed = event.parsedJson as Record<string, unknown>;
+		async (event: ParsedEvent, kind: RadarEventKind, watch: RadarWatch) => {
+			const parsed = event.parsedJson;
 			let summary = "";
 
 			switch (kind) {
@@ -107,7 +116,7 @@ export function useRadar() {
 				timestamp: new Date(Number(event.timestampMs)).toISOString(),
 				summary,
 				details: JSON.stringify(parsed),
-				txDigest: event.id.txDigest,
+				txDigest: `poll-${event.timestampMs}`,
 				acknowledged: false,
 			};
 
@@ -130,7 +139,7 @@ export function useRadar() {
 		[],
 	);
 
-	// Subscribe to events
+	// Poll for events instead of subscribing (GraphQL client doesn't support subscriptions)
 	useEffect(() => {
 		if (watches.length === 0) {
 			setConnected(false);
@@ -148,41 +157,46 @@ export function useRadar() {
 
 		let cancelled = false;
 
-		async function subscribe() {
-			const unsubs: (() => void)[] = [];
+		async function poll() {
+			if (cancelled) return;
 
 			for (const { type, kind } of eventMap) {
+				if (cancelled) break;
 				try {
-					const unsub = await client.subscribeEvent({
-						filter: { MoveEventType: type },
-						onMessage: (event) => {
-							if (cancelled) return;
-							const match = matchEvent(event, kind);
-							if (match) {
-								processEvent(event, kind, match);
-							}
-						},
+					const cursor = cursorsRef.current.get(type) ?? null;
+					const result = await queryEventsGql(client, type, {
+						cursor,
+						limit: 10,
 					});
-					unsubs.push(() => unsub());
-				} catch {
-					// WebSocket subscription may not be available on all endpoints
-				}
-			}
 
-			if (!cancelled) {
-				unsubRef.current = unsubs;
-				setConnected(unsubs.length > 0);
+					for (const event of result.data) {
+						if (cancelled) break;
+						const match = matchEvent(event, kind);
+						if (match) {
+							await processEvent(event, kind, match);
+						}
+					}
+
+					if (result.nextCursor) {
+						cursorsRef.current.set(type, result.nextCursor);
+					}
+				} catch {
+					// Polling failure — will retry next interval
+				}
 			}
 		}
 
-		subscribe();
+		// Initial poll
+		poll().then(() => {
+			if (!cancelled) setConnected(true);
+		});
+
+		// Set up interval
+		const intervalId = setInterval(poll, POLL_INTERVAL_MS);
 
 		return () => {
 			cancelled = true;
-			for (const unsub of unsubRef.current) {
-				try { unsub(); } catch {}
-			}
-			unsubRef.current = [];
+			clearInterval(intervalId);
 			setConnected(false);
 		};
 	}, [client, worldPkg, watches.length, matchEvent, processEvent]);

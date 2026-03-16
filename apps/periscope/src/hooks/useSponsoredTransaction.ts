@@ -1,8 +1,8 @@
-import { useSignTransaction, useSuiClient } from "@mysten/dapp-kit";
+import { useDAppKit, useCurrentClient } from "@mysten/dapp-kit-react";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { TENANTS } from "@/chain/config";
 import type { Transaction } from "@mysten/sui/transactions";
-import { toBase64, fromBase64 } from "@mysten/sui/utils";
+import { toBase64 } from "@mysten/sui/utils";
 
 /**
  * Hook for executing sponsored transactions.
@@ -15,8 +15,8 @@ import { toBase64, fromBase64 } from "@mysten/sui/utils";
  *   5. Execute with both signatures
  */
 export function useSponsoredTransaction() {
-	const { mutateAsync: signTransaction } = useSignTransaction();
-	const client = useSuiClient();
+	const dAppKit = useDAppKit();
+	const client = useCurrentClient();
 	const tenant = useActiveTenant();
 	const gasStationUrl = TENANTS[tenant].gasStationUrl;
 
@@ -44,15 +44,17 @@ export function useSponsoredTransaction() {
 		const { sponsorSignature } = (await sponsorRes.json()) as { sponsorSignature: string };
 
 		// User signs the same transaction
-		const { signature: userSignature } = await signTransaction({ transaction: tx });
+		const { signature: userSignature } = await dAppKit.signTransaction({ transaction: tx });
 
-		// Execute with both signatures
-		const result = await client.executeTransactionBlock({
-			transactionBlock: txBytesBase64,
-			signature: [userSignature, sponsorSignature],
+		// Execute with both signatures via GraphQL client
+		const result = await client.executeTransaction({
+			transaction: txBytesBase64,
+			signatures: [userSignature, sponsorSignature],
 		});
 
-		return { digest: result.digest };
+		// Extract digest from the transaction result
+		const digest = result.digest;
+		return { digest };
 	}
 
 	return {

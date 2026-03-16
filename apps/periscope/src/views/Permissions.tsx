@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useCurrentAccount } from "@mysten/dapp-kit";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "@tanstack/react-router";
 import {

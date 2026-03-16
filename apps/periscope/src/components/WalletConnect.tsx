@@ -1,8 +1,8 @@
 import {
 	ConnectButton,
 	useCurrentAccount,
-	useDisconnectWallet,
-} from "@mysten/dapp-kit";
+	useDAppKit,
+} from "@mysten/dapp-kit-react";
 import { LogOut, Wallet } from "lucide-react";
 
 function truncateAddress(address: string): string {
@@ -27,7 +27,7 @@ export function ConnectWalletButton({ className }: { className?: string }) {
 
 export function WalletConnect() {
 	const account = useCurrentAccount();
-	const { mutate: disconnect } = useDisconnectWallet();
+	const dAppKit = useDAppKit();
 
 	if (!account) {
 		return <ConnectWalletButton />;
@@ -43,7 +43,7 @@ export function WalletConnect() {
 			</div>
 			<button
 				type="button"
-				onClick={() => disconnect()}
+				onClick={() => dAppKit.disconnectWallet()}
 				className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
 				title="Disconnect wallet"
 			>

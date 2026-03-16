@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useSuiClient } from "@mysten/dapp-kit";
+import { useCurrentClient } from "@mysten/dapp-kit-react";
 import { Wallet as WalletIcon, Loader2, RefreshCw, ExternalLink, Info, AlertCircle } from "lucide-react";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 
@@ -8,7 +8,6 @@ import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 interface CoinBalance {
 	coinType: string;
 	totalBalance: string;
-	coinObjectCount: number;
 }
 
 interface CoinMeta {
@@ -48,7 +47,7 @@ function isSuiCoin(coinType: string): boolean {
 
 export function Wallet() {
 	const { activeCharacter } = useActiveCharacter();
-	const client = useSuiClient();
+	const client = useCurrentClient();
 
 	const suiAddress = activeCharacter?.suiAddress;
 
@@ -63,15 +62,21 @@ export function Wallet() {
 		setFetching(true);
 		setError(null);
 		try {
-			const allBalances = await client.getAllBalances({ owner: suiAddress });
-			setBalances(allBalances as CoinBalance[]);
+			const result = await client.listBalances({ owner: suiAddress });
+			// Map v2 response shape to our CoinBalance type
+			const mapped: CoinBalance[] = result.balances.map((b) => ({
+				coinType: b.coinType,
+				totalBalance: String(b.balance),
+			}));
+			setBalances(mapped);
 
 			// Fetch metadata for each coin type (decimals, symbol, name)
 			const metaMap: Record<string, CoinMeta> = {};
-			for (const b of allBalances) {
+			for (const b of mapped) {
 				if (metaMap[b.coinType]) continue;
 				try {
-					const meta = await client.getCoinMetadata({ coinType: b.coinType });
+					const metaResult = await client.getCoinMetadata({ coinType: b.coinType });
+					const meta = metaResult.coinMetadata;
 					if (meta) {
 						metaMap[b.coinType] = {
 							decimals: meta.decimals,
@@ -230,9 +235,6 @@ export function Wallet() {
 									<tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
 										<th className="px-4 py-2 font-medium">Coin Type</th>
 										<th className="px-4 py-2 font-medium">Balance</th>
-										<th className="px-4 py-2 text-right font-medium">
-											Objects
-										</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -270,9 +272,6 @@ export function Wallet() {
 												</td>
 												<td className="px-4 py-3 font-mono text-sm text-zinc-200">
 													{displayBalance}
-												</td>
-												<td className="px-4 py-3 text-right font-mono text-sm text-zinc-400">
-													{b.coinObjectCount}
 												</td>
 											</tr>
 										);

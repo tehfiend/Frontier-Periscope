@@ -25,7 +25,6 @@ export {
 	extractFields,
 	extractType,
 	extractObjectId,
-	extractOwner,
 } from "./client";
 export {
 	syncOwnedAssemblies,

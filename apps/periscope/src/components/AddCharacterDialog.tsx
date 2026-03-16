@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { useCurrentAccount, useSuiClient } from "@mysten/dapp-kit";
+import { useCurrentAccount, useCurrentClient } from "@mysten/dapp-kit-react";
 import { db, notDeleted } from "@/db";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { TENANTS, type TenantId } from "@/chain/config";
@@ -190,7 +190,7 @@ async function addCharacter(char: DiscoveredChar, tenant?: string): Promise<stri
 
 function WalletMethod({ onClose, tenant }: { onClose: () => void; tenant: TenantId }) {
 	const account = useCurrentAccount();
-	const client = useSuiClient();
+	const client = useCurrentClient();
 	const setActiveCharacterId = useAppStore((s) => s.setActiveCharacterId);
 	const [loading, setLoading] = useState(false);
 	const [result, setResult] = useState<DiscoveredChar | null>(null);
@@ -507,7 +507,7 @@ function LogsMethod({ onClose: _onClose, tenant }: { onClose: () => void; tenant
 // ── Search Method ────────────────────────────────────────────────────────────
 
 function SearchMethod({ onClose, tenant }: { onClose: () => void; tenant: TenantId }) {
-	const client = useSuiClient();
+	const client = useCurrentClient();
 	const setActiveCharacterId = useAppStore((s) => s.setActiveCharacterId);
 	const [query, setQuery] = useState("");
 	const [loading, setLoading] = useState(false);

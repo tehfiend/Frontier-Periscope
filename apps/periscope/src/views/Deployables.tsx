@@ -1,11 +1,11 @@
 import { useState, useCallback, useMemo } from "react";
-import { useSuiClient } from "@mysten/dapp-kit";
+import { useCurrentClient } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, notDeleted } from "@/db";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { discoverCharacterAndAssemblies } from "@/chain/queries";
-import type { SuiClient as SuiClientType } from "@mysten/sui/client";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { Package, RefreshCw, Fuel, AlertTriangle, Loader2, User, Link2 } from "lucide-react";
 import { DataGrid, excelFilterFn, type ColumnDef } from "@/components/DataGrid";
 import type { DeployableIntel } from "@/db/types";
@@ -53,20 +53,20 @@ function assemblyTypeName(typeStr: string, typeId?: number): string {
 // ── Fuel Data Fetch ─────────────────────────────────────────────────────────
 
 async function fetchFuelData(
-	client: SuiClientType,
+	client: SuiGraphQLClient,
 	assemblyId: string,
 ): Promise<{ fuelLevel?: number; fuelExpiresAt?: string }> {
 	try {
-		const obj = await client.getObject({ id: assemblyId, options: { showContent: true } });
-		const content = obj.data?.content;
-		if (!content || !("fields" in content)) return {};
+		const { object } = await client.getObject({ objectId: assemblyId, include: { json: true } });
+		if (!object?.json) return {};
 
-		const fields = content.fields as Record<string, unknown>;
+		const fields = object.json as Record<string, unknown>;
 
 		// Network nodes have fuel directly
-		const fuelObj = fields.fuel as { fields?: Record<string, unknown> } | undefined;
-		if (fuelObj?.fields) {
-			const f = fuelObj.fields;
+		// With GraphQL JSON, nested objects are NOT wrapped in { fields: {} }
+		const fuelObj = fields.fuel as Record<string, unknown> | undefined;
+		if (fuelObj) {
+			const f = fuelObj;
 			const quantity = Number(f.quantity ?? 0);
 			const isBurning = f.is_burning as boolean;
 			const burnRateMs = Number(f.burn_rate_in_ms ?? 0);
@@ -197,7 +197,7 @@ const columns: ColumnDef<DeployableIntel, unknown>[] = [
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function Deployables() {
-	const client = useSuiClient();
+	const client = useCurrentClient();
 	const tenant = useActiveTenant();
 	const { activeCharacter, activeSuiAddresses } = useActiveCharacter();
 

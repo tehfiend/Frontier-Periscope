@@ -1,4 +1,4 @@
-import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
+import { useCurrentAccount, useCurrentClient, useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	AlertCircle,
@@ -422,8 +422,8 @@ function SellOrdersTab({
 	account?: { address: string };
 	discovery: DiscoveryData | null;
 }) {
-	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
-	const suiClient = useSuiClient();
+	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
+	const suiClient = useCurrentClient();
 	const addresses = getContractAddresses(tenant as ChainTenantId);
 	const tradeNodes = useLiveQuery(() => db.tradeNodes.toArray()) ?? [];
 	const tradeNodeIds = useMemo(() => new Set(tradeNodes.map((tn) => tn.id)), [tradeNodes]);
@@ -489,7 +489,7 @@ function SellOrdersTab({
 			const result = await signAndExecute({ transaction: tx });
 
 			const txResponse = await suiClient.waitForTransaction({
-				digest: result.digest,
+				digest: result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "",
 				options: { showObjectChanges: true },
 			});
 
@@ -765,8 +765,8 @@ function BuyOrdersTab({
 	account?: { address: string };
 	discovery: DiscoveryData | null;
 }) {
-	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
-	const suiClient = useSuiClient();
+	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
+	const suiClient = useCurrentClient();
 	const addresses = getContractAddresses(tenant as ChainTenantId);
 	const tradeNodes = useLiveQuery(() => db.tradeNodes.toArray()) ?? [];
 	const tradeNodeIds = useMemo(() => new Set(tradeNodes.map((tn) => tn.id)), [tradeNodes]);
@@ -872,7 +872,7 @@ function BuyOrdersTab({
 			const result = await signAndExecute({ transaction: tx });
 
 			const txResponse = await suiClient.waitForTransaction({
-				digest: result.digest,
+				digest: result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "",
 				options: { showObjectChanges: true },
 			});
 

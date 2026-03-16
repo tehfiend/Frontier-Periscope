@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { useSuiClient } from "@mysten/dapp-kit";
+import { useCurrentClient } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/db";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
@@ -264,7 +264,7 @@ const tribeColumns: ColumnDef<ManifestTribe, unknown>[] = [
 type Tab = "characters" | "tribes";
 
 export function Manifest() {
-	const client = useSuiClient();
+	const client = useCurrentClient();
 	const tenant = useActiveTenant();
 	const worldPkg = TENANTS[tenant].worldPackageId;
 
@@ -323,17 +323,16 @@ export function Manifest() {
 				if (ctx.isCancelled()) break;
 				const batch = unnamed.slice(i, i + BATCH_SIZE);
 				try {
-					const objects = await client.multiGetObjects({
-						ids: batch.map((e) => e.id),
-						options: { showContent: true },
+					const { objects } = await client.getObjects({
+						objectIds: batch.map((e) => e.id),
+						include: { json: true },
 					});
 					for (let j = 0; j < objects.length; j++) {
 						const obj = objects[j];
-						const content = obj.data?.content;
-						if (content && "fields" in content) {
-							const fields = content.fields as Record<string, unknown>;
-							const meta = fields.metadata as { fields?: { name?: string } } | undefined;
-							const name = meta?.fields?.name;
+						if ("objectId" in obj && obj.json) {
+							const fields = obj.json as Record<string, unknown>;
+							const meta = fields.metadata as { name?: string } | undefined;
+							const name = meta?.name;
 							if (name) {
 								await db.manifestCharacters.update(batch[j].id, { name });
 							}

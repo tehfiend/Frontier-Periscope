@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Flag,
@@ -118,7 +118,7 @@ function ClaimsTab({
 	chainObjectId: string | undefined;
 	tenant: string;
 }) {
-	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const [adding, setAdding] = useState(false);
 	const [systemId, setSystemId] = useState("");
 	const [claimName, setClaimName] = useState("");

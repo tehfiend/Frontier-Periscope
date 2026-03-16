@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useCurrentAccount, useSuiClient } from "@mysten/dapp-kit";
+import { useCurrentAccount, useCurrentClient } from "@mysten/dapp-kit-react";
 import { discoverCharacterAndAssemblies } from "@/chain/queries";
 import type { TenantId } from "@/chain/config";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -19,7 +19,7 @@ export function useActiveTenant(): TenantId {
  */
 export function useOwnedAssemblies() {
 	const account = useCurrentAccount();
-	const client = useSuiClient();
+	const client = useCurrentClient();
 	const globalTenant = useActiveTenant();
 	const { activeCharacter, activeSuiAddresses } = useActiveCharacter();
 

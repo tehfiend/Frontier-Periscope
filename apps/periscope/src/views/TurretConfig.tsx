@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useCurrentAccount } from "@mysten/dapp-kit";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { Loader2, CheckCircle2, AlertCircle, ExternalLink, Crosshair } from "lucide-react";
 import { db } from "@/db";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";

@@ -1,4 +1,5 @@
-import type { SuiClient } from "@mysten/sui/client";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import { getObjectJson } from "@tehfrontier/chain-shared";
 import { type TenantId, moveType } from "./config";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -22,17 +23,24 @@ export interface CharacterInfo {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function extractFields(content: unknown): Record<string, unknown> {
-	const c = content as { fields?: Record<string, unknown> };
-	return c?.fields ?? {};
+/**
+ * Safely cast unknown to a record — used for nested JSON objects from GraphQL.
+ * GraphQL JSON does NOT wrap in { fields: {} } like JSON-RPC did.
+ */
+function asRecord(obj: unknown): Record<string, unknown> {
+	if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+		return obj as Record<string, unknown>;
+	}
+	return {};
 }
 
 /**
- * Extract assembly status from on-chain fields.
+ * Extract assembly status from on-chain JSON fields.
  * Handles both old format { current: "online" } and new format { status: { variant: "ONLINE" } }.
+ * GraphQL JSON returns nested objects directly (no { fields } wrapping).
  */
 function extractStatus(statusObj: unknown): string {
-	const fields = extractFields(statusObj);
+	const fields = asRecord(statusObj);
 	// New format: status.status.variant (e.g., { status: { variant: "ONLINE" } })
 	const innerStatus = fields.status as { variant?: string } | undefined;
 	if (innerStatus?.variant) return innerStatus.variant.toLowerCase();
@@ -57,32 +65,30 @@ function parseAssemblyType(typeStr: string): "turret" | "gate" | "storage_unit" 
  * but during initial discovery we check wallet-owned objects first.
  */
 export async function getOwnedObjectsByType(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	address: string,
 	type: string,
-): Promise<Array<{ objectId: string; type: string; content: unknown }>> {
-	const results: Array<{ objectId: string; type: string; content: unknown }> = [];
+): Promise<Array<{ objectId: string; type: string; json: Record<string, unknown> | null }>> {
+	const results: Array<{ objectId: string; type: string; json: Record<string, unknown> | null }> = [];
 	let cursor: string | null | undefined;
 
 	do {
-		const page = await client.getOwnedObjects({
+		const page = await client.listOwnedObjects({
 			owner: address,
-			filter: { StructType: type },
-			options: { showContent: true, showType: true },
-			cursor,
+			type,
+			include: { json: true },
+			cursor: cursor ?? undefined,
 		});
 
-		for (const item of page.data) {
-			if (item.data) {
-				results.push({
-					objectId: item.data.objectId,
-					type: item.data.type ?? "",
-					content: item.data.content,
-				});
-			}
+		for (const obj of page.objects) {
+			results.push({
+				objectId: obj.objectId,
+				type: obj.type ?? "",
+				json: obj.json ?? null,
+			});
 		}
 
-		cursor = page.hasNextPage ? page.nextCursor : null;
+		cursor = page.hasNextPage ? page.cursor : null;
 	} while (cursor);
 
 	return results;
@@ -92,7 +98,7 @@ export async function getOwnedObjectsByType(
  * Discover character and assemblies for a connected wallet.
  */
 export async function discoverCharacterAndAssemblies(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	walletAddress: string,
 	tenant: TenantId,
 ): Promise<{ character: CharacterInfo | null; assemblies: OwnedAssembly[] }> {
@@ -103,19 +109,16 @@ export async function discoverCharacterAndAssemblies(
 	let character: CharacterInfo | null = null;
 
 	if (profiles.length > 0) {
-		const profileFields = extractFields(profiles[0].content);
+		const profileFields = profiles[0].json ?? {};
 		const characterId = profileFields.character_id as string | undefined;
 
 		if (characterId) {
 			// Fetch Character object (shared) to get name, tribe, and OwnerCaps
 			try {
-				const charObj = await client.getObject({
-					id: characterId,
-					options: { showContent: true },
-				});
-				const charFields = extractFields(charObj.data?.content);
-				const metadataFields = extractFields(charFields.metadata);
-				const keyFields = extractFields(charFields.key);
+				const charResult = await getObjectJson(client, characterId);
+				const charFields = charResult.json ?? {};
+				const metadataFields = asRecord(charFields.metadata);
+				const keyFields = asRecord(charFields.key);
 				character = {
 					characterObjectId: characterId,
 					playerProfileId: profiles[0].objectId,
@@ -153,16 +156,13 @@ export async function discoverCharacterAndAssemblies(
 		const caps = [...capsAccess, ...capsControl];
 
 		for (const cap of caps) {
-			const capFields = extractFields(cap.content);
+			const capFields = cap.json ?? {};
 			const assemblyId = capFields.authorized_object_id as string | undefined;
 
 			if (assemblyId) {
 				try {
-					const assemblyObj = await client.getObject({
-						id: assemblyId,
-						options: { showContent: true, showType: true },
-					});
-					const assemblyFields = extractFields(assemblyObj.data?.content);
+					const assemblyResult = await getObjectJson(client, assemblyId);
+					const assemblyFields = assemblyResult.json ?? {};
 					assemblies.push({
 						objectId: assemblyId,
 						type: at.kind,
@@ -193,20 +193,20 @@ export async function discoverCharacterAndAssemblies(
 		try {
 			let cursor: string | null | undefined;
 			do {
-				const page = await client.getOwnedObjects({
+				const page = await client.listOwnedObjects({
 					owner: character.characterObjectId,
-					options: { showType: true, showContent: true },
-					cursor,
+					include: { json: true },
+					cursor: cursor ?? undefined,
 				});
 
-				for (const item of page.data) {
-					const itemType = item.data?.type ?? "";
+				for (const obj of page.objects) {
+					const itemType = obj.type ?? "";
 					if (!itemType.includes("OwnerCap")) continue;
 
 					const assemblyKind = parseAssemblyType(itemType);
 					if (!assemblyKind) continue;
 
-					const capFields = extractFields(item.data?.content);
+					const capFields = obj.json ?? {};
 					const assemblyId = capFields.authorized_object_id as string | undefined;
 					if (!assemblyId) continue;
 
@@ -214,11 +214,8 @@ export async function discoverCharacterAndAssemblies(
 					if (assemblies.find((a) => a.objectId === assemblyId)) continue;
 
 					try {
-						const assemblyObj = await client.getObject({
-							id: assemblyId,
-							options: { showContent: true, showType: true },
-						});
-						const assemblyFields = extractFields(assemblyObj.data?.content);
+						const assemblyResult = await getObjectJson(client, assemblyId);
+						const assemblyFields = assemblyResult.json ?? {};
 
 						assemblies.push({
 							objectId: assemblyId,
@@ -228,7 +225,7 @@ export async function discoverCharacterAndAssemblies(
 							extensionType: assemblyFields.extension
 								? String(assemblyFields.extension)
 								: undefined,
-							ownerCapId: item.data!.objectId,
+							ownerCapId: obj.objectId,
 						});
 					} catch {
 						assemblies.push({
@@ -236,12 +233,12 @@ export async function discoverCharacterAndAssemblies(
 							type: assemblyKind,
 							typeId: 0,
 							status: "unknown",
-							ownerCapId: item.data!.objectId,
+							ownerCapId: obj.objectId,
 						});
 					}
 				}
 
-				cursor = page.hasNextPage ? page.nextCursor : null;
+				cursor = page.hasNextPage ? page.cursor : null;
 			} while (cursor);
 		} catch {
 			// Character may not have owned objects
@@ -255,15 +252,12 @@ export async function discoverCharacterAndAssemblies(
  * Check what extension is authorized on an assembly.
  */
 export async function getAssemblyExtension(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	assemblyId: string,
 ): Promise<string | null> {
 	try {
-		const obj = await client.getObject({
-			id: assemblyId,
-			options: { showContent: true },
-		});
-		const fields = extractFields(obj.data?.content);
+		const result = await getObjectJson(client, assemblyId);
+		const fields = result.json ?? {};
 		if (fields.extension) {
 			return String(fields.extension);
 		}

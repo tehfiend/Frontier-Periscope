@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import {
 	useCurrentAccount,
-	useSignAndExecuteTransaction,
-	useSuiClient,
-} from "@mysten/dapp-kit";
+	useCurrentClient,
+	useDAppKit,
+} from "@mysten/dapp-kit-react";
 import { ConnectWalletButton } from "@/components/WalletConnect";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -51,7 +51,7 @@ type BuildStatus =
 
 export function GovernanceFinance() {
 	const account = useCurrentAccount();
-	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
@@ -76,7 +76,7 @@ export function GovernanceFinance() {
 	const [buildStatus, setBuildStatus] = useState<BuildStatus>("idle");
 	const [buildError, setBuildError] = useState("");
 
-	const suiClient = useSuiClient();
+	const suiClient = useCurrentClient();
 
 	const isProcessing =
 		buildStatus === "building" ||
@@ -93,16 +93,16 @@ export function GovernanceFinance() {
 			let cursor: string | null = null;
 			let hasMore = true;
 			while (hasMore) {
-				const page = await suiClient.getOwnedObjects({
+				const page = await suiClient.listOwnedObjects({
 					owner: suiAddress,
-					filter: { StructType: "0x2::coin::TreasuryCap" },
-					options: { showType: true },
+					type: "0x2::coin::TreasuryCap",
+					include: { json: true },
 					cursor: cursor ?? undefined,
 					limit: 50,
 				});
-				for (const item of page.data) {
-					const objectType = item.data?.type;
-					const objectId = item.data?.objectId;
+				for (const obj of page.objects) {
+					const objectType = obj.type;
+					const objectId = obj.objectId;
 					if (!objectType || !objectId) continue;
 
 					// Extract coinType from TreasuryCap<0xpkg::module::STRUCT>
@@ -142,7 +142,7 @@ export function GovernanceFinance() {
 					});
 				}
 				hasMore = page.hasNextPage;
-				cursor = page.nextCursor ?? null;
+				cursor = page.cursor ?? null;
 			}
 		} catch {
 			// Silent — sync is best-effort
@@ -210,11 +210,11 @@ export function GovernanceFinance() {
 			// User signs with their wallet (EVE Vault sponsors gas)
 			const result = await signAndExecute({
 				transaction: tx,
-				options: { showObjectChanges: true },
 			});
 
-			// Parse the published package details from objectChanges
-			const objectChanges = (result.objectChanges ?? []) as Array<{
+			// Parse the published package details from effects objectChanges
+			const txData = result.Transaction ?? result.FailedTransaction;
+			const objectChanges = (txData?.effects?.objectChanges ?? []) as Array<{
 				type: string;
 				packageId?: string;
 				objectType?: string;
@@ -505,8 +505,8 @@ function CurrencyCard({
 	onStatusChange: (status: BuildStatus, error?: string) => void;
 }) {
 	const account = useCurrentAccount();
-	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
-	const suiClient = useSuiClient();
+	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
+	const suiClient = useCurrentClient();
 
 	const [expanded, setExpanded] = useState(false);
 	const [treasuryInfo, setTreasuryInfo] = useState<{
@@ -601,7 +601,7 @@ function CurrencyCard({
 
 			// Parse objectChanges to find OrgTreasury
 			const txResponse = await suiClient.waitForTransaction({
-				digest: result.digest,
+				digest: result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "",
 				options: { showObjectChanges: true },
 			});
 
@@ -663,7 +663,6 @@ function CurrencyCard({
 
 			await signAndExecute({
 				transaction: tx,
-				options: { showEffects: true },
 			});
 			setShowMint(false);
 			setMintAmount("");
@@ -702,7 +701,7 @@ function CurrencyCard({
 				senderAddress: suiAddress,
 			});
 
-			await signAndExecute({ transaction: tx, options: { showEffects: true } });
+			await signAndExecute({ transaction: tx });
 			setShowBurn(false);
 			setBurnCoinId("");
 			onStatusChange("done");

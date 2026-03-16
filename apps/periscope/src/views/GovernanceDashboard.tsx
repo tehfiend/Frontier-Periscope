@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
+import { useCurrentAccount, useCurrentClient, useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Building2,
@@ -50,8 +50,8 @@ export function GovernanceDashboard() {
 		[org?.id],
 	);
 
-	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
-	const suiClient = useSuiClient();
+	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
+	const suiClient = useCurrentClient();
 
 	const [creating, setCreating] = useState(false);
 	const [orgName, setOrgName] = useState("");
@@ -89,7 +89,7 @@ export function GovernanceDashboard() {
 
 			// Fetch full TX response to get objectChanges
 			const txResponse = await suiClient.waitForTransaction({
-				digest: result.digest,
+				digest: result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "",
 				options: { showObjectChanges: true },
 			});
 
@@ -318,7 +318,7 @@ function TierPanel({
 	chainObjectId: string | undefined;
 	tenant: string;
 }) {
-	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const [adding, setAdding] = useState(false);
 	const [addKind, setAddKind] = useState<"character" | "tribe">("character");
 	const [addValue, setAddValue] = useState("");

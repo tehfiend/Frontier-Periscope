@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { useSuiClient } from "@mysten/dapp-kit";
+import { useCurrentClient } from "@mysten/dapp-kit-react";
 import { useQuery } from "@tanstack/react-query";
 import {
 	type BuyOrderInfo,
@@ -25,7 +25,7 @@ interface OrgLike {
 }
 
 export function useOrgMarket(org: OrgLike | undefined, tenant: TenantId) {
-	const client = useSuiClient();
+	const client = useCurrentClient();
 	const ssuMarketPkgId = getContractAddresses(tenant).ssuMarket?.packageId;
 
 	const { data, isLoading, error, refetch } = useQuery<OrgMarketData>({

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { buildConfigureAcl } from "@tehfrontier/chain-shared";
 import { getTemplate, type TenantId } from "@/chain/config";
 import { resolvePolicy } from "@/chain/permissions";
@@ -9,7 +9,7 @@ export type SyncState = "idle" | "resolving" | "building" | "signing" | "done" |
 
 export function usePermissionSync() {
 	const account = useCurrentAccount();
-	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const [syncState, setSyncState] = useState<SyncState>("idle");
 	const [syncError, setSyncError] = useState<string>();
 
@@ -83,7 +83,7 @@ export function usePermissionSync() {
 			await db.assemblyPolicies.update(policyId, {
 				syncStatus: "synced",
 				lastSyncedAt: new Date().toISOString(),
-				syncTxDigest: result.digest,
+				syncTxDigest: result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "",
 				syncError: undefined,
 				updatedAt: new Date().toISOString(),
 			});

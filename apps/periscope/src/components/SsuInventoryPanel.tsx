@@ -1,6 +1,6 @@
 import { fetchAssemblyInventory } from "@/chain/inventory";
 import { db } from "@/db";
-import { useSuiClient } from "@mysten/dapp-kit";
+import { useCurrentClient } from "@mysten/dapp-kit-react";
 import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Loader2, Package } from "lucide-react";
@@ -17,7 +17,7 @@ export function SsuInventoryPanel({
 	assemblyType,
 	onSelectItem,
 }: SsuInventoryPanelProps) {
-	const client = useSuiClient();
+	const client = useCurrentClient();
 
 	const { data: inventories, isLoading } = useQuery({
 		queryKey: ["ssuInventory", assemblyId],

@@ -6,7 +6,12 @@
  * so consumers can decide whether to refresh stale data.
  */
 
-import type { SuiClient } from "@mysten/sui/client";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import {
+	getObjectJson,
+	queryEventsGql,
+	queryTransactionsByObject,
+} from "@tehfrontier/chain-shared";
 import { db } from "@/db";
 import type { ManifestCharacter, ManifestTribe } from "@/db/types";
 import { type TenantId, TENANTS, moveType } from "./config";
@@ -14,9 +19,14 @@ import type { TaskContext } from "@/lib/taskWorker";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function extractFields(content: unknown): Record<string, unknown> {
-	const c = content as { fields?: Record<string, unknown> };
-	return c?.fields ?? {};
+/**
+ * Safely cast unknown to a record — used for nested JSON objects from GraphQL.
+ */
+function asRecord(obj: unknown): Record<string, unknown> {
+	if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+		return obj as Record<string, unknown>;
+	}
+	return {};
 }
 
 // ── Character Cache ─────────────────────────────────────────────────────────
@@ -25,20 +35,16 @@ function extractFields(content: unknown): Record<string, unknown> {
  * Fetch a single character by Sui object ID and cache it.
  */
 export async function fetchAndCacheCharacter(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	characterObjectId: string,
 ): Promise<ManifestCharacter | null> {
 	try {
-		const obj = await client.getObject({
-			id: characterObjectId,
-			options: { showContent: true, showType: true, showPreviousTransaction: true },
-		});
+		const result = await getObjectJson(client, characterObjectId);
+		if (!result.json) return null;
 
-		if (!obj.data?.content || !("fields" in obj.data.content)) return null;
-
-		const fields = obj.data.content.fields as Record<string, unknown>;
-		const metadata = extractFields(fields.metadata);
-		const key = extractFields(fields.key);
+		const fields = result.json;
+		const metadata = asRecord(fields.metadata);
+		const key = asRecord(fields.key);
 
 		// Preserve existing createdOnChain if we already have it
 		const existing = await db.manifestCharacters.get(characterObjectId);
@@ -47,10 +53,8 @@ export async function fetchAndCacheCharacter(
 		// If we don't have the creation date yet, look up the object's creation tx
 		if (!createdOnChain) {
 			try {
-				const txs = await client.queryTransactionBlocks({
-					filter: { ChangedObject: characterObjectId },
+				const txs = await queryTransactionsByObject(client, characterObjectId, {
 					limit: 1,
-					order: "ascending",
 				});
 				if (txs.data.length > 0) {
 					createdOnChain = new Date(Number(txs.data[0].timestampMs)).toISOString();
@@ -81,7 +85,7 @@ export async function fetchAndCacheCharacter(
  * Resolve a character by Sui address — find their PlayerProfile, then cache the Character.
  */
 export async function fetchCharacterByAddress(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	address: string,
 	tenant: TenantId,
 ): Promise<ManifestCharacter | null> {
@@ -91,15 +95,15 @@ export async function fetchCharacterByAddress(
 
 	try {
 		const profileType = moveType(tenant, "character", "PlayerProfile");
-		const profiles = await client.getOwnedObjects({
+		const profiles = await client.listOwnedObjects({
 			owner: address,
-			filter: { StructType: profileType },
-			options: { showContent: true },
+			type: profileType,
+			include: { json: true },
 		});
 
-		if (profiles.data.length === 0) return null;
+		if (profiles.objects.length === 0) return null;
 
-		const profileFields = extractFields(profiles.data[0].data?.content);
+		const profileFields = profiles.objects[0].json ?? {};
 		const characterId = profileFields.character_id as string | undefined;
 		if (!characterId) return null;
 
@@ -126,9 +130,12 @@ export async function searchCachedCharacters(query: string, limit = 20): Promise
  * This is the most efficient method — each event contains character_id,
  * character_address, item_id, and tribe_id. We only fetch the Character
  * object for the name (metadata.name).
+ *
+ * Cursor migration: old cursors were { txDigest, eventSeq } objects (JSON-RPC).
+ * GraphQL cursors are opaque strings. Detect old format and discard (re-sync).
  */
 export async function discoverCharactersFromEvents(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	_tenant: TenantId,
 	worldPkg: string,
 	limit = 5000,
@@ -141,31 +148,41 @@ export async function discoverCharactersFromEvents(
 
 	// Load saved cursor from last run — only fetch newer events
 	const savedCursor = await db.settings.get(cursorKey);
-	let cursor = (savedCursor?.value as { txDigest: string; eventSeq: string } | null) ?? null;
-	const isIncremental = !!cursor;
+	let cursor: string | null = null;
+	let isIncremental = false;
+
+	// Cursor migration: detect old { txDigest, eventSeq } format and discard
+	if (savedCursor?.value) {
+		if (typeof savedCursor.value === "string") {
+			cursor = savedCursor.value;
+			isIncremental = true;
+		} else if (
+			typeof savedCursor.value === "object" &&
+			"txDigest" in (savedCursor.value as Record<string, unknown>)
+		) {
+			// Old JSON-RPC cursor format — discard and re-sync from scratch
+			console.warn("[manifest] Discarding old JSON-RPC cursor format, re-syncing...");
+			await db.settings.delete(cursorKey);
+			cursor = null;
+			isIncremental = false;
+		}
+	}
 
 	try {
 		ctx?.setProgress(isIncremental ? "Fetching new characters since last sync..." : "Fetching all characters (first run)...");
-		let firstCursor: { txDigest: string; eventSeq: string } | null = null;
+		let latestCursor: string | null = null;
 		let consecutiveExisting = 0;
 
 		do {
 			if (ctx?.isCancelled()) return newCount;
 
-			const result = await client.queryEvents({
-				query: { MoveEventType: eventType },
+			const result = await queryEventsGql(client, eventType, {
 				limit: Math.min(50, limit - fetched),
-				cursor: cursor ?? undefined,
-				order: isIncremental ? "descending" : "ascending",
+				cursor,
 			});
 
-			// Save the first page cursor so we can resume from here next time
-			if (fetched === 0 && result.data.length > 0 && !isIncremental) {
-				// For first full run, we'll save the cursor after processing all
-			}
-
 			for (const event of result.data) {
-				const parsed = event.parsedJson as Record<string, unknown> | undefined;
+				const parsed = event.parsedJson;
 				if (!parsed) continue;
 
 				const charId = parsed.character_id as string;
@@ -203,26 +220,20 @@ export async function discoverCharactersFromEvents(
 
 			fetched += result.data.length;
 			// Track the latest cursor for next incremental run
-			if (result.data.length > 0) {
-				firstCursor = result.nextCursor as typeof firstCursor;
+			if (result.nextCursor) {
+				latestCursor = result.nextCursor;
 			}
 			ctx?.setItems(newCount);
 			ctx?.setProgress(`Fetched ${fetched} events, ${newCount} new characters`);
-			cursor = result.hasNextPage ? (result.nextCursor as typeof cursor) : null;
+			cursor = result.hasNextPage ? result.nextCursor : null;
 		} while (cursor && fetched < limit);
 
 		// Save cursor for next incremental run
-		// For ascending (first run): save the last page cursor so next run starts after it
-		// For descending (incremental): we don't need to update since we query from newest
-		if (!isIncremental && firstCursor) {
-			await db.settings.put({ key: cursorKey, value: firstCursor });
-		}
-		// For incremental runs, save a marker so we know to use descending next time
-		if (!isIncremental) {
-			await db.settings.put({ key: cursorKey, value: { txDigest: "__done__", eventSeq: "0" } });
+		if (latestCursor) {
+			await db.settings.put({ key: cursorKey, value: latestCursor });
 		}
 
-		// Phase 2: Resolve names in batches using multiGetObjects
+		// Phase 2: Resolve names in batches using getObjects
 		if (!ctx?.isCancelled()) {
 			const unnamed = await db.manifestCharacters.filter((c) => !c.name).toArray();
 			const total = unnamed.length;
@@ -237,16 +248,16 @@ export async function discoverCharactersFromEvents(
 
 				const batch = unnamed.slice(i, i + BATCH_SIZE);
 				try {
-					const objects = await client.multiGetObjects({
-						ids: batch.map((e) => e.id),
-						options: { showContent: true },
+					const { objects } = await client.getObjects({
+						objectIds: batch.map((e) => e.id),
+						include: { json: true },
 					});
 
 					for (let j = 0; j < objects.length; j++) {
 						const obj = objects[j];
-						if (obj.data?.content && "fields" in obj.data.content) {
-							const fields = obj.data.content.fields as Record<string, unknown>;
-							const metadata = extractFields(fields.metadata);
+						if ("objectId" in obj && obj.json) {
+							const fields = obj.json as Record<string, unknown>;
+							const metadata = asRecord(fields.metadata);
 							const name = String(metadata.name ?? "");
 							if (name) {
 								await db.manifestCharacters.update(batch[j].id, { name });
@@ -275,7 +286,7 @@ export async function discoverCharactersFromEvents(
  * Refresh stale entries older than maxAge (ms).
  */
 export async function refreshStaleCharacters(
-	client: SuiClient,
+	client: SuiGraphQLClient,
 	maxAgeMs = 24 * 60 * 60 * 1000,
 ): Promise<number> {
 	const cutoff = new Date(Date.now() - maxAgeMs).toISOString();

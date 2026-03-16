@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { buildAuthorizeExtension, buildConfigureTribeGate } from "@/chain/transactions";
 import type { AssemblyKind, ExtensionTemplate, TenantId } from "@/chain/config";
 import { db } from "@/db";
@@ -13,7 +13,7 @@ interface DeployResult {
 
 export function useExtensionDeploy() {
 	const account = useCurrentAccount();
-	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const [status, setStatus] = useState<DeployStatus>("idle");
 	const [result, setResult] = useState<DeployResult>({});
 
@@ -68,7 +68,7 @@ export function useExtensionDeploy() {
 			}
 
 			setStatus("done");
-			const txDigest = authResult.digest;
+			const txDigest = authResult.Transaction?.digest ?? authResult.FailedTransaction?.digest ?? "";
 			setResult({ txDigest });
 
 			// Record in IndexedDB

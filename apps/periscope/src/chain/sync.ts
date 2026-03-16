@@ -9,7 +9,6 @@ import {
 	extractFields,
 	extractType,
 	extractObjectId,
-	extractOwner,
 	getObjectDetails,
 } from "./client";
 import { EVENT_TYPES, ASSEMBLY_TYPE_IDS, TENANTS, type TenantId } from "./config";
@@ -209,9 +208,9 @@ export async function syncKillmails(limit = 50, tenant?: TenantId): Promise<numb
 		const parsed = event.parsedJson as Record<string, unknown> | undefined;
 		if (!parsed) continue;
 
-		// Extract killmail ID from key.item_id or fallback to tx digest
+		// Extract killmail ID from key.item_id or fallback to timestamp
 		const keyObj = parsed.key as { item_id?: string } | undefined;
-		const killmailId = keyObj?.item_id ?? event.id.txDigest;
+		const killmailId = keyObj?.item_id ?? `kill-${event.timestampMs}`;
 
 		// Skip if we already have this killmail
 		const exists = await db.killmails.where("killmailId").equals(killmailId).count();
