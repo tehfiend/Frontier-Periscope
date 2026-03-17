@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
+import { useCurrentAccount, useCurrentClient, useDAppKit } from "@mysten/dapp-kit-react";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import {
 	queryAclConfig,
 	buildConfigureAcl,
@@ -24,8 +25,8 @@ type SyncStatus = "idle" | "loading" | "saving" | "signing" | "done" | "error";
 
 export function AclEditor({ assemblyId, packageId, configObjectId }: AclEditorProps) {
 	const account = useCurrentAccount();
-	const client = useSuiClient();
-	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+	const client = useCurrentClient() as SuiGraphQLClient;
+	const dAppKit = useDAppKit();
 
 	const [isAllowlist, setIsAllowlist] = useState(true);
 	const [tribeIds, setTribeIds] = useState<number[]>([]);
@@ -78,7 +79,7 @@ export function AclEditor({ assemblyId, packageId, configObjectId }: AclEditorPr
 			});
 
 			setStatus("signing");
-			const result = await signAndExecute({ transaction: tx });
+			const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
 			setTxDigest(result.digest);
 			setStatus("done");
 		} catch (err) {

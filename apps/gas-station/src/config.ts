@@ -5,7 +5,8 @@ import { CONTRACT_ADDRESSES } from "@tehfrontier/chain-shared";
 // ── Gas Station Configuration ────────────────────────────────────────────────
 
 export const PORT = Number(process.env.GAS_STATION_PORT ?? 3100);
-export const SUI_RPC_URL = process.env.SUI_RPC_URL ?? "https://fullnode.testnet.sui.io:443";
+export const SUI_GRAPHQL_URL =
+	process.env.SUI_GRAPHQL_URL ?? "https://graphql.testnet.sui.io/graphql";
 
 /**
  * Private key for the gas station wallet (base64 or hex encoded Sui keypair).

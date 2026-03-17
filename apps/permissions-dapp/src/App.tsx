@@ -1,36 +1,42 @@
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-	SuiClientProvider,
-	WalletProvider,
+	createDAppKit,
+	DAppKitProvider,
 	ConnectButton,
 	useCurrentAccount,
-	useSuiClient,
-} from "@mysten/dapp-kit";
-import { getFullnodeUrl } from "@mysten/sui/client";
+} from "@mysten/dapp-kit-react";
+import { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { ShieldCheck, Shield } from "lucide-react";
 import { AssemblySelector } from "./components/AssemblySelector";
 import { AclEditor } from "./components/AclEditor";
 import { AdminPanel } from "./components/AdminPanel";
 
 const queryClient = new QueryClient();
-const networks = { testnet: { url: getFullnodeUrl("testnet") } };
+
+const dAppKit = createDAppKit({
+	networks: ["testnet"],
+	createClient: (network) =>
+		new SuiGraphQLClient({
+			url: `https://graphql.${network}.sui.io/graphql`,
+			network: network as "testnet",
+		}),
+	defaultNetwork: "testnet",
+	autoConnect: true,
+});
 
 export function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
-			<SuiClientProvider networks={networks} defaultNetwork="testnet">
-				<WalletProvider autoConnect>
-					<Main />
-				</WalletProvider>
-			</SuiClientProvider>
+			<DAppKitProvider dAppKit={dAppKit}>
+				<Main />
+			</DAppKitProvider>
 		</QueryClientProvider>
 	);
 }
 
 function Main() {
 	const account = useCurrentAccount();
-	const client = useSuiClient();
 	const [selectedAssemblyId, setSelectedAssemblyId] = useState<string>("");
 	const [configObjectId, setConfigObjectId] = useState<string>("");
 	const [packageId, setPackageId] = useState<string>("");

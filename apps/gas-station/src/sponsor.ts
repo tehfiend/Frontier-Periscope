@@ -1,7 +1,7 @@
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
-import { getPrivateKey, getAllowedPackageIds, SUI_RPC_URL } from "./config";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiGraphQLClient } from "@mysten/sui/graphql";
+import { getPrivateKey, getAllowedPackageIds, SUI_GRAPHQL_URL } from "./config";
 
 // ── Keypair Management ──────────────────────────────────────────────────────
 
@@ -18,11 +18,11 @@ export function getStationAddress(): string {
 	return getKeypair().toSuiAddress();
 }
 
-let _client: SuiClient | null = null;
+let _client: SuiGraphQLClient | null = null;
 
-export function getSuiClient(): SuiClient {
+export function getSuiClient(): SuiGraphQLClient {
 	if (!_client) {
-		_client = new SuiClient({ url: SUI_RPC_URL });
+		_client = new SuiGraphQLClient({ url: SUI_GRAPHQL_URL, network: "testnet" });
 	}
 	return _client;
 }
@@ -90,17 +90,35 @@ export async function sponsorTransaction(txBytesBase64: string): Promise<Sponsor
 
 // ── Health Check ────────────────────────────────────────────────────────────
 
+const GET_BALANCE = `
+	query($owner: SuiAddress!) {
+		address(address: $owner) {
+			balance { totalBalance }
+		}
+	}
+`;
+
+interface GqlBalanceResponse {
+	address: {
+		balance: { totalBalance: string };
+	} | null;
+}
+
 export async function getStationHealth() {
 	const client = getSuiClient();
 	const address = getStationAddress();
 
 	try {
-		const balance = await client.getBalance({ owner: address });
+		const result = await client.query<GqlBalanceResponse, { owner: string }>({
+			query: GET_BALANCE,
+			variables: { owner: address },
+		});
+		const totalBalance = result.data?.address?.balance?.totalBalance ?? "0";
 		return {
 			status: "ok" as const,
 			address,
-			balance: balance.totalBalance,
-			balanceSui: (Number(balance.totalBalance) / 1_000_000_000).toFixed(4),
+			balance: totalBalance,
+			balanceSui: (Number(totalBalance) / 1_000_000_000).toFixed(4),
 		};
 	} catch (err) {
 		return {

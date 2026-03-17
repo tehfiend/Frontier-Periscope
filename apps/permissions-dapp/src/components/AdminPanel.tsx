@@ -1,9 +1,6 @@
 import { useState, useEffect } from "react";
-import {
-	useCurrentAccount,
-	useSignAndExecuteTransaction,
-	useSuiClient,
-} from "@mysten/dapp-kit";
+import { useCurrentAccount, useCurrentClient, useDAppKit } from "@mysten/dapp-kit-react";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import {
 	queryAdminConfig,
 	buildAddAdmin,
@@ -28,8 +25,8 @@ interface AdminPanelProps {
 
 export function AdminPanel({ packageId, configObjectId }: AdminPanelProps) {
 	const account = useCurrentAccount();
-	const client = useSuiClient();
-	const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+	const client = useCurrentClient() as SuiGraphQLClient;
+	const dAppKit = useDAppKit();
 
 	const [config, setConfig] = useState<AdminConfig | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -65,7 +62,7 @@ export function AdminPanel({ packageId, configObjectId }: AdminPanelProps) {
 				adminAddress: newAdmin.trim(),
 				senderAddress: account.address,
 			});
-			await signAndExecute({ transaction: tx });
+			await dAppKit.signAndExecuteTransaction({ transaction: tx });
 			setNewAdmin("");
 			// Reload config
 			const result = await queryAdminConfig(client, configObjectId);
@@ -87,7 +84,7 @@ export function AdminPanel({ packageId, configObjectId }: AdminPanelProps) {
 				adminAddress: address,
 				senderAddress: account.address,
 			});
-			await signAndExecute({ transaction: tx });
+			await dAppKit.signAndExecuteTransaction({ transaction: tx });
 			const result = await queryAdminConfig(client, configObjectId);
 			setConfig(result);
 		} catch (err) {
@@ -107,7 +104,7 @@ export function AdminPanel({ packageId, configObjectId }: AdminPanelProps) {
 				tribeId: Number(newTribe),
 				senderAddress: account.address,
 			});
-			await signAndExecute({ transaction: tx });
+			await dAppKit.signAndExecuteTransaction({ transaction: tx });
 			setNewTribe("");
 			const result = await queryAdminConfig(client, configObjectId);
 			setConfig(result);
@@ -128,7 +125,7 @@ export function AdminPanel({ packageId, configObjectId }: AdminPanelProps) {
 				tribeId,
 				senderAddress: account.address,
 			});
-			await signAndExecute({ transaction: tx });
+			await dAppKit.signAndExecuteTransaction({ transaction: tx });
 			const result = await queryAdminConfig(client, configObjectId);
 			setConfig(result);
 		} catch (err) {
