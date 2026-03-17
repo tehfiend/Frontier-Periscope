@@ -6,7 +6,6 @@ import {
 	LayoutDashboard,
 	Map,
 	Package,
-	Box,
 	MapPin,
 	Target,
 	Radio,
@@ -80,8 +79,7 @@ const navGroups: NavGroup[] = [
 	{
 		title: "Assets",
 		items: [
-			{ to: "/deployables", icon: Package, label: "Deployables" },
-			{ to: "/assemblies", icon: Box, label: "Assemblies" },
+			{ to: "/deployables", icon: Package, label: "Structures" },
 			{ to: "/extensions", icon: Puzzle, label: "Extensions" },
 			{ to: "/assets", icon: Boxes, label: "Assets" },
 			{ to: "/locations", icon: MapPin, label: "Locations" },

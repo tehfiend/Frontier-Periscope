@@ -3,7 +3,6 @@ import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/
 import { Layout } from "@/components/Layout";
 import { Dashboard } from "@/views/Dashboard";
 import { Deployables } from "@/views/Deployables";
-import { Assemblies } from "@/views/Assemblies";
 import { Locations } from "@/views/Locations";
 import { Targets } from "@/views/Targets";
 import { Intel } from "@/views/Intel";
@@ -162,7 +161,9 @@ const deployablesRoute = createRoute({
 const assembliesRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/assemblies",
-	component: Assemblies,
+	beforeLoad: () => {
+		throw redirect({ to: "/deployables" });
+	},
 });
 
 const locationsRoute = createRoute({

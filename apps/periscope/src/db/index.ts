@@ -390,6 +390,12 @@ class PeriscopeDB extends Dexie {
 		this.version(14).stores({
 			tradeNodes: "id",
 		});
+
+		// V15: Deployables — add ownerCapId, assemblyModule, characterObjectId for on-chain rename
+		this.version(15).stores({
+			deployables:
+				"id, objectId, assemblyType, owner, status, label, updatedAt, _hlc, ownerCapId, *tags",
+		});
 	}
 }
 

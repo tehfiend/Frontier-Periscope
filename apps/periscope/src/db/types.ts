@@ -88,6 +88,12 @@ export interface DeployableIntel extends IntelBase {
 	fuelExpiresAt?: string;
 	position?: [number, number, number];
 	notes?: string;
+	/** OwnerCap object ID (needed for on-chain rename) */
+	ownerCapId?: string;
+	/** Move module name for this assembly (e.g. "turret", "gate", "network_node") */
+	assemblyModule?: string;
+	/** Character Sui object ID (needed for borrow_owner_cap PTB step) */
+	characterObjectId?: string;
 }
 
 export interface AssemblyIntel extends IntelBase {
