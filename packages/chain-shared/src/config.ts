@@ -1,6 +1,6 @@
 import type { ContractAddresses } from "./types";
 
-export type TenantId = "stillness" | "utopia" | "nebula";
+export type TenantId = "stillness" | "utopia";
 
 /**
  * Per-tenant contract addresses. Populated after publishing.
@@ -15,7 +15,7 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		gateTribe: { packageId: "0x7ce73cdc22d21410794818a31522bc85c25ef97c3685214796f7347d76fd3298", configObjectId: "0x322baeaa93dab9802fb55d7875551c1e40dad88b402fa36a9f8aa8f1f6399816" },
 		gateToll: { packageId: "0xcef451bbe80afd7e495d5de87ace2989097731534ac100d0785f91a427e1f6a8", configObjectId: "0xb1f7ddda99a315704350b4f0a3d82626a4a62da4102afb20222c8a423657efd5" },
 		exchange: { packageId: "0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d" },
-		ssuMarket: { packageId: "0xdb9df166063dc60ab0a450a768d4010f3e5939e554910d6aa1dc1b72e5dc8885" },
+		ssuMarket: { packageId: "0xeca760fe766302433fcc4c538d95f1f8960e863e5b789c63011dae18a20723d4", originalPackageId: "0xdb9df166063dc60ab0a450a768d4010f3e5939e554910d6aa1dc1b72e5dc8885" },
 		bountyBoard: { packageId: "0xf55f7830828c66d6402add527e9e4ff9190aaae52bbb7ab723d24f455021b4bf", boardObjectId: "0x38725e050f5872d381407dd0d97117b66daae4202e21bf2a0bbd743fca3a3a86" },
 		lease: { packageId: "0x9920aff314ff7dd22e86488fd44e9db7af55479a7f2240f06c97ded05c7bc7ce", registryObjectId: "0x074ba40c24c3bea181ef628ccf6e24273d1309d9a257c3e2ab69b6ccc7e13947" },
 		tokenTemplate: { packageId: "0x38e749bfd487ca48633df45126820e23eddfbba8e0fc391f0f7a748dcb665ccf" },
@@ -30,14 +30,13 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		gateTribe: { packageId: "0x7ce73cdc22d21410794818a31522bc85c25ef97c3685214796f7347d76fd3298", configObjectId: "0x322baeaa93dab9802fb55d7875551c1e40dad88b402fa36a9f8aa8f1f6399816" },
 		gateToll: { packageId: "0xcef451bbe80afd7e495d5de87ace2989097731534ac100d0785f91a427e1f6a8", configObjectId: "0xb1f7ddda99a315704350b4f0a3d82626a4a62da4102afb20222c8a423657efd5" },
 		exchange: { packageId: "0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d" },
-		ssuMarket: { packageId: "0xdb9df166063dc60ab0a450a768d4010f3e5939e554910d6aa1dc1b72e5dc8885" },
+		ssuMarket: { packageId: "0x53c2bf5e90d12b8a92594ab959f3d883dc2afdaf6031e9640151f82582a17501", originalPackageId: "0x53c2bf5e90d12b8a92594ab959f3d883dc2afdaf6031e9640151f82582a17501" },
 		bountyBoard: { packageId: "0xf55f7830828c66d6402add527e9e4ff9190aaae52bbb7ab723d24f455021b4bf", boardObjectId: "0x38725e050f5872d381407dd0d97117b66daae4202e21bf2a0bbd743fca3a3a86" },
 		lease: { packageId: "0x9920aff314ff7dd22e86488fd44e9db7af55479a7f2240f06c97ded05c7bc7ce", registryObjectId: "0x074ba40c24c3bea181ef628ccf6e24273d1309d9a257c3e2ab69b6ccc7e13947" },
 		tokenTemplate: { packageId: "0x38e749bfd487ca48633df45126820e23eddfbba8e0fc391f0f7a748dcb665ccf" },
 		governance: { packageId: "0x8bef45b3006c3112cbc4aa930a6aa521fc586cc8609c89514c4e14f514a578cb", claimsRegistryObjectId: "0xa443242e14ddcdbfa0b6ad63305df464ac110fb6abc59b2ed59db8a37f42082f" },
 		governanceExt: { packageId: "0x670b8491481ab8f88a47f708918c83a6ba17427861d7d8a82e2a513176bec349" },
 	},
-	nebula: {},
 };
 
 export function getContractAddresses(tenant: TenantId): ContractAddresses {
