@@ -23,6 +23,8 @@ import { Workers } from "@/views/Workers";
 // Lazy-load heavy views that pull in large deps
 const LazyStarMap = lazy(() => import("@/views/StarMap").then((m) => ({ default: m.StarMap })));
 const LazyLogs = lazy(() => import("@/views/Logs").then((m) => ({ default: m.Logs })));
+const LazySonar = lazy(() => import("@/views/Sonar").then((m) => ({ default: m.Sonar })));
+const LazyBridge = lazy(() => import("@/views/Bridge").then((m) => ({ default: m.Bridge })));
 const LazyPeerSync = lazy(() =>
 	import("@/views/PeerSync").then((m) => ({ default: m.PeerSync })),
 );
@@ -68,6 +70,22 @@ function LogsPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
 			<LazyLogs />
+		</Suspense>
+	);
+}
+
+function SonarPage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazySonar />
+		</Suspense>
+	);
+}
+
+function BridgePage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyBridge />
 		</Suspense>
 	);
 }
@@ -205,7 +223,27 @@ const blueprintsRoute = createRoute({
 const logsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/logs",
+	beforeLoad: () => {
+		throw redirect({ to: "/sonar" });
+	},
+});
+
+const logsDetailRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/logs/detail",
 	component: LogsPage,
+});
+
+const sonarRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/sonar",
+	component: SonarPage,
+});
+
+const bridgeRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/bridge",
+	component: BridgePage,
 });
 
 const opsecRoute = createRoute({
@@ -338,6 +376,9 @@ const routeTree = rootRoute.addChildren([
 	killmailsRoute,
 	blueprintsRoute,
 	logsRoute,
+	logsDetailRoute,
+	sonarRoute,
+	bridgeRoute,
 	opsecRoute,
 	notesRoute,
 	extensionsRoute,

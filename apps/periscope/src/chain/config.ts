@@ -61,6 +61,11 @@ export function getEventTypes(tenant: TenantId) {
 		KillmailCreated: `${pkg}::killmail::KillmailCreatedEvent`,
 		AssemblyCreated: `${pkg}::assembly::AssemblyCreatedEvent`,
 		StatusChanged: `${pkg}::status::StatusChangedEvent`,
+		// Inventory events (Sonar chain channel)
+		ItemDeposited: `${pkg}::inventory::ItemDepositedEvent`,
+		ItemWithdrawn: `${pkg}::inventory::ItemWithdrawnEvent`,
+		ItemMinted: `${pkg}::inventory::ItemMintedEvent`,
+		ItemBurned: `${pkg}::inventory::ItemBurnedEvent`,
 	};
 }
 

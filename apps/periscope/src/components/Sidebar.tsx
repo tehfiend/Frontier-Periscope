@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useAppStore } from "@/stores/appStore";
+import { useSonarStore } from "@/stores/sonarStore";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { CharacterSwitcher } from "./CharacterSwitcher";
 import {
@@ -12,7 +13,6 @@ import {
 	Users,
 	Skull,
 	Wrench,
-	FileText,
 	Shield,
 	StickyNote,
 	Settings,
@@ -31,6 +31,7 @@ import {
 	ShoppingBag,
 	Wallet,
 	Puzzle,
+	Navigation,
 	type LucideIcon,
 } from "lucide-react";
 
@@ -38,6 +39,8 @@ interface NavItem {
 	to: string;
 	icon: LucideIcon;
 	label: string;
+	/** Optional: render a status dot next to the label */
+	statusDot?: boolean;
 }
 
 interface NavGroup {
@@ -69,6 +72,8 @@ const navGroups: NavGroup[] = [
 		title: "Intelligence",
 		items: [
 			{ to: "/radar", icon: SatelliteDish, label: "Radar" },
+			{ to: "/sonar", icon: Radio, label: "Sonar", statusDot: true },
+			{ to: "/bridge", icon: Navigation, label: "Bridge" },
 			{ to: "/intel", icon: Radio, label: "Intel Channel" },
 			{ to: "/targets", icon: Target, label: "Watchlist" },
 			{ to: "/players", icon: Users, label: "Players" },
@@ -89,7 +94,6 @@ const navGroups: NavGroup[] = [
 		title: "Tools",
 		items: [
 			{ to: "/blueprints", icon: Wrench, label: "Blueprints" },
-			{ to: "/logs", icon: FileText, label: "Log Analyzer" },
 			{ to: "/opsec", icon: Shield, label: "OPSEC" },
 			{ to: "/notes", icon: StickyNote, label: "Notes" },
 		],
@@ -103,8 +107,33 @@ const navGroups: NavGroup[] = [
 	},
 ];
 
-function NavLink({ to, icon: Icon, label }: NavItem) {
+function useSonarStatusDot(): string {
+	const localEnabled = useSonarStore((s) => s.localEnabled);
+	const chainEnabled = useSonarStore((s) => s.chainEnabled);
+	const localStatus = useSonarStore((s) => s.localStatus);
+	const chainStatus = useSonarStore((s) => s.chainStatus);
+
+	// Red if any channel has an error
+	if (
+		(localEnabled && localStatus === "error") ||
+		(chainEnabled && chainStatus === "error")
+	) {
+		return "bg-red-500";
+	}
+	// Green if at least one channel is active
+	if (
+		(localEnabled && localStatus === "active") ||
+		(chainEnabled && chainStatus === "active")
+	) {
+		return "bg-green-500";
+	}
+	// Gray if both off
+	return "bg-zinc-600";
+}
+
+function NavLink({ to, icon: Icon, label, statusDot }: NavItem) {
 	const collapsed = useAppStore((s) => s.sidebarCollapsed);
+	const dotColor = useSonarStatusDot();
 
 	return (
 		<Link
@@ -117,7 +146,14 @@ function NavLink({ to, icon: Icon, label }: NavItem) {
 			}}
 		>
 			<Icon size={18} className="shrink-0" />
-			{!collapsed && <span>{label}</span>}
+			{!collapsed && (
+				<span className="flex items-center gap-1.5">
+					{label}
+					{statusDot && (
+						<span className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`} />
+					)}
+				</span>
+			)}
 		</Link>
 	);
 }
