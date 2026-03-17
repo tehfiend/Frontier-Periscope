@@ -11,7 +11,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@mysten/sui": "^1.45.2"
+    "@mysten/sui": "^2.7.0"
   },
   "devDependencies": {
     "@tehfrontier/tsconfig": "workspace:*",

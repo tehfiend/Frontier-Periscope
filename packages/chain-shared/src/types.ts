@@ -34,10 +34,17 @@ export interface OrderInfo {
 
 // ── SSU Market Types ────────────────────────────────────────────────────────
 
+/** @deprecated Use SellOrderInfo instead */
 export interface MarketListing {
 	typeId: number;
 	pricePerUnit: number;
 	available: boolean;
+}
+
+export interface SellOrderInfo {
+	typeId: number;
+	pricePerUnit: number;
+	quantity: number;
 }
 
 export interface MarketInfo {
@@ -169,7 +176,7 @@ export interface ContractAddresses {
 	gateTribe?: { packageId: string; configObjectId: string };
 	gateToll?: { packageId: string; configObjectId: string };
 	exchange?: { packageId: string };
-	ssuMarket?: { packageId: string };
+	ssuMarket?: { packageId: string; originalPackageId?: string };
 	bountyBoard?: { packageId: string; boardObjectId: string };
 	lease?: { packageId: string; registryObjectId: string };
 	tokenTemplate?: { packageId: string };

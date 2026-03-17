@@ -228,7 +228,7 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 		hasConfig: false,
 		packageIds: {
 			stillness: "0xdb9df166063dc60ab0a450a768d4010f3e5939e554910d6aa1dc1b72e5dc8885",
-			utopia: "0xdb9df166063dc60ab0a450a768d4010f3e5939e554910d6aa1dc1b72e5dc8885",
+			utopia: "0x53c2bf5e90d12b8a92594ab959f3d883dc2afdaf6031e9640151f82582a17501",
 		},
 		configObjectIds: {},
 		witnessType: "ssu_market::MarketAuth",

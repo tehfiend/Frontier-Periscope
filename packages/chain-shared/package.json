@@ -14,7 +14,7 @@
 	},
 	"dependencies": {
 		"@mysten/move-bytecode-template": "^0.3.0",
-		"@mysten/sui": "^1.45.2"
+		"@mysten/sui": "^2.7.0"
 	},
 	"devDependencies": {
 		"@tehfrontier/tsconfig": "workspace:*",

@@ -118,7 +118,7 @@ export function TurretConfig() {
 				status: "configured",
 				configuration: config as unknown as Record<string, unknown>,
 				authorizedAt: now,
-				owner: suiAddress,
+				owner: suiAddress ?? "",
 				createdAt: now,
 				updatedAt: now,
 			});

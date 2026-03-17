@@ -236,6 +236,70 @@ export async function queryOrganization(
 	};
 }
 
+const DISCOVER_ORG_QUERY = `
+	query($type: String!, $first: Int, $after: String) {
+		objects(filter: { type: $type }, first: $first, after: $after) {
+			nodes {
+				address
+				asMoveObject { contents { json } }
+			}
+			pageInfo { hasNextPage endCursor }
+		}
+	}
+`;
+
+interface DiscoverOrgResponse {
+	objects: {
+		nodes: Array<{
+			address: string;
+			asMoveObject?: { contents?: { json: Record<string, unknown> } };
+		}>;
+		pageInfo: { hasNextPage: boolean; endCursor: string | null };
+	};
+}
+
+/**
+ * Discover an Organization created by a given address.
+ * Queries all Organization objects on chain and finds one whose creator matches.
+ */
+export async function discoverOrgByCreator(
+	client: SuiGraphQLClient,
+	packageId: string,
+	creatorAddress: string,
+): Promise<OrganizationInfo | null> {
+	const orgType = `${packageId}::org::Organization`;
+	let cursor: string | null = null;
+	let hasMore = true;
+
+	while (hasMore) {
+		const result: { data?: DiscoverOrgResponse } = await client.query({
+			query: DISCOVER_ORG_QUERY,
+			variables: { type: orgType, first: 50, after: cursor },
+		});
+
+		const objects: DiscoverOrgResponse["objects"] | undefined = result.data?.objects;
+		if (!objects) return null;
+
+		for (const node of objects.nodes) {
+			const json = node.asMoveObject?.contents?.json;
+			if (!json) continue;
+
+			if (json.creator === creatorAddress) {
+				try {
+					return await queryOrganization(client, node.address);
+				} catch {
+					// Object may have been deleted, keep searching
+				}
+			}
+		}
+
+		hasMore = objects.pageInfo.hasNextPage;
+		cursor = objects.pageInfo.endCursor;
+	}
+
+	return null;
+}
+
 /**
  * Query claim events from chain to build a local index.
  * Returns all claims that have been created (caller filters removed ones).

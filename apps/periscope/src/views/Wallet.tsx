@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useCurrentClient } from "@mysten/dapp-kit-react";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { Wallet as WalletIcon, Loader2, RefreshCw, ExternalLink, Info, AlertCircle } from "lucide-react";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 
@@ -47,7 +47,7 @@ function isSuiCoin(coinType: string): boolean {
 
 export function Wallet() {
 	const { activeCharacter } = useActiveCharacter();
-	const client = useCurrentClient();
+	const client = useSuiClient();
 
 	const suiAddress = activeCharacter?.suiAddress;
 

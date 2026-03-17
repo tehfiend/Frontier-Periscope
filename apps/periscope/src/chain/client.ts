@@ -49,7 +49,7 @@ export async function getOwnedObjectsByType(
 	let hasNext = true;
 
 	while (hasNext) {
-		const page = await c.listOwnedObjects({
+		const page: { objects: Array<{ objectId: string; json?: Record<string, unknown> | null; type?: string }>; hasNextPage: boolean; cursor: string | null } = await c.listOwnedObjects({
 			owner: address,
 			type: moveType,
 			include: { json: true },
@@ -131,8 +131,15 @@ export async function lookupCharacterByItemId(
 	const c = getSuiClient();
 	let cursor: string | null = null;
 
+	type CharacterQueryResult = {
+		objects: {
+			nodes: Array<{ asMoveObject?: { contents?: { json: GqlJson } } }>;
+			pageInfo: { hasNextPage: boolean; endCursor: string | null };
+		};
+	};
+
 	for (let page = 0; page < 200; page++) {
-		const query = `{
+		const gqlQuery: string = `{
 			objects(filter: { type: "${CHARACTER_TYPE}" }, first: 50${cursor ? `, after: "${cursor}"` : ""}) {
 				nodes {
 					asMoveObject { contents { json } }
@@ -141,12 +148,10 @@ export async function lookupCharacterByItemId(
 			}
 		}`;
 
-		const result = await c.query<{
-			objects: {
-				nodes: Array<{ asMoveObject?: { contents?: { json: GqlJson } } }>;
-				pageInfo: { hasNextPage: boolean; endCursor: string | null };
-			};
-		}>({ query });
+		const result = await c.query<CharacterQueryResult>({
+			query: gqlQuery,
+			variables: {},
+		});
 
 		const nodes = result.data?.objects?.nodes;
 		if (!nodes) return null;
@@ -164,7 +169,7 @@ export async function lookupCharacterByItemId(
 			}
 		}
 
-		const pageInfo = result.data?.objects?.pageInfo;
+		const pageInfo: CharacterQueryResult["objects"]["pageInfo"] | undefined = result.data?.objects?.pageInfo;
 		if (!pageInfo?.hasNextPage) break;
 		cursor = pageInfo.endCursor ?? null;
 	}

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useCurrentClient } from "@mysten/dapp-kit-react";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Boxes, Loader2, RefreshCw } from "lucide-react";
@@ -27,7 +27,7 @@ interface AssetRow {
 export function Assets() {
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
-	const client = useCurrentClient();
+	const client = useSuiClient();
 	const { data: discovery, isLoading: loadingAssemblies } = useOwnedAssemblies();
 	const gameTypes = useLiveQuery(() => db.gameTypes.toArray()) ?? [];
 

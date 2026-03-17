@@ -132,7 +132,7 @@ export function GovernanceTurrets() {
 				status: "configured",
 				configuration: { ...config, orgMode: mode, orgId: org?.id } as unknown as Record<string, unknown>,
 				authorizedAt: now,
-				owner: suiAddress,
+				owner: suiAddress ?? "",
 				createdAt: now,
 				updatedAt: now,
 			});

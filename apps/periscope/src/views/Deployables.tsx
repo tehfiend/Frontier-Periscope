@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { useCurrentClient } from "@mysten/dapp-kit-react";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, notDeleted } from "@/db";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
@@ -197,7 +197,7 @@ const columns: ColumnDef<DeployableIntel, unknown>[] = [
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function Deployables() {
-	const client = useCurrentClient();
+	const client = useSuiClient();
 	const tenant = useActiveTenant();
 	const { activeCharacter, activeSuiAddresses } = useActiveCharacter();
 

@@ -80,7 +80,8 @@ export function AclEditor({ assemblyId, packageId, configObjectId }: AclEditorPr
 
 			setStatus("signing");
 			const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
-			setTxDigest(result.digest);
+			const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
+			setTxDigest(digest);
 			setStatus("done");
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));

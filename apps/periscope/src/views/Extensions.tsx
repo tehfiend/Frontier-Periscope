@@ -16,14 +16,24 @@ import {
 	User,
 	Package,
 	Database,
+	Building2,
+	Coins,
+	ShoppingBag,
 } from "lucide-react";
 
 import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPanel";
 import { useOwnedAssemblies, useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { getTemplatesForAssemblyType } from "@/chain/config";
 import { db, notDeleted } from "@/db";
 import type { OwnedAssembly } from "@/chain/queries";
+import {
+	discoverMarketConfig,
+	getContractAddresses,
+	queryMarketConfig,
+} from "@tehfrontier/chain-shared";
+import { useQuery } from "@tanstack/react-query";
 
 const assemblyIcons = {
 	turret: Crosshair,
@@ -49,6 +59,12 @@ export function Extensions() {
 	const { data, isLoading, error } = useOwnedAssemblies();
 	const tenant = useActiveTenant();
 	const extensions = useLiveQuery(() => db.extensions.filter(notDeleted).toArray()) ?? [];
+	const org = useLiveQuery(() => db.organizations.filter(notDeleted).first());
+	const currencies = useLiveQuery(
+		() => (org ? db.currencies.where("orgId").equals(org.id).filter(notDeleted).toArray() : []),
+		[org?.id],
+	);
+	const tradeNodesList = useLiveQuery(() => db.tradeNodes.toArray()) ?? [];
 	const [selectedAssembly, setSelectedAssembly] = useState<OwnedAssembly | null>(null);
 
 	// Prefer character address, fall back to wallet
@@ -128,6 +144,9 @@ export function Extensions() {
 				</div>
 			)}
 
+			{/* On-Chain Objects */}
+			<OnChainObjects org={org} currencies={currencies ?? []} tradeNodes={tradeNodesList} tenant={tenant} />
+
 			{assemblies.length === 0 ? (
 				<div className="flex flex-col items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 py-16">
 					<Box size={48} className="text-zinc-700" />
@@ -159,6 +178,7 @@ export function Extensions() {
 							)}
 							onDeploy={() => setSelectedAssembly(assembly)}
 							walletConnected={!!account}
+							tenant={tenant}
 						/>
 					))}
 				</div>
@@ -198,22 +218,139 @@ function Header() {
 	);
 }
 
+// ── On-Chain Objects Panel ─────────────────────────────────────────────────
+
+function OnChainObjects({
+	org,
+	currencies,
+	tradeNodes,
+	tenant,
+}: {
+	org?: { id: string; name: string; chainObjectId?: string; orgMarketId?: string };
+	currencies: Array<{
+		id: string;
+		symbol: string;
+		name: string;
+		coinType: string;
+		packageId: string;
+		orgTreasuryId?: string;
+	}>;
+	tradeNodes: Array<{ id: string; name: string; marketConfigId?: string }>;
+	tenant: string;
+}) {
+	const hasAnything = org || currencies.length > 0 || tradeNodes.length > 0;
+	if (!hasAnything) return null;
+
+	return (
+		<div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+			<h2 className="mb-3 text-sm font-medium text-zinc-400">On-Chain Objects</h2>
+
+			<div className="space-y-3 text-xs">
+				{/* Organization */}
+				{org && (
+					<div className="space-y-1">
+						<div className="flex items-center gap-1.5">
+							<Building2 size={12} className="text-cyan-500" />
+							<span className="font-medium text-zinc-300">Organization: {org.name}</span>
+						</div>
+						{org.chainObjectId ? (
+							<p className="pl-5 font-mono text-zinc-500">{org.chainObjectId}</p>
+						) : (
+							<p className="pl-5 text-zinc-600">Not published to chain</p>
+						)}
+						{org.orgMarketId && (
+							<div className="pl-5">
+								<span className="text-zinc-400">OrgMarket: </span>
+								<span className="font-mono text-zinc-500">{org.orgMarketId}</span>
+							</div>
+						)}
+					</div>
+				)}
+
+				{/* Currencies / Treasury */}
+				{currencies.map((c) => (
+					<div key={c.id} className="space-y-1">
+						<div className="flex items-center gap-1.5">
+							<Coins size={12} className="text-amber-500" />
+							<span className="font-medium text-zinc-300">
+								{c.symbol} -- {c.name}
+							</span>
+						</div>
+						<div className="space-y-0.5 pl-5">
+							<div>
+								<span className="text-zinc-400">Package: </span>
+								<span className="font-mono text-zinc-500">{c.packageId}</span>
+							</div>
+							<div>
+								<span className="text-zinc-400">Coin Type: </span>
+								<span className="font-mono text-zinc-500">{c.coinType}</span>
+							</div>
+							{c.orgTreasuryId && (
+								<div>
+									<span className="text-zinc-400">OrgTreasury: </span>
+									<span className="font-mono text-zinc-500">{c.orgTreasuryId}</span>
+								</div>
+							)}
+						</div>
+					</div>
+				))}
+
+				{/* Trade Nodes / MarketConfigs */}
+				{tradeNodes.length > 0 && (
+					<div className="space-y-1">
+						<div className="flex items-center gap-1.5">
+							<ShoppingBag size={12} className="text-green-500" />
+							<span className="font-medium text-zinc-300">
+								Trade Nodes ({tradeNodes.length})
+							</span>
+						</div>
+						{tradeNodes.map((tn) => (
+							<div key={tn.id} className="pl-5">
+								<span className="text-zinc-300">{tn.name}</span>
+								<span className="ml-2 font-mono text-zinc-600">
+									{tn.id.slice(0, 14)}...
+								</span>
+								{tn.marketConfigId ? (
+									<div className="mt-0.5">
+										<span className="text-zinc-400">MarketConfig: </span>
+										<span className="font-mono text-zinc-500">{tn.marketConfigId}</span>
+									</div>
+								) : (
+									<div className="mt-0.5 text-zinc-600">No MarketConfig</div>
+								)}
+							</div>
+						))}
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
+// ── Assembly Card ─────────────────────────────────────────────────────────
+
 function AssemblyCard({
 	assembly,
 	extensionRecord,
 	onDeploy,
 	walletConnected,
+	tenant,
 }: {
 	assembly: OwnedAssembly;
 	extensionRecord?: { templateName: string; status: string };
 	onDeploy: () => void;
 	walletConnected: boolean;
+	tenant: string;
 }) {
 	const Icon = assemblyIcons[assembly.type];
 	const label = assemblyLabels[assembly.type];
 	const isOnline = assembly.status === "online" || assembly.status === "ONLINE";
 	const templates = getTemplatesForAssemblyType(assembly.type);
 	const hasExtension = !!assembly.extensionType || !!extensionRecord;
+	const isStorageType =
+		assembly.type === "storage_unit" ||
+		assembly.type === "smart_storage_unit" ||
+		assembly.type === "protocol_depot";
 
 	return (
 		<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
@@ -227,6 +364,11 @@ function AssemblyCard({
 						<p className="font-mono text-xs text-zinc-600">
 							{assembly.objectId.slice(0, 10)}...{assembly.objectId.slice(-6)}
 						</p>
+						{assembly.ownerCapId && (
+							<p className="font-mono text-xs text-zinc-700">
+								OwnerCap: {assembly.ownerCapId.slice(0, 10)}...
+							</p>
+						)}
 					</div>
 				</div>
 				<div className="flex items-center gap-1.5">
@@ -244,12 +386,13 @@ function AssemblyCard({
 				</div>
 			</div>
 
+			{/* Extension info */}
 			<div className="mt-3 flex items-center justify-between border-t border-zinc-800/50 pt-3">
 				{hasExtension ? (
 					<div className="flex items-center gap-1.5">
 						<CheckCircle2 size={14} className="text-cyan-500" />
 						<span className="text-xs text-zinc-400">
-							{extensionRecord?.templateName ?? "Extension active"}
+							{extensionRecord?.templateName ?? assembly.extensionType ?? "Extension active"}
 						</span>
 						{extensionRecord?.status && (
 							<span className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-xs text-cyan-400">
@@ -273,6 +416,65 @@ function AssemblyCard({
 					</button>
 				)}
 			</div>
+
+			{/* On-chain config discovery for SSU market */}
+			{isStorageType && (
+				<MarketConfigInfo assemblyId={assembly.objectId} tenant={tenant} />
+			)}
+		</div>
+	);
+}
+
+/** Discovers and displays MarketConfig for an SSU */
+function MarketConfigInfo({ assemblyId, tenant }: { assemblyId: string; tenant: string }) {
+	const client = useSuiClient();
+	const addresses = getContractAddresses(tenant);
+	const originalPkgId = addresses.ssuMarket?.originalPackageId;
+
+	const { data: configId, isLoading } = useQuery({
+		queryKey: ["marketConfig-discover", assemblyId, originalPkgId],
+		queryFn: () => discoverMarketConfig(client, originalPkgId!, assemblyId),
+		enabled: !!originalPkgId,
+		staleTime: 60_000,
+	});
+
+	const { data: config } = useQuery({
+		queryKey: ["marketConfig", configId],
+		queryFn: () => queryMarketConfig(client, configId!),
+		enabled: !!configId,
+		staleTime: 60_000,
+	});
+
+	if (isLoading) {
+		return (
+			<div className="mt-2 border-t border-zinc-800/50 pt-2 text-xs text-zinc-600">
+				<Loader2 size={10} className="inline animate-spin" /> Checking market...
+			</div>
+		);
+	}
+
+	if (!configId) {
+		return (
+			<div className="mt-2 border-t border-zinc-800/50 pt-2 text-xs text-zinc-600">
+				No MarketConfig found
+			</div>
+		);
+	}
+
+	return (
+		<div className="mt-2 space-y-1 border-t border-zinc-800/50 pt-2">
+			<div className="flex items-center gap-1.5">
+				<Shield size={12} className="text-amber-500" />
+				<span className="text-xs text-zinc-400">MarketConfig</span>
+			</div>
+			<p className="font-mono text-xs text-zinc-500">
+				{configId}
+			</p>
+			{config && (
+				<p className="text-xs text-zinc-600">
+					Admin: {config.admin.slice(0, 10)}...
+				</p>
+			)}
 		</div>
 	);
 }

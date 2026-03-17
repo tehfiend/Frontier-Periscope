@@ -53,3 +53,10 @@ export const useAppStore = create<AppState>((set) => ({
 	setSearchQuery: (query) => set({ searchQuery: query }),
 	toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 }));
+
+// Restore persisted activeCharacterId on load
+db.settings.get("activeCharacterId").then((setting) => {
+	if (setting?.value) {
+		useAppStore.getState().setActiveCharacterId(setting.value as string);
+	}
+});

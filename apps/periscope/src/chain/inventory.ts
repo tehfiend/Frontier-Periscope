@@ -8,6 +8,8 @@ export interface InventoryItem {
 	quantity: number;
 }
 
+export type InventoryKind = "owner" | "extension";
+
 export interface AssemblyInventory {
 	assemblyId: string;
 	assemblyType: string;
@@ -15,6 +17,8 @@ export interface AssemblyInventory {
 	items: InventoryItem[];
 	maxCapacity: number;
 	usedCapacity: number;
+	kind: InventoryKind;
+	label: string;
 }
 
 // ── Queries ─────────────────────────────────────────────────────────────────
@@ -53,9 +57,11 @@ export async function fetchAssemblyInventory(
 							value {
 								... on MoveObject {
 									address
-									asMoveObject {
-										contents { json type { repr } }
-									}
+									contents { json type { repr } }
+								}
+								... on MoveValue {
+									json
+									type { repr }
 								}
 							}
 						}
@@ -67,13 +73,15 @@ export async function fetchAssemblyInventory(
 		interface DfNode {
 			name: { json: unknown; type: { repr: string } };
 			value?: {
+				// MoveObject variant
 				address?: string;
-				asMoveObject?: {
-					contents?: {
-						json: Record<string, unknown>;
-						type: { repr: string };
-					};
+				contents?: {
+					json: Record<string, unknown>;
+					type: { repr: string };
 				};
+				// MoveValue variant
+				json?: Record<string, unknown>;
+				type?: { repr: string };
 			};
 		}
 
@@ -93,22 +101,33 @@ export async function fetchAssemblyInventory(
 		const nodes = result.data?.object?.dynamicFields?.nodes ?? [];
 
 		for (const node of nodes) {
-			const dfTypeRepr = node.value?.asMoveObject?.contents?.type?.repr ?? "";
+			// Handle both MoveObject (contents.type) and MoveValue (type) variants
+			const dfTypeRepr =
+				node.value?.contents?.type?.repr ?? node.value?.type?.repr ?? "";
 			if (!dfTypeRepr.includes("::inventory::Inventory")) continue;
 
-			const dfAddress = node.value?.address;
-			if (!dfAddress) continue;
+			const dfAddress = node.value?.address ?? String(node.name?.json ?? "");
+
+			// Determine inventory kind from the dynamic field key type
+			const keyTypeRepr = node.name?.type?.repr ?? "";
+			// Owner inventories are keyed by "address" or "sui::object::ID"
+			// Extension inventories are keyed by phantom auth types (e.g. MarketAuth)
+			const kind: InventoryKind =
+				keyTypeRepr === "address" || keyTypeRepr.includes("::object::ID")
+					? "owner"
+					: "extension";
+			// Extract a short label from the key type
+			const label =
+				kind === "owner"
+					? "Owner"
+					: keyTypeRepr.split("::").pop() ?? "Extension";
 
 			try {
-				const invJson = node.value?.asMoveObject?.contents?.json;
+				// MoveObject: json is in contents.json; MoveValue: json is directly on value
+				const invJson = node.value?.contents?.json ?? node.value?.json;
 				if (!invJson) continue;
 
-				// With GraphQL JSON, the value field is the inventory struct directly
-				// (no wrapping in { fields: {} })
-				const invFields = (invJson as Record<string, unknown>).value as
-					| Record<string, unknown>
-					| undefined;
-				const inv = invFields ?? (invJson as Record<string, unknown>);
+				const inv = invJson as Record<string, unknown>;
 
 				const itemsMap = inv.items as
 					| { contents?: Array<{ key: string; value: unknown }> }
@@ -132,6 +151,8 @@ export async function fetchAssemblyInventory(
 					items,
 					maxCapacity,
 					usedCapacity,
+					kind,
+					label,
 				});
 			} catch {
 				// Skip unreadable inventories

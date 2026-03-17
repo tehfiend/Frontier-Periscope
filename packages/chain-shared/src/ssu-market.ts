@@ -1,12 +1,14 @@
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { Transaction } from "@mysten/sui/transactions";
-import type { BuyOrderInfo, MarketInfo, MarketListing, OrgMarketInfo } from "./types";
+import type { BuyOrderInfo, MarketInfo, OrgMarketInfo, SellOrderInfo } from "./types";
 import {
 	getDynamicFieldJson,
 	getObjectJson,
 	listDynamicFieldsGql,
 	queryEventsGql,
 } from "./graphql-queries";
+
+// ── Market Config Query ─────────────────────────────────────────────────────
 
 export async function queryMarketConfig(
 	client: SuiGraphQLClient,
@@ -25,11 +27,75 @@ export async function queryMarketConfig(
 	}
 }
 
-export async function queryListing(
+/**
+ * Discover a MarketConfig for a given SSU by searching on-chain.
+ * Returns the MarketConfig object ID if found, null otherwise.
+ */
+export async function discoverMarketConfig(
+	client: SuiGraphQLClient,
+	ssuMarketPackageId: string,
+	ssuId: string,
+): Promise<string | null> {
+	const QUERY = `
+		query($type: String!, $first: Int, $after: String) {
+			objects(filter: { type: $type }, first: $first, after: $after) {
+				nodes {
+					address
+					asMoveObject { contents { json } }
+				}
+				pageInfo { hasNextPage endCursor }
+			}
+		}
+	`;
+
+	interface Response {
+		objects: {
+			nodes: Array<{
+				address: string;
+				asMoveObject?: { contents?: { json: Record<string, unknown> } };
+			}>;
+			pageInfo: { hasNextPage: boolean; endCursor: string | null };
+		};
+	}
+
+	// MarketConfig type uses the original (v1) package ID in its type name
+	// Try both the provided package ID and common published-at IDs
+	const configType = `${ssuMarketPackageId}::ssu_market::MarketConfig`;
+	let cursor: string | null = null;
+	let hasMore = true;
+
+	while (hasMore) {
+		const result: { data?: Response } = await client.query({
+			query: QUERY,
+			variables: { type: configType, first: 50, after: cursor },
+		});
+
+		const objects = result.data?.objects;
+		if (!objects) break;
+
+		for (const node of objects.nodes) {
+			const json = node.asMoveObject?.contents?.json;
+			if (!json) continue;
+
+			if (String(json.ssu_id) === ssuId) {
+				return node.address;
+			}
+		}
+
+		hasMore = objects.pageInfo.hasNextPage;
+		cursor = objects.pageInfo.endCursor;
+	}
+
+	return null;
+}
+
+// ── Sell Order Queries ──────────────────────────────────────────────────────
+
+export async function querySellOrder(
 	client: SuiGraphQLClient,
 	configObjectId: string,
 	typeId: number,
-): Promise<MarketListing | null> {
+): Promise<SellOrderInfo | null> {
 	try {
 		const fields = await getDynamicFieldJson(client, configObjectId, {
 			type: "u64",
@@ -37,15 +103,69 @@ export async function queryListing(
 		});
 		if (!fields) return null;
 
+		// Distinguish SellOrder (has quantity) from legacy Listing (has available)
+		if (!("quantity" in fields) || "available" in fields) return null;
+
 		return {
 			typeId: Number(fields.type_id ?? typeId),
 			pricePerUnit: Number(fields.price_per_unit ?? 0),
-			available: (fields.available as boolean) ?? false,
+			quantity: Number(fields.quantity ?? 0),
 		};
 	} catch {
 		return null;
 	}
 }
+
+export async function queryAllSellOrders(
+	client: SuiGraphQLClient,
+	configObjectId: string,
+): Promise<SellOrderInfo[]> {
+	const orders: SellOrderInfo[] = [];
+
+	try {
+		let cursor: string | null = null;
+		let hasMore = true;
+
+		while (hasMore) {
+			const page = await listDynamicFieldsGql(client, configObjectId, {
+				cursor,
+				limit: 50,
+			});
+
+			for (const df of page.entries) {
+				if (df.nameType !== "u64") continue;
+
+				try {
+					const fields = await getDynamicFieldJson(client, configObjectId, {
+						type: "u64",
+						value: String(df.nameJson),
+					});
+					if (!fields) continue;
+
+					// SellOrder has quantity field; legacy Listing has available field
+					if ("quantity" in fields && !("available" in fields)) {
+						orders.push({
+							typeId: Number(fields.type_id ?? df.nameJson),
+							pricePerUnit: Number(fields.price_per_unit ?? 0),
+							quantity: Number(fields.quantity ?? 0),
+						});
+					}
+				} catch {
+					// Skip individual field read errors
+				}
+			}
+
+			hasMore = page.hasNextPage;
+			cursor = page.cursor;
+		}
+	} catch {
+		// Return whatever we've collected so far
+	}
+
+	return orders;
+}
+
+// ── Create Market ───────────────────────────────────────────────────────────
 
 export interface CreateMarketParams {
 	packageId: string;
@@ -65,35 +185,107 @@ export function buildCreateMarket(params: CreateMarketParams): Transaction {
 	return tx;
 }
 
-export interface SetListingParams {
+// ── Sell Order Builders ─────────────────────────────────────────────────────
+
+export interface CreateSellOrderParams {
 	packageId: string;
+	worldPackageId: string;
 	configObjectId: string;
+	ssuObjectId: string;
+	characterObjectId: string;
+	ownerCapReceivingId: string;
 	typeId: number;
+	quantity: number;
 	pricePerUnit: number;
-	available: boolean;
 	senderAddress: string;
 }
 
-export function buildSetListing(params: SetListingParams): Transaction {
+/**
+ * Build a PTB to create a sell order with escrow.
+ * Flow: borrow_owner_cap -> withdraw_by_owner -> create_sell_order -> return_owner_cap
+ */
+export function buildCreateSellOrder(params: CreateSellOrderParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	// Step 1: Borrow OwnerCap from Character
+	const [ownerCap, receipt] = tx.moveCall({
+		target: `${params.worldPackageId}::character::borrow_owner_cap`,
+		typeArguments: [`${params.worldPackageId}::storage_unit::StorageUnit`],
+		arguments: [
+			tx.object(params.characterObjectId),
+			tx.object(params.ownerCapReceivingId),
+		],
+	});
+
+	// Step 2: Withdraw items from owner inventory
+	const [item] = tx.moveCall({
+		target: `${params.worldPackageId}::storage_unit::withdraw_by_owner`,
+		typeArguments: [`${params.worldPackageId}::storage_unit::StorageUnit`],
+		arguments: [
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			ownerCap,
+			tx.pure.u64(params.typeId),
+			tx.pure.u32(params.quantity),
+		],
+	});
+
+	// Step 3: Create sell order (escrows item into extension inventory)
+	tx.moveCall({
+		target: `${params.packageId}::ssu_market::create_sell_order`,
+		arguments: [
+			tx.object(params.configObjectId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			item,
+			tx.pure.u64(params.pricePerUnit),
+		],
+	});
+
+	// Step 4: Return OwnerCap
+	tx.moveCall({
+		target: `${params.worldPackageId}::character::return_owner_cap`,
+		typeArguments: [`${params.worldPackageId}::storage_unit::StorageUnit`],
+		arguments: [tx.object(params.characterObjectId), ownerCap, receipt],
+	});
+
+	return tx;
+}
+
+export interface CancelSellOrderParams {
+	packageId: string;
+	configObjectId: string;
+	ssuObjectId: string;
+	characterObjectId: string;
+	typeId: number;
+	quantity: number;
+	senderAddress: string;
+}
+
+export function buildCancelSellOrder(params: CancelSellOrderParams): Transaction {
 	const tx = new Transaction();
 	tx.setSender(params.senderAddress);
 
 	tx.moveCall({
-		target: `${params.packageId}::ssu_market::set_listing`,
+		target: `${params.packageId}::ssu_market::cancel_sell_order`,
 		arguments: [
 			tx.object(params.configObjectId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
 			tx.pure.u64(params.typeId),
-			tx.pure.u64(params.pricePerUnit),
-			tx.pure.bool(params.available),
+			tx.pure.u32(params.quantity),
 		],
 	});
 
 	return tx;
 }
 
-export interface BuyItemParams {
+export interface BuySellOrderParams {
 	packageId: string;
 	configObjectId: string;
+	ssuObjectId: string;
+	characterObjectId: string;
 	coinType: string;
 	paymentObjectId: string;
 	typeId: number;
@@ -101,23 +293,49 @@ export interface BuyItemParams {
 	senderAddress: string;
 }
 
-export function buildBuyItem(params: BuyItemParams): Transaction {
+export function buildBuySellOrder(params: BuySellOrderParams): Transaction {
 	const tx = new Transaction();
 	tx.setSender(params.senderAddress);
 
 	const [change] = tx.moveCall({
-		target: `${params.packageId}::ssu_market::buy_item`,
+		target: `${params.packageId}::ssu_market::buy_sell_order`,
 		typeArguments: [params.coinType],
 		arguments: [
 			tx.object(params.configObjectId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
 			tx.object(params.paymentObjectId),
 			tx.pure.u64(params.typeId),
-			tx.pure.u64(params.quantity),
+			tx.pure.u32(params.quantity),
 		],
 	});
 
 	// Transfer change back to sender
 	tx.transferObjects([change], params.senderAddress);
+
+	return tx;
+}
+
+export interface UpdateSellPriceParams {
+	packageId: string;
+	configObjectId: string;
+	typeId: number;
+	pricePerUnit: number;
+	senderAddress: string;
+}
+
+export function buildUpdateSellPrice(params: UpdateSellPriceParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	tx.moveCall({
+		target: `${params.packageId}::ssu_market::update_sell_price`,
+		arguments: [
+			tx.object(params.configObjectId),
+			tx.pure.u64(params.typeId),
+			tx.pure.u64(params.pricePerUnit),
+		],
+	});
 
 	return tx;
 }
@@ -282,111 +500,8 @@ export function buildCancelBuyOrder(params: CancelBuyOrderParams): Transaction {
 	return tx;
 }
 
-// ── Sell Orders (stock + atomic purchase) ───────────────────────────────────
-
-export interface StockItemsParams {
-	packageId: string;
-	configObjectId: string;
-	ssuObjectId: string;
-	characterObjectId: string;
-	ownerCapReceivingId: string;
-	typeId: number;
-	quantity: number;
-	senderAddress: string;
-}
-
-/**
- * Build a PTB to stock items into the SSU extension inventory for sell orders.
- * Flow: borrow_owner_cap -> withdraw_by_owner -> stock_items -> return_owner_cap
- */
-export function buildStockItems(params: StockItemsParams): Transaction {
-	const tx = new Transaction();
-	tx.setSender(params.senderAddress);
-
-	// Step 1: Borrow OwnerCap from Character
-	const [ownerCap, receipt] = tx.moveCall({
-		target: "0x2bc0a986b4eb20965bd34a6f2de52f2516395e59::character::borrow_owner_cap",
-		typeArguments: ["0x2bc0a986b4eb20965bd34a6f2de52f2516395e59::storage_unit::StorageUnit"],
-		arguments: [tx.object(params.characterObjectId), tx.object(params.ownerCapReceivingId)],
-	});
-
-	// Step 2: Withdraw items from owner inventory
-	const [item] = tx.moveCall({
-		target: "0x2bc0a986b4eb20965bd34a6f2de52f2516395e59::storage_unit::withdraw_by_owner",
-		arguments: [
-			tx.object(params.ssuObjectId),
-			ownerCap,
-			tx.pure.u64(params.typeId),
-			tx.pure.u32(params.quantity),
-		],
-	});
-
-	// Step 3: Stock items into extension inventory
-	tx.moveCall({
-		target: `${params.packageId}::ssu_market::stock_items`,
-		arguments: [
-			tx.object(params.configObjectId),
-			tx.object(params.ssuObjectId),
-			tx.object(params.characterObjectId),
-			item,
-		],
-	});
-
-	// Step 4: Return OwnerCap
-	tx.moveCall({
-		target: "0x2bc0a986b4eb20965bd34a6f2de52f2516395e59::character::return_owner_cap",
-		typeArguments: ["0x2bc0a986b4eb20965bd34a6f2de52f2516395e59::storage_unit::StorageUnit"],
-		arguments: [tx.object(params.characterObjectId), ownerCap, receipt],
-	});
-
-	return tx;
-}
-
-export interface BuyAndWithdrawParams {
-	packageId: string;
-	configObjectId: string;
-	ssuObjectId: string;
-	characterObjectId: string;
-	coinType: string;
-	paymentObjectId: string;
-	typeId: number;
-	quantity: number;
-	senderAddress: string;
-}
-
-/**
- * Build a TX to atomically buy items from a sell listing:
- * pay Coin<T>, receive items from SSU extension inventory.
- */
-export function buildBuyAndWithdraw(params: BuyAndWithdrawParams): Transaction {
-	const tx = new Transaction();
-	tx.setSender(params.senderAddress);
-
-	const [item, change] = tx.moveCall({
-		target: `${params.packageId}::ssu_market::buy_and_withdraw`,
-		typeArguments: [params.coinType],
-		arguments: [
-			tx.object(params.configObjectId),
-			tx.object(params.ssuObjectId),
-			tx.object(params.characterObjectId),
-			tx.object(params.paymentObjectId),
-			tx.pure.u64(params.typeId),
-			tx.pure.u32(params.quantity),
-		],
-	});
-
-	// Transfer item and change back to sender
-	tx.transferObjects([item], params.senderAddress);
-	tx.transferObjects([change], params.senderAddress);
-
-	return tx;
-}
-
 // ── OrgMarket Query Helpers ─────────────────────────────────────────────────
 
-/**
- * Query an OrgMarket shared object for its state.
- */
 export async function queryOrgMarket(
 	client: SuiGraphQLClient,
 	orgMarketId: string,
@@ -412,49 +527,62 @@ export async function queryOrgMarket(
 	}
 }
 
-/**
- * Discover an OrgMarket by querying OrgMarketCreatedEvent events and
- * matching on the org's chain object ID. Returns the org_market_id
- * from the most recent matching event, or null if none found.
- */
 export async function discoverOrgMarket(
 	client: SuiGraphQLClient,
 	ssuMarketPackageId: string,
 	orgObjectId: string,
 ): Promise<string | null> {
+	const QUERY = `
+		query($type: String!, $first: Int, $after: String) {
+			objects(filter: { type: $type }, first: $first, after: $after) {
+				nodes {
+					address
+					asMoveObject { contents { json } }
+				}
+				pageInfo { hasNextPage endCursor }
+			}
+		}
+	`;
+
+	interface Response {
+		objects: {
+			nodes: Array<{
+				address: string;
+				asMoveObject?: { contents?: { json: Record<string, unknown> } };
+			}>;
+			pageInfo: { hasNextPage: boolean; endCursor: string | null };
+		};
+	}
+
+	const orgMarketType = `${ssuMarketPackageId}::ssu_market::OrgMarket`;
 	let cursor: string | null = null;
 	let hasMore = true;
-	let latestMarketId: string | null = null;
 
 	while (hasMore) {
-		const page = await queryEventsGql(
-			client,
-			`${ssuMarketPackageId}::ssu_market::OrgMarketCreatedEvent`,
-			{ cursor, limit: 50 },
-		);
+		const result: { data?: Response } = await client.query({
+			query: QUERY,
+			variables: { type: orgMarketType, first: 50, after: cursor },
+		});
 
-		for (const evt of page.data) {
-			const parsed = evt.parsedJson as {
-				org_market_id: string;
-				org_id: string;
-				admin: string;
-			};
-			if (parsed.org_id === orgObjectId) {
-				latestMarketId = parsed.org_market_id;
+		const objects = result.data?.objects;
+		if (!objects) return null;
+
+		for (const node of objects.nodes) {
+			const json = node.asMoveObject?.contents?.json;
+			if (!json) continue;
+
+			if (String(json.org_id) === orgObjectId) {
+				return node.address;
 			}
 		}
 
-		hasMore = page.hasNextPage;
-		cursor = page.nextCursor;
+		hasMore = objects.pageInfo.hasNextPage;
+		cursor = objects.pageInfo.endCursor;
 	}
 
-	return latestMarketId;
+	return null;
 }
 
-/**
- * Query all active buy orders on an OrgMarket.
- * Iterates dynamic fields keyed by order_id (u64 < 1_000_000_000).
- */
 export async function queryBuyOrders(
 	client: SuiGraphQLClient,
 	orgMarketId: string,

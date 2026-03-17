@@ -66,7 +66,7 @@ export function buildAuthorizeExtension(params: AuthorizeExtensionParams): Trans
 		typeArguments: [fullAssemblyType],
 		arguments: [
 			tx.object(characterId),
-			tx.receivingRef({ objectId: ownerCapId, version: "0", digest: "" }),
+			tx.object(ownerCapId),
 		],
 	});
 

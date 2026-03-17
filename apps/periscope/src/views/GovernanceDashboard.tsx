@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { useCurrentAccount, useCurrentClient, useDAppKit } from "@mysten/dapp-kit-react";
+import { useState, useEffect } from "react";
+import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Building2,
@@ -28,6 +29,7 @@ import {
 	buildAddToTier,
 	buildRemoveFromTier,
 	getContractAddresses,
+	discoverOrgByCreator,
 } from "@tehfrontier/chain-shared";
 
 const tierConfig = {
@@ -51,7 +53,7 @@ export function GovernanceDashboard() {
 	);
 
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
-	const suiClient = useCurrentClient();
+	const suiClient = useSuiClient();
 
 	const [creating, setCreating] = useState(false);
 	const [orgName, setOrgName] = useState("");
@@ -59,6 +61,48 @@ export function GovernanceDashboard() {
 	const [error, setError] = useState("");
 
 	const address = activeCharacter?.suiAddress ?? account?.address;
+	const [discoveryState, setDiscoveryState] = useState<"idle" | "searching" | "done">("idle");
+
+	// Auto-discover org from chain if none in local DB
+	useEffect(() => {
+		if (org || !address || discoveryState !== "idle") return;
+		const addresses = getContractAddresses(tenant);
+		const pkgId = addresses.governance?.packageId;
+		if (!pkgId) {
+			setDiscoveryState("done");
+			return;
+		}
+
+		setDiscoveryState("searching");
+		discoverOrgByCreator(suiClient, pkgId, address)
+			.then(async (found) => {
+				if (!found) return;
+				const now = new Date().toISOString();
+				const id = crypto.randomUUID();
+				await db.organizations.add({
+					id,
+					name: found.name,
+					chainObjectId: found.objectId,
+					creator: found.creator,
+					createdAt: now,
+					updatedAt: now,
+				});
+				// Seed tier members from chain data
+				for (const tier of ["stakeholder", "member", "serf", "opposition"] as const) {
+					const data = found[tier === "stakeholder" ? "stakeholders" : `${tier}s` as keyof typeof found] ?? found[tier as keyof typeof found];
+					if (!data || typeof data !== "object") continue;
+					const tierData = data as { addresses?: string[]; characters?: number[]; tribes?: number[] };
+					for (const addr of tierData.addresses ?? []) {
+						await db.orgTierMembers.add({
+							id: crypto.randomUUID(), orgId: id, tier,
+							kind: "character", suiAddress: addr, createdAt: now,
+						});
+					}
+				}
+			})
+			.catch(() => {})
+			.finally(() => setDiscoveryState("done"));
+	}, [org, address, tenant, suiClient, discoveryState]);
 
 	// Determine if sole proprietorship mode
 	const isSoleProp = org && tierMembers
@@ -87,22 +131,22 @@ export function GovernanceDashboard() {
 			);
 			const result = await signAndExecute({ transaction: tx });
 
-			// Fetch full TX response to get objectChanges
+			// Fetch full TX response to get changedObjects
 			const txResponse = await suiClient.waitForTransaction({
 				digest: result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "",
-				options: { showObjectChanges: true },
+				include: { effects: true, objectTypes: true },
 			});
 
-			// Extract the Organization object ID from objectChanges
-			const orgCreated = txResponse.objectChanges?.find(
+			// Extract the Organization object ID from changedObjects
+			const txData = txResponse.Transaction ?? txResponse.FailedTransaction;
+			const changedObjects = txData?.effects?.changedObjects ?? [];
+			const objectTypes = txData?.objectTypes ?? {};
+			const orgCreated = changedObjects.find(
 				(change) =>
-					change.type === "created" &&
-					change.objectType.includes("::org::Organization"),
+					change.idOperation === "Created" &&
+					(objectTypes[change.objectId] ?? "").includes("::org::Organization"),
 			);
-			const chainObjectId =
-				orgCreated && orgCreated.type === "created"
-					? orgCreated.objectId
-					: undefined;
+			const chainObjectId = orgCreated?.objectId;
 
 			// Store locally with the chain object ID
 			const now = new Date().toISOString();
@@ -153,6 +197,19 @@ export function GovernanceDashboard() {
 					>
 						Go to Manifest &rarr;
 					</a>
+				</div>
+			</div>
+		);
+	}
+
+	// Discovering org from chain
+	if (discoveryState === "searching") {
+		return (
+			<div className="mx-auto max-w-3xl p-6">
+				<Header />
+				<div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 py-16">
+					<Loader2 size={32} className="animate-spin text-cyan-400" />
+					<p className="text-sm text-zinc-400">Searching chain for your organization...</p>
 				</div>
 			</div>
 		);

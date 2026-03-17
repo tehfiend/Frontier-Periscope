@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import {
 	useCurrentAccount,
-	useCurrentClient,
 	useDAppKit,
 } from "@mysten/dapp-kit-react";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Coins,
@@ -75,7 +75,7 @@ export function GovernanceFinance() {
 	const [buildStatus, setBuildStatus] = useState<BuildStatus>("idle");
 	const [buildError, setBuildError] = useState("");
 
-	const suiClient = useCurrentClient();
+	const suiClient = useSuiClient();
 
 	const isProcessing =
 		buildStatus === "building" ||
@@ -84,69 +84,140 @@ export function GovernanceFinance() {
 		buildStatus === "burning" ||
 		buildStatus === "posting-bounty";
 
-	// Sync TreasuryCaps from chain — discovers tokens created outside the app
-	// or tokens that failed to save locally after publishing
+	// Sync currencies from chain — discovers tokens via OrgTreasury objects
+	// (deposited TreasuryCaps) and wallet-owned TreasuryCaps (not yet deposited)
 	const syncTreasuryCaps = useCallback(async () => {
-		if (!suiAddress || !org) return;
-		try {
-			let cursor: string | null = null;
-			let hasMore = true;
-			while (hasMore) {
-				const page = await suiClient.listOwnedObjects({
-					owner: suiAddress,
-					type: "0x2::coin::TreasuryCap",
-					include: { json: true },
-					cursor: cursor ?? undefined,
-					limit: 50,
-				});
-				for (const obj of page.objects) {
-					const objectType = obj.type;
-					const objectId = obj.objectId;
-					if (!objectType || !objectId) continue;
+		if (!suiAddress || !org?.chainObjectId) return;
 
-					// Extract coinType from TreasuryCap<0xpkg::module::STRUCT>
+		const addresses = getContractAddresses(tenant);
+		const govExtPkg = addresses.governanceExt?.packageId;
+
+		const OBJECTS_QUERY = `
+			query($type: String!, $first: Int, $after: String) {
+				objects(filter: { type: $type }, first: $first, after: $after) {
+					nodes {
+						address
+						asMoveObject { contents { json type { repr } } }
+					}
+					pageInfo { hasNextPage endCursor }
+				}
+			}
+		`;
+
+		type ObjNode = { address: string; asMoveObject?: { contents?: { json?: Record<string, unknown>; type?: { repr: string } } } };
+		type ObjPage = { objects: { nodes: ObjNode[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } };
+
+		async function addCurrencyFromCoinType(
+			coinType: string,
+			treasuryObjectId: string,
+			orgTreasuryId?: string,
+		) {
+			const existing = await db.currencies.where("coinType").equals(coinType).first();
+			if (existing) {
+				// If found via OrgTreasury but local record missing orgTreasuryId, update it
+				if (orgTreasuryId && !existing.orgTreasuryId) {
+					await db.currencies.update(existing.id, { orgTreasuryId });
+				}
+				return;
+			}
+
+			const parts = coinType.split("::");
+			const packageId = parts[0] ?? "";
+			const moduleName = parts.length >= 2 ? parts[1] : "";
+			const structName = parts.length >= 3 ? parts[2] : moduleName;
+			const sym = structName.replace(/_TOKEN$/, "");
+
+			const now = new Date().toISOString();
+			await db.currencies.add({
+				id: crypto.randomUUID(),
+				orgId: org!.id,
+				symbol: sym,
+				name: `${sym} Token`,
+				description: "",
+				moduleName,
+				coinType,
+				packageId,
+				treasuryCapId: treasuryObjectId,
+				orgTreasuryId,
+				decimals: 9,
+				createdAt: now,
+				updatedAt: now,
+			});
+		}
+
+		try {
+			// 1) Discover OrgTreasury shared objects (deposited TreasuryCaps)
+			if (govExtPkg) {
+				const treasuryType = `${govExtPkg}::treasury::OrgTreasury`;
+				let cursor: string | null = null;
+				let hasMore = true;
+				while (hasMore) {
+					const result: { data?: ObjPage } = await suiClient.query({
+						query: OBJECTS_QUERY,
+						variables: { type: treasuryType, first: 50, after: cursor },
+					});
+					const objects = result.data?.objects;
+					if (!objects) break;
+
+					for (const node of objects.nodes) {
+						const json = node.asMoveObject?.contents?.json;
+						const fullType = node.asMoveObject?.contents?.type?.repr;
+						if (!json || !fullType) continue;
+
+						// Check this treasury belongs to our org
+						if (String(json.org_id) !== org.chainObjectId) continue;
+
+						// Extract coinType from OrgTreasury<0xpkg::mod::STRUCT>
+						const match = fullType.match(/OrgTreasury<(.+)>/);
+						if (!match) continue;
+
+						// node.address is the OrgTreasury shared object ID
+						await addCurrencyFromCoinType(match[1], node.address, node.address);
+					}
+					hasMore = objects.pageInfo.hasNextPage;
+					cursor = objects.pageInfo.endCursor;
+				}
+			}
+
+			// 2) Also check wallet-owned TreasuryCaps (not yet deposited)
+			const OWNED_QUERY = `
+				query($owner: SuiAddress!, $type: String!, $first: Int, $after: String) {
+					address(address: $owner) {
+						objects(filter: { type: $type }, first: $first, after: $after) {
+							nodes {
+								address
+								asMoveObject { contents { type { repr } } }
+							}
+							pageInfo { hasNextPage endCursor }
+						}
+					}
+				}
+			`;
+			type OwnedPage = { address: { objects: { nodes: ObjNode[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } } | null };
+			let cursor2: string | null = null;
+			let hasMore2 = true;
+			while (hasMore2) {
+				const result: { data?: OwnedPage } = await suiClient.query({
+					query: OWNED_QUERY,
+					variables: { owner: suiAddress, type: "0x2::coin::TreasuryCap", first: 50, after: cursor2 },
+				});
+				const objects = result.data?.address?.objects;
+				if (!objects) break;
+
+				for (const obj of objects.nodes) {
+					const objectType = obj.asMoveObject?.contents?.type?.repr;
+					if (!objectType) continue;
 					const match = objectType.match(/TreasuryCap<(.+)>/);
 					if (!match) continue;
-					const coinType = match[1];
-
-					// Check if already in local DB
-					const existing = await db.currencies
-						.where("coinType")
-						.equals(coinType)
-						.first();
-					if (existing) continue;
-
-					// Derive metadata from coinType: "0xpkg::gold_token::GOLD_TOKEN"
-					const parts = coinType.split("::");
-					const packageId = parts[0] ?? "";
-					const moduleName = parts.length >= 2 ? parts[1] : "";
-					const structName = parts.length >= 3 ? parts[2] : moduleName;
-					// Derive symbol: "GOLD_TOKEN" → "GOLD" (strip _TOKEN suffix)
-					const symbol = structName.replace(/_TOKEN$/, "");
-
-					const now = new Date().toISOString();
-					await db.currencies.add({
-						id: crypto.randomUUID(),
-						orgId: org.id,
-						symbol,
-						name: `${symbol} Token`,
-						description: "",
-						moduleName,
-						coinType,
-						packageId,
-						treasuryCapId: objectId,
-						decimals: 9,
-						createdAt: now,
-						updatedAt: now,
-					});
+					await addCurrencyFromCoinType(match[1], obj.address);
 				}
-				hasMore = page.hasNextPage;
-				cursor = page.cursor ?? null;
+				hasMore2 = objects.pageInfo.hasNextPage;
+				cursor2 = objects.pageInfo.endCursor;
 			}
 		} catch {
 			// Silent — sync is best-effort
 		}
-	}, [suiAddress, org, suiClient]);
+	}, [suiAddress, org, suiClient, tenant]);
 
 	useEffect(() => {
 		syncTreasuryCaps();
@@ -211,15 +282,34 @@ export function GovernanceFinance() {
 				transaction: tx,
 			});
 
-			// Parse the published package details from effects objectChanges
-			const txData = result.Transaction ?? result.FailedTransaction;
-			const objectChanges = (txData?.effects?.objectChanges ?? []) as Array<{
+			// Parse the published package details from effects
+			// Use waitForTransaction to get objectTypes mapping
+			const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
+			const fullResult = await suiClient.waitForTransaction({
+				digest,
+				include: { effects: true, objectTypes: true },
+			});
+			const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
+			const changedObjects = fullTx?.effects?.changedObjects ?? [];
+			const objectTypesMap = fullTx?.objectTypes ?? {};
+
+			// Convert to old-style objectChanges for parsePublishResult
+			const objectChanges: Array<{
 				type: string;
 				packageId?: string;
 				objectType?: string;
 				objectId?: string;
 				modules?: string[];
-			}>;
+			}> = changedObjects.map((change) => {
+				if (change.outputState === "PackageWrite" && change.idOperation === "Created") {
+					return { type: "published", packageId: change.objectId };
+				}
+				return {
+					type: change.idOperation === "Created" ? "created" : "mutated",
+					objectId: change.objectId,
+					objectType: objectTypesMap[change.objectId],
+				};
+			});
 
 			const parsed = parsePublishResult(objectChanges);
 			if (!parsed) {
@@ -505,7 +595,7 @@ function CurrencyCard({
 }) {
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
-	const suiClient = useCurrentClient();
+	const suiClient = useSuiClient();
 
 	const [expanded, setExpanded] = useState(false);
 	const [treasuryInfo, setTreasuryInfo] = useState<{
@@ -598,21 +688,20 @@ function CurrencyCard({
 
 			const result = await signAndExecute({ transaction: tx });
 
-			// Parse objectChanges to find OrgTreasury
+			// Parse changedObjects to find OrgTreasury
 			const txResponse = await suiClient.waitForTransaction({
 				digest: result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "",
-				options: { showObjectChanges: true },
+				include: { effects: true, objectTypes: true },
 			});
-
-			const treasuryCreated = txResponse.objectChanges?.find(
+			const txData2 = txResponse.Transaction ?? txResponse.FailedTransaction;
+			const changed = txData2?.effects?.changedObjects ?? [];
+			const typeMap = txData2?.objectTypes ?? {};
+			const treasuryCreated = changed.find(
 				(change) =>
-					change.type === "created" &&
-					change.objectType.includes("::treasury::OrgTreasury"),
+					change.idOperation === "Created" &&
+					(typeMap[change.objectId] ?? "").includes("::treasury::OrgTreasury"),
 			);
-			const orgTreasuryId =
-				treasuryCreated && treasuryCreated.type === "created"
-					? treasuryCreated.objectId
-					: undefined;
+			const orgTreasuryId = treasuryCreated?.objectId;
 
 			if (orgTreasuryId) {
 				await db.currencies.update(currency.id, {

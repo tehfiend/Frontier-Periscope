@@ -3,6 +3,37 @@ import type { GameType } from "@/db/types";
 import { Search, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+// Module-level cache for bundled types.json
+let staticTypesCache: Record<number, string> | null = null;
+let staticTypesFetching = false;
+const staticTypesCallbacks: Array<(map: Record<number, string>) => void> = [];
+
+function getStaticTypes(): Promise<Record<number, string>> {
+	if (staticTypesCache) return Promise.resolve(staticTypesCache);
+	return new Promise((resolve) => {
+		staticTypesCallbacks.push(resolve);
+		if (!staticTypesFetching) {
+			staticTypesFetching = true;
+			fetch("/data/types.json")
+				.then((res) => res.json())
+				.then((data: Record<string, { typeID: number; typeNameID?: string }>) => {
+					const map: Record<number, string> = {};
+					for (const entry of Object.values(data)) {
+						if (entry.typeNameID) map[entry.typeID] = entry.typeNameID;
+					}
+					staticTypesCache = map;
+					for (const cb of staticTypesCallbacks) cb(map);
+					staticTypesCallbacks.length = 0;
+				})
+				.catch(() => {
+					staticTypesCache = {};
+					for (const cb of staticTypesCallbacks) cb({});
+					staticTypesCallbacks.length = 0;
+				});
+		}
+	});
+}
+
 interface TypeSearchInputProps {
 	value: number | null;
 	onChange: (typeId: number | null) => void;
@@ -25,11 +56,16 @@ export function TypeSearchInput({
 	const wrapperRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 
-	// Resolve name for existing value
+	// Resolve name for existing value (DB first, then bundled types.json fallback)
 	useEffect(() => {
 		if (value !== null) {
-			db.gameTypes.get(value).then((gt) => {
-				setSelectedName(gt?.name ?? `Type #${value}`);
+			db.gameTypes.get(value).then(async (gt) => {
+				if (gt?.name) {
+					setSelectedName(gt.name);
+					return;
+				}
+				const map = await getStaticTypes();
+				setSelectedName(map[value] ?? `Type #${value}`);
 			});
 		} else {
 			setSelectedName(null);

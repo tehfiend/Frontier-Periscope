@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { useCurrentClient } from "@mysten/dapp-kit-react";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/db";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
@@ -263,7 +263,7 @@ const tribeColumns: ColumnDef<ManifestTribe, unknown>[] = [
 type Tab = "characters" | "tribes";
 
 export function Manifest() {
-	const client = useCurrentClient();
+	const client = useSuiClient();
 	const tenant = useActiveTenant();
 	const worldPkg = TENANTS[tenant].worldPackageId;
 

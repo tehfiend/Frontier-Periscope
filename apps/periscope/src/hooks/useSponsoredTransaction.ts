@@ -1,4 +1,5 @@
-import { useDAppKit, useCurrentClient } from "@mysten/dapp-kit-react";
+import { useDAppKit } from "@mysten/dapp-kit-react";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { TENANTS } from "@/chain/config";
 import type { Transaction } from "@mysten/sui/transactions";
@@ -16,7 +17,7 @@ import { toBase64 } from "@mysten/sui/utils";
  */
 export function useSponsoredTransaction() {
 	const dAppKit = useDAppKit();
-	const client = useCurrentClient();
+	const client = useSuiClient();
 	const tenant = useActiveTenant();
 	const gasStationUrl = TENANTS[tenant].gasStationUrl;
 
@@ -48,12 +49,13 @@ export function useSponsoredTransaction() {
 
 		// Execute with both signatures via GraphQL client
 		const result = await client.executeTransaction({
-			transaction: txBytesBase64,
+			transaction: txBytes,
 			signatures: [userSignature, sponsorSignature],
 		});
 
 		// Extract digest from the transaction result
-		const digest = result.digest;
+		const txData = result.Transaction ?? result.FailedTransaction;
+		const digest = txData?.digest ?? "";
 		return { digest };
 	}
 

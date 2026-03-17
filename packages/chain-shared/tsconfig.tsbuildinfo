@@ -1,1 +1,1 @@
-{"root":["./src/bounty.ts","./src/config.ts","./src/exchange.ts","./src/gate-toll.ts","./src/index.ts","./src/lease.ts","./src/permissions.ts","./src/ssu-market.ts","./src/token-factory.ts","./src/turret-priority.ts","./src/types.ts"],"version":"5.9.3"}
+{"root":["./src/bounty.ts","./src/config.ts","./src/exchange.ts","./src/gate-toll.ts","./src/governance.ts","./src/index.ts","./src/lease.ts","./src/permissions.ts","./src/ssu-market.ts","./src/token-factory.ts","./src/treasury.ts","./src/turret-priority.ts","./src/types.ts"],"version":"5.9.3"}

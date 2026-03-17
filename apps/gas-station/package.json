@@ -10,7 +10,7 @@
 		"clean": "rm -rf dist"
 	},
 	"dependencies": {
-		"@mysten/sui": "^1.45.2",
+		"@mysten/sui": "^2.7.0",
 		"@tehfrontier/chain-shared": "workspace:*",
 		"cors": "^2.8.5",
 		"express": "^4.21.2"

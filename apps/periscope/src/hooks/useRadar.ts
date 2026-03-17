@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { useCurrentClient } from "@mysten/dapp-kit-react";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { queryEventsGql } from "@tehfrontier/chain-shared";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/db";
@@ -31,7 +31,7 @@ interface ParsedEvent {
 const POLL_INTERVAL_MS = 15_000; // Poll every 15 seconds
 
 export function useRadar() {
-	const client = useCurrentClient();
+	const client = useSuiClient();
 	const tenant = useActiveTenant();
 	const worldPkg = TENANTS[tenant].worldPackageId;
 	const watches = useLiveQuery(() => db.radarWatches.toArray()) ?? [];
