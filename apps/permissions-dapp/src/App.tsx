@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
 	createDAppKit,
 	DAppKitProvider,
-	ConnectButton,
 	useCurrentAccount,
 } from "@mysten/dapp-kit-react";
 import { SuiGraphQLClient } from "@mysten/sui/graphql";
@@ -23,6 +22,10 @@ const dAppKit = createDAppKit({
 		}),
 	defaultNetwork: "testnet",
 	autoConnect: true,
+	slushWalletConfig: {
+		appName: "Assembly Permissions",
+		origin: "https://vault.evefrontier.com",
+	},
 });
 
 export function App() {
@@ -54,16 +57,22 @@ function Main() {
 						Configure access control for your EVE Frontier smart assemblies
 					</p>
 				</div>
-				<ConnectButton />
+				{account ? (
+					<div className="flex items-center gap-2 text-xs text-zinc-400">
+						<span className="h-2 w-2 rounded-full bg-emerald-500" />
+						{account.address.slice(0, 6)}...{account.address.slice(-4)}
+					</div>
+				) : (
+					<span className="text-xs text-zinc-600">EVE Vault not connected</span>
+				)}
 			</div>
 
 			{!account ? (
 				<div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 py-16">
 					<Shield size={48} className="text-zinc-700" />
 					<p className="text-sm text-zinc-500">
-						Connect your wallet to manage assembly permissions
+						Connect EVE Vault to manage assembly permissions
 					</p>
-					<ConnectButton />
 				</div>
 			) : (
 				<div className="space-y-6">
