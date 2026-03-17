@@ -9,7 +9,7 @@ import {
 	getObjectJson,
 	queryEventsGql,
 } from "@tehfrontier/chain-shared";
-import { MOVE_TYPES, EVENT_TYPES } from "./config";
+import { getMoveTypes, getEventTypes, type TenantId } from "./config";
 
 let client: SuiGraphQLClient | null = null;
 
@@ -105,11 +105,14 @@ export async function multiGetObjects(objectIds: string[]): Promise<SuiObjectDat
 // ── Character Queries ───────────────────────────────────────────────────────
 
 /** Find Character objects owned by an address. */
-export async function getCharacters(address: string): Promise<SuiObjectData[]> {
-	return getOwnedObjectsByType(address, MOVE_TYPES.Character);
+export async function getCharacters(
+	address: string,
+	tenant: TenantId = "stillness",
+): Promise<SuiObjectData[]> {
+	return getOwnedObjectsByType(address, getMoveTypes(tenant).Character);
 }
 
-const CHARACTER_TYPE = MOVE_TYPES.Character;
+const CHARACTER_TYPE = getMoveTypes("stillness").Character;
 
 interface CharacterLookupResult {
 	suiAddress: string;
@@ -173,20 +176,24 @@ export async function lookupCharacterByItemId(
 
 /** Discover all assemblies owned by an address.
  *  Assemblies are shared objects — we find them via OwnerCap objects. */
-export async function getOwnedAssemblies(address: string): Promise<SuiObjectData[]> {
+export async function getOwnedAssemblies(
+	address: string,
+	tenant: TenantId = "stillness",
+): Promise<SuiObjectData[]> {
+	const types = getMoveTypes(tenant);
 	// First try direct Assembly type query
-	const assemblies = await getOwnedObjectsByType(address, MOVE_TYPES.Assembly);
+	const assemblies = await getOwnedObjectsByType(address, types.Assembly);
 	if (assemblies.length > 0) return assemblies;
 
 	// Assemblies might be shared objects found via events or other mechanisms.
 	// Query all subtypes in parallel
 	const subtypes = [
-		MOVE_TYPES.StorageUnit,
-		MOVE_TYPES.Gate,
-		MOVE_TYPES.Turret,
-		MOVE_TYPES.NetworkNode,
-		MOVE_TYPES.Manufacturing,
-		MOVE_TYPES.Refinery,
+		types.StorageUnit,
+		types.Gate,
+		types.Turret,
+		types.NetworkNode,
+		types.Manufacturing,
+		types.Refinery,
 	];
 
 	const batches = await Promise.all(subtypes.map((type) => getOwnedObjectsByType(address, type)));
@@ -224,9 +231,12 @@ export async function queryEvents(options: EventQueryOptions): Promise<EventQuer
 }
 
 /** Query recent killmail events. */
-export async function getRecentKillmails(limit = 50) {
+export async function getRecentKillmails(
+	limit = 50,
+	tenant: TenantId = "stillness",
+) {
 	return queryEvents({
-		eventType: EVENT_TYPES.KillmailCreated,
+		eventType: getEventTypes(tenant).KillmailCreated,
 		limit,
 	});
 }

@@ -1,14 +1,18 @@
 import { useState, useEffect, useRef } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { useDAppKit } from "@mysten/dapp-kit-react";
 import { db, notDeleted } from "@/db";
 import type { CharacterRecord, CharacterSource } from "@/db/types";
+import { TENANTS, type TenantId } from "@/chain/config";
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { exportData, importData } from "@/lib/dataExport";
 import { fetchAndStoreGameTypes } from "@/lib/worldApi";
 import { getBackupHandle, requestBackupDirectory, clearBackupHandle, writeAutoBackup } from "@/lib/autoBackup";
 import { lookupCharacterByItemId } from "@/chain/client";
 import { AddCharacterDialog } from "@/components/AddCharacterDialog";
 import { getStoredHandle, requestDirectoryAccess } from "@/lib/logFileAccess";
-import { Settings as SettingsIcon, Database, Users, User, Trash2, Download, Upload, HardDrive, FolderOpen, FolderX, RefreshCw, Link2, Unlink, Plus, Wallet, Gamepad2, PenLine, Search, Loader2, ExternalLink, FileText } from "lucide-react";
+import { Settings as SettingsIcon, Database, Users, User, Trash2, Download, Upload, HardDrive, FolderOpen, FolderX, RefreshCw, Link2, Unlink, Plus, Wallet, Gamepad2, PenLine, Search, Loader2, ExternalLink, FileText, Server } from "lucide-react";
 
 export function Settings() {
 	const meta = useLiveQuery(() => db.cacheMetadata.get("stellarData"));
@@ -38,6 +42,9 @@ export function Settings() {
 				<SettingsIcon size={24} />
 				Settings
 			</h1>
+
+			{/* Server */}
+			<ServerSection />
 
 			{/* Characters */}
 			<CharacterSection characters={characters} />
@@ -173,6 +180,77 @@ export function Settings() {
 				</div>
 			</section>
 		</div>
+	);
+}
+
+const SERVER_OPTIONS: { id: TenantId; label: string; description: string; color: string }[] = [
+	{ id: "stillness", label: "Stillness", description: "Production", color: "bg-green-500" },
+	{ id: "utopia", label: "Utopia", description: "Sandbox", color: "bg-amber-500" },
+];
+
+function ServerSection() {
+	const tenant = useActiveTenant();
+	const queryClient = useQueryClient();
+	const { disconnectWallet } = useDAppKit();
+
+	async function handleSelectServer(id: TenantId) {
+		if (id === tenant) return;
+		await db.settings.put({ key: "tenant", value: id });
+		// Invalidate all React Query caches so views re-fetch with new tenant
+		queryClient.invalidateQueries();
+		// Silently disconnect wallet — auto-connect will reconnect with new zkLogin address
+		try {
+			disconnectWallet();
+		} catch {
+			// Ignore — wallet may not be connected
+		}
+	}
+
+	return (
+		<section className="mt-8">
+			<h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-400">
+				<Server size={16} />
+				Server
+			</h2>
+			<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+				<p className="mb-4 text-sm text-zinc-500">
+					Select which EVE Frontier server to connect to. Switching servers
+					will disconnect your wallet and refresh all data.
+				</p>
+				<div className="flex gap-3">
+					{SERVER_OPTIONS.map((opt) => (
+						<button
+							key={opt.id}
+							type="button"
+							onClick={() => handleSelectServer(opt.id)}
+							className={`flex flex-1 items-center gap-3 rounded-lg border px-4 py-3 transition-colors ${
+								tenant === opt.id
+									? "border-cyan-500/50 bg-cyan-500/5"
+									: "border-zinc-800 hover:border-zinc-700"
+							}`}
+						>
+							<span
+								className={`h-3 w-3 shrink-0 rounded-full ${opt.color}`}
+							/>
+							<div className="text-left">
+								<p
+									className={`text-sm font-medium ${
+										tenant === opt.id
+											? "text-cyan-400"
+											: "text-zinc-300"
+									}`}
+								>
+									{opt.label}
+								</p>
+								<p className="text-xs text-zinc-600">
+									{opt.description}
+								</p>
+							</div>
+						</button>
+					))}
+				</div>
+			</div>
+		</section>
 	);
 }
 
@@ -413,6 +491,17 @@ function CharacterCard({ character }: { character: CharacterRecord }) {
 						<div className="flex items-center gap-2">
 							<p className="text-sm font-medium text-zinc-200">{character.characterName}</p>
 							<SourceBadge source={character.source} />
+							{character.tenant && (
+								<span
+									className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] capitalize ${
+										character.tenant === "stillness"
+											? "bg-green-900/30 text-green-400"
+											: "bg-amber-900/30 text-amber-400"
+									}`}
+								>
+									{character.tenant}
+								</span>
+							)}
 							{character.isActive && (
 								<span className="h-1.5 w-1.5 rounded-full bg-green-500" title="Online" />
 							)}

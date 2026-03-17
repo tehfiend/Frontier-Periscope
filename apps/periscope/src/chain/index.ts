@@ -3,6 +3,8 @@ export {
 	type TenantId,
 	type TenantConfig,
 	moveType,
+	getMoveTypes,
+	getEventTypes,
 	MOVE_TYPES,
 	EVENT_TYPES,
 	ASSEMBLY_TYPE_IDS,

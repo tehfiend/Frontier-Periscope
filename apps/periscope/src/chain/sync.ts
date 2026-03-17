@@ -11,7 +11,7 @@ import {
 	extractObjectId,
 	getObjectDetails,
 } from "./client";
-import { EVENT_TYPES, ASSEMBLY_TYPE_IDS, TENANTS, type TenantId } from "./config";
+import { getEventTypes, ASSEMBLY_TYPE_IDS, TENANTS, type TenantId } from "./config";
 import type {
 	DeployableIntel,
 	AssemblyIntel,
@@ -64,8 +64,11 @@ function parseFuelData(fields: Record<string, unknown>): { fuelLevel?: number; f
 }
 
 /** Sync owned assemblies for the user's address. */
-export async function syncOwnedAssemblies(address: string): Promise<number> {
-	const objects = await getOwnedAssemblies(address);
+export async function syncOwnedAssemblies(
+	address: string,
+	tenant: TenantId = "stillness",
+): Promise<number> {
+	const objects = await getOwnedAssemblies(address, tenant);
 	const now = new Date().toISOString();
 	let count = 0;
 
@@ -112,8 +115,11 @@ export async function syncOwnedAssemblies(address: string): Promise<number> {
 // ── Target Assembly Discovery ───────────────────────────────────────────────
 
 /** Discover and sync assemblies for a target address. */
-export async function syncTargetAssemblies(targetAddress: string): Promise<number> {
-	const objects = await getOwnedAssemblies(targetAddress);
+export async function syncTargetAssemblies(
+	targetAddress: string,
+	tenant: TenantId = "stillness",
+): Promise<number> {
+	const objects = await getOwnedAssemblies(targetAddress, tenant);
 	const now = new Date().toISOString();
 	let count = 0;
 
@@ -157,8 +163,11 @@ export async function syncTargetAssemblies(targetAddress: string): Promise<numbe
 // ── Character Sync ──────────────────────────────────────────────────────────
 
 /** Look up a character by wallet address and store as player intel. */
-export async function syncCharacter(address: string): Promise<PlayerIntel | null> {
-	const chars = await getCharacters(address);
+export async function syncCharacter(
+	address: string,
+	tenant: TenantId = "stillness",
+): Promise<PlayerIntel | null> {
+	const chars = await getCharacters(address, tenant);
 	if (chars.length === 0) return null;
 
 	const fields = extractFields(chars[0]);
@@ -189,11 +198,11 @@ export async function syncCharacter(address: string): Promise<PlayerIntel | null
 // ── Killmail Sync ───────────────────────────────────────────────────────────
 
 /** Fetch and store recent killmails. */
-export async function syncKillmails(limit = 50, tenant?: TenantId): Promise<number> {
-	// Use tenant-specific event type if provided, otherwise fall back to Stillness
-	const eventType = tenant
-		? `${TENANTS[tenant].worldPackageId}::killmail::KillmailCreatedEvent`
-		: EVENT_TYPES.KillmailCreated;
+export async function syncKillmails(
+	limit = 50,
+	tenant: TenantId = "stillness",
+): Promise<number> {
+	const eventType = getEventTypes(tenant).KillmailCreated;
 
 	const result = await queryEvents({
 		eventType,

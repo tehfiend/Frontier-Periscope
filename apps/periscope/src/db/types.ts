@@ -190,7 +190,7 @@ export interface CharacterRecord extends SyncMeta {
 	characterId?: string; // Numeric character ID from logs (in-game item_id)
 	characterName: string; // From log header "Listener:" field
 	suiAddress?: string; // Sui address (resolved from chain or manually linked)
-	tenant?: string; // Tenant this character belongs to (stillness/utopia/nebula)
+	tenant?: string; // Tenant this character belongs to (stillness/utopia)
 	tribe?: string; // Tribe name (resolved from chain)
 	tribeId?: number; // Tribe ID (from chain)
 	source?: CharacterSource; // How this character was discovered
@@ -391,7 +391,7 @@ export interface ManifestCharacter {
 	suiAddress: string;
 	/** Tribe ID */
 	tribeId: number;
-	/** Tenant (stillness/utopia/nebula) */
+	/** Tenant (stillness/utopia) */
 	tenant: string;
 	/** OwnerCap object ID */
 	ownerCapId?: string;

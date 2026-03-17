@@ -146,7 +146,7 @@ export function Extensions() {
 						</h2>
 						{!account && (
 							<div className="flex items-center gap-2 text-xs text-zinc-600">
-								<span>Connect wallet to deploy extensions</span>
+								<span>EVE Vault not connected -- extensions require a wallet</span>
 							</div>
 						)}
 					</div>

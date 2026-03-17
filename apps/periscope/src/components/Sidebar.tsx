@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useAppStore } from "@/stores/appStore";
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { CharacterSwitcher } from "./CharacterSwitcher";
 import {
 	LayoutDashboard,
@@ -121,9 +122,15 @@ function NavLink({ to, icon: Icon, label }: NavItem) {
 	);
 }
 
+const SERVER_DOTS: Record<string, string> = {
+	stillness: "bg-green-500",
+	utopia: "bg-amber-500",
+};
+
 export function Sidebar() {
 	const collapsed = useAppStore((s) => s.sidebarCollapsed);
 	const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+	const tenant = useActiveTenant();
 
 	return (
 		<aside
@@ -131,10 +138,19 @@ export function Sidebar() {
 				collapsed ? "w-16" : "w-56"
 			}`}
 		>
-			{/* Logo */}
+			{/* Logo + Server Indicator */}
 			<div className="flex h-14 items-center gap-3 border-b border-zinc-800 px-4">
 				<img src="/periscope.svg" alt="Periscope" className="h-6 w-6 shrink-0" style={{ filter: "invert(73%) sepia(65%) saturate(500%) hue-rotate(140deg) brightness(95%)" }} />
-				{!collapsed && <span className="text-sm font-semibold text-zinc-100">EF Periscope</span>}
+				{!collapsed && (
+					<div className="flex items-center gap-2">
+						<span className="text-sm font-semibold text-zinc-100">EF Periscope</span>
+						<span
+							className={`h-2 w-2 shrink-0 rounded-full ${SERVER_DOTS[tenant] ?? "bg-zinc-500"}`}
+							title={tenant}
+						/>
+						<span className="text-[10px] capitalize text-zinc-600">{tenant}</span>
+					</div>
+				)}
 			</div>
 
 			{/* Character Switcher */}

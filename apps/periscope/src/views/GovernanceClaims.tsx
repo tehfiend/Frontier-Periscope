@@ -12,6 +12,7 @@ import {
 	Info,
 } from "lucide-react";
 
+import type { TenantId } from "@/chain/config";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
@@ -20,7 +21,6 @@ import {
 	buildCreateClaim,
 	buildRemoveClaim,
 	getContractAddresses,
-	type TenantId as ChainTenantId,
 } from "@tehfrontier/chain-shared";
 
 type Tab = "claims" | "nicknames";
@@ -116,7 +116,7 @@ function ClaimsTab({
 	claims: SystemClaimRecord[];
 	systems: Array<{ id: number; name?: string }>;
 	chainObjectId: string | undefined;
-	tenant: string;
+	tenant: TenantId;
 }) {
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const [adding, setAdding] = useState(false);
@@ -167,7 +167,7 @@ function ClaimsTab({
 		if (chainObjectId) {
 			try {
 				const addresses = getContractAddresses(
-					tenant as ChainTenantId,
+					tenant,
 				);
 				if (
 					addresses.governance?.packageId &&
@@ -207,7 +207,7 @@ function ClaimsTab({
 		if (chainObjectId) {
 			try {
 				const addresses = getContractAddresses(
-					tenant as ChainTenantId,
+					tenant,
 				);
 				if (
 					addresses.governance?.packageId &&

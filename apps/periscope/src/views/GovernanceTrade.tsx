@@ -29,7 +29,6 @@ import { useOrgMarket } from "@/hooks/useOrgMarket";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
 import {
-	type TenantId as ChainTenantId,
 	buildAddAuthorizedSsu,
 	buildCancelBuyOrder,
 	buildConfirmBuyOrderFill,
@@ -418,13 +417,13 @@ function SellOrdersTab({
 	account,
 	discovery,
 }: {
-	tenant: string;
+	tenant: TenantId;
 	account?: { address: string };
 	discovery: DiscoveryData | null;
 }) {
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const suiClient = useCurrentClient();
-	const addresses = getContractAddresses(tenant as ChainTenantId);
+	const addresses = getContractAddresses(tenant);
 	const tradeNodes = useLiveQuery(() => db.tradeNodes.toArray()) ?? [];
 	const tradeNodeIds = useMemo(() => new Set(tradeNodes.map((tn) => tn.id)), [tradeNodes]);
 
@@ -761,13 +760,13 @@ function BuyOrdersTab({
 }: {
 	org: { id: string; name: string; chainObjectId?: string; orgMarketId?: string };
 	currencies: CurrencyRecord[];
-	tenant: string;
+	tenant: TenantId;
 	account?: { address: string };
 	discovery: DiscoveryData | null;
 }) {
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const suiClient = useCurrentClient();
-	const addresses = getContractAddresses(tenant as ChainTenantId);
+	const addresses = getContractAddresses(tenant);
 	const tradeNodes = useLiveQuery(() => db.tradeNodes.toArray()) ?? [];
 	const tradeNodeIds = useMemo(() => new Set(tradeNodes.map((tn) => tn.id)), [tradeNodes]);
 
@@ -791,7 +790,7 @@ function BuyOrdersTab({
 		buyOrders,
 		isLoading: isLoadingMarket,
 		refetch,
-	} = useOrgMarket(org, tenant as ChainTenantId);
+	} = useOrgMarket(org, tenant);
 
 	const [opStatus, setOpStatus] = useState<OpStatus>("idle");
 	const [opError, setOpError] = useState("");

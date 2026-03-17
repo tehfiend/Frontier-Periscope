@@ -22,12 +22,12 @@ import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
 import type { OrgTier, OrgTierMember } from "@/db/types";
+import type { TenantId } from "@/chain/config";
 import {
 	buildCreateOrg,
 	buildAddToTier,
 	buildRemoveFromTier,
 	getContractAddresses,
-	type TenantId as ChainTenantId,
 } from "@tehfrontier/chain-shared";
 
 const tierConfig = {
@@ -73,7 +73,7 @@ export function GovernanceDashboard() {
 		setError("");
 
 		try {
-			const addresses = getContractAddresses(tenant as ChainTenantId);
+			const addresses = getContractAddresses(tenant);
 			if (!addresses.governance?.packageId) {
 				throw new Error(
 					"Governance contracts not deployed for this server",
@@ -316,7 +316,7 @@ function TierPanel({
 	members: OrgTierMember[];
 	orgId: string;
 	chainObjectId: string | undefined;
-	tenant: string;
+	tenant: TenantId;
 }) {
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const [adding, setAdding] = useState(false);
@@ -358,7 +358,7 @@ function TierPanel({
 		if (chainObjectId) {
 			try {
 				const addresses = getContractAddresses(
-					tenant as ChainTenantId,
+					tenant,
 				);
 				if (addresses.governance?.packageId) {
 					const entities =
@@ -397,7 +397,7 @@ function TierPanel({
 		if (chainObjectId) {
 			try {
 				const addresses = getContractAddresses(
-					tenant as ChainTenantId,
+					tenant,
 				);
 				if (addresses.governance?.packageId) {
 					const entities =

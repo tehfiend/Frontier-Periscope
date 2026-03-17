@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useAppStore } from "@/stores/appStore";
 import { db } from "@/db";
 import { AddCharacterDialog } from "./AddCharacterDialog";
@@ -80,8 +81,15 @@ export function CharacterSwitcher() {
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
 	const { activeCharacterId, activeCharacter, allCharacters } = useActiveCharacter();
+	const tenant = useActiveTenant();
 	const setActiveCharacterId = useAppStore((s) => s.setActiveCharacterId);
 	const collapsed = useAppStore((s) => s.sidebarCollapsed);
+
+	// Filter characters to match the active server (include legacy characters with no tenant)
+	const filteredCharacters = useMemo(
+		() => allCharacters.filter((c) => !c.tenant || c.tenant === tenant),
+		[allCharacters, tenant],
+	);
 
 	// Close dropdown on outside click
 	useEffect(() => {
@@ -101,8 +109,8 @@ export function CharacterSwitcher() {
 
 	const subtitle =
 		activeCharacterId === "all"
-			? allCharacters.length > 0
-				? `${allCharacters.length} character${allCharacters.length !== 1 ? "s" : ""}`
+			? filteredCharacters.length > 0
+				? `${filteredCharacters.length} character${filteredCharacters.length !== 1 ? "s" : ""}`
 				: undefined
 			: activeCharacter?.tenant ?? undefined;
 
@@ -139,7 +147,7 @@ export function CharacterSwitcher() {
 
 				{open && (
 					<div className="absolute left-2 right-2 top-full z-50 mt-1 rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
-						{allCharacters.length > 0 && (
+						{filteredCharacters.length > 0 && (
 							<>
 								<button
 									type="button"
@@ -153,10 +161,10 @@ export function CharacterSwitcher() {
 								>
 									<Users size={14} />
 									<span className="flex-1 text-left">All Characters</span>
-									<span className="text-xs text-zinc-600">{allCharacters.length}</span>
+									<span className="text-xs text-zinc-600">{filteredCharacters.length}</span>
 								</button>
 								<div className="my-1 border-t border-zinc-800" />
-								{allCharacters.map((char) => (
+								{filteredCharacters.map((char) => (
 									<CharacterEntry
 										key={char.id}
 										char={char}

@@ -5,22 +5,20 @@ import { TENANTS, type TenantId } from "@/chain/config";
 import { ChevronDown } from "lucide-react";
 
 const SERVER_COLORS: Record<TenantId, string> = {
-	utopia: "bg-amber-500",
 	stillness: "bg-green-500",
-	nebula: "bg-purple-500",
+	utopia: "bg-amber-500",
 };
 
 const SERVER_LABELS: Record<TenantId, string> = {
-	utopia: "Sandbox",
 	stillness: "Production",
-	nebula: "Test",
+	utopia: "Sandbox",
 };
 
 export function ServerSwitcher() {
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
 	const tenantSetting = useLiveQuery(() => db.settings.get("tenant"));
-	const activeTenant = (tenantSetting?.value as TenantId) ?? "utopia";
+	const activeTenant = (tenantSetting?.value as TenantId) ?? "stillness";
 
 	useEffect(() => {
 		function handleClick(e: MouseEvent) {

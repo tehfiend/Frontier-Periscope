@@ -27,14 +27,6 @@ export const TENANTS = {
 		dappUrl: "https://uat.dapps.evefrontier.com/?tenant=utopia",
 		gasStationUrl: undefined,
 	},
-	nebula: {
-		name: "Nebula",
-		worldPackageId: "0x353988e063b4683580e3603dbe9e91fefd8f6a06263a646d43fd3a2f3ef6b8c1",
-		evePackageId: "0x6407060579895a8b30f7d30d2447046eb80ecc23f0c9acde09222b2a505583c9",
-		datahubUrl: "world-api-nebula.test.evefrontier.tech",
-		dappUrl: "",
-		gasStationUrl: undefined,
-	},
 } as const;
 
 export type TenantId = keyof typeof TENANTS;
@@ -45,27 +37,38 @@ export function moveType(tenant: TenantId, module: string, type: string): string
 	return `${TENANTS[tenant].worldPackageId}::${module}::${type}`;
 }
 
-// Convenience: pre-built type strings for the stillness tenant
-const STILLNESS_PKG = TENANTS.stillness.worldPackageId;
+/** Get Move type strings for a specific tenant. */
+export function getMoveTypes(tenant: TenantId) {
+	const pkg = TENANTS[tenant].worldPackageId;
+	return {
+		Assembly: `${pkg}::assembly::Assembly`,
+		Gate: `${pkg}::gate::Gate`,
+		StorageUnit: `${pkg}::storage_unit::StorageUnit`,
+		Turret: `${pkg}::turret::Turret`,
+		NetworkNode: `${pkg}::network_node::NetworkNode`,
+		Manufacturing: `${pkg}::manufacturing::Manufacturing`,
+		Refinery: `${pkg}::refinery::Refinery`,
+		Character: `${pkg}::character::Character`,
+	};
+}
 
-export const MOVE_TYPES = {
-	Assembly: `${STILLNESS_PKG}::assembly::Assembly`,
-	Gate: `${STILLNESS_PKG}::gate::Gate`,
-	StorageUnit: `${STILLNESS_PKG}::storage_unit::StorageUnit`,
-	Turret: `${STILLNESS_PKG}::turret::Turret`,
-	NetworkNode: `${STILLNESS_PKG}::network_node::NetworkNode`,
-	Manufacturing: `${STILLNESS_PKG}::manufacturing::Manufacturing`,
-	Refinery: `${STILLNESS_PKG}::refinery::Refinery`,
-	Character: `${STILLNESS_PKG}::character::Character`,
-} as const;
+/** Get event type strings for a specific tenant. */
+export function getEventTypes(tenant: TenantId) {
+	const pkg = TENANTS[tenant].worldPackageId;
+	return {
+		FuelEvent: `${pkg}::fuel::FuelEvent`,
+		JumpEvent: `${pkg}::gate::JumpEvent`,
+		KillmailCreated: `${pkg}::killmail::KillmailCreatedEvent`,
+		AssemblyCreated: `${pkg}::assembly::AssemblyCreatedEvent`,
+		StatusChanged: `${pkg}::status::StatusChangedEvent`,
+	};
+}
 
-export const EVENT_TYPES = {
-	FuelEvent: `${STILLNESS_PKG}::fuel::FuelEvent`,
-	JumpEvent: `${STILLNESS_PKG}::gate::JumpEvent`,
-	KillmailCreated: `${STILLNESS_PKG}::killmail::KillmailCreatedEvent`,
-	AssemblyCreated: `${STILLNESS_PKG}::assembly::AssemblyCreatedEvent`,
-	StatusChanged: `${STILLNESS_PKG}::status::StatusChangedEvent`,
-} as const;
+/** @deprecated Use getMoveTypes(tenant) instead */
+export const MOVE_TYPES = getMoveTypes("stillness");
+
+/** @deprecated Use getEventTypes(tenant) instead */
+export const EVENT_TYPES = getEventTypes("stillness");
 
 // ── Game Constants ──────────────────────────────────────────────────────────
 

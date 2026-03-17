@@ -9,7 +9,7 @@ import { useActiveCharacter } from "./useActiveCharacter";
 
 export function useActiveTenant(): TenantId {
 	const tenantSetting = useLiveQuery(() => db.settings.get("tenant"));
-	return (tenantSetting?.value as TenantId) ?? "utopia";
+	return (tenantSetting?.value as TenantId) ?? "stillness";
 }
 
 /**

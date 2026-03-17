@@ -1,54 +1,33 @@
-import {
-	ConnectButton,
-	useCurrentAccount,
-	useDAppKit,
-} from "@mysten/dapp-kit-react";
-import { LogOut, Wallet } from "lucide-react";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
 
 function truncateAddress(address: string): string {
 	return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 /**
- * Styled connect button. Uses dapp-kit's ConnectButton internally
- * which handles wallet discovery and connection.
+ * Minimal wallet connection status indicator.
+ * Shows a green dot + truncated address when connected,
+ * or a gray dot + "Not connected" when disconnected.
+ * No button — auto-connect handles connection via EVE Vault.
  */
-export function ConnectWalletButton({ className }: { className?: string }) {
-	return (
-		<ConnectButton
-			connectText="Connect Wallet"
-			className={
-				className ??
-				"!rounded-lg !bg-cyan-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-cyan-500"
-			}
-		/>
-	);
-}
-
 export function WalletConnect() {
 	const account = useCurrentAccount();
-	const dAppKit = useDAppKit();
 
 	if (!account) {
-		return <ConnectWalletButton />;
+		return (
+			<div className="flex items-center gap-1.5">
+				<span className="h-2 w-2 rounded-full bg-zinc-600" />
+				<span className="text-xs text-zinc-500">Not connected</span>
+			</div>
+		);
 	}
 
 	return (
-		<div className="flex items-center gap-2">
-			<div className="flex items-center gap-1.5 rounded-lg bg-zinc-800/50 px-3 py-1.5">
-				<Wallet size={14} className="text-cyan-500" />
-				<span className="font-mono text-xs text-zinc-300">
-					{truncateAddress(account.address)}
-				</span>
-			</div>
-			<button
-				type="button"
-				onClick={() => dAppKit.disconnectWallet()}
-				className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-				title="Disconnect wallet"
-			>
-				<LogOut size={14} />
-			</button>
+		<div className="flex items-center gap-1.5">
+			<span className="h-2 w-2 rounded-full bg-green-500" />
+			<span className="font-mono text-xs text-zinc-400">
+				{truncateAddress(account.address)}
+			</span>
 		</div>
 	);
 }

@@ -857,29 +857,20 @@ function CharacterResult({
 // ── Main Dialog ──────────────────────────────────────────────────────────────
 
 const TENANT_COLORS: Record<TenantId, string> = {
-	utopia: "bg-amber-500",
 	stillness: "bg-green-500",
-	nebula: "bg-purple-500",
-};
-
-const TENANT_LABELS: Record<TenantId, string> = {
-	utopia: "Sandbox",
-	stillness: "Production",
-	nebula: "Test",
+	utopia: "bg-amber-500",
 };
 
 export function AddCharacterDialog({ open, onClose }: Props) {
-	const defaultTenant = useActiveTenant();
+	const tenant = useActiveTenant();
 	const [method, setMethod] = useState<Method>("wallet");
-	const [tenant, setTenant] = useState<TenantId>(defaultTenant);
 
 	// Reset on open
 	useEffect(() => {
 		if (open) {
 			setMethod("wallet");
-			setTenant(defaultTenant);
 		}
-	}, [open, defaultTenant]);
+	}, [open]);
 
 	if (!open) return null;
 
@@ -888,9 +879,15 @@ export function AddCharacterDialog({ open, onClose }: Props) {
 			<div className="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
 				{/* Header */}
 				<div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
-					<h2 className="text-lg font-semibold text-zinc-100">
-						Add Character
-					</h2>
+					<div className="flex items-center gap-3">
+						<h2 className="text-lg font-semibold text-zinc-100">
+							Add Character
+						</h2>
+						<span className="flex items-center gap-1.5 rounded-md bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+							<span className={`h-1.5 w-1.5 rounded-full ${TENANT_COLORS[tenant]}`} />
+							{TENANTS[tenant].name}
+						</span>
+					</div>
 					<button
 						type="button"
 						onClick={onClose}
@@ -898,28 +895,6 @@ export function AddCharacterDialog({ open, onClose }: Props) {
 					>
 						<X size={18} />
 					</button>
-				</div>
-
-				{/* Server selector + Method tabs */}
-				<div className="flex items-center gap-3 border-b border-zinc-800 px-5 py-2">
-					<span className="text-xs text-zinc-600">Server:</span>
-					<div className="flex gap-1">
-						{(Object.keys(TENANTS) as TenantId[]).map((id) => (
-							<button
-								key={id}
-								type="button"
-								onClick={() => setTenant(id)}
-								className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors ${
-									tenant === id
-										? "bg-zinc-800 text-zinc-100"
-										: "text-zinc-600 hover:text-zinc-400"
-								}`}
-							>
-								<span className={`h-1.5 w-1.5 rounded-full ${TENANT_COLORS[id]}`} />
-								{TENANTS[id].name}
-							</button>
-						))}
-					</div>
 				</div>
 
 				<div className="flex border-b border-zinc-800">

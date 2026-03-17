@@ -13,7 +13,6 @@ import {
 import { enqueueTask } from "@/lib/taskWorker";
 import { useTaskWorker } from "@/hooks/useTaskWorker";
 import { DataGrid, excelFilterFn, type ColumnDef } from "@/components/DataGrid";
-import { ServerSwitcher } from "@/components/ServerSwitcher";
 import {
 	Database,
 	RefreshCw,
@@ -381,7 +380,6 @@ export function Manifest() {
 							{characters.length} characters &middot; {tribes.length} tribes &middot; {tribeCounts} unique tribes in characters
 						</p>
 					</div>
-					<ServerSwitcher />
 				</div>
 				<div className="flex items-center gap-2">
 					{syncStatus && <span className="max-w-xs truncate text-xs text-zinc-500">{syncStatus}</span>}

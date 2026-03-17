@@ -4,7 +4,6 @@ import {
 	useCurrentClient,
 	useDAppKit,
 } from "@mysten/dapp-kit-react";
-import { ConnectWalletButton } from "@/components/WalletConnect";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Coins,
@@ -21,6 +20,7 @@ import {
 	RefreshCw,
 } from "lucide-react";
 
+import type { TenantId } from "@/chain/config";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
@@ -36,7 +36,6 @@ import {
 	queryOwnedCoins,
 	buildPublishToken,
 	parsePublishResult,
-	type TenantId as ChainTenantId,
 } from "@tehfrontier/chain-shared";
 
 type BuildStatus =
@@ -389,7 +388,7 @@ export function GovernanceFinance() {
 									)}
 								</button>
 							) : (
-								<ConnectWalletButton className="!rounded-lg !bg-cyan-600 !px-4 !py-2 !text-sm !font-medium !text-white hover:!bg-cyan-500" />
+								<span className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-zinc-500">EVE Vault not connected</span>
 							)}
 							<button
 								type="button"
@@ -500,7 +499,7 @@ function CurrencyCard({
 }: {
 	currency: CurrencyRecord;
 	org: { id: string; name: string; chainObjectId?: string };
-	tenant: string;
+	tenant: TenantId;
 	suiAddress: string;
 	onStatusChange: (status: BuildStatus, error?: string) => void;
 }) {
@@ -535,7 +534,7 @@ function CurrencyCard({
 
 	const isPublished = !!currency.packageId;
 	const hasTreasury = !!currency.orgTreasuryId;
-	const addresses = getContractAddresses(tenant as ChainTenantId);
+	const addresses = getContractAddresses(tenant);
 
 	useEffect(() => {
 		if (expanded && hasTreasury && currency.orgTreasuryId) {
@@ -848,7 +847,7 @@ function CurrencyCard({
 									Deposit to OrgTreasury
 								</button>
 							) : (
-								<ConnectWalletButton className="!rounded !bg-amber-600/20 !px-3 !py-1.5 !text-xs !font-medium !text-amber-400 hover:!bg-amber-600/30" />
+								<span className="text-xs text-zinc-500">EVE Vault not connected</span>
 							)}
 						</div>
 					)}
@@ -1014,7 +1013,7 @@ function CurrencyCard({
 												Mint {currency.symbol}
 											</button>
 										) : (
-											<ConnectWalletButton className="!rounded !bg-cyan-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-cyan-500" />
+											<span className="text-xs text-zinc-500">EVE Vault not connected</span>
 										)}
 									</div>
 								</div>
@@ -1084,7 +1083,7 @@ function CurrencyCard({
 													Burn Selected Coin
 												</button>
 											) : (
-												<ConnectWalletButton className="!rounded !bg-red-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-red-500" />
+												<span className="text-xs text-zinc-500">EVE Vault not connected</span>
 											)}
 										</div>
 									)}
@@ -1162,7 +1161,7 @@ function CurrencyCard({
 											Mint &amp; Post Bounty
 										</button>
 									) : (
-										<ConnectWalletButton className="!rounded !bg-amber-600 !px-3 !py-1.5 !text-xs !font-medium !text-white hover:!bg-amber-500" />
+										<span className="text-xs text-zinc-500">EVE Vault not connected</span>
 									)}
 									</div>
 								</div>
