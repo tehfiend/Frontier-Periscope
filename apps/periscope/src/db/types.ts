@@ -527,6 +527,41 @@ export interface CurrencyRecord extends SyncMeta {
 	updatedAt: string;
 }
 
+// ── Sonar Types ────────────────────────────────────────────────────────────
+
+export type SonarSource = "local" | "chain";
+export type SonarChannelStatus = "active" | "off" | "error";
+
+export interface SonarEvent {
+	id?: number; // auto-increment
+	timestamp: string; // ISO 8601
+	source: SonarSource; // which sonar channel
+	eventType: string; // e.g. "system_change", "item_deposited", "item_withdrawn"
+	characterName?: string; // who generated the event
+	characterId?: string; // character item_id (from logs or chain)
+	assemblyId?: string; // SSU/assembly object ID (chain events)
+	assemblyName?: string; // human-readable assembly label
+	typeId?: number; // item type_id (chain events)
+	typeName?: string; // resolved item type name from gameTypes
+	quantity?: number; // item quantity (chain events)
+	systemName?: string; // solar system name (local events)
+	details?: string; // additional context (message text, raw JSON)
+	sessionId?: string; // link to log session (local events only)
+	txDigest?: string; // transaction digest (chain events only)
+}
+
+export interface SonarChannelState {
+	channel: SonarSource; // primary key
+	enabled: boolean;
+	status: SonarChannelStatus;
+	lastError?: string;
+	// Local-specific: high-water-mark for logEvents.id
+	lastProcessedLogId?: number;
+	// Chain-specific cursor tracking
+	cursors?: Record<string, string>; // eventType -> GraphQL cursor
+	lastPollAt?: string;
+}
+
 // ── P2P Sync Persisted Types ────────────────────────────────────────────────
 
 export type SyncTrustTier = "multibox" | "intel";

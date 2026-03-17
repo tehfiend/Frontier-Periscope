@@ -33,6 +33,8 @@ import type {
 	SettingsEntry,
 	SharingGroup,
 	SolarSystem,
+	SonarChannelState,
+	SonarEvent,
 	SyncLogEntry,
 	SyncMeta,
 	SyncPeer,
@@ -109,6 +111,10 @@ class PeriscopeDB extends Dexie {
 
 	// Trade
 	tradeNodes!: EntityTable<TradeNodeRecord, "id">;
+
+	// Sonar
+	sonarEvents!: EntityTable<SonarEvent, "id">;
+	sonarState!: EntityTable<SonarChannelState, "channel">;
 
 	constructor() {
 		super("frontier-periscope");
@@ -396,6 +402,82 @@ class PeriscopeDB extends Dexie {
 			deployables:
 				"id, objectId, assemblyType, owner, status, label, updatedAt, _hlc, ownerCapId, *tags",
 		});
+
+		// V16: Sonar — unified event log + channel state; backfill existing system_change events
+		this.version(16)
+			.stores({
+				sonarEvents:
+					"++id, [source+eventType], timestamp, characterId, assemblyId, sessionId",
+				sonarState: "channel",
+			})
+			.upgrade(async (tx) => {
+				const logEvents = tx.table("logEvents");
+				const logSessions = tx.table("logSessions");
+				const sonarEvents = tx.table("sonarEvents");
+				const sonarState = tx.table("sonarState");
+
+				// Build a session lookup map for characterName resolution
+				const sessions = await logSessions.toArray();
+				const sessionMap = new Map<string, { characterName?: string; characterId?: string }>();
+				for (const s of sessions) {
+					sessionMap.set(s.id, {
+						characterName: s.characterName,
+						characterId: s.characterId,
+					});
+				}
+
+				// Backfill: scan existing logEvents for system_change and copy to sonarEvents
+				const systemChangeEvents = await logEvents
+					.where("type")
+					.equals("system_change")
+					.toArray();
+
+				if (systemChangeEvents.length > 0) {
+					const sonarEntries = systemChangeEvents.map(
+						(e: {
+							id?: number;
+							sessionId: string;
+							timestamp: string;
+							systemName?: string;
+							raw: string;
+						}) => {
+							const session = sessionMap.get(e.sessionId);
+							return {
+								timestamp: e.timestamp,
+								source: "local" as const,
+								eventType: "system_change",
+								characterName: session?.characterName,
+								characterId: session?.characterId,
+								systemName: e.systemName,
+								details: e.systemName
+									? `Entered ${e.systemName}`
+									: undefined,
+								sessionId: e.sessionId,
+							};
+						},
+					);
+					await sonarEvents.bulkAdd(sonarEntries);
+				}
+
+				// Initialize channel state with high-water-mark set past backfilled events
+				const maxLogId = systemChangeEvents.reduce(
+					(max: number, e: { id?: number }) => Math.max(max, e.id ?? 0),
+					0,
+				);
+				await sonarState.bulkPut([
+					{
+						channel: "local",
+						enabled: true,
+						status: "off",
+						lastProcessedLogId: maxLogId,
+					},
+					{
+						channel: "chain",
+						enabled: true,
+						status: "off",
+					},
+				]);
+			});
 	}
 }
 
