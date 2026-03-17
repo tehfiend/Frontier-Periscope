@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { SsuInventories } from "@/hooks/useInventory";
+import type { SsuInventories, SlotType } from "@/hooks/useInventory";
 import { InventoryTable } from "./InventoryTable";
 
 interface InventoryTabsProps {
@@ -7,57 +7,145 @@ interface InventoryTabsProps {
 	isLoading?: boolean;
 }
 
-type TabId = "owner" | "extension" | "open";
+/**
+ * Color palette for inventory slots.
+ * Each entry is [bg class for bar segments, border class for table accent,
+ * text class for tab indicator, hex for inline styles].
+ */
+const SLOT_COLORS: Record<SlotType, { bar: string; border: string; text: string; hex: string }> = {
+	owner: { bar: "bg-cyan-500", border: "border-l-cyan-500", text: "text-cyan-400", hex: "#06b6d4" },
+	open: { bar: "bg-amber-500", border: "border-l-amber-500", text: "text-amber-400", hex: "#f59e0b" },
+	player: { bar: "", border: "", text: "", hex: "" }, // assigned dynamically
+};
 
-const TABS: Array<{ id: TabId; label: string }> = [
-	{ id: "owner", label: "Owner Inventory" },
-	{ id: "extension", label: "Extension Inventory" },
-	{ id: "open", label: "Open Inventory" },
+/** Rotating colors for player inventory slots */
+const PLAYER_COLORS = [
+	{ bar: "bg-violet-500", border: "border-l-violet-500", text: "text-violet-400", hex: "#8b5cf6" },
+	{ bar: "bg-emerald-500", border: "border-l-emerald-500", text: "text-emerald-400", hex: "#10b981" },
+	{ bar: "bg-rose-500", border: "border-l-rose-500", text: "text-rose-400", hex: "#f43f5e" },
+	{ bar: "bg-sky-500", border: "border-l-sky-500", text: "text-sky-400", hex: "#0ea5e9" },
+	{ bar: "bg-orange-500", border: "border-l-orange-500", text: "text-orange-400", hex: "#f97316" },
+	{ bar: "bg-fuchsia-500", border: "border-l-fuchsia-500", text: "text-fuchsia-400", hex: "#d946ef" },
 ];
 
+/** Get the color config for a slot by type and player index */
+function getSlotColor(
+	slotType: SlotType,
+	playerIndex: number,
+): { bar: string; border: string; text: string; hex: string } {
+	if (slotType !== "player") return SLOT_COLORS[slotType];
+	return PLAYER_COLORS[playerIndex % PLAYER_COLORS.length];
+}
+
 export function InventoryTabs({ inventories, isLoading }: InventoryTabsProps) {
-	const [activeTab, setActiveTab] = useState<TabId>("owner");
+	const [activeIdx, setActiveIdx] = useState(0);
 
-	const inventoryForTab = {
-		owner: inventories.ownerInventory,
-		extension: inventories.extensionInventory,
-		open: inventories.openInventory,
-	};
+	const { slots } = inventories;
+	if (slots.length === 0) {
+		return (
+			<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+				<p className="text-center text-sm text-zinc-600">No inventories found</p>
+			</div>
+		);
+	}
 
-	const currentInventory = inventoryForTab[activeTab];
-	const itemCounts = {
-		owner: inventories.ownerInventory.items.length,
-		extension: inventories.extensionInventory.items.length,
-		open: inventories.openInventory.items.length,
-	};
+	const currentSlot = slots[activeIdx] ?? slots[0];
+
+	// Compute total capacity (same across all slots -- property of the SSU)
+	// Raw values are in milli-m3, divide by 1000 for m3
+	const maxCapacity = (slots.length > 0 ? slots[0].maxCapacity : 0) / 1000;
+	const totalUsed = slots.reduce((sum, s) => sum + s.usedCapacity, 0) / 1000;
+
+	// Build color assignments: track player index for rotation
+	let playerIdx = 0;
+	const slotColors = slots.map((slot) => {
+		if (slot.slotType === "player") {
+			const color = getSlotColor("player", playerIdx);
+			playerIdx++;
+			return color;
+		}
+		return getSlotColor(slot.slotType, 0);
+	});
+
+	// Get the active slot's color for the table accent
+	const activeColor = slotColors[activeIdx] ?? slotColors[0];
 
 	return (
 		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+			{/* Global capacity bar */}
+			<div className="mb-4">
+				<div className="mb-1.5 flex items-center justify-between text-xs text-zinc-500">
+					<span>
+						Capacity: {totalUsed.toLocaleString()} / {maxCapacity.toLocaleString()} m³
+					</span>
+					{maxCapacity > 0 && (
+						<span className="text-zinc-600">
+							{Math.round((totalUsed / maxCapacity) * 100)}%
+						</span>
+					)}
+				</div>
+				<div className="flex h-2 overflow-hidden rounded-full bg-zinc-800">
+					{slots.map((slot, idx) => {
+						const used = slot.usedCapacity / 1000;
+						if (used === 0 || maxCapacity === 0) return null;
+						const widthPct = (used / maxCapacity) * 100;
+						return (
+							<div
+								key={slot.key}
+								className={`${slotColors[idx].bar} transition-all`}
+								style={{ width: `${widthPct}%` }}
+								title={`${slot.label}: ${used.toLocaleString()} m\u00B3`}
+							/>
+						);
+					})}
+				</div>
+				{/* Legend */}
+				{slots.length > 1 && (
+					<div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+						{slots.map((slot, idx) => (
+							<div key={slot.key} className="flex items-center gap-1 text-xs text-zinc-500">
+								<div
+									className={`h-2 w-2 rounded-full ${slotColors[idx].bar}`}
+								/>
+								<span>{slot.label}</span>
+							</div>
+						))}
+					</div>
+				)}
+			</div>
+
 			{/* Tab bar */}
 			<div className="mb-4 flex gap-1 rounded-lg bg-zinc-800/50 p-1">
-				{TABS.map((tab) => (
+				{slots.map((slot, idx) => (
 					<button
-						key={tab.id}
+						key={slot.key}
 						type="button"
-						onClick={() => setActiveTab(tab.id)}
+						onClick={() => setActiveIdx(idx)}
 						className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-							activeTab === tab.id
+							activeIdx === idx
 								? "bg-zinc-700 text-zinc-100"
 								: "text-zinc-500 hover:text-zinc-300"
 						}`}
 					>
-						{tab.label}
-						{itemCounts[tab.id] > 0 && (
+						<span className="flex items-center justify-center gap-1.5">
+							<span
+								className={`inline-block h-1.5 w-1.5 rounded-full ${slotColors[idx].bar}`}
+							/>
+							{slot.label}
+						</span>
+						{slot.items.length > 0 && (
 							<span className="ml-1.5 rounded-full bg-zinc-600/50 px-1.5 py-0.5 text-xs">
-								{itemCounts[tab.id]}
+								{slot.items.length}
 							</span>
 						)}
 					</button>
 				))}
 			</div>
 
-			{/* Content */}
-			<InventoryTable inventory={currentInventory} isLoading={isLoading} />
+			{/* Content -- inventory table with colored left border */}
+			<div className={`border-l-2 pl-3 ${activeColor.border}`}>
+				<InventoryTable inventory={currentSlot} isLoading={isLoading} />
+			</div>
 		</div>
 	);
 }

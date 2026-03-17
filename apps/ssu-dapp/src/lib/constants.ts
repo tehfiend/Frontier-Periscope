@@ -13,7 +13,7 @@ export const OBJECT_REGISTRY_ADDRESSES: Record<string, string> = {
 /** World API base URLs per tenant */
 export const WORLD_API: Record<string, string> = {
 	stillness: "https://world-api-stillness.live.tech.evefrontier.com",
-	utopia: "https://world-api-utopia.live.tech.evefrontier.com",
+	utopia: "https://world-api-utopia.uat.pub.evefrontier.com",
 };
 
 /** Read a URL query parameter */

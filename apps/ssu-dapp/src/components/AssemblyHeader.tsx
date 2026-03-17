@@ -1,13 +1,22 @@
+import { useQuery } from "@tanstack/react-query";
 import type { AssemblyData } from "@/hooks/useAssembly";
+import { resolveItemName } from "@/lib/items";
 
 interface AssemblyHeaderProps {
 	assembly: AssemblyData;
+	itemId?: string | null;
 }
 
-export function AssemblyHeader({ assembly }: AssemblyHeaderProps) {
+export function AssemblyHeader({ assembly, itemId }: AssemblyHeaderProps) {
 	const name = assembly.metadata?.name || "Unnamed Storage Unit";
 	const description = assembly.metadata?.description || null;
 	const dappUrl = assembly.metadata?.url || null;
+
+	const { data: typeName } = useQuery({
+		queryKey: ["typeName", assembly.typeId],
+		queryFn: () => resolveItemName(assembly.typeId),
+		staleTime: 5 * 60_000,
+	});
 
 	return (
 		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
@@ -17,20 +26,23 @@ export function AssemblyHeader({ assembly }: AssemblyHeaderProps) {
 						<h2 className="truncate text-lg font-semibold text-zinc-100">{name}</h2>
 						<StatusBadge status={assembly.status} isOnline={assembly.isOnline} />
 					</div>
-					<p className="mt-0.5 text-xs text-zinc-500">Smart Storage Unit</p>
+					<p className="mt-0.5 text-xs text-zinc-500">
+						{typeName ?? `Type ${assembly.typeId}`}
+						{itemId && (
+							<span className="ml-2 font-mono text-zinc-600">#{itemId}</span>
+						)}
+					</p>
 					{description && (
 						<p className="mt-1 text-sm text-zinc-400">{description}</p>
 					)}
 				</div>
 				<div className="shrink-0 text-right">
-					<p className="font-mono text-xs text-zinc-500">
+					<p className="font-mono text-xs text-zinc-600" title={assembly.objectId}>
 						{assembly.objectId.slice(0, 10)}...{assembly.objectId.slice(-6)}
 					</p>
-					<p className="mt-0.5 text-xs text-zinc-600">Type: {assembly.typeId}</p>
 				</div>
 			</div>
 
-			{/* Extension info */}
 			{assembly.extensionType && (
 				<div className="mt-3 border-t border-zinc-800 pt-2">
 					<p className="text-xs text-zinc-500">
@@ -80,9 +92,7 @@ function StatusBadge({ status, isOnline }: { status: string; isOnline: boolean }
 	);
 }
 
-/** Shorten extension type name for display */
 function formatExtensionType(ext: string): string {
-	// If it's a full type path like "0x...::module::Type", show just "module::Type"
 	const parts = ext.split("::");
 	if (parts.length >= 3) {
 		return `${parts[parts.length - 2]}::${parts[parts.length - 1]}`;

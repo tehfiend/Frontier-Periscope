@@ -5,6 +5,7 @@ import { useCharacter } from "@/hooks/useCharacter";
 import { useOwnerCap } from "@/hooks/useOwnerCap";
 import { AssemblyHeader } from "@/components/AssemblyHeader";
 import { InventoryTabs } from "@/components/InventoryTabs";
+import { getItemId } from "@/lib/constants";
 import { WalletConnect } from "@/components/WalletConnect";
 import { DepositWithdrawPanel } from "@/components/DepositWithdrawPanel";
 import { MetadataEditor } from "@/components/MetadataEditor";
@@ -27,6 +28,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 	} = useAssembly(objectId);
 
 	const { data: inventories, isLoading: inventoryLoading } = useInventory(
+		assembly ? objectId : null,
 		assembly?.rawJson ?? null,
 	);
 
@@ -80,7 +82,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 	return (
 		<div className="mx-auto max-w-2xl space-y-4">
 			{/* Assembly header */}
-			<AssemblyHeader assembly={assembly} />
+			<AssemblyHeader assembly={assembly} itemId={getItemId()} />
 
 			{/* Inventory tabs (always visible, no wallet required) */}
 			{inventories && (

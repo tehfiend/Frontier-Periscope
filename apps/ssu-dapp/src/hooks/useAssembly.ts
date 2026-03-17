@@ -13,13 +13,16 @@ export interface AssemblyMetadata {
 export interface AssemblyData {
 	objectId: string;
 	typeId: number;
+	itemId: string | null;
 	status: string;
 	isOnline: boolean;
 	ownerCapId: string;
 	energySourceId: string | null;
 	extensionType: string | null;
 	metadata: AssemblyMetadata | null;
-	/** Raw JSON fields for inventory parsing */
+	/** Dynamic field keys for inventories */
+	inventoryKeys: string[];
+	/** Raw JSON fields */
 	rawJson: Record<string, unknown>;
 }
 
@@ -34,21 +37,20 @@ function parseStatus(status: unknown): { label: string; isOnline: boolean } {
 
 	const s = status as Record<string, unknown>;
 
-	// GraphQL returns enum variants as objects with the variant name as key
-	if ("Online" in s || "online" in s) {
-		return { label: "Online", isOnline: true };
-	}
-	if ("Offline" in s || "offline" in s) {
-		return { label: "Offline", isOnline: false };
-	}
-
-	// Fallback: check for string representation
-	const str = String(status);
-	if (str.toLowerCase().includes("online")) {
-		return { label: "Online", isOnline: true };
+	// On-chain format: { status: { "@variant": "ONLINE" } }
+	const inner = s.status as Record<string, unknown> | undefined;
+	if (inner && typeof inner === "object") {
+		const variant = String(inner["@variant"] ?? inner.variant ?? "").toLowerCase();
+		if (variant === "online") return { label: "Online", isOnline: true };
+		if (variant === "offline") return { label: "Offline", isOnline: false };
 	}
 
-	return { label: "Offline", isOnline: false };
+	// Direct enum: { "@variant": "ONLINE" }
+	const directVariant = String(s["@variant"] ?? s.variant ?? "").toLowerCase();
+	if (directVariant === "online") return { label: "Online", isOnline: true };
+	if (directVariant === "offline") return { label: "Offline", isOnline: false };
+
+	return { label: "Unknown", isOnline: false };
 }
 
 /** Parse metadata from the JSON fields */
@@ -110,15 +112,28 @@ export function useAssembly(objectId: string | null) {
 			const json = result.json;
 			const { label, isOnline } = parseStatus(json.status);
 
+			// Extract inventory_keys — array of dynamic field key IDs
+			const inventoryKeys: string[] = [];
+			if (Array.isArray(json.inventory_keys)) {
+				for (const k of json.inventory_keys) {
+					if (typeof k === "string") inventoryKeys.push(k);
+				}
+			}
+
+			// Extract item_id from TenantItemId if present
+			const itemId = json.item_id ? String(json.item_id) : null;
+
 			return {
 				objectId,
 				typeId: Number(json.type_id ?? 0),
+				itemId,
 				status: label,
 				isOnline,
 				ownerCapId: String(json.owner_cap_id ?? ""),
 				energySourceId: parseOptionId(json.energy_source_id),
 				extensionType: parseExtension(json.extension),
 				metadata: parseMetadata(json.metadata),
+				inventoryKeys,
 				rawJson: json,
 			};
 		},
