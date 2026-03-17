@@ -16,7 +16,6 @@ import { Extensions } from "@/views/Extensions";
 import { Permissions } from "@/views/Permissions";
 import { Setup } from "@/views/Setup";
 import { Assets } from "@/views/Assets";
-import { Radar } from "@/views/Radar";
 import { JumpPlanner } from "@/views/JumpPlanner";
 import { Workers } from "@/views/Workers";
 
@@ -346,12 +345,6 @@ const jumpPlannerRoute = createRoute({
 	component: JumpPlanner,
 });
 
-const radarRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/radar",
-	component: Radar,
-});
-
 const workersRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/workers",
@@ -393,7 +386,7 @@ const routeTree = rootRoute.addChildren([
 	manifestRoute,
 	walletRoute,
 	jumpPlannerRoute,
-	radarRoute,
+
 	peersRoute,
 	workersRoute,
 	settingsRoute,

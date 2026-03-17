@@ -403,7 +403,7 @@ class PeriscopeDB extends Dexie {
 				"id, objectId, assemblyType, owner, status, label, updatedAt, _hlc, ownerCapId, *tags",
 		});
 
-		// V16: Sonar — unified event log + channel state; backfill existing system_change events
+		// V16: Sonar — unified event log + channel state; backfill system_change from logEvents
 		this.version(16)
 			.stores({
 				sonarEvents:
@@ -416,68 +416,59 @@ class PeriscopeDB extends Dexie {
 				const sonarEvents = tx.table("sonarEvents");
 				const sonarState = tx.table("sonarState");
 
-				// Build a session lookup map for characterName resolution
-				const sessions = await logSessions.toArray();
-				const sessionMap = new Map<string, { characterName?: string; characterId?: string }>();
-				for (const s of sessions) {
-					sessionMap.set(s.id, {
-						characterName: s.characterName,
-						characterId: s.characterId,
-					});
-				}
+				// Initialize channel state
+				await sonarState.bulkAdd([
+					{ channel: "local", enabled: true, status: "off" },
+					{ channel: "chain", enabled: true, status: "off" },
+				]);
 
-				// Backfill: scan existing logEvents for system_change and copy to sonarEvents
-				const systemChangeEvents = await logEvents
+				// Backfill: copy existing system_change events from logEvents to sonarEvents
+				const systemChanges = await logEvents
 					.where("type")
 					.equals("system_change")
 					.toArray();
 
-				if (systemChangeEvents.length > 0) {
-					const sonarEntries = systemChangeEvents.map(
-						(e: {
-							id?: number;
-							sessionId: string;
-							timestamp: string;
-							systemName?: string;
-							raw: string;
-						}) => {
-							const session = sessionMap.get(e.sessionId);
+				if (systemChanges.length > 0) {
+					const sessions = await logSessions.toArray();
+					const sessionMap = new Map<string, { characterName: string; characterId?: string }>();
+					for (const s of sessions) {
+						sessionMap.set(s.id, {
+							characterName: s.characterName,
+							characterId: s.characterId,
+						});
+					}
+
+					const sonarBatch = systemChanges.map(
+						(le: { id?: number; sessionId: string; timestamp: string; systemName?: string }) => {
+							const session = sessionMap.get(le.sessionId);
 							return {
-								timestamp: e.timestamp,
+								timestamp: le.timestamp,
 								source: "local" as const,
-								eventType: "system_change",
+								eventType: "system_change" as const,
 								characterName: session?.characterName,
 								characterId: session?.characterId,
-								systemName: e.systemName,
-								details: e.systemName
-									? `Entered ${e.systemName}`
-									: undefined,
-								sessionId: e.sessionId,
+								systemName: le.systemName,
+								details: le.systemName ? `Entered ${le.systemName}` : undefined,
+								sessionId: le.sessionId,
 							};
 						},
 					);
-					await sonarEvents.bulkAdd(sonarEntries);
-				}
 
-				// Initialize channel state with high-water-mark set past backfilled events
-				const maxLogId = systemChangeEvents.reduce(
-					(max: number, e: { id?: number }) => Math.max(max, e.id ?? 0),
-					0,
-				);
-				await sonarState.bulkPut([
-					{
-						channel: "local",
-						enabled: true,
-						status: "off",
-						lastProcessedLogId: maxLogId,
-					},
-					{
-						channel: "chain",
-						enabled: true,
-						status: "off",
-					},
-				]);
+					await sonarEvents.bulkAdd(sonarBatch);
+
+					const maxId = Math.max(
+						...systemChanges.map((e: { id?: number }) => e.id ?? 0),
+					);
+					await sonarState.update("local", { lastProcessedLogId: maxId });
+				}
 			});
+		// V17: Parent node linking -- add parentId index to deployables + assemblies
+		this.version(17).stores({
+			deployables:
+				"id, objectId, assemblyType, owner, status, label, updatedAt, _hlc, ownerCapId, parentId, *tags",
+			assemblies:
+				"id, assemblyType, objectId, owner, status, updatedAt, _hlc, parentId, *tags",
+		});
 	}
 }
 

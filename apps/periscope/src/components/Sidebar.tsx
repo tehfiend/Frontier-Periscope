@@ -3,6 +3,7 @@ import { useAppStore } from "@/stores/appStore";
 import { useSonarStore } from "@/stores/sonarStore";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { CharacterSwitcher } from "./CharacterSwitcher";
+import { WalletConnect } from "./WalletConnect";
 import {
 	LayoutDashboard,
 	Map,
@@ -21,7 +22,6 @@ import {
 	Wifi,
 	Crosshair,
 	Boxes,
-	SatelliteDish,
 	Route,
 	Database,
 	Cog,
@@ -71,7 +71,6 @@ const navGroups: NavGroup[] = [
 	{
 		title: "Intelligence",
 		items: [
-			{ to: "/radar", icon: SatelliteDish, label: "Radar" },
 			{ to: "/sonar", icon: Radio, label: "Sonar", statusDot: true },
 			{ to: "/bridge", icon: Navigation, label: "Bridge" },
 			{ to: "/intel", icon: Radio, label: "Intel Channel" },
@@ -107,33 +106,28 @@ const navGroups: NavGroup[] = [
 	},
 ];
 
-function useSonarStatusDot(): string {
+function useSonarDots(): { local: string; chain: string } {
 	const localEnabled = useSonarStore((s) => s.localEnabled);
 	const chainEnabled = useSonarStore((s) => s.chainEnabled);
 	const localStatus = useSonarStore((s) => s.localStatus);
 	const chainStatus = useSonarStore((s) => s.chainStatus);
 
-	// Red if any channel has an error
-	if (
-		(localEnabled && localStatus === "error") ||
-		(chainEnabled && chainStatus === "error")
-	) {
-		return "bg-red-500";
+	function dotColor(enabled: boolean, status: string, activeColor: string): string {
+		if (!enabled) return "bg-zinc-600";
+		if (status === "error") return "bg-red-500";
+		if (status === "active") return activeColor;
+		return "bg-zinc-600";
 	}
-	// Green if at least one channel is active
-	if (
-		(localEnabled && localStatus === "active") ||
-		(chainEnabled && chainStatus === "active")
-	) {
-		return "bg-green-500";
-	}
-	// Gray if both off
-	return "bg-zinc-600";
+
+	return {
+		local: dotColor(localEnabled, localStatus, "bg-green-400"),
+		chain: dotColor(chainEnabled, chainStatus, "bg-orange-400"),
+	};
 }
 
 function NavLink({ to, icon: Icon, label, statusDot }: NavItem) {
 	const collapsed = useAppStore((s) => s.sidebarCollapsed);
-	const dotColor = useSonarStatusDot();
+	const dots = useSonarDots();
 
 	return (
 		<Link
@@ -150,7 +144,10 @@ function NavLink({ to, icon: Icon, label, statusDot }: NavItem) {
 				<span className="flex items-center gap-1.5">
 					{label}
 					{statusDot && (
-						<span className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`} />
+						<>
+							<span className={`inline-block h-1.5 w-1.5 rounded-full ${dots.local}`} title="Local Sonar" />
+							<span className={`inline-block h-1.5 w-1.5 rounded-full ${dots.chain}`} title="Chain Sonar" />
+						</>
 					)}
 				</span>
 			)}
@@ -189,8 +186,11 @@ export function Sidebar() {
 				)}
 			</div>
 
-			{/* Character Switcher */}
+			{/* Character Switcher + Wallet */}
 			<CharacterSwitcher />
+			<div className="px-2 pb-2">
+				<WalletConnect />
+			</div>
 
 			{/* Navigation */}
 			<nav className="flex-1 overflow-y-auto px-2 py-4">

@@ -20,12 +20,13 @@ import {
 	Link2,
 	ExternalLink,
 	Trash2,
+	AppWindow,
 } from "lucide-react";
 import { DataGrid, excelFilterFn, type ColumnDef } from "@/components/DataGrid";
 import { EditableCell } from "@/components/EditableCell";
 import type { DeployableIntel, AssemblyStatus } from "@/db/types";
 import { FUEL_CRITICAL_HOURS, FUEL_WARNING_HOURS } from "@/lib/constants";
-import { ASSEMBLY_TYPE_IDS } from "@/chain/config";
+import { TENANTS, ASSEMBLY_TYPE_IDS } from "@/chain/config";
 
 // ── Unified Row Type ────────────────────────────────────────────────────────
 
@@ -44,9 +45,12 @@ interface StructureRow {
 	notes?: string;
 	tags: string[];
 	source: "deployables" | "assemblies";
+	itemId?: string;
+	dappUrl?: string;
 	ownerCapId?: string;
 	assemblyModule?: string;
 	characterObjectId?: string;
+	parentId?: string;
 	updatedAt: string;
 }
 
@@ -221,9 +225,12 @@ export function Deployables() {
 				notes: d.notes,
 				tags: d.tags,
 				source: "deployables",
+				itemId: d.itemId,
+				dappUrl: d.dappUrl,
 				ownerCapId: d.ownerCapId,
 				assemblyModule: d.assemblyModule,
 				characterObjectId: d.characterObjectId,
+				parentId: d.parentId,
 				updatedAt: d.updatedAt,
 			});
 		}
@@ -252,6 +259,7 @@ export function Deployables() {
 				notes: a.notes,
 				tags: a.tags,
 				source: "assemblies",
+				parentId: a.parentId,
 				updatedAt: a.updatedAt,
 			});
 		}
@@ -301,11 +309,13 @@ export function Deployables() {
 					fuelLevel: fuelData.fuelLevel ?? existing?.fuelLevel,
 					fuelExpiresAt: fuelData.fuelExpiresAt ?? existing?.fuelExpiresAt,
 					notes: existing?.notes,
+					parentId: existing?.parentId,
 					tags: existing?.tags ?? [],
 					source: "chain",
 					createdAt: existing?.createdAt ?? now,
 					updatedAt: now,
-					// Phase 3: persist rename-related fields
+					itemId: assembly.itemId ?? existing?.itemId,
+					dappUrl: assembly.dappUrl ?? existing?.dappUrl,
 					ownerCapId: assembly.ownerCapId ?? existing?.ownerCapId,
 					assemblyModule:
 						assemblyKindToModule(assembly.type) ?? existing?.assemblyModule,
@@ -352,6 +362,28 @@ export function Deployables() {
 			setSyncing(false);
 		}
 	}, [targets, syncing]);
+
+	// ── Parent Label Lookup ──────────────────────────────────────────────────
+	const parentLabels = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const row of data) {
+			map.set(row.id, row.label);
+		}
+		return map;
+	}, [data]);
+
+	// ── Save Parent ──────────────────────────────────────────────────────────
+	const handleSaveParent = useCallback(
+		async (row: StructureRow, parentId: string | undefined) => {
+			const now = new Date().toISOString();
+			if (row.source === "deployables") {
+				await db.deployables.update(row.id, { parentId, updatedAt: now });
+			} else {
+				await db.assemblies.update(row.id, { parentId, updatedAt: now });
+			}
+		},
+		[],
+	);
 
 	// ── Save Notes ───────────────────────────────────────────────────────────
 	const handleSaveNotes = useCallback(async (row: StructureRow, newNotes: string) => {
@@ -517,11 +549,45 @@ export function Deployables() {
 				},
 			},
 			{
+				id: "itemId",
+				accessorKey: "itemId",
+				header: "Item ID",
+				size: 100,
+				filterFn: excelFilterFn,
+				cell: ({ row }) => {
+					const id = row.original.itemId;
+					if (!id) return <span className="text-zinc-700">{"\u2014"}</span>;
+					return (
+						<span className="font-mono text-xs text-zinc-400" title={id}>
+							{id}
+						</span>
+					);
+				},
+			},
+			{
 				id: "type",
 				accessorFn: (d) => d.assemblyType,
 				header: "Type",
 				size: 150,
 				filterFn: excelFilterFn,
+			},
+			{
+				id: "parent",
+				accessorFn: (d) =>
+					d.parentId ? (parentLabels.get(d.parentId) ?? "") : "",
+				header: "Parent",
+				size: 160,
+				filterFn: excelFilterFn,
+				cell: ({ row }) => {
+					const r = row.original;
+					return (
+						<ParentSelect
+							value={r.parentId}
+							options={data.filter((d) => d.id !== r.id)}
+							onSave={(id) => handleSaveParent(r, id)}
+						/>
+					);
+				},
 			},
 			{
 				id: "ownership",
@@ -636,8 +702,24 @@ export function Deployables() {
 				enableSorting: false,
 				cell: ({ row }) => {
 					const r = row.original;
+					const dappHref = r.dappUrl
+						? (r.dappUrl.startsWith("http") ? r.dappUrl : `https://${r.dappUrl}`)
+						: r.itemId
+							? `${TENANTS[tenant]?.dappUrl ?? `https://dapps.evefrontier.com/?tenant=${tenant}`}&itemId=${r.itemId}`
+							: undefined;
 					return (
 						<div className="flex items-center gap-1">
+							{dappHref && (
+								<a
+									href={dappHref}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-zinc-600 hover:text-cyan-400"
+									title="Open dApp"
+								>
+									<AppWindow size={14} />
+								</a>
+							)}
 							<a
 								href={`https://testnet.suivision.xyz/object/${r.objectId}`}
 								target="_blank"
@@ -662,7 +744,7 @@ export function Deployables() {
 				},
 			},
 		],
-		[account, renamingId, handleRename, handleSaveNotes, handleRemove],
+		[account, tenant, renamingId, handleRename, handleSaveNotes, handleSaveParent, handleRemove, data, parentLabels],
 	);
 
 	// ── No Address State ─────────────────────────────────────────────────────
@@ -783,6 +865,98 @@ export function Deployables() {
 					Last sync: {new Date(lastSync.value).toLocaleString()}
 				</p>
 			)}
+		</div>
+	);
+}
+
+function ParentSelect({
+	value,
+	options,
+	onSave,
+}: {
+	value?: string;
+	options: StructureRow[];
+	onSave: (id: string | undefined) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const [search, setSearch] = useState("");
+
+	const filtered = useMemo(() => {
+		if (!search) return options;
+		const q = search.toLowerCase();
+		return options.filter(
+			(o) =>
+				o.label.toLowerCase().includes(q) ||
+				o.assemblyType.toLowerCase().includes(q),
+		);
+	}, [options, search]);
+
+	const selectedLabel = value
+		? (options.find((o) => o.id === value)?.label ?? "Unknown")
+		: null;
+
+	if (!open) {
+		return (
+			<button
+				type="button"
+				onClick={() => setOpen(true)}
+				className="w-full text-left text-xs text-zinc-400 hover:text-zinc-200"
+			>
+				{selectedLabel ?? "\u2014"}
+			</button>
+		);
+	}
+
+	return (
+		<div className="relative">
+			<input
+				autoFocus
+				type="text"
+				value={search}
+				onChange={(e) => setSearch(e.target.value)}
+				onKeyDown={(e) => {
+					if (e.key === "Escape") setOpen(false);
+				}}
+				placeholder="Search..."
+				className="w-full rounded border border-zinc-600 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-cyan-600 focus:outline-none"
+			/>
+			<div className="absolute left-0 top-full z-50 mt-1 max-h-48 w-56 overflow-auto rounded border border-zinc-700 bg-zinc-900 shadow-lg">
+				{value && (
+					<button
+						type="button"
+						onClick={() => {
+							onSave(undefined);
+							setOpen(false);
+							setSearch("");
+						}}
+						className="w-full px-3 py-1.5 text-left text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+					>
+						Clear parent
+					</button>
+				)}
+				{filtered.slice(0, 20).map((o) => (
+					<button
+						type="button"
+						key={o.id}
+						onClick={() => {
+							onSave(o.id);
+							setOpen(false);
+							setSearch("");
+						}}
+						className={`w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-800 ${
+							o.id === value
+								? "text-cyan-400"
+								: "text-zinc-300"
+						}`}
+					>
+						<span className="font-medium">{o.label}</span>
+						<span className="ml-2 text-zinc-600">{o.assemblyType}</span>
+					</button>
+				))}
+				{filtered.length === 0 && (
+					<div className="px-3 py-2 text-xs text-zinc-600">No matches</div>
+				)}
+			</div>
 		</div>
 	);
 }

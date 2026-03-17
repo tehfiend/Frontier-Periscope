@@ -42,7 +42,7 @@ function LocationCard({ locations }: { locations: LocationEntry[] }) {
 			</div>
 			{locations.length === 0 ? (
 				<p className="text-sm text-zinc-600">
-					No location data. Enable Local Sonar and ensure log files are accessible.
+					No location data. Enable Log Sonar and ensure log files are accessible.
 				</p>
 			) : (
 				<div className="space-y-2">
@@ -171,7 +171,7 @@ function ChannelStatusCard() {
 			</div>
 			<div className="space-y-2">
 				<ChannelRow
-					label="Local Sonar"
+					label="Log Sonar"
 					description="Game & chat log file monitoring"
 					enabled={localEnabled}
 					status={localStatus}

@@ -3,11 +3,9 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Link } from "@tanstack/react-router";
 import { db } from "@/db";
 import { useSonarStore } from "@/stores/sonarStore";
-import { useLocalSonar } from "@/hooks/useLocalSonar";
-import { useChainSonar } from "@/hooks/useChainSonar";
 import { DataGrid, excelFilterFn, type ColumnDef } from "@/components/DataGrid";
 import type { SonarEvent, SonarChannelStatus } from "@/db/types";
-import { FileText, Radio } from "lucide-react";
+import { FileText } from "lucide-react";
 
 // ── Column Definitions ───────────────────────────────────────────────────────
 
@@ -36,11 +34,11 @@ const columns: ColumnDef<SonarEvent, unknown>[] = [
 				<span
 					className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${
 						source === "local"
-							? "bg-emerald-500/10 text-emerald-400"
-							: "bg-blue-500/10 text-blue-400"
+							? "bg-green-500/10 text-green-400"
+							: "bg-orange-500/10 text-orange-400"
 					}`}
 				>
-					{source === "local" ? "Local" : "Chain"}
+					{source === "local" ? "Log" : "Chain"}
 				</span>
 			);
 		},
@@ -107,42 +105,124 @@ const columns: ColumnDef<SonarEvent, unknown>[] = [
 	},
 ];
 
-// ── Status Dot ───────────────────────────────────────────────────────────────
+// ── Channel Colors ───────────────────────────────────────────────────────────
+// Local = orange, Chain = cyan — distinct and consistent across all UI elements
 
-function StatusDot({ status }: { status: SonarChannelStatus }) {
-	const color =
-		status === "active"
-			? "bg-green-500"
-			: status === "error"
-				? "bg-red-500"
-				: "bg-zinc-600";
-	return <span className={`inline-block h-2 w-2 rounded-full ${color}`} />;
+export const CHANNEL_COLORS = {
+	local: {
+		ring: "border-green-400",
+		dotActive: "bg-green-400",
+		dotOff: "bg-zinc-600",
+		dotError: "bg-red-500",
+		btnBorder: "border-green-500/40",
+		btnBg: "bg-green-500/10",
+		btnText: "text-green-300",
+	},
+	chain: {
+		ring: "border-orange-400",
+		dotActive: "bg-orange-400",
+		dotOff: "bg-zinc-600",
+		dotError: "bg-red-500",
+		btnBorder: "border-orange-500/40",
+		btnBg: "bg-orange-500/10",
+		btnText: "text-orange-300",
+	},
+} as const;
+
+// ── Sonar Ping Animation ─────────────────────────────────────────────────────
+
+function SonarPing({
+	localActive,
+	chainActive,
+}: {
+	localActive: boolean;
+	chainActive: boolean;
+}) {
+	return (
+		<div className="relative h-10 w-10 shrink-0">
+			{/* Local: ring + center dot that fades with it (green, 5s) */}
+			{localActive && (
+				<>
+					<span className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 ${CHANNEL_COLORS.local.ring} animate-[sonar-ring_5s_ease-out_infinite]`} />
+					<span className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${CHANNEL_COLORS.local.dotActive} animate-[sonar-dot_5s_ease-out_infinite]`} />
+				</>
+			)}
+			{/* Chain: ring + center dot that fades with it (orange, 15s) */}
+			{chainActive && (
+				<>
+					<span className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 ${CHANNEL_COLORS.chain.ring} animate-[sonar-ring_15s_ease-out_infinite]`} />
+					<span className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${CHANNEL_COLORS.chain.dotActive} animate-[sonar-dot_15s_ease-out_infinite]`} />
+				</>
+			)}
+			<style>{`
+				@keyframes sonar-ring {
+					0% { width: 6px; height: 6px; opacity: 0.8; }
+					60% { opacity: 0.3; }
+					100% { width: 40px; height: 40px; opacity: 0; }
+				}
+				@keyframes sonar-dot {
+					0% { width: 6px; height: 6px; opacity: 0.9; }
+					40% { width: 6px; height: 6px; opacity: 0.6; }
+					100% { width: 6px; height: 6px; opacity: 0; }
+				}
+			`}</style>
+		</div>
+	);
+}
+
+// ── Channel Status Dots (for header, next to title) ──────────────────────────
+
+function ChannelDots({
+	localStatus,
+	chainStatus,
+}: {
+	localStatus: SonarChannelStatus;
+	chainStatus: SonarChannelStatus;
+}) {
+	function dotClass(status: SonarChannelStatus, channel: "local" | "chain") {
+		const c = CHANNEL_COLORS[channel];
+		if (status === "active") return c.dotActive;
+		if (status === "error") return c.dotError;
+		return c.dotOff;
+	}
+
+	return (
+		<div className="flex items-center gap-1">
+			<span className={`inline-block h-1.5 w-1.5 rounded-full ${dotClass(localStatus, "local")}`} title="Local Sonar" />
+			<span className={`inline-block h-1.5 w-1.5 rounded-full ${dotClass(chainStatus, "chain")}`} title="Chain Sonar" />
+		</div>
+	);
 }
 
 // ── Channel Toggle ───────────────────────────────────────────────────────────
 
 function ChannelToggle({
 	label,
+	channel,
 	enabled,
 	status,
 	onToggle,
 }: {
 	label: string;
+	channel: "local" | "chain";
 	enabled: boolean;
 	status: SonarChannelStatus;
 	onToggle: () => void;
 }) {
+	const c = CHANNEL_COLORS[channel];
+	const dotColor = !enabled ? c.dotOff : status === "active" ? c.dotActive : status === "error" ? c.dotError : c.dotOff;
+
 	return (
 		<button
 			type="button"
 			onClick={onToggle}
 			className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
 				enabled
-					? "border-zinc-600 bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+					? `${c.btnBorder} ${c.btnBg} ${c.btnText} hover:brightness-125`
 					: "border-zinc-800 bg-zinc-900 text-zinc-600 hover:bg-zinc-800"
 			}`}
 		>
-			<StatusDot status={enabled ? status : "off"} />
+			<span className={`inline-block h-2 w-2 rounded-full ${dotColor}`} />
 			{label}
 		</button>
 	);
@@ -151,10 +231,6 @@ function ChannelToggle({
 // ── Main View ────────────────────────────────────────────────────────────────
 
 export function Sonar() {
-	// Activate both sonar channels
-	useLocalSonar();
-	useChainSonar();
-
 	const localEnabled = useSonarStore((s) => s.localEnabled);
 	const chainEnabled = useSonarStore((s) => s.chainEnabled);
 	const localStatus = useSonarStore((s) => s.localStatus);
@@ -175,18 +251,23 @@ export function Sonar() {
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3">
-					<Radio size={20} className="text-cyan-400" />
+					<SonarPing
+						localActive={localStatus === "active"}
+						chainActive={chainStatus === "active"}
+					/>
 					<h1 className="text-lg font-semibold text-zinc-100">Sonar</h1>
 				</div>
 				<div className="flex items-center gap-2">
 					<ChannelToggle
-						label="Local"
+						label="Log"
+						channel="local"
 						enabled={localEnabled}
 						status={localStatus}
 						onToggle={() => setLocalEnabled(!localEnabled)}
 					/>
 					<ChannelToggle
 						label="Chain"
+						channel="chain"
 						enabled={chainEnabled}
 						status={chainStatus}
 						onToggle={() => setChainEnabled(!chainEnabled)}
