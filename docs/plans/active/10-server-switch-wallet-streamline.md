@@ -1,5 +1,5 @@
 # Plan: Server Switch & Wallet Streamline
-**Status:** Pending
+**Status:** Active
 **Created:** 2026-03-16
 **Module:** periscope (primary), chain-shared, permissions-dapp
 
@@ -99,6 +99,8 @@ Rather than creating separate IndexedDB databases per tenant (which would compli
 | MOVE_TYPES refactor | Convert to functions `getMoveTypes(tenant)` / `getEventTypes(tenant)` | Fixes the hardcoded stillness-only bug; minimal API change |
 | Wallet auto-connect | Set `autoConnect: true` | DAppKit supports this natively; EVE Vault handles reconnection |
 | Connect button removal | Replace with status indicators | Since auto-connect handles connection, explicit buttons add unnecessary friction |
+| Server switch wallet | Silently disconnect | zkLogin derives different address per tenant; stale connection is useless; auto-reconnect handles it |
+| AddCharacterDialog tenant | Use global setting only | Simpler UX; user switches global server first; consistent with segmentation design |
 | permissions-dapp wallet | Add `slushWalletConfig` to permissions-dapp | Consistency; EVE Vault is the only supported wallet |
 | Server indicator location | Sidebar header, next to logo text | Always visible, does not clutter navigation |
 | React Query invalidation | Use `queryClient.invalidateQueries()` on tenant change | Ensures all views re-fetch with correct contract addresses |
@@ -139,7 +141,7 @@ Rather than creating separate IndexedDB databases per tenant (which would compli
 
 ### Phase 3: Server Setting in Settings Page + Sidebar Indicator
 1. In `apps/periscope/src/views/Settings.tsx`: Add a "Server" section at the top of the page (before Characters). Show two radio-style buttons for Stillness and Utopia with descriptions ("Production" / "Sandbox"). Writing to `db.settings.put({ key: "tenant", value: id })`.
-2. In `apps/periscope/src/views/Settings.tsx`: On server change, invalidate all React Query caches using `useQueryClient().invalidateQueries()`.
+2. In `apps/periscope/src/views/Settings.tsx`: On server change, invalidate all React Query caches using `useQueryClient().invalidateQueries()` and silently disconnect the wallet (it will auto-reconnect via `autoConnect: true`).
 3. In `apps/periscope/src/components/Sidebar.tsx`: Add a server indicator next to the "EF Periscope" text in the logo area — a small colored dot (green for Stillness, amber for Utopia) with the server name in small text.
 4. Remove the `ServerSwitcher` component from the Manifest page header (it moves to Settings).
 5. Optionally keep `ServerSwitcher.tsx` as a component but simplify it (remove nebula, update labels).
@@ -188,17 +190,13 @@ Rather than creating separate IndexedDB databases per tenant (which would compli
 | `apps/gas-station/src/config.ts` | Modify | Remove nebula world package ID |
 | `apps/permissions-dapp/src/App.tsx` | Modify | Add `slushWalletConfig` (`autoConnect` already `true`), remove 2 `ConnectButton` renders |
 
-## Open Questions
+## Resolved Questions
 
 1. **Should switching servers disconnect and reconnect the wallet?**
-   - **Option A: Yes, force reconnect** — Pros: Ensures the correct zkLogin-derived address is used for the new server. Cons: Disruptive UX; user sees a vault popup on every switch.
-   - **Option B: No, keep connection but show warning** — Pros: Smoother UX. Cons: The wallet address is per-tenant (zkLogin), so the connected address may not match the new server's address. The character's `suiAddress` field already handles this — read-only views use the character's stored address, not the wallet address.
-   - **Recommendation:** Option B. The wallet connection is only needed for signing transactions, and the user can reconnect manually if they switch servers and need to sign. Read-only views use the character's stored `suiAddress`, not the connected wallet. Add a subtle warning badge if the connected wallet address doesn't match the active character's address.
+   - **Decision:** Yes, silently disconnect. Switching servers changes the zkLogin-derived address, so the existing connection is stale. The wallet will auto-reconnect via `autoConnect: true`.
 
 2. **Should the AddCharacterDialog still allow choosing a different server than the global setting?**
-   - **Option A: Remove server selector entirely** — Pros: Simpler UI, fewer choices. Cons: User must switch global server setting before adding a character from the other server.
-   - **Option B: Keep server selector but default to global** — Pros: Flexible. Cons: Adds complexity; may confuse users if the character's tenant doesn't match the global setting.
-   - **Recommendation:** Option A. The user should switch the global server setting first. The AddCharacterDialog should always use the active tenant. This is consistent with the "complete segmentation" design.
+   - **Decision:** No, remove the per-dialog server selector. Use the global setting. User must switch the global server setting before adding a character from the other server.
 
 ## Deferred
 
