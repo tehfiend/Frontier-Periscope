@@ -16,7 +16,8 @@ import {
 	Eye,
 	Tag,
 } from "lucide-react";
-import type { LocationIntel } from "@/db/types";
+import { SystemSearch } from "@/components/SystemSearch";
+import type { LocationIntel, SolarSystem } from "@/db/types";
 
 const CATEGORIES = [
 	{ value: "bookmark", label: "Bookmark", icon: Star, color: "text-amber-400" },
@@ -96,7 +97,7 @@ export function Locations() {
 			{/* Add Form */}
 			{showAdd && (
 				<AddLocationForm
-					systemNames={systemNames}
+					systems={systems ?? []}
 					onClose={() => setShowAdd(false)}
 				/>
 			)}
@@ -170,32 +171,17 @@ export function Locations() {
 }
 
 function AddLocationForm({
-	systemNames,
+	systems,
 	onClose,
 }: {
-	systemNames: Map<number, string>;
+	systems: SolarSystem[];
 	onClose: () => void;
 }) {
 	const [name, setName] = useState("");
-	const [systemSearch, setSystemSearch] = useState("");
 	const [selectedSystemId, setSelectedSystemId] = useState<number | null>(null);
 	const [category, setCategory] = useState("bookmark");
 	const [notes, setNotes] = useState("");
 	const [tagInput, setTagInput] = useState("");
-
-	// System search results
-	const systemResults = useMemo(() => {
-		if (systemSearch.length < 2) return [];
-		const q = systemSearch.toLowerCase();
-		const results: { id: number; name: string }[] = [];
-		for (const [id, sysName] of systemNames) {
-			if (sysName.toLowerCase().includes(q)) {
-				results.push({ id, name: sysName });
-				if (results.length >= 10) break;
-			}
-		}
-		return results;
-	}, [systemSearch, systemNames]);
 
 	async function save() {
 		if (!name.trim() || selectedSystemId === null) return;
@@ -244,35 +230,12 @@ function AddLocationForm({
 			</div>
 
 			{/* System search */}
-			<div className="relative">
-				<input
-					type="text"
-					value={selectedSystemId !== null ? systemNames.get(selectedSystemId) ?? systemSearch : systemSearch}
-					onChange={(e) => {
-						setSystemSearch(e.target.value);
-						setSelectedSystemId(null);
-					}}
-					placeholder="Search for a solar system..."
-					className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-amber-600 focus:outline-none"
-				/>
-				{systemResults.length > 0 && selectedSystemId === null && (
-					<div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl">
-						{systemResults.map((sys) => (
-							<button
-								key={sys.id}
-								type="button"
-								onClick={() => {
-									setSelectedSystemId(sys.id);
-									setSystemSearch(sys.name);
-								}}
-								className="w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-700"
-							>
-								{sys.name}
-							</button>
-						))}
-					</div>
-				)}
-			</div>
+			<SystemSearch
+				value={selectedSystemId}
+				onChange={setSelectedSystemId}
+				systems={systems}
+				placeholder="Search for a solar system..."
+			/>
 
 			<div className="flex gap-3">
 				<input

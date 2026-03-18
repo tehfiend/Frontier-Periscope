@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -9,7 +9,10 @@ import { discoverCharacterAndAssemblies } from "@/chain/queries";
 import { syncTargetAssemblies } from "@/chain/sync";
 import { buildRenameTx, isRenamableModule } from "@/chain/transactions";
 import { useSponsoredTransaction } from "@/hooks/useSponsoredTransaction";
+import { SystemSearch } from "@/components/SystemSearch";
+import { ensureCelestialsLoaded, PLANET_TYPE_NAMES } from "@/lib/celestials";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import type { Celestial, SolarSystem, DeployableIntel, AssemblyStatus } from "@/db/types";
 import {
 	Package,
 	RefreshCw,
@@ -21,10 +24,10 @@ import {
 	ExternalLink,
 	Trash2,
 	AppWindow,
+	MapPin,
 } from "lucide-react";
 import { DataGrid, excelFilterFn, type ColumnDef } from "@/components/DataGrid";
 import { EditableCell } from "@/components/EditableCell";
-import type { DeployableIntel, AssemblyStatus } from "@/db/types";
 import { FUEL_CRITICAL_HOURS, FUEL_WARNING_HOURS } from "@/lib/constants";
 import { TENANTS, ASSEMBLY_TYPE_IDS } from "@/chain/config";
 
@@ -40,6 +43,7 @@ interface StructureRow {
 	owner: string;
 	ownerName?: string;
 	systemId?: number;
+	lPoint?: string;
 	fuelLevel?: number;
 	fuelExpiresAt?: string;
 	notes?: string;
@@ -193,6 +197,16 @@ export function Deployables() {
 	const targets = useLiveQuery(() => db.targets.filter(notDeleted).toArray(), []);
 	const lastSync = useLiveQuery(() => db.settings.get("lastChainSync"));
 
+	// ── Solar System Lookup ──────────────────────────────────────────────────
+	const systems = useLiveQuery(() => db.solarSystems.toArray()) ?? [];
+	const systemNames = useMemo(() => {
+		const map = new Map<number, string>();
+		for (const s of systems) {
+			if (s.name) map.set(s.id, s.name);
+		}
+		return map;
+	}, [systems]);
+
 	// ── Owner Name Lookup ────────────────────────────────────────────────────
 	const ownerNames = useMemo(() => {
 		const map = new Map<string, string>();
@@ -220,6 +234,7 @@ export function Deployables() {
 				owner: d.owner ?? chainAddress ?? "",
 				ownerName: d.owner ? ownerNames.get(d.owner) : undefined,
 				systemId: d.systemId,
+				lPoint: d.lPoint,
 				fuelLevel: d.fuelLevel,
 				fuelExpiresAt: d.fuelExpiresAt,
 				notes: d.notes,
@@ -256,6 +271,7 @@ export function Deployables() {
 				owner: a.owner,
 				ownerName: ownerNames.get(a.owner),
 				systemId: a.systemId,
+				lPoint: a.lPoint,
 				notes: a.notes,
 				tags: a.tags,
 				source: "assemblies",
@@ -306,6 +322,7 @@ export function Deployables() {
 					status: assembly.status as DeployableIntel["status"],
 					label: existing?.label ?? typeName,
 					systemId: existing?.systemId,
+					lPoint: existing?.lPoint,
 					fuelLevel: fuelData.fuelLevel ?? existing?.fuelLevel,
 					fuelExpiresAt: fuelData.fuelExpiresAt ?? existing?.fuelExpiresAt,
 					notes: existing?.notes,
@@ -400,6 +417,31 @@ export function Deployables() {
 			});
 		}
 	}, []);
+
+	// ── Save Location ───────────────────────────────────────────────────────
+	const handleSaveLocation = useCallback(
+		async (
+			row: StructureRow,
+			systemId: number | undefined,
+			lPoint: string | undefined,
+		) => {
+			const now = new Date().toISOString();
+			if (row.source === "deployables") {
+				await db.deployables.update(row.id, {
+					systemId,
+					lPoint,
+					updatedAt: now,
+				});
+			} else {
+				await db.assemblies.update(row.id, {
+					systemId,
+					lPoint,
+					updatedAt: now,
+				});
+			}
+		},
+		[],
+	);
 
 	// ── On-Chain Rename ──────────────────────────────────────────────────────
 	const handleRename = useCallback(
@@ -570,6 +612,30 @@ export function Deployables() {
 				header: "Type",
 				size: 150,
 				filterFn: excelFilterFn,
+			},
+			{
+				id: "location",
+				accessorFn: (d) => {
+					const sysName = d.systemId ? (systemNames.get(d.systemId) ?? "") : "";
+					if (sysName && d.lPoint) return `${sysName} -- ${d.lPoint}`;
+					if (sysName) return sysName;
+					if (d.lPoint) return d.lPoint;
+					return "";
+				},
+				header: "Location",
+				size: 200,
+				filterFn: excelFilterFn,
+				cell: ({ row }) => {
+					const r = row.original;
+					return (
+						<LocationEditor
+							row={r}
+							systems={systems}
+							systemNames={systemNames}
+							onSave={handleSaveLocation}
+						/>
+					);
+				},
 			},
 			{
 				id: "parent",
@@ -744,7 +810,7 @@ export function Deployables() {
 				},
 			},
 		],
-		[account, tenant, renamingId, handleRename, handleSaveNotes, handleSaveParent, handleRemove, data, parentLabels],
+		[account, tenant, renamingId, handleRename, handleSaveNotes, handleSaveLocation, handleSaveParent, handleRemove, data, parentLabels, systems, systemNames],
 	);
 
 	// ── No Address State ─────────────────────────────────────────────────────
@@ -865,6 +931,249 @@ export function Deployables() {
 					Last sync: {new Date(lastSync.value).toLocaleString()}
 				</p>
 			)}
+		</div>
+	);
+}
+
+function LocationEditor({
+	row,
+	systems,
+	systemNames,
+	onSave,
+}: {
+	row: StructureRow;
+	systems: SolarSystem[];
+	systemNames: Map<number, string>;
+	onSave: (
+		row: StructureRow,
+		systemId: number | undefined,
+		lPoint: string | undefined,
+	) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const [selectedSystem, setSelectedSystem] = useState<number | null>(
+		row.systemId ?? null,
+	);
+	const [selectedLPoint, setSelectedLPoint] = useState<string | null>(
+		row.lPoint ?? null,
+	);
+	const [planets, setPlanets] = useState<Celestial[]>([]);
+	const [selectedPlanet, setSelectedPlanet] = useState<number | null>(() => {
+		// Parse planet index from existing lPoint (e.g. "P2-L3" -> 2)
+		const match = row.lPoint?.match(/^P(\d+)-L[1-5]$/);
+		return match ? Number(match[1]) : null;
+	});
+	const [selectedL, setSelectedL] = useState<number | null>(() => {
+		// Parse L-point number from existing lPoint (e.g. "P2-L3" -> 3, or "L3" -> 3)
+		const matchFull = row.lPoint?.match(/^P\d+-L([1-5])$/);
+		if (matchFull) return Number(matchFull[1]);
+		const matchSimple = row.lPoint?.match(/^L([1-5])$/);
+		return matchSimple ? Number(matchSimple[1]) : null;
+	});
+
+	// Load planets when system changes
+	useEffect(() => {
+		if (!selectedSystem) {
+			setPlanets([]);
+			return;
+		}
+		let cancelled = false;
+		ensureCelestialsLoaded().then(() => {
+			if (cancelled) return;
+			db.celestials
+				.where("systemId")
+				.equals(selectedSystem)
+				.sortBy("index")
+				.then((result) => {
+					if (!cancelled) setPlanets(result);
+				});
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [selectedSystem]);
+
+	// Build display text
+	const sysName = row.systemId ? (systemNames.get(row.systemId) ?? "") : "";
+	const displayText =
+		sysName && row.lPoint
+			? `${sysName} -- ${row.lPoint}`
+			: sysName || row.lPoint || "";
+
+	function handleSystemChange(id: number | null) {
+		setSelectedSystem(id);
+		// Reset planet and L-point when system changes
+		setSelectedPlanet(null);
+		setSelectedL(null);
+		setSelectedLPoint(null);
+	}
+
+	function handlePlanetSelect(planetIndex: number) {
+		setSelectedPlanet(planetIndex);
+		// If L-point already selected, build the combined string
+		if (selectedL) {
+			setSelectedLPoint(`P${planetIndex}-L${selectedL}`);
+		}
+	}
+
+	function handleLPointSelect(l: number) {
+		setSelectedL(l);
+		if (selectedPlanet) {
+			setSelectedLPoint(`P${selectedPlanet}-L${l}`);
+		} else {
+			setSelectedLPoint(`L${l}`);
+		}
+	}
+
+	function handleSave() {
+		onSave(
+			row,
+			selectedSystem ?? undefined,
+			selectedLPoint ?? undefined,
+		);
+		setOpen(false);
+	}
+
+	function handleClear() {
+		onSave(row, undefined, undefined);
+		setOpen(false);
+		setSelectedSystem(null);
+		setSelectedPlanet(null);
+		setSelectedL(null);
+		setSelectedLPoint(null);
+	}
+
+	if (!open) {
+		return (
+			<button
+				type="button"
+				onClick={() => setOpen(true)}
+				className="flex w-full items-center gap-1.5 text-left text-xs text-zinc-400 hover:text-zinc-200"
+			>
+				{displayText ? (
+					<>
+						<MapPin size={12} className="shrink-0 text-cyan-500" />
+						<span className="truncate">{displayText}</span>
+					</>
+				) : (
+					<span className="text-zinc-600">{"\u2014"}</span>
+				)}
+			</button>
+		);
+	}
+
+	return (
+		<div className="relative">
+			<button
+				type="button"
+				onClick={() => setOpen(false)}
+				className="flex w-full items-center gap-1.5 text-left text-xs text-cyan-400"
+			>
+				<MapPin size={12} className="shrink-0" />
+				<span className="truncate">{displayText || "Set location..."}</span>
+			</button>
+
+			{/* Popover */}
+			<div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
+				{/* System search */}
+				<SystemSearch
+					value={selectedSystem}
+					onChange={handleSystemChange}
+					systems={systems}
+					placeholder="Search system..."
+					compact
+				/>
+
+				{/* Planet selector */}
+				{selectedSystem && planets.length > 0 && (
+					<div className="mt-2">
+						<label className="mb-1 block text-[10px] font-medium uppercase text-zinc-500">
+							Planet
+						</label>
+						<div className="flex flex-wrap gap-1">
+							{planets.map((p) => {
+								const typeName = PLANET_TYPE_NAMES[p.typeId] ?? "Unknown";
+								return (
+									<button
+										key={p.id}
+										type="button"
+										onClick={() => handlePlanetSelect(p.index)}
+										title={`${typeName} (P${p.index})`}
+										className={`rounded px-2 py-1 text-xs transition-colors ${
+											selectedPlanet === p.index
+												? "bg-cyan-900/50 text-cyan-400"
+												: "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+										}`}
+									>
+										P{p.index}
+									</button>
+								);
+							})}
+						</div>
+					</div>
+				)}
+
+				{/* L-point selector */}
+				<div className="mt-2">
+					<label className="mb-1 block text-[10px] font-medium uppercase text-zinc-500">
+						L-Point
+					</label>
+					<div className="flex gap-1">
+						{[1, 2, 3, 4, 5].map((l) => (
+							<button
+								key={l}
+								type="button"
+								onClick={() => handleLPointSelect(l)}
+								className={`flex-1 rounded px-2 py-1 text-xs transition-colors ${
+									selectedL === l
+										? "bg-cyan-900/50 text-cyan-400"
+										: "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+								}`}
+							>
+								L{l}
+							</button>
+						))}
+					</div>
+				</div>
+
+				{/* Preview */}
+				{(selectedSystem || selectedLPoint) && (
+					<div className="mt-2 rounded bg-zinc-800/50 px-2 py-1 text-xs text-zinc-300">
+						{selectedSystem
+							? (systemNames.get(selectedSystem) ?? `#${selectedSystem}`)
+							: ""}
+						{selectedSystem && selectedLPoint ? " -- " : ""}
+						{selectedLPoint ?? ""}
+					</div>
+				)}
+
+				{/* Actions */}
+				<div className="mt-2 flex justify-end gap-2">
+					{(row.systemId || row.lPoint) && (
+						<button
+							type="button"
+							onClick={handleClear}
+							className="rounded px-2 py-1 text-xs text-red-400 hover:bg-red-900/20 hover:text-red-300"
+						>
+							Clear
+						</button>
+					)}
+					<button
+						type="button"
+						onClick={() => setOpen(false)}
+						className="rounded px-2 py-1 text-xs text-zinc-500 hover:text-zinc-300"
+					>
+						Cancel
+					</button>
+					<button
+						type="button"
+						onClick={handleSave}
+						className="rounded bg-cyan-600 px-3 py-1 text-xs font-medium text-white hover:bg-cyan-500"
+					>
+						Save
+					</button>
+				</div>
+			</div>
 		</div>
 	);
 }

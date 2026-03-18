@@ -469,6 +469,14 @@ class PeriscopeDB extends Dexie {
 		this.version(18).stores({
 			celestials: "id, systemId, typeId, index",
 		});
+
+		// V19: Structure locations -- add systemId index to deployables + assemblies
+		this.version(19).stores({
+			deployables:
+				"id, objectId, assemblyType, owner, status, label, systemId, updatedAt, _hlc, ownerCapId, parentId, *tags",
+			assemblies:
+				"id, assemblyType, objectId, owner, status, systemId, updatedAt, _hlc, parentId, *tags",
+		});
 	}
 }
 
