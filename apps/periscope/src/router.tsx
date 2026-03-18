@@ -24,9 +24,6 @@ const LazyStarMap = lazy(() => import("@/views/StarMap").then((m) => ({ default:
 const LazyLogs = lazy(() => import("@/views/Logs").then((m) => ({ default: m.Logs })));
 const LazySonar = lazy(() => import("@/views/Sonar").then((m) => ({ default: m.Sonar })));
 const LazyBridge = lazy(() => import("@/views/Bridge").then((m) => ({ default: m.Bridge })));
-const LazyPeerSync = lazy(() =>
-	import("@/views/PeerSync").then((m) => ({ default: m.PeerSync })),
-);
 const LazyManifest = lazy(() =>
 	import("@/views/Manifest").then((m) => ({ default: m.Manifest })),
 );
@@ -85,14 +82,6 @@ function BridgePage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
 			<LazyBridge />
-		</Suspense>
-	);
-}
-
-function PeerSyncPage() {
-	return (
-		<Suspense fallback={<LoadingFallback />}>
-			<LazyPeerSync />
 		</Suspense>
 	);
 }
@@ -315,12 +304,6 @@ const settingsRoute = createRoute({
 	component: Settings,
 });
 
-const peersRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/peers",
-	component: PeerSyncPage,
-});
-
 const assetsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/assets",
@@ -387,7 +370,6 @@ const routeTree = rootRoute.addChildren([
 	walletRoute,
 	jumpPlannerRoute,
 
-	peersRoute,
 	workersRoute,
 	settingsRoute,
 	setupRoute,

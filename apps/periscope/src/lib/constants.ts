@@ -25,27 +25,6 @@ export const EXPORT_TABLES = [
 	"logOffsets",
 ] as const;
 
-/** Tables that participate in P2P sync (excludes settings, log data, and cache metadata). */
-export const SYNC_TABLES = [
-	"deployables",
-	"assemblies",
-	"players",
-	"locations",
-	"killmails",
-	"notes",
-	"activities",
-	"chatIntel",
-	"targets",
-	"targetEvents",
-	"inventoryDiffs",
-	"characters",
-	"extensions",
-	"permissionGroups",
-	"groupMembers",
-	"assemblyPolicies",
-	"betrayalAlerts",
-] as const;
-
 /** Fuel warning thresholds (hours). */
 export const FUEL_CRITICAL_HOURS = 6;
 export const FUEL_WARNING_HOURS = 24;

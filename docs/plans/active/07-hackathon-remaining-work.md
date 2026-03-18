@@ -2,18 +2,18 @@
 
 **Status:** Active
 **Created:** 2026-03-15
-**Updated:** 2026-03-18 (v5: status refresh -- plans 12/14/15/16/18 implemented, 2 new contracts, sonar restructured, SSU dApp complete, 13 days remaining)
+**Updated:** 2026-03-18 (v6: all contracts published to testnet, completed plans archived, critical path = test + polish + demo)
 **Module:** multi
 
 ## Overview
 
 The EVE Frontier x Sui Hackathon ("A Toolkit for Civilization") runs March 11-31, 2026, with an $80K prize pool. Community voting follows April 1-15, judging April 15-22, and winners announced April 24. With 13 days remaining (March 18 to March 31), this plan maps what has been built, what remains, and the critical path to a compelling hackathon submission.
 
-The project has made substantial progress: 17 Move contracts written (15 published to Sui testnet, 2 awaiting publish), a 123-file Periscope SPA with 30 views, a standalone SSU dApp (with owner inventory transfers) and SSU Market dApp (with currency market browser), a governance system with 4-tier organizations and claims deployed on-chain, and a full chain-shared package with TX builders for every contract. The monorepo infrastructure is solid (Turborepo, pnpm, Biome, 5 shared packages). Since the last update, five plans have been fully implemented: Sonar restructured into a tabbed Pings/Log Feed/Chain Feed interface (plan 15), structure location recording with planet/L-point selection (plan 14), solar system planet data extraction (plan 18), SSU dApp owner inventory transfers (plan 12), and ACL registry + currency market contracts + dApp UIs (plan 16). Plans 06, 08, 09, 11, and 13 have been archived as complete.
+The project has made substantial progress: 17 Move contracts written (all 17 published to Sui testnet), a 123-file Periscope SPA with 29 views, a standalone SSU dApp (with owner inventory transfers) and SSU Market dApp (with currency market browser), a governance system with 4-tier organizations and claims deployed on-chain, and a full chain-shared package with TX builders for every contract. The monorepo infrastructure is solid (Turborepo, pnpm, Biome, 5 shared packages). Since v5: `acl_registry` and `currency_market` contracts published to testnet with real package IDs in config, `gate_acl` re-published against Utopia world package with shared ACL support, and plans 10/12/14/15/16/18 archived as complete. All feature implementation is done.
 
 **Standalone-first approach:** Periscope is a fully client-side SPA -- no backend server required. Currency creation uses in-browser WASM bytecode patching (`buildPublishToken` via `@mysten/move-bytecode-template`), all governance TX builders run in-browser, and the user's wallet (EVE Vault) handles signing and gas. The gas station is an **optional enhancement** for custom turret package compilation only -- it is not on the critical path.
 
-The hackathon theme is "A Toolkit for Civilization." The strongest submission angle is the governance organization system (Plan 04) combined with the closed-loop economy (Plan 06), the Periscope intel tool, the standalone SSU dApps, and the shared ACL registry + currency market system (Plan 16). The critical path is now: **publish 2 new contracts -> test standalone E2E flows -> polish UI -> record demo -> submit.**
+The hackathon theme is "A Toolkit for Civilization." The strongest submission angle is the governance organization system (Plan 04) combined with the closed-loop economy (Plan 06), the Periscope intel tool, the standalone SSU dApps, and the shared ACL registry + currency market system (Plan 16). The critical path is now: **test standalone E2E flows -> polish UI -> record demo -> submit.**
 
 ## Current State -- Module Audit
 
@@ -25,7 +25,7 @@ All contracts are located in `contracts/` with one `sources/` directory each.
 |----------|-----------|-----------|-------|
 | `turret_shoot_all` | Yes | `0x4ad1a1...3294b9` | Simplest turret, 1 source file |
 | `turret_priority` | Yes | `0xbbca3a...bbb5ef` | Customizable turret priorities via code generation |
-| `gate_acl` | Yes | `0x7e0ad0...9ad44c` | ACL-based gate control + config object. Upgraded with shared ACL support (plan 16). |
+| `gate_acl` | Yes | `0x7e0ad0...9ad44c` (Stillness), `0x44ff83...3af4583` (Utopia) | ACL-based gate control + config object. Re-published against Utopia world package with shared ACL support (plan 16). |
 | `gate_tribe` | Yes | `0x7ce73c...fd3298` | Tribe-based gate filtering |
 | `gate_toll` | Yes | `0xcef451...e1f6a8` | Toll gate extension |
 | `gate_unified` | Yes | `0x364f68...36210f` | Groups + per-gate config + toll (most capable gate) |
@@ -37,18 +37,16 @@ All contracts are located in `contracts/` with one `sources/` directory each.
 | `token_template` | Yes | `0x38e749...65ccf` | Template token (init creates TreasuryCap) |
 | `governance` | Yes | `0x8bef45...a578cb` | 4-tier Organization + ClaimsRegistry, 9 tests |
 | `governance_ext` | Yes | `0x670b84...bec349` | `treasury.move` (138 lines), OrgTreasury shared object |
-| `acl_registry` | **No** | -- | NEW (plan 16). Shared ACL objects for cross-player gate configuration. Code complete, awaiting publish. |
-| `currency_market` | **No** | -- | NEW (plan 16). Per-currency order books with sell listings + buy order escrow. Code complete, awaiting publish. |
+| `acl_registry` | Yes | `0x3b1cde...3ffc3b55` | Shared ACL objects for cross-player gate configuration (plan 16). |
+| `currency_market` | Yes | `0x07d963...5cf035a6` | Per-currency order books with sell listings + buy order escrow (plan 16). |
 | `world_utopia` | N/A (CCP) | `0xd12a70...043f75` | Local copy of CCP's World package (Utopia). Build dependency for `ssu_market_utopia`. |
 
 **Key gaps:**
-- `acl_registry` and `currency_market` need publishing to Sui testnet (code complete, placeholder addresses in config)
-- `gate_acl` upgrade needs re-publishing (shared ACL support added per plan 16)
 - `exchange` lacks `match_orders()` (deferred, not critical for hackathon)
 
 ### apps/periscope/ -- Frontier Periscope Intel Tool (123 source files)
 
-The primary deliverable. 30 views across 32 routes (including redirects), IndexedDB with 19 schema versions, dark theme SPA. **Fully standalone -- no backend required.**
+The primary deliverable. 29 views across 32 routes (including redirects), IndexedDB with 19 schema versions, dark theme SPA. **Fully standalone -- no backend required.**
 
 **Views -- Fully Functional (have real logic, DB queries, UI):**
 | View | Lines | Key Features |
@@ -67,7 +65,6 @@ The primary deliverable. 30 views across 32 routes (including redirects), Indexe
 | `GovernanceTrade.tsx` | 2053 | Sell orders + buy orders tabs, SSU market management, escrow sell orders |
 | `Locations.tsx` | 395 | Location bookmarking and notes. Uses shared `SystemSearch` component. |
 | `Settings.tsx` | 721 | DB management, encryption, backup, polling config |
-| `PeerSync.tsx` | 598 | WebRTC P2P sync configuration |
 | `Manifest.tsx` | 482 | Chain data cache (characters, tribes) + server switcher |
 | `Permissions.tsx` | 376 | Permission groups, policies, sync status |
 | `Deployables.tsx` | 1284 | **Updated (plan 14).** Unified deployables + assemblies grid with Location column and inline LocationEditor (system/planet/L-point picker). |
@@ -84,19 +81,12 @@ The primary deliverable. 30 views across 32 routes (including redirects), Indexe
 | `Workers.tsx` | 186 | Background worker status |
 | `Setup.tsx` | 105 | First-launch setup wizard |
 
-**Changes since last update (v4 -> v5):**
-- `Sonar.tsx` **restructured** into tabbed Pings/Log Feed/Chain Feed interface (plan 15, 655 lines up from 297)
-- `Logs.tsx` **updated** -- LiveTab removed (absorbed into Sonar), default tab now "sessions", extracted shared components
-- `Deployables.tsx` **updated** -- Location column with inline LocationEditor popover, system/planet/L-point selector (plan 14, 1284 lines up from 975)
-- `Locations.tsx` **updated** -- uses shared `SystemSearch` component (plan 14)
-- `Bridge.tsx` **updated** -- duplicate sonar hook calls removed (plan 15)
-- New extracted components: `LogEventRow.tsx`, `StatCard.tsx`, `GrantAccessView.tsx`, `SystemSearch.tsx`
-- New hooks: `useSonarAlerts.ts` (layout-level ping alerts with audio + desktop notification)
-- New utilities: `format.ts` (`fmtDateTime`, `fmtTime`, `formatDuration`), `celestials.ts` (lazy-load celestial data), `lpoints.ts` (L-point computation)
-- DB schema now at V19 (V18 dropped radar tables, V19 added systemId index for deployables)
-- Planet data added to `stellar_systems.json` (sunTypeId, planetCount, planetCountByType, planetItemIds)
-- New `celestials.json` with per-planet coordinates from `mapObjects.db`
-- Sonar/log/chain hooks all run at Layout level; callbacks exposed via stores
+**Changes since last update (v5 -> v6):**
+- `acl_registry` and `currency_market` published to Sui testnet -- real package IDs in config
+- `gate_acl` re-published against Utopia world package with shared ACL support
+- Plans 10, 12, 14, 15, 16, 18 archived as complete
+- All 17 contracts now published to testnet -- no placeholder addresses remain
+- All feature implementation is complete -- remaining work is testing, polish, and submission
 
 **Standalone features (no gas station needed):**
 - All intel views (Dashboard, StarMap, Sonar, Bridge, Killmails, Logs, JumpPlanner, Intel, Players, Targets, etc.)
@@ -150,15 +140,15 @@ Functional standalone ACL editor with EVE Vault config. **Updated (plan 16 phase
 | **07 -- Hackathon Remaining Work** | `active/` | **This plan** | -- | -- |
 | 08 -- Trade Page Improvements | `archive/` | Complete | 100% | None |
 | 09 -- GraphQL Migration | `archive/` | Complete | 100% | None |
-| 10 -- Server Switch + Wallet Streamline | `active/` | Implemented | ~100% | Should move to archive |
+| 10 -- Server Switch + Wallet Streamline | `archive/` | Complete | 100% | None |
 | 11 -- Deployables Merge | `archive/` | Complete | 100% | None |
-| 12 -- SSU dApp | `active/` | Complete | 100% | All 4 phases done. Should move to archive. |
+| 12 -- SSU dApp | `archive/` | Complete | 100% | None |
 | 13 -- Sonar & Bridge | `archive/` | Complete | 100% | None |
-| 14 -- Structure Locations | `active/` | Complete | 100% | All phases implemented. Should move to archive. |
-| 15 -- Sonar Restructure | `active/` | Complete | 100% | All 6 phases implemented. Should move to archive. |
-| 16 -- ACL Market Standardization | `active/` | Code Complete | ~90% | Contracts need publishing to testnet. dApp UIs done. |
+| 14 -- Structure Locations | `archive/` | Complete | 100% | None |
+| 15 -- Sonar Restructure | `archive/` | Complete | 100% | None |
+| 16 -- ACL Market Standardization | `archive/` | Complete | 100% | Contracts published, dApp UIs done |
 | 17 -- App Deployment | `pending/` | Draft | 0% | Has open questions |
-| 18 -- Solar System Data | `active/` | Complete | 100% | Both phases implemented. Should move to archive. |
+| 18 -- Solar System Data | `archive/` | Complete | 100% | None |
 
 ## Remaining Work
 
@@ -176,8 +166,7 @@ These items are required for a functional standalone demo.
 
 5. ~~**Embed token_template bytecodes**~~ **DONE** -- Bytecodes embedded as base64 in `packages/chain-shared/src/token-factory.ts` (`TEMPLATE_BYTECODES_B64`). `buildPublishToken()` uses `atob()` to decode and patch bytecodes in-browser.
 
-6. **Publish `acl_registry` and `currency_market` to testnet** (~1 hour) -- Both contracts are code complete but have placeholder addresses (`0x000...`) in `packages/chain-shared/src/config.ts`. Need `sui client publish` for each, then update config with real package IDs. Also re-publish `gate_acl` upgrade for shared ACL support.
-   - Files: `packages/chain-shared/src/config.ts`, `contracts/acl_registry/Move.toml`, `contracts/currency_market/Move.toml`
+6. ~~**Publish `acl_registry` and `currency_market` to testnet**~~ **DONE** -- Both contracts published. `acl_registry` at `0x3b1cde...3ffc3b55`, `currency_market` at `0x07d963...5cf035a6`. Config updated with real package IDs. `gate_acl` re-published against Utopia world package at `0x44ff83...3af4583`.
 
 7. **Test standalone E2E flows** (~2-3 hours) -- Start Periscope dev server, connect EVE Vault, test these flows without any gas station:
    - GovernanceDashboard: create org, add tier members, verify chain TX
@@ -222,7 +211,7 @@ These items significantly strengthen the submission but are not blocking.
 12. **Deploy dApps to hosting** (~2 hours) -- Get Periscope, SSU dApp, SSU Market dApp, and Permissions dApp hosted at public URLs for the demo. Plan 17 covers this but is still in pending.
     - Depends on: Plan 17 decisions
 
-13. **Archive completed plans** (~15 min) -- Plans 10, 12, 14, 15, 18 are complete and should be moved to `docs/plans/archive/`.
+13. ~~**Archive completed plans**~~ **DONE** -- Plans 10, 12, 14, 15, 16, 18 moved to `docs/plans/archive/`.
 
 ### Nice to Have (stretch goals)
 
@@ -235,8 +224,6 @@ These items significantly strengthen the submission but are not blocking.
 16. **Bounty board UI in GovernanceFinance** (~2 hours) -- Wire the bounty posting flow (imports and status already exist).
     - Files: `apps/periscope/src/views/GovernanceFinance.tsx`
 
-17. **P2P sync demo** (~3 hours) -- Show two Periscope instances syncing intel via WebRTC.
-    - Files: `apps/periscope/src/sync/`, `apps/periscope/src/views/PeerSync.tsx`
 
 ## Implementation Phases
 
@@ -271,9 +258,9 @@ All tracked feature plans have been implemented:
 
 ### Phase 4: Contract Publishing & E2E Testing (Days 8-10) -- IN PROGRESS
 
-1. Publish `acl_registry` to Sui testnet, update `packages/chain-shared/src/config.ts` with real package ID.
-2. Publish `currency_market` to Sui testnet, update config.
-3. Re-publish `gate_acl` upgrade (shared ACL support) if needed.
+1. ~~Publish `acl_registry` to Sui testnet, update `packages/chain-shared/src/config.ts` with real package ID.~~ **DONE** -- `0x3b1cde...3ffc3b55`.
+2. ~~Publish `currency_market` to Sui testnet, update config.~~ **DONE** -- `0x07d963...5cf035a6`.
+3. ~~Re-publish `gate_acl` upgrade (shared ACL support).~~ **DONE** -- Re-published against Utopia world package at `0x44ff83...3af4583`.
 4. Start Periscope dev server: `pnpm --filter @tehfrontier/periscope dev`.
 5. Connect EVE Vault wallet.
 6. Test GovernanceDashboard: create org, add tier members, verify chain TX execution.
@@ -308,7 +295,6 @@ All tracked feature plans have been implemented:
 4. Archive completed plans (item 13).
 5. Gas station turret pipeline testing (item 14).
 6. Bounty board integration (item 16).
-7. P2P sync demo (item 17).
 
 ## File Summary
 
@@ -349,7 +335,7 @@ All tracked feature plans have been implemented:
 | `packages/chain-shared/src/currency-market.ts` | DONE | TX builders + queries (plan 16) |
 | `packages/chain-shared/src/permissions.ts` | DONE | Shared ACL gate builders (plan 16) |
 | `apps/permissions-dapp/src/App.tsx` | DONE | Tabbed UI with Shared ACLs (plan 16) |
-| `packages/chain-shared/src/config.ts` | PUBLISH | Placeholder addresses for `aclRegistry` + `currencyMarket` -- need real package IDs |
+| `packages/chain-shared/src/config.ts` | DONE | All package IDs populated (acl_registry, currency_market, gate_acl Utopia) |
 | `apps/periscope/src/views/GovernanceFinance.tsx` | TEST | Runtime test of standalone currency lifecycle |
 | `apps/periscope/src/views/GovernanceDashboard.tsx` | TEST | Verify org creation + tier management |
 | `apps/periscope/src/views/GovernanceClaims.tsx` | TEST | Verify claims CRUD |
@@ -367,7 +353,7 @@ All tracked feature plans have been implemented:
 
 5. **App deployment hosting** -- Plan 17 (pending) covers deployment but has open questions. For hackathon submission, do we need public URLs or is a GitHub repo with setup instructions sufficient?
 
-6. **`gate_acl` upgrade publishing** -- Plan 16 added shared ACL support to `gate_acl`. Does the existing UpgradeCap allow re-publishing? If not, a new package publish may be needed.
+6. ~~**`gate_acl` upgrade publishing**~~ **RESOLVED** -- Re-published as a new package against Utopia world package at `0x44ff83...3af4583`. Stillness version unchanged.
 
 ## Deferred
 
@@ -375,9 +361,8 @@ All tracked feature plans have been implemented:
 - **Plan 05 (Governance Phase 2)** -- All 5 workstreams. Post-hackathon.
 - **apps/web/ and apps/api/** -- Server-side stack. Not part of hackathon deliverable.
 - **packages/db/** -- PostgreSQL schema. Only relevant if web/api become active.
-- **P2P sync production testing** -- Sync engine written but untested.
 - ~~**SuiGrpcClient migration**~~ **DONE** -- GraphQL migration completed (plan 09).
 - **Exchange order matching** -- DEX without matching is limited. Stretch goal.
 - **Gate integration with governance tiers** -- Requires CCP clarification. Plan 05.
 - **Turret shared ACL** -- SharedAcl struct supports turrets conceptually, but turret priority uses a fundamentally different execution model (devInspect + OnlineReceipt). Separate follow-up plan needed.
-- **Periscope integration of shared ACL/currency market** -- Periscope could show governance views for managing shared ACLs and currency market activity. Defer until contracts are published and dApps are stable.
+- **Periscope integration of shared ACL/currency market** -- Contracts are now published. Could add governance views in Periscope for managing shared ACLs and currency market activity. Low priority -- standalone dApps already cover these flows.

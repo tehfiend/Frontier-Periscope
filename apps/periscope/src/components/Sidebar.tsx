@@ -19,7 +19,6 @@ import {
 	Settings,
 	PanelLeftClose,
 	PanelLeft,
-	Wifi,
 	Crosshair,
 	Boxes,
 	Route,
@@ -100,7 +99,6 @@ const navGroups: NavGroup[] = [
 	{
 		title: "Network",
 		items: [
-			{ to: "/peers", icon: Wifi, label: "P2P Sync" },
 			{ to: "/workers", icon: Cog, label: "Workers" },
 		],
 	},

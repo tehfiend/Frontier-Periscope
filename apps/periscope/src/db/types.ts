@@ -72,7 +72,7 @@ export interface SyncMeta {
 
 // ── Intel Types ──────────────────────────────────────────────────────────────
 
-export type IntelSource = "chain" | "api" | "log" | "manual" | "sync" | "p2p";
+export type IntelSource = "chain" | "api" | "log" | "manual";
 export type ThreatLevel = "unknown" | "friendly" | "neutral" | "hostile" | "critical";
 export type WatchStatus = "active" | "paused" | "archived";
 export type AssemblyStatus =
@@ -514,44 +514,6 @@ export interface CurrencyRecord extends SyncMeta {
 	treasuryCapId: string;
 	orgTreasuryId?: string;
 	decimals: number;
-	createdAt: string;
-	updatedAt: string;
-}
-
-// ── P2P Sync Persisted Types ────────────────────────────────────────────────
-
-export type SyncTrustTier = "multibox" | "intel";
-
-export interface SyncPeer {
-	id: string; // instanceId of the remote peer
-	name: string;
-	trustTier: SyncTrustTier;
-	characterName?: string;
-	autoConnect: boolean;
-	lastSeen?: string;
-	lastSyncHlc?: string;
-	offerBlob?: string;
-	groupId?: string;
-	createdAt: string;
-}
-
-export interface SyncLogEntry {
-	id?: number;
-	timestamp: string;
-	action: "sent" | "received" | "merged" | "conflict" | "tombstone-gc";
-	table: string;
-	recordId: string;
-	hlc: string;
-	peerId?: string;
-}
-
-export interface SharingGroup {
-	id: string;
-	name: string;
-	groupKey: string; // base64 AES-256 raw key
-	tables: string[];
-	tags?: string[];
-	memberInstanceIds: string[];
 	createdAt: string;
 	updatedAt: string;
 }

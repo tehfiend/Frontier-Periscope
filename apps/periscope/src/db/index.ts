@@ -30,13 +30,10 @@ import type {
 	PlayerIntel,
 	Region,
 	SettingsEntry,
-	SharingGroup,
 	SolarSystem,
 	SonarChannelState,
 	SonarEvent,
-	SyncLogEntry,
 	SyncMeta,
-	SyncPeer,
 	SystemClaimRecord,
 	SystemNickname,
 	TargetEvent,
@@ -88,11 +85,6 @@ class PeriscopeDB extends Dexie {
 	groupMembers!: EntityTable<GroupMember, "id">;
 	assemblyPolicies!: EntityTable<AssemblyPolicy, "id">;
 	betrayalAlerts!: EntityTable<BetrayalAlert, "id">;
-
-	// P2P Sync
-	syncPeers!: EntityTable<SyncPeer, "id">;
-	syncLog!: EntityTable<SyncLogEntry, "id">;
-	sharingGroups!: EntityTable<SharingGroup, "id">;
 
 	// Manifest (local chain cache)
 	manifestCharacters!: EntityTable<ManifestCharacter, "id">;
@@ -241,10 +233,10 @@ class PeriscopeDB extends Dexie {
 			betrayalAlerts: "id, status, attackerCharacterId, attackerAddress, source, createdAt",
 		});
 
-		// V8: P2P sync — new tables, _hlc indexes on all syncable tables, backfill sync fields
+		// V8: _hlc indexes on all syncable tables, backfill sync metadata fields
 		this.version(8)
 			.stores({
-				// New sync tables
+				// P2P sync tables (dropped in V21)
 				syncPeers: "id, trustTier, lastSeen",
 				syncLog: "++id, timestamp, action, table, hlc",
 				sharingGroups: "id, name",
@@ -476,6 +468,13 @@ class PeriscopeDB extends Dexie {
 		this.version(20).stores({
 			radarWatches: null,
 			radarEvents: null,
+		});
+
+		// V21: Drop P2P sync tables -- P2P feature removed
+		this.version(21).stores({
+			syncPeers: null,
+			syncLog: null,
+			sharingGroups: null,
 		});
 	}
 }
