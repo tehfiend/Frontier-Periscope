@@ -1,8 +1,8 @@
-import { Transaction } from "@mysten/sui/transactions";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import type { AclConfig, AdminConfig } from "./types";
-import { type TenantId, getContractAddresses } from "./config";
+import { Transaction } from "@mysten/sui/transactions";
+import type { TenantId } from "./config";
 import { getDynamicFieldJson, getObjectJson } from "./graphql-queries";
+import type { AclConfig, AdminConfig } from "./types";
 
 // ── Query Functions ─────────────────────────────────────────────────────────
 
@@ -99,10 +99,7 @@ export function buildRemoveAclConfig(params: {
 
 	tx.moveCall({
 		target: `${params.packageId}::config::remove_config`,
-		arguments: [
-			tx.object(params.configObjectId),
-			tx.pure.id(params.gateId),
-		],
+		arguments: [tx.object(params.configObjectId), tx.pure.id(params.gateId)],
 	});
 
 	return tx;
@@ -121,10 +118,7 @@ export function buildAddAdmin(params: {
 
 	tx.moveCall({
 		target: `${params.packageId}::config::add_admin`,
-		arguments: [
-			tx.object(params.configObjectId),
-			tx.pure.address(params.adminAddress),
-		],
+		arguments: [tx.object(params.configObjectId), tx.pure.address(params.adminAddress)],
 	});
 
 	return tx;
@@ -141,10 +135,7 @@ export function buildRemoveAdmin(params: {
 
 	tx.moveCall({
 		target: `${params.packageId}::config::remove_admin`,
-		arguments: [
-			tx.object(params.configObjectId),
-			tx.pure.address(params.adminAddress),
-		],
+		arguments: [tx.object(params.configObjectId), tx.pure.address(params.adminAddress)],
 	});
 
 	return tx;
@@ -161,10 +152,7 @@ export function buildAddAdminTribe(params: {
 
 	tx.moveCall({
 		target: `${params.packageId}::config::add_admin_tribe`,
-		arguments: [
-			tx.object(params.configObjectId),
-			tx.pure.u32(params.tribeId),
-		],
+		arguments: [tx.object(params.configObjectId), tx.pure.u32(params.tribeId)],
 	});
 
 	return tx;
@@ -181,10 +169,61 @@ export function buildRemoveAdminTribe(params: {
 
 	tx.moveCall({
 		target: `${params.packageId}::config::remove_admin_tribe`,
+		arguments: [tx.object(params.configObjectId), tx.pure.u32(params.tribeId)],
+	});
+
+	return tx;
+}
+
+// ── Shared ACL Config ──────────────────────────────────────────────────────
+
+export interface SetSharedAclConfigParams {
+	packageId: string;
+	configObjectId: string;
+	gateId: string;
+	sharedAclId: string;
+	permitDurationMs: number;
+	senderAddress: string;
+}
+
+/**
+ * Build a transaction to bind a gate to a SharedAcl object.
+ * The gate will use the SharedAcl's tribes/characters instead of inline config.
+ */
+export function buildSetSharedAclConfig(params: SetSharedAclConfigParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	tx.moveCall({
+		target: `${params.packageId}::config::set_shared_config`,
 		arguments: [
 			tx.object(params.configObjectId),
-			tx.pure.u32(params.tribeId),
+			tx.pure.id(params.gateId),
+			tx.pure.id(params.sharedAclId),
+			tx.pure.u64(params.permitDurationMs),
 		],
+	});
+
+	return tx;
+}
+
+export interface RemoveSharedAclConfigParams {
+	packageId: string;
+	configObjectId: string;
+	gateId: string;
+	senderAddress: string;
+}
+
+/**
+ * Build a transaction to remove the shared ACL binding for a gate.
+ */
+export function buildRemoveSharedAclConfig(params: RemoveSharedAclConfigParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	tx.moveCall({
+		target: `${params.packageId}::config::remove_shared_config`,
+		arguments: [tx.object(params.configObjectId), tx.pure.id(params.gateId)],
 	});
 
 	return tx;

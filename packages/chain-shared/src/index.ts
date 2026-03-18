@@ -11,3 +11,5 @@ export * from "./lease";
 export * from "./turret-priority";
 export * from "./governance";
 export * from "./treasury";
+export * from "./acl-registry";
+export * from "./currency-market";

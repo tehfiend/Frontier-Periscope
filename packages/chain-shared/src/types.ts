@@ -166,6 +166,49 @@ export interface OnChainClaim {
 	weight: number;
 }
 
+// ── Shared ACL Types ───────────────────────────────────────────────────────
+
+export interface SharedAclInfo {
+	objectId: string;
+	name: string;
+	creator: string;
+	admins: string[];
+	isAllowlist: boolean;
+	allowedTribes: number[];
+	allowedCharacters: number[];
+}
+
+// ── Currency Market Types ──────────────────────────────────────────────────
+
+export interface CurrencyMarketInfo {
+	objectId: string;
+	creator: string;
+	feeBps: number;
+	feeRecipient: string;
+	nextSellId: number;
+	nextBuyId: number;
+	coinType: string;
+}
+
+export interface CurrencyMarketSellListing {
+	listingId: number;
+	seller: string;
+	ssuId: string;
+	marketConfigId: string;
+	typeId: number;
+	pricePerUnit: number;
+	quantity: number;
+	postedAtMs: number;
+}
+
+export interface CurrencyMarketBuyOrder {
+	orderId: number;
+	buyer: string;
+	typeId: number;
+	pricePerUnit: number;
+	quantity: number;
+}
+
 // ── Contract Addresses ──────────────────────────────────────────────────────
 
 export interface ContractAddresses {
@@ -182,4 +225,6 @@ export interface ContractAddresses {
 	tokenTemplate?: { packageId: string };
 	governance?: { packageId: string; claimsRegistryObjectId: string };
 	governanceExt?: { packageId: string };
+	aclRegistry?: { packageId: string };
+	currencyMarket?: { packageId: string };
 }
