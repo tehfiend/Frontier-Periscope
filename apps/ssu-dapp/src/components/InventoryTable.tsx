@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import type { InventoryItem, InventoryData } from "@/hooks/useInventory";
+import type { InventoryData, InventoryItem } from "@/hooks/useInventory";
+import { useMemo, useState } from "react";
 
 interface InventoryTableProps {
 	inventory: InventoryData;
@@ -75,8 +75,8 @@ export function InventoryTable({ inventory, isLoading }: InventoryTableProps) {
 
 	return (
 		<div>
-			<div className="overflow-hidden rounded-lg border border-zinc-800">
-				<table className="w-full text-sm">
+			<div className="overflow-x-auto rounded-lg border border-zinc-800">
+				<table className="w-full min-w-[320px] text-sm">
 					<thead>
 						<tr className="border-b border-zinc-800 bg-zinc-900/80">
 							<th

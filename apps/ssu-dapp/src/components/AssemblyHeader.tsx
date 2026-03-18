@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
 import type { AssemblyData } from "@/hooks/useAssembly";
 import { resolveItemName } from "@/lib/items";
+import { useQuery } from "@tanstack/react-query";
 
 interface AssemblyHeaderProps {
 	assembly: AssemblyData;
@@ -28,13 +28,9 @@ export function AssemblyHeader({ assembly, itemId }: AssemblyHeaderProps) {
 					</div>
 					<p className="mt-0.5 text-xs text-zinc-500">
 						{typeName ?? `Type ${assembly.typeId}`}
-						{itemId && (
-							<span className="ml-2 font-mono text-zinc-600">#{itemId}</span>
-						)}
+						{itemId && <span className="ml-2 font-mono text-zinc-600">#{itemId}</span>}
 					</p>
-					{description && (
-						<p className="mt-1 text-sm text-zinc-400">{description}</p>
-					)}
+					{description && <p className="mt-1 text-sm text-zinc-400">{description}</p>}
 				</div>
 				<div className="shrink-0 text-right">
 					<p className="font-mono text-xs text-zinc-600" title={assembly.objectId}>
@@ -51,6 +47,16 @@ export function AssemblyHeader({ assembly, itemId }: AssemblyHeaderProps) {
 							{formatExtensionType(assembly.extensionType)}
 						</span>
 					</p>
+					{isMarketExtension(assembly.extensionType) && (
+						<a
+							href={buildMarketDappUrl(assembly.objectId)}
+							target="_blank"
+							rel="noopener noreferrer"
+							className="mt-1 inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
+						>
+							View Market &rarr;
+						</a>
+					)}
 				</div>
 			)}
 
@@ -77,16 +83,10 @@ function StatusBadge({ status, isOnline }: { status: string; isOnline: boolean }
 	return (
 		<span
 			className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-				isOnline
-					? "bg-emerald-900/50 text-emerald-400"
-					: "bg-zinc-800 text-zinc-500"
+				isOnline ? "bg-emerald-900/50 text-emerald-400" : "bg-zinc-800 text-zinc-500"
 			}`}
 		>
-			<span
-				className={`h-1.5 w-1.5 rounded-full ${
-					isOnline ? "bg-emerald-400" : "bg-zinc-600"
-				}`}
-			/>
+			<span className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-emerald-400" : "bg-zinc-600"}`} />
 			{status}
 		</span>
 	);
@@ -98,4 +98,19 @@ function formatExtensionType(ext: string): string {
 		return `${parts[parts.length - 2]}::${parts[parts.length - 1]}`;
 	}
 	return ext;
+}
+
+/** Check if the extension type indicates an SSU market extension */
+function isMarketExtension(ext: string): boolean {
+	const lower = ext.toLowerCase();
+	return lower.includes("ssu_market") || lower.includes("market");
+}
+
+/** Build a URL to the SSU market dApp for this SSU */
+function buildMarketDappUrl(ssuObjectId: string): string {
+	// The market dApp lives on port 3200 in dev, or at a relative path in prod.
+	// Use a relative origin assumption -- the market dApp needs a configId
+	// which is the SSU object ID for market SSUs.
+	const baseUrl = window.location.hostname === "localhost" ? "http://localhost:3200" : "/market";
+	return `${baseUrl}?configId=${ssuObjectId}`;
 }

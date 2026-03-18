@@ -1,11 +1,11 @@
-import { useMemo } from "react";
-import { createDAppKit, DAppKitProvider } from "@mysten/dapp-kit-react";
+import { WalletConnect } from "@/components/WalletConnect";
+import { getFallbackObjectId, getItemId, getTenant } from "@/lib/constants";
+import { deriveObjectId } from "@/lib/deriveObjectId";
+import { SsuView } from "@/views/SsuView";
+import { DAppKitProvider, createDAppKit } from "@mysten/dapp-kit-react";
 import { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { SsuView } from "@/views/SsuView";
-import { WalletConnect } from "@/components/WalletConnect";
-import { deriveObjectId } from "@/lib/deriveObjectId";
-import { getItemId, getTenant, getFallbackObjectId } from "@/lib/constants";
+import { useMemo } from "react";
 
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -57,27 +57,25 @@ export function App() {
 		<QueryClientProvider client={queryClient}>
 			<DAppKitProvider dAppKit={dAppKit}>
 				<div className="flex min-h-full flex-col">
-					<header className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-						<h1 className="text-sm font-semibold tracking-wide text-zinc-300 uppercase">
+					<header className="flex items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2 sm:px-4 sm:py-3">
+						<h1 className="shrink-0 text-xs font-semibold tracking-wide text-zinc-300 uppercase sm:text-sm">
 							SSU Viewer
 						</h1>
 						<WalletConnect />
 					</header>
-					<main className="flex-1 overflow-auto p-4">
+					<main className="flex-1 overflow-auto p-3 sm:p-4">
 						{objectId ? (
 							<SsuView objectId={objectId} />
 						) : (
 							<div className="flex h-64 items-center justify-center">
 								<div className="text-center">
-									<p className="text-sm text-zinc-400">
-										No storage unit specified
-									</p>
+									<p className="text-sm text-zinc-400">No storage unit specified</p>
 									<p className="mt-2 text-xs text-zinc-600">
 										Add <code className="text-zinc-400">?itemId=</code> and{" "}
 										<code className="text-zinc-400">&tenant=</code> to the URL,
 										<br />
-										or set <code className="text-zinc-400">VITE_OBJECT_ID</code>{" "}
-										environment variable.
+										or set <code className="text-zinc-400">VITE_OBJECT_ID</code> environment
+										variable.
 									</p>
 								</div>
 							</div>

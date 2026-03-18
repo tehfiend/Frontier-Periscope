@@ -1,16 +1,15 @@
-import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { useAssembly } from "@/hooks/useAssembly";
-import { useInventory } from "@/hooks/useInventory";
-import { useCharacter } from "@/hooks/useCharacter";
-import { useOwnerCap } from "@/hooks/useOwnerCap";
-import { AssemblyHeader } from "@/components/AssemblyHeader";
-import { InventoryTabs } from "@/components/InventoryTabs";
-import { getItemId } from "@/lib/constants";
-import { WalletConnect } from "@/components/WalletConnect";
-import { DepositWithdrawPanel } from "@/components/DepositWithdrawPanel";
-import { MetadataEditor } from "@/components/MetadataEditor";
 import { AssemblyActions } from "@/components/AssemblyActions";
+import { AssemblyHeader } from "@/components/AssemblyHeader";
 import { ExtensionInfo } from "@/components/ExtensionInfo";
+import { InventoryTabs } from "@/components/InventoryTabs";
+import { MetadataEditor } from "@/components/MetadataEditor";
+import { TransferPanel } from "@/components/TransferPanel";
+import { useAssembly } from "@/hooks/useAssembly";
+import { useCharacter } from "@/hooks/useCharacter";
+import { useInventory } from "@/hooks/useInventory";
+import { useOwnerCap } from "@/hooks/useOwnerCap";
+import { getItemId } from "@/lib/constants";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
 
 interface SsuViewProps {
 	objectId: string;
@@ -34,10 +33,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 
 	// Phase 2: Owner context (only when wallet is connected)
 	const { data: character } = useCharacter(walletAddress);
-	const { data: ownerCapInfo } = useOwnerCap(
-		character?.characterObjectId,
-		assembly?.ownerCapId,
-	);
+	const { data: ownerCapInfo } = useOwnerCap(character?.characterObjectId, assembly?.ownerCapId);
 
 	// Determine if connected wallet is the SSU owner
 	// The owner_cap_id on the SSU matches an OwnerCap held by the player's Character
@@ -85,9 +81,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 			<AssemblyHeader assembly={assembly} itemId={getItemId()} />
 
 			{/* Inventory tabs (always visible, no wallet required) */}
-			{inventories && (
-				<InventoryTabs inventories={inventories} isLoading={inventoryLoading} />
-			)}
+			{inventories && <InventoryTabs inventories={inventories} isLoading={inventoryLoading} />}
 
 			{/* Owner panels (shown only when wallet connected + is owner) */}
 			{isOwner && character && ownerCapInfo && inventories && (
@@ -104,7 +98,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 						ownerCap={ownerCapInfo}
 					/>
 
-					<DepositWithdrawPanel
+					<TransferPanel
 						ssuObjectId={objectId}
 						characterObjectId={character.characterObjectId}
 						ownerCap={ownerCapInfo}
