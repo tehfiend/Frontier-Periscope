@@ -30,9 +30,9 @@ export function useInventory(ssuId: string | undefined) {
 
 			// Fetch SSU object to find the inventory field
 			const ssuObj = await getObjectJson(client, ssuId);
-			if (!ssuObj) return [];
+			if (!ssuObj?.json) return [];
 
-			const inventoryField = ssuObj.inventory as {
+			const inventoryField = (ssuObj.json as Record<string, unknown>).inventory as {
 				fields?: { id?: { id?: string } };
 			};
 			const inventoryId = inventoryField?.fields?.id?.id;
@@ -49,15 +49,15 @@ export function useInventory(ssuId: string | undefined) {
 					limit: 50,
 				});
 
-				for (const df of page.data) {
+				for (const df of page.entries) {
 					try {
 						const dfFields = await getDynamicFieldJson(client, inventoryId, {
-							type: df.name.type,
-							value: df.name.value,
+							type: df.nameType,
+							value: String(df.nameJson),
 						});
 						if (!dfFields) continue;
 
-						const typeId = Number(df.name.value);
+						const typeId = Number(df.nameJson);
 						const quantity = Number(
 							(dfFields as Record<string, unknown>).quantity ?? 0,
 						);
@@ -68,7 +68,7 @@ export function useInventory(ssuId: string | undefined) {
 				}
 
 				hasMore = page.hasNextPage;
-				cursor = page.nextCursor;
+				cursor = page.cursor;
 			}
 
 			// Resolve names

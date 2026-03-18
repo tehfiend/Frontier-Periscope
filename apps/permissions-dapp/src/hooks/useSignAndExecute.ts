@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 
 /**
  * Wrapper around dapp-kit-react's signAndExecuteTransaction that
- * invalidates market-related queries after a successful transaction.
+ * invalidates ACL-related queries after a successful transaction.
  */
 export function useSignAndExecute(): {
 	mutateAsync: (tx: Transaction) => Promise<unknown>;
@@ -20,13 +20,10 @@ export function useSignAndExecute(): {
 			setIsPending(true);
 			try {
 				const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
-				// Invalidate market data after successful TX
-				queryClient.invalidateQueries({ queryKey: ["sellOrders"] });
-				queryClient.invalidateQueries({ queryKey: ["marketConfig"] });
-				queryClient.invalidateQueries({ queryKey: ["ssuInventory"] });
-				queryClient.invalidateQueries({ queryKey: ["currencyMarkets"] });
-				queryClient.invalidateQueries({ queryKey: ["currencyMarketListings"] });
-				queryClient.invalidateQueries({ queryKey: ["currencyMarketBuyOrders"] });
+				// Invalidate ACL data after successful TX
+				queryClient.invalidateQueries({ queryKey: ["sharedAcls"] });
+				queryClient.invalidateQueries({ queryKey: ["aclDetails"] });
+				queryClient.invalidateQueries({ queryKey: ["allSharedAcls"] });
 				return result;
 			} finally {
 				setIsPending(false);
