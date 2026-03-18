@@ -1,0 +1,12 @@
+[package]
+name = "currency_market"
+edition = "2024"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "testnet-v1.66.2" }
+governance_ext = { local = "../governance_ext" }
+
+[addresses]
+currency_market = "0x0"
+governance_ext = "0x0"
+governance = "0x0"
