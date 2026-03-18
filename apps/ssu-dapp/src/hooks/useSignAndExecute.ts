@@ -1,6 +1,6 @@
 import { useDAppKit } from "@mysten/dapp-kit-react";
-import { useQueryClient } from "@tanstack/react-query";
 import type { Transaction } from "@mysten/sui/transactions";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 /**
@@ -24,6 +24,8 @@ export function useSignAndExecute(): {
 				queryClient.invalidateQueries({ queryKey: ["assembly"] });
 				queryClient.invalidateQueries({ queryKey: ["itemNames"] });
 				queryClient.invalidateQueries({ queryKey: ["ownerCap"] });
+				queryClient.invalidateQueries({ queryKey: ["ssu-inventories"] });
+				queryClient.invalidateQueries({ queryKey: ["wallet-items"] });
 				return result;
 			} finally {
 				setIsPending(false);

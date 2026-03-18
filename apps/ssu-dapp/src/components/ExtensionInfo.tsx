@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { Transaction } from "@mysten/sui/transactions";
-import { useSignAndExecute } from "@/hooks/useSignAndExecute";
-import { getWorldPackageId, getTenant } from "@/lib/constants";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
+import { useSignAndExecute } from "@/hooks/useSignAndExecute";
+import { getTenant, getWorldPackageId } from "@/lib/constants";
+import { decodeErrorMessage } from "@/lib/errors";
+import { Transaction } from "@mysten/sui/transactions";
+import { useState } from "react";
 
 interface ExtensionInfoProps {
 	ssuObjectId: string;
@@ -65,7 +66,7 @@ export function ExtensionInfo({
 			await signAndExecute(tx);
 			setSuccess("Extension removed");
 		} catch (err) {
-			setError(String(err));
+			setError(decodeErrorMessage(String(err)));
 		}
 	}
 
@@ -79,9 +80,7 @@ export function ExtensionInfo({
 				<div className="space-y-3">
 					<div>
 						<p className="text-xs text-zinc-500">Registered Extension</p>
-						<p className="mt-0.5 font-mono text-xs text-zinc-300 break-all">
-							{extensionType}
-						</p>
+						<p className="mt-0.5 font-mono text-xs text-zinc-300 break-all">{extensionType}</p>
 					</div>
 
 					{isOwner && (

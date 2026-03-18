@@ -1,10 +1,10 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import { bcs } from "@mysten/sui/bcs";
-import { blake2b } from "@noble/hashes/blake2.js";
+import { getTenant, getWorldPackageId } from "@/lib/constants";
 import { resolveItemNames } from "@/lib/items";
-import { getWorldPackageId, getTenant } from "@/lib/constants";
+import { bcs } from "@mysten/sui/bcs";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import { blake2b } from "@noble/hashes/blake2.js";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { useSuiClient } from "./useSuiClient";
 
 /** A single item entry from an inventory's VecMap */
@@ -90,7 +90,6 @@ interface DfResponse {
 
 // ── Character name resolution via OwnerCap -> Character -> metadata ─────────
 
-
 const FIND_CHAR_BY_CAP = `
 	query($type: String!, $cursor: String) {
 		objects(filter: { type: $type }, first: 50, after: $cursor) {
@@ -134,7 +133,7 @@ async function resolveCharacterName(
 
 		let cursor: string | null = null;
 		for (let page = 0; page < 20; page++) {
-			const r = await client.query<CharQueryResponse, { type: string; cursor: string | null }>({
+			const r: { data?: CharQueryResponse | null } = await client.query({
 				query: FIND_CHAR_BY_CAP,
 				variables: { type: charType, cursor },
 			});
@@ -153,7 +152,8 @@ async function resolveCharacterName(
 				}
 			}
 
-			const pi = r.data?.objects?.pageInfo;
+			const pi: { hasNextPage: boolean; endCursor: string | null } | undefined =
+				r.data?.objects?.pageInfo;
 			if (!pi?.hasNextPage) break;
 			cursor = pi.endCursor;
 		}
@@ -178,7 +178,9 @@ function computeOpenInventoryKey(ssuObjectId: string): string {
 	hasher.update(combined);
 	const hash = hasher.digest();
 	const bytes = new Uint8Array(hash);
-	return `0x${Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+	return `0x${Array.from(bytes)
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("")}`;
 }
 
 /**
@@ -271,8 +273,7 @@ export function useInventory(
 
 			for (const node of nodes) {
 				// Only process inventory dynamic fields
-				const dfTypeRepr =
-					node.value?.contents?.type?.repr ?? node.value?.type?.repr ?? "";
+				const dfTypeRepr = node.value?.contents?.type?.repr ?? node.value?.type?.repr ?? "";
 				if (!dfTypeRepr.includes("::inventory::Inventory")) continue;
 
 				const invJson = node.value?.contents?.json ?? node.value?.json;
@@ -283,10 +284,10 @@ export function useInventory(
 				// The key is the dynamic field name (an ID)
 				const keyRaw = String(
 					typeof node.name.json === "object" && node.name.json !== null
-						? (node.name.json as Record<string, unknown>).id ??
+						? ((node.name.json as Record<string, unknown>).id ??
 								(node.name.json as Record<string, unknown>).bytes ??
-								JSON.stringify(node.name.json)
-						: node.name.json ?? "",
+								JSON.stringify(node.name.json))
+						: (node.name.json ?? ""),
 				);
 				const key = normalizeId(keyRaw);
 
@@ -406,15 +407,17 @@ export function useInventory(
 		return {
 			slots,
 			ownerInventory: ownerSlot
-				? { maxCapacity: ownerSlot.maxCapacity, usedCapacity: ownerSlot.usedCapacity, items: ownerSlot.items }
+				? {
+						maxCapacity: ownerSlot.maxCapacity,
+						usedCapacity: ownerSlot.usedCapacity,
+						items: ownerSlot.items,
+					}
 				: emptyInventory,
 		};
 	}, [rawSlots, namesQuery.data, characterNamesQuery.data, inventoryQuery.data]);
 
 	return {
 		data: inventories,
-		isLoading:
-			inventoryQuery.isLoading ||
-			(namesQuery.isLoading && allTypeIds.length > 0),
+		isLoading: inventoryQuery.isLoading || (namesQuery.isLoading && allTypeIds.length > 0),
 	};
 }

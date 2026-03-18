@@ -1,5 +1,5 @@
+import type { SlotType, SsuInventories } from "@/hooks/useInventory";
 import { useState } from "react";
-import type { SsuInventories, SlotType } from "@/hooks/useInventory";
 import { InventoryTable } from "./InventoryTable";
 
 interface InventoryTabsProps {
@@ -14,18 +14,33 @@ interface InventoryTabsProps {
  */
 const SLOT_COLORS: Record<SlotType, { bar: string; border: string; text: string; hex: string }> = {
 	owner: { bar: "bg-cyan-500", border: "border-l-cyan-500", text: "text-cyan-400", hex: "#06b6d4" },
-	open: { bar: "bg-amber-500", border: "border-l-amber-500", text: "text-amber-400", hex: "#f59e0b" },
+	open: {
+		bar: "bg-amber-500",
+		border: "border-l-amber-500",
+		text: "text-amber-400",
+		hex: "#f59e0b",
+	},
 	player: { bar: "", border: "", text: "", hex: "" }, // assigned dynamically
 };
 
 /** Rotating colors for player inventory slots */
 const PLAYER_COLORS = [
 	{ bar: "bg-violet-500", border: "border-l-violet-500", text: "text-violet-400", hex: "#8b5cf6" },
-	{ bar: "bg-emerald-500", border: "border-l-emerald-500", text: "text-emerald-400", hex: "#10b981" },
+	{
+		bar: "bg-emerald-500",
+		border: "border-l-emerald-500",
+		text: "text-emerald-400",
+		hex: "#10b981",
+	},
 	{ bar: "bg-rose-500", border: "border-l-rose-500", text: "text-rose-400", hex: "#f43f5e" },
 	{ bar: "bg-sky-500", border: "border-l-sky-500", text: "text-sky-400", hex: "#0ea5e9" },
 	{ bar: "bg-orange-500", border: "border-l-orange-500", text: "text-orange-400", hex: "#f97316" },
-	{ bar: "bg-fuchsia-500", border: "border-l-fuchsia-500", text: "text-fuchsia-400", hex: "#d946ef" },
+	{
+		bar: "bg-fuchsia-500",
+		border: "border-l-fuchsia-500",
+		text: "text-fuchsia-400",
+		hex: "#d946ef",
+	},
 ];
 
 /** Get the color config for a slot by type and player index */
@@ -79,9 +94,7 @@ export function InventoryTabs({ inventories, isLoading }: InventoryTabsProps) {
 						Capacity: {totalUsed.toLocaleString()} / {maxCapacity.toLocaleString()} m³
 					</span>
 					{maxCapacity > 0 && (
-						<span className="text-zinc-600">
-							{Math.round((totalUsed / maxCapacity) * 100)}%
-						</span>
+						<span className="text-zinc-600">{Math.round((totalUsed / maxCapacity) * 100)}%</span>
 					)}
 				</div>
 				<div className="flex h-2 overflow-hidden rounded-full bg-zinc-800">
@@ -104,9 +117,7 @@ export function InventoryTabs({ inventories, isLoading }: InventoryTabsProps) {
 					<div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
 						{slots.map((slot, idx) => (
 							<div key={slot.key} className="flex items-center gap-1 text-xs text-zinc-500">
-								<div
-									className={`h-2 w-2 rounded-full ${slotColors[idx].bar}`}
-								/>
+								<div className={`h-2 w-2 rounded-full ${slotColors[idx].bar}`} />
 								<span>{slot.label}</span>
 							</div>
 						))}
@@ -115,26 +126,24 @@ export function InventoryTabs({ inventories, isLoading }: InventoryTabsProps) {
 			</div>
 
 			{/* Tab bar */}
-			<div className="mb-4 flex gap-1 rounded-lg bg-zinc-800/50 p-1">
+			<div className="mb-4 flex flex-wrap gap-1 rounded-lg bg-zinc-800/50 p-1">
 				{slots.map((slot, idx) => (
 					<button
 						key={slot.key}
 						type="button"
 						onClick={() => setActiveIdx(idx)}
-						className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-							activeIdx === idx
-								? "bg-zinc-700 text-zinc-100"
-								: "text-zinc-500 hover:text-zinc-300"
+						className={`min-w-0 flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors sm:px-3 ${
+							activeIdx === idx ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
 						}`}
 					>
-						<span className="flex items-center justify-center gap-1.5">
+						<span className="flex items-center justify-center gap-1">
 							<span
-								className={`inline-block h-1.5 w-1.5 rounded-full ${slotColors[idx].bar}`}
+								className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${slotColors[idx].bar}`}
 							/>
-							{slot.label}
+							<span className="truncate">{slot.label}</span>
 						</span>
 						{slot.items.length > 0 && (
-							<span className="ml-1.5 rounded-full bg-zinc-600/50 px-1.5 py-0.5 text-xs">
+							<span className="ml-1 rounded-full bg-zinc-600/50 px-1.5 py-0.5 text-xs">
 								{slot.items.length}
 							</span>
 						)}

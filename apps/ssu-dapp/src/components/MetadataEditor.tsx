@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { Transaction } from "@mysten/sui/transactions";
-import { useSignAndExecute } from "@/hooks/useSignAndExecute";
-import { getWorldPackageId, getTenant } from "@/lib/constants";
 import type { AssemblyMetadata } from "@/hooks/useAssembly";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
+import { useSignAndExecute } from "@/hooks/useSignAndExecute";
+import { getTenant, getWorldPackageId } from "@/lib/constants";
+import { decodeErrorMessage } from "@/lib/errors";
+import { Transaction } from "@mysten/sui/transactions";
+import { useState } from "react";
 
 interface MetadataEditorProps {
 	ssuObjectId: string;
@@ -56,11 +57,7 @@ export function MetadataEditor({
 			if (name !== (metadata?.name ?? "")) {
 				tx.moveCall({
 					target: `${worldPkg}::storage_unit::update_metadata_name`,
-					arguments: [
-						tx.object(ssuObjectId),
-						borrowedCap,
-						tx.pure.string(name),
-					],
+					arguments: [tx.object(ssuObjectId), borrowedCap, tx.pure.string(name)],
 				});
 			}
 
@@ -68,11 +65,7 @@ export function MetadataEditor({
 			if (description !== (metadata?.description ?? "")) {
 				tx.moveCall({
 					target: `${worldPkg}::storage_unit::update_metadata_description`,
-					arguments: [
-						tx.object(ssuObjectId),
-						borrowedCap,
-						tx.pure.string(description),
-					],
+					arguments: [tx.object(ssuObjectId), borrowedCap, tx.pure.string(description)],
 				});
 			}
 
@@ -80,11 +73,7 @@ export function MetadataEditor({
 			if (url !== (metadata?.url ?? "")) {
 				tx.moveCall({
 					target: `${worldPkg}::storage_unit::update_metadata_url`,
-					arguments: [
-						tx.object(ssuObjectId),
-						borrowedCap,
-						tx.pure.string(url),
-					],
+					arguments: [tx.object(ssuObjectId), borrowedCap, tx.pure.string(url)],
 				});
 			}
 
@@ -98,7 +87,7 @@ export function MetadataEditor({
 			await signAndExecute(tx);
 			setSuccess("Metadata updated successfully");
 		} catch (err) {
-			setError(String(err));
+			setError(decodeErrorMessage(String(err)));
 		}
 	}
 
