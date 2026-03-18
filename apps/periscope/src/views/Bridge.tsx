@@ -2,8 +2,6 @@ import { useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/db";
 import { useSonarStore } from "@/stores/sonarStore";
-import { useLocalSonar } from "@/hooks/useLocalSonar";
-import { useChainSonar } from "@/hooks/useChainSonar";
 import type { SonarEvent, SonarChannelStatus } from "@/db/types";
 import {
 	Navigation,
@@ -239,9 +237,7 @@ function formatRelative(isoTimestamp: string): string {
 // ── Main View ────────────────────────────────────────────────────────────────
 
 export function Bridge() {
-	// Activate both sonar channels
-	useLocalSonar();
-	useChainSonar();
+	// Sonar hooks now run at Layout level -- no need to call them here
 
 	// Query sonar events for dashboard derivations
 	const allEvents = useLiveQuery(

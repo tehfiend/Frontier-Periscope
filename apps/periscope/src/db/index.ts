@@ -28,8 +28,6 @@ import type {
 	OrganizationRecord,
 	PermissionGroup,
 	PlayerIntel,
-	RadarEvent,
-	RadarWatch,
 	Region,
 	SettingsEntry,
 	SharingGroup,
@@ -95,10 +93,6 @@ class PeriscopeDB extends Dexie {
 	syncPeers!: EntityTable<SyncPeer, "id">;
 	syncLog!: EntityTable<SyncLogEntry, "id">;
 	sharingGroups!: EntityTable<SharingGroup, "id">;
-
-	// Radar
-	radarWatches!: EntityTable<RadarWatch, "id">;
-	radarEvents!: EntityTable<RadarEvent, "id">;
 
 	// Manifest (local chain cache)
 	manifestCharacters!: EntityTable<ManifestCharacter, "id">;
@@ -476,6 +470,12 @@ class PeriscopeDB extends Dexie {
 				"id, objectId, assemblyType, owner, status, label, systemId, updatedAt, _hlc, ownerCapId, parentId, *tags",
 			assemblies:
 				"id, assemblyType, objectId, owner, status, systemId, updatedAt, _hlc, parentId, *tags",
+		});
+
+		// V20: Drop Radar tables -- Radar feature removed, replaced by Sonar
+		this.version(20).stores({
+			radarWatches: null,
+			radarEvents: null,
 		});
 	}
 }
