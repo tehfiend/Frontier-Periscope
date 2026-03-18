@@ -445,39 +445,6 @@ export interface ManifestTribe {
 	cachedAt: string;
 }
 
-// ── Radar Types ────────────────────────────────────────────────────────────
-
-export interface RadarWatch {
-	id: string;
-	kind: "system" | "character" | "tribe";
-	/** System ID, character item_id, or tribe ID */
-	targetId: string;
-	label: string;
-	alertEnabled: boolean;
-	alertSound: boolean;
-	alertNotification: boolean;
-	createdAt: string;
-}
-
-export type RadarEventKind =
-	| "killmail"
-	| "fuel"
-	| "status_change"
-	| "assembly_created"
-	| "jump"
-	| "inventory";
-
-export interface RadarEvent {
-	id?: number;
-	watchId: string;
-	kind: RadarEventKind;
-	timestamp: string;
-	summary: string;
-	details?: string;
-	txDigest?: string;
-	acknowledged: boolean;
-}
-
 // ── Governance Types ────────────────────────────────────────────────────────
 
 export type OrgTier = "stakeholder" | "member" | "serf" | "opposition";

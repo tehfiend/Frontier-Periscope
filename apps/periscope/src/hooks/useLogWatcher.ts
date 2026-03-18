@@ -349,5 +349,14 @@ export function useLogWatcher() {
 		startWatching();
 	}, [stopWatching, startWatching, setActiveSessionId, setLiveStats]);
 
-	return { grantAccess, startWatching, stopWatching, clearAndReimport };
+	// Register callbacks on the store so other components (e.g. Logs view) can use them
+	// without needing to call this hook themselves
+	useEffect(() => {
+		useLogStore.getState().setGrantAccess(grantAccess);
+		useLogStore.getState().setClearAndReimport(clearAndReimport);
+		return () => {
+			useLogStore.getState().setGrantAccess(null);
+			useLogStore.getState().setClearAndReimport(null);
+		};
+	}, [grantAccess, clearAndReimport]);
 }
