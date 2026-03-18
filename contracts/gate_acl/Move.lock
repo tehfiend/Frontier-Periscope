@@ -29,7 +29,13 @@ manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D
 deps = { MoveStdlib = "MoveStdlib_1" }
 
 [pinned.testnet.World]
-source = { git = "https://github.com/evefrontier/world-contracts.git", subdir = 'contracts\world', rev = "8eb197e4573275d6f45b0da2c69ee793487a49fd" }
+source = { local = '..\world_utopia' }
+use_environment = "testnet"
+manifest_digest = "ED881AEE5B6E33C7A9D149CD1133047E41D103FAD527778F56F099E07F5F9C95"
+deps = { Sui = "Sui_1" }
+
+[pinned.testnet.acl_registry]
+source = { local = '..\acl_registry' }
 use_environment = "testnet"
 manifest_digest = "ED881AEE5B6E33C7A9D149CD1133047E41D103FAD527778F56F099E07F5F9C95"
 deps = { Sui = "Sui_1" }
@@ -37,5 +43,5 @@ deps = { Sui = "Sui_1" }
 [pinned.testnet.gate_acl]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "DAFCAD45BECE7241BB59E2D9D45B0A084D61570D0510231E8979D0290EA92140"
-deps = { std = "MoveStdlib", sui = "Sui", world = "World" }
+manifest_digest = "3E51236B901FED6D9C5F5F489DE76A2E555EE8CB291F0E1E1623F74B232C9E1C"
+deps = { acl_registry = "acl_registry", std = "MoveStdlib", sui = "Sui", world = "World" }

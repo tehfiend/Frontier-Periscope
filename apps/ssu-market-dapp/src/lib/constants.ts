@@ -6,6 +6,10 @@ export const WORLD_PACKAGE_ID =
 export const SSU_MARKET_PACKAGE_ID =
 	"0xeca760fe766302433fcc4c538d95f1f8960e863e5b789c63011dae18a20723d4";
 
+/** Currency Market contract package ID */
+export const CURRENCY_MARKET_PACKAGE_ID =
+	"0x07d9632d6f4e3288d8ea2330caa40850bfdb63f19aff20dbd66fb16a5cf035a6";
+
 /** World API base URLs per tenant */
 export const WORLD_API: Record<string, string> = {
 	stillness: "https://world-api-stillness.live.tech.evefrontier.com",
@@ -28,4 +32,12 @@ export function getCoinType(): string {
 
 export function getTenant(): string {
 	return getUrlParam("tenant") ?? "stillness";
+}
+
+export function getMarketId(): string {
+	return getUrlParam("marketId") ?? "";
+}
+
+export function getCurrencyMarketPackageId(): string {
+	return getUrlParam("currencyMarketPackageId") ?? CURRENCY_MARKET_PACKAGE_ID;
 }

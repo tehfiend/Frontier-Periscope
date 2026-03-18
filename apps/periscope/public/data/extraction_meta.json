@@ -1,60 +1,17 @@
 {
-  "extractedAt": "2026-03-12T03:28:33Z",
-  "extractionTimeSeconds": 1.04,
-  "gameRoot": "C:\\CCP\\EVE Frontier",
-  "pythonVersion": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
-  "filesExtracted": [
-    {
-      "filename": "blueprints.json",
-      "sizeBytes": 162235
-    },
-    {
-      "filename": "categories.json",
-      "sizeBytes": 4595
-    },
-    {
-      "filename": "facilities.json",
-      "sizeBytes": 28934
-    },
-    {
-      "filename": "groups.json",
-      "sizeBytes": 332449
-    },
-    {
-      "filename": "marketgroups.json",
-      "sizeBytes": 275583
-    },
-    {
-      "filename": "spacecomponents.json",
-      "sizeBytes": 2471517
-    },
-    {
-      "filename": "stellar_constellations.json",
-      "sizeBytes": 660742
-    },
-    {
-      "filename": "stellar_jumps.json",
-      "sizeBytes": 214032
-    },
-    {
-      "filename": "stellar_labels.json",
-      "sizeBytes": 622932
-    },
-    {
-      "filename": "stellar_regions.json",
-      "sizeBytes": 318142
-    },
-    {
-      "filename": "stellar_systems.json",
-      "sizeBytes": 5180928
-    },
-    {
-      "filename": "typematerials.json",
-      "sizeBytes": 1387
-    },
-    {
-      "filename": "types.json",
-      "sizeBytes": 11509122
-    }
-  ]
+  "version": "1.0.0",
+  "source": "EVE Frontier Client ResFiles (build 3251859)",
+  "extractedAt": "2026-03-18T18:48:15Z",
+  "counts": {
+    "regions": 284,
+    "constellations": 2213,
+    "solarSystems": 24426,
+    "jumpEdges": 4116,
+    "labels": 26923
+  },
+  "namesResolved": {
+    "regions": 284,
+    "constellations": 2213,
+    "systems": 24426
+  }
 }
