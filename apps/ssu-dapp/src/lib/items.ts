@@ -8,10 +8,10 @@ interface TypeInfo {
 	icon_url?: string;
 }
 
-/** Fetch type info from World API with caching */
+/** Fetch type info from World API with caching.
+ * Always uses stillness API — item types are shared across tenants and utopia has no World API. */
 async function fetchTypeInfo(typeId: number): Promise<TypeInfo> {
-	const tenant = getTenant();
-	const baseUrl = WORLD_API[tenant] ?? WORLD_API.stillness;
+	const baseUrl = WORLD_API.stillness;
 
 	try {
 		const res = await fetch(`${baseUrl}/v2/types/${typeId}`);

@@ -34,6 +34,7 @@ pnpm clean          # Clean all build artifacts
 | periscope | `apps/periscope/` | Frontier Periscope intel tool (Vite + React SPA) |
 | gas-station | `apps/gas-station/` | Express API: turret build/publish + sponsored TX |
 | permissions-dapp | `apps/permissions-dapp/` | Permissions management dapp (Vite + React) |
+| ssu-market-dapp | `apps/ssu-market-dapp/` | SSU Market trading dapp (Vite + React) |
 | shared | `packages/shared/` | Shared Zod validation schemas |
 | chain-shared | `packages/chain-shared/` | Move contract types, addresses, turret generator |
 | sui-client | `packages/sui-client/` | @mysten/sui gRPC wrapper |

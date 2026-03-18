@@ -451,28 +451,25 @@ function CharacterCard({ character }: { character: CharacterRecord }) {
 		setResolving(true);
 		setResolveStatus("Searching chain...");
 		try {
-			const result = await lookupCharacterByItemId(character.characterId);
+			const result = await lookupCharacterByItemId(
+				character.characterId,
+				(character.tenant as TenantId) || "stillness",
+			);
 			if (result) {
 				const updates: Record<string, unknown> = {
 					suiAddress: result.suiAddress,
 					tribeId: result.tribeId,
+					tribe: result.tribeName,
+					characterName: result.characterName || character.characterName,
+					manifestId: result.characterObjectId,
+					tenant: result.tenant || character.tenant,
 					updatedAt: new Date().toISOString(),
 				};
-				// Also check manifest for tribe name
-				const manifest = await db.manifestCharacters
-					.where("characterItemId")
-					.equals(character.characterId)
-					.first();
-				if (manifest) {
-					updates.manifestId = manifest.id;
-					if (manifest.tribeId) {
-						const tribe = await db.manifestTribes.get(manifest.tribeId);
-						if (tribe) updates.tribe = tribe.name;
-					}
-				}
 				await db.characters.update(character.id, updates);
 				setAddress(result.suiAddress);
-				setResolveStatus(`Resolved: ${result.characterName}`);
+				setResolveStatus(
+					`Resolved: ${result.characterName}${result.tribeName ? ` (${result.tribeName})` : ""}`,
+				);
 			} else {
 				setResolveStatus("Character not found on chain");
 			}

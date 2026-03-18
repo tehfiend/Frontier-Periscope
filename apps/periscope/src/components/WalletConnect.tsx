@@ -1,33 +1,91 @@
-import { useCurrentAccount } from "@mysten/dapp-kit-react";
+import { useCurrentAccount, useWallets, useDAppKit } from "@mysten/dapp-kit-react";
+import { Wallet, LogOut } from "lucide-react";
 
 function truncateAddress(address: string): string {
 	return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 /**
- * Minimal wallet connection status indicator.
- * Shows a green dot + truncated address when connected,
- * or a gray dot + "Not connected" when disconnected.
- * No button — auto-connect handles connection via EVE Vault.
+ * Wallet connection button mimicking the default EVE Frontier dApp pattern.
+ * - Disconnected: shows a "Connect Wallet" button
+ * - Connected: shows green dot + truncated address; click to disconnect
  */
 export function WalletConnect() {
 	const account = useCurrentAccount();
+	const wallets = useWallets();
+	const { connectWallet, disconnectWallet } = useDAppKit();
+
+	function handleConnect() {
+		const eveVault = wallets.find(
+			(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
+		);
+		const wallet = eveVault || wallets[0];
+		if (wallet) {
+			connectWallet({ wallet });
+		}
+	}
 
 	if (!account) {
 		return (
-			<div className="flex items-center gap-1.5">
-				<span className="h-2 w-2 rounded-full bg-zinc-600" />
-				<span className="text-xs text-zinc-500">Not connected</span>
-			</div>
+			<button
+				type="button"
+				onClick={handleConnect}
+				className="flex w-full items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-400 transition-colors hover:border-cyan-600 hover:bg-cyan-900/20 hover:text-cyan-400"
+			>
+				<Wallet size={14} className="shrink-0" />
+				<span>Connect Wallet</span>
+			</button>
 		);
 	}
 
 	return (
-		<div className="flex items-center gap-1.5">
-			<span className="h-2 w-2 rounded-full bg-green-500" />
-			<span className="font-mono text-xs text-zinc-400">
+		<button
+			type="button"
+			onClick={() => disconnectWallet()}
+			className="group flex w-full items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-sm transition-colors hover:border-zinc-700 hover:bg-zinc-900"
+			title="Click to disconnect"
+		>
+			<span className="h-2 w-2 shrink-0 rounded-full bg-green-500" />
+			<span className="flex-1 truncate font-mono text-xs text-zinc-400">
 				{truncateAddress(account.address)}
 			</span>
-		</div>
+			<LogOut
+				size={12}
+				className="shrink-0 text-zinc-700 opacity-0 transition-opacity group-hover:opacity-100"
+			/>
+		</button>
+	);
+}
+
+/**
+ * Inline connect button for use inside page content (e.g. next to transaction buttons).
+ * Compact variant — no border, just text + icon.
+ */
+export function ConnectWalletButton({ className = "" }: { className?: string }) {
+	const account = useCurrentAccount();
+	const wallets = useWallets();
+	const { connectWallet } = useDAppKit();
+
+	if (account) return null;
+
+	function handleConnect() {
+		const eveVault = wallets.find(
+			(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
+		);
+		const wallet = eveVault || wallets[0];
+		if (wallet) {
+			connectWallet({ wallet });
+		}
+	}
+
+	return (
+		<button
+			type="button"
+			onClick={handleConnect}
+			className={`flex items-center gap-1.5 rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 ${className}`}
+		>
+			<Wallet size={12} />
+			Connect Wallet
+		</button>
 	);
 }

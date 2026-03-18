@@ -9,7 +9,9 @@ import {
 	getObjectJson,
 	queryEventsGql,
 } from "@tehfrontier/chain-shared";
-import { getMoveTypes, getEventTypes, type TenantId } from "./config";
+import { TENANTS, getMoveTypes, getEventTypes, type TenantId } from "./config";
+import { cacheCharacterFromLookup, ensureTribeName, getTribeName } from "./manifest";
+import { db } from "@/db";
 
 let client: SuiGraphQLClient | null = null;
 
@@ -112,66 +114,174 @@ export async function getCharacters(
 	return getOwnedObjectsByType(address, getMoveTypes(tenant).Character);
 }
 
-const CHARACTER_TYPE = getMoveTypes("stillness").Character;
-
-interface CharacterLookupResult {
+export interface CharacterLookupResult {
 	suiAddress: string;
 	characterName: string;
 	tribeId: number;
+	tribeName?: string;
+	characterObjectId?: string;
+	tenant?: TenantId;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: GraphQL response shape is dynamic
 type GqlJson = Record<string, any>;
 
+type EventQueryResult = {
+	events: {
+		nodes: Array<{ contents?: { json: GqlJson } }>;
+		pageInfo: { hasNextPage: boolean; endCursor: string | null };
+	};
+};
+
 /** Look up a character's Sui address by in-game character ID (from log filenames).
- *  Uses SuiGraphQLClient.query() to search Character objects by key.item_id. */
+ *  Checks the local manifest cache first (instant). Falls back to searching
+ *  CharacterCreatedEvent on chain, caching all results along the way. */
 export async function lookupCharacterByItemId(
 	itemId: string,
+	tenant: TenantId = "stillness",
+): Promise<CharacterLookupResult | null> {
+	// Fast path: check manifest cache first
+	const cached = await db.manifestCharacters
+		.where("characterItemId")
+		.equals(itemId)
+		.first();
+	if (cached?.suiAddress) {
+		const tribeName = cached.tribeId
+			? (await getTribeName(cached.tribeId)) ?? undefined
+			: undefined;
+		return {
+			suiAddress: cached.suiAddress,
+			characterName: cached.name ?? "",
+			tribeId: cached.tribeId ?? 0,
+			tribeName,
+			characterObjectId: cached.id,
+			tenant: (cached.tenant as TenantId) ?? tenant,
+		};
+	}
+
+	// Slow path: search chain events (caches everything it finds)
+	const tenants: TenantId[] = [tenant, ...(Object.keys(TENANTS) as TenantId[]).filter((t) => t !== tenant)];
+	for (const t of tenants) {
+		const result = await searchCharacterEvents(itemId, t);
+		if (result) return result;
+	}
+	return null;
+}
+
+async function searchCharacterEvents(
+	itemId: string,
+	tenant: TenantId,
 ): Promise<CharacterLookupResult | null> {
 	const c = getSuiClient();
+	const eventType = getEventTypes(tenant).CharacterCreated;
 	let cursor: string | null = null;
+	let match: CharacterLookupResult | null = null;
 
-	type CharacterQueryResult = {
-		objects: {
-			nodes: Array<{ asMoveObject?: { contents?: { json: GqlJson } } }>;
-			pageInfo: { hasNextPage: boolean; endCursor: string | null };
-		};
-	};
+	// Collect unique tribe IDs to batch-cache after search
+	const seenTribes = new Set<number>();
 
-	for (let page = 0; page < 200; page++) {
-		const gqlQuery: string = `{
-			objects(filter: { type: "${CHARACTER_TYPE}" }, first: 50${cursor ? `, after: "${cursor}"` : ""}) {
+	for (let page = 0; page < 100; page++) {
+		const gqlQuery = `{
+			events(filter: { type: "${eventType}" }, first: 50${cursor ? `, after: "${cursor}"` : ""}) {
 				nodes {
-					asMoveObject { contents { json } }
+					contents { json }
 				}
 				pageInfo { hasNextPage endCursor }
 			}
 		}`;
 
-		const result = await c.query<CharacterQueryResult>({
-			query: gqlQuery,
-			variables: {},
-		});
+		let result: { data?: EventQueryResult | null };
+		try {
+			result = await c.query<EventQueryResult>({
+				query: gqlQuery,
+				variables: {},
+			});
+		} catch {
+			break;
+		}
 
-		const nodes = result.data?.objects?.nodes;
-		if (!nodes) return null;
+		const nodes = result.data?.events?.nodes;
+		if (!nodes) break;
+
+		// Cache every character from this page of events
+		const batch: Array<{
+			charObjId: string;
+			charItemId: string;
+			suiAddress: string;
+			tribeId: number;
+		}> = [];
 
 		for (const node of nodes) {
-			const json = node?.asMoveObject?.contents?.json;
-			if (!json) continue;
+			const json = node?.contents?.json;
+			if (!json?.key?.item_id) continue;
 
-			if (json.key?.item_id === itemId) {
-				return {
-					suiAddress: json.character_address as string,
-					characterName: (json.metadata?.name as string) ?? "Unknown",
-					tribeId: json.tribe_id as number,
+			const charObjId = (json.character_id as string) ?? "";
+			const charItemId = json.key.item_id as string;
+			const suiAddress = json.character_address as string;
+			const tribeId = json.tribe_id as number;
+
+			if (tribeId) seenTribes.add(tribeId);
+
+			if (charObjId && suiAddress) {
+				batch.push({ charObjId, charItemId, suiAddress, tribeId });
+			}
+
+			// Check for our target
+			if (charItemId === itemId) {
+				// Fetch the Character object for the name
+				let characterName = "";
+				if (charObjId) {
+					try {
+						const obj = await getObjectDetails(charObjId);
+						const fields = obj.json as GqlJson | null;
+						characterName = (fields?.metadata?.name as string) ?? "";
+					} catch {
+						// Object fetch failed
+					}
+				}
+
+				match = {
+					suiAddress,
+					characterName,
+					tribeId,
+					characterObjectId: charObjId || undefined,
+					tenant,
 				};
 			}
 		}
 
-		const pageInfo: CharacterQueryResult["objects"]["pageInfo"] | undefined = result.data?.objects?.pageInfo;
+		// Bulk cache all characters from this page (fire-and-forget)
+		for (const entry of batch) {
+			cacheCharacterFromLookup(
+				entry.charObjId,
+				entry.charItemId,
+				entry.suiAddress,
+				"", // Name resolved separately for the target only
+				entry.tribeId,
+				tenant,
+			).catch(() => {});
+		}
+
+		// If we found the target, resolve its tribe and return
+		if (match) {
+			try {
+				match.tribeName =
+					(await ensureTribeName(match.tribeId, tenant)) ?? undefined;
+			} catch {
+				// non-critical
+			}
+			return match;
+		}
+
+		const pageInfo = result.data?.events?.pageInfo;
 		if (!pageInfo?.hasNextPage) break;
 		cursor = pageInfo.endCursor ?? null;
+	}
+
+	// Didn't find the target, but we cached everything we saw.
+	// Also trigger a tribe cache for all seen tribe IDs (fire-and-forget).
+	for (const tribeId of seenTribes) {
+		ensureTribeName(tribeId, tenant).catch(() => {});
 	}
 
 	return null;

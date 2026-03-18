@@ -6,7 +6,8 @@ import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { TENANTS, type TenantId } from "@/chain/config";
 import { discoverCharacterAndAssemblies } from "@/chain/queries";
 import { fetchCharacterByAddress, searchCachedCharacters } from "@/chain/manifest";
-import { parseLogFilename, parseHeader } from "@/lib/logParser";
+import { parseLogFilename, parseHeader, decodeChatLog } from "@/lib/logParser";
+import { lookupCharacterByItemId } from "@/chain/client";
 import { getStoredHandle, requestDirectoryAccess, verifyPermission } from "@/lib/logFileAccess";
 import { useAppStore } from "@/stores/appStore";
 import {
@@ -20,6 +21,7 @@ import {
 	User,
 	Plus,
 	AlertCircle,
+	RefreshCw,
 } from "lucide-react";
 import type { ManifestCharacter } from "@/db/types";
 
@@ -321,6 +323,51 @@ function LogsMethod({ onClose: _onClose, tenant }: { onClose: () => void; tenant
 	const [scanning, setScanning] = useState(false);
 	const [discovered, setDiscovered] = useState<DiscoveredChar[]>([]);
 	const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+	const [hasStoredHandle, setHasStoredHandle] = useState(false);
+	const [resolving, setResolving] = useState(false);
+
+	async function resolveFromChain(chars: DiscoveredChar[], t: TenantId) {
+		const toResolve = chars.filter((c) => !c.suiAddress && c.characterId);
+		if (toResolve.length === 0) return;
+		setResolving(true);
+		for (const char of toResolve) {
+			try {
+				const result = await lookupCharacterByItemId(char.characterId!, t);
+				if (result) {
+					setDiscovered((prev) =>
+						prev.map((c) =>
+							c.characterId === char.characterId
+								? {
+										...c,
+										suiAddress: result.suiAddress,
+										characterName: result.characterName || c.characterName,
+										tribeId: result.tribeId,
+										tribe: result.tribeName,
+									}
+								: c,
+						),
+					);
+				}
+			} catch {
+				// Chain lookup failed — keep file-based data
+			}
+		}
+		setResolving(false);
+	}
+
+	// Auto-scan on mount if a stored directory handle exists
+	useEffect(() => {
+		let cancelled = false;
+		getStoredHandle().then((h) => {
+			if (cancelled) return;
+			if (h) {
+				setHasStoredHandle(true);
+				handleScan();
+			}
+		});
+		return () => { cancelled = true; };
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	async function handleScan() {
 		setScanning(true);
@@ -366,14 +413,39 @@ function LogsMethod({ onClose: _onClose, tenant }: { onClose: () => void; tenant
 					// First time seeing this character — read header for name
 					const fileHandle = entry as FileSystemFileHandle;
 					const file = await fileHandle.getFile();
-					const headerText = await file.slice(0, 1024).text();
+					const headerText = await file.slice(0, 2048).text();
 					const header = parseHeader(headerText);
-					if (header) {
-						charMap.set(parsed.characterId, {
-							name: header.characterName,
-							firstDate: parsed.date,
-							lastDate: parsed.date,
-						});
+					charMap.set(parsed.characterId, {
+						name: header?.characterName || `Character ${parsed.characterId}`,
+						firstDate: parsed.date,
+						lastDate: parsed.date,
+					});
+				}
+			}
+
+			// For characters whose game log lacked a Listener line, try chat logs
+			const needsName = [...charMap].filter(([, v]) => v.name.startsWith("Character "));
+			if (needsName.length > 0) {
+				let chatlogsDir: FileSystemDirectoryHandle | null = null;
+				try {
+					chatlogsDir = await handle.getDirectoryHandle("Chatlogs");
+				} catch { /* no Chatlogs dir */ }
+				if (chatlogsDir) {
+					for (const [charId, info] of needsName) {
+						for await (const [chatFileName, chatEntry] of chatlogsDir.entries()) {
+							if (chatEntry.kind !== "file") continue;
+							if (!chatFileName.includes(`_${charId}.txt`)) continue;
+							try {
+								const chatFile = await (chatEntry as FileSystemFileHandle).getFile();
+								const buf = await chatFile.slice(0, 4096).arrayBuffer();
+								const text = decodeChatLog(buf);
+								const m = text.match(/Listener:\s+(.+)/);
+								if (m) {
+									info.name = m[1].trim();
+									break;
+								}
+							} catch { /* skip unreadable */ }
+						}
 					}
 				}
 			}
@@ -394,9 +466,12 @@ function LogsMethod({ onClose: _onClose, tenant }: { onClose: () => void; tenant
 				.sort((a, b) => (b.lastSeen ?? "").localeCompare(a.lastSeen ?? ""));
 
 			setDiscovered(chars);
+			setScanning(false);
+
+			// Auto-resolve addresses from blockchain (non-blocking, runs after UI updates)
+			resolveFromChain(chars, tenant);
 		} catch (err) {
 			console.error("Log scan error:", err);
-		} finally {
 			setScanning(false);
 		}
 	}
@@ -425,20 +500,23 @@ function LogsMethod({ onClose: _onClose, tenant }: { onClose: () => void; tenant
 				folder.
 			</p>
 
-			{discovered.length === 0 && (
+			{discovered.length === 0 && !scanning && (
 				<button
 					type="button"
 					onClick={handleScan}
 					disabled={scanning}
 					className="flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
 				>
-					{scanning ? (
-						<Loader2 size={14} className="animate-spin" />
-					) : (
-						<FolderOpen size={14} />
-					)}
-					{scanning ? "Scanning..." : "Select Log Directory"}
+					<FolderOpen size={14} />
+					{hasStoredHandle ? "Scan Log Directory" : "Select Log Directory"}
 				</button>
+			)}
+
+			{scanning && (
+				<div className="flex items-center justify-center gap-2 py-4 text-sm text-zinc-400">
+					<Loader2 size={14} className="animate-spin" />
+					Scanning game logs...
+				</div>
 			)}
 
 			{discovered.length > 0 && (
@@ -453,7 +531,7 @@ function LogsMethod({ onClose: _onClose, tenant }: { onClose: () => void; tenant
 									key={char.characterId}
 									className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/30 px-3 py-2"
 								>
-									<div>
+									<div className="min-w-0 flex-1">
 										<p className="text-sm text-zinc-200">
 											{char.characterName}
 										</p>
@@ -468,6 +546,11 @@ function LogsMethod({ onClose: _onClose, tenant }: { onClose: () => void; tenant
 												</span>
 											)}
 										</p>
+										{char.suiAddress && (
+											<p className="truncate font-mono text-[10px] text-cyan-600">
+												{char.suiAddress}
+											</p>
+										)}
 									</div>
 									{wasAdded ? (
 										<span className="flex shrink-0 items-center gap-1 text-xs text-green-500">
@@ -486,18 +569,35 @@ function LogsMethod({ onClose: _onClose, tenant }: { onClose: () => void; tenant
 							);
 						})}
 					</div>
-					{discovered.some(
-						(c) =>
-							!c.alreadyAdded &&
-							!addedIds.has(c.characterId || ""),
-					) && (
+					<div className="flex gap-2">
+						{discovered.some(
+							(c) =>
+								!c.alreadyAdded &&
+								!addedIds.has(c.characterId || ""),
+						) && (
+							<button
+								type="button"
+								onClick={handleAddAll}
+								className="flex-1 rounded-lg border border-cyan-800 bg-cyan-900/20 py-2 text-sm text-cyan-400 transition-colors hover:bg-cyan-900/40"
+							>
+								Add All
+							</button>
+						)}
 						<button
 							type="button"
-							onClick={handleAddAll}
-							className="w-full rounded-lg border border-cyan-800 bg-cyan-900/20 py-2 text-sm text-cyan-400 transition-colors hover:bg-cyan-900/40"
+							onClick={handleScan}
+							disabled={scanning}
+							className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:opacity-50"
 						>
-							Add All
+							<RefreshCw size={12} />
+							Rescan
 						</button>
+					</div>
+					{resolving && (
+						<div className="flex items-center gap-2 text-xs text-zinc-500">
+							<Loader2 size={12} className="animate-spin" />
+							Resolving addresses from chain...
+						</div>
 					)}
 				</>
 			)}

@@ -1,9 +1,9 @@
 # Plan: Trade Page UX Improvements
 
-**Status:** Active — execution-ready
+**Status:** Complete — all phases implemented
 **Created:** 2026-03-15
-**Updated:** 2026-03-15
-**Reviewed:** 2026-03-15 (all file paths, line numbers, types, and patterns verified against codebase)
+**Updated:** 2026-03-17
+**Reviewed:** 2026-03-17 (post-implementation review — all phases verified against codebase)
 **Module:** periscope, chain-shared
 
 ## Overview
@@ -155,7 +155,7 @@ For the sell orders tab, add:
 
 ## Implementation Phases
 
-### Phase 1: OrgMarket Auto-Discovery + Persistence
+### Phase 1: OrgMarket Auto-Discovery + Persistence [COMPLETE]
 
 1. **Add `orgMarketId` field to `OrganizationRecord`** in `apps/periscope/src/db/types.ts` -- add `orgMarketId?: string` to the interface (after `chainObjectId?: string`).
 2. **Add DB migration V14** in `apps/periscope/src/db/index.ts` -- add `this.version(14).stores({ tradeNodes: "id" })` after the V13 block. The `orgMarketId` field on `OrganizationRecord` is optional and not indexed, so no schema change for `organizations` is needed (Dexie only requires re-declaration when indexes change). The `tradeNodes` table is new, so it must be declared. **Note:** This V14 migration is shared with Phase 2 (which also uses the `tradeNodes` table). Both Phase 1 and Phase 2 DB changes go into the same `this.version(14)` call.
@@ -186,7 +186,7 @@ For the sell orders tab, add:
    - After the TX succeeds and `marketCreated.objectId` is extracted (lines 629-637), add: `await db.organizations.update(org.id, { orgMarketId: marketCreated.objectId })`
    - Then call `refetch()` from the hook to refresh the view
 
-### Phase 2: Trade Node Setup Flow
+### Phase 2: Trade Node Setup Flow [COMPLETE]
 
 1. **Add `ssu_market` extension template** to `apps/periscope/src/chain/config.ts` `EXTENSION_TEMPLATES` array:
    ```ts
@@ -237,7 +237,7 @@ For the sell orders tab, add:
 8. **Filter SSU pickers** in both Sell and Buy tabs to only show Trade Nodes (cross-reference `discovery.assemblies` with `db.tradeNodes` via `useLiveQuery`). Display custom names in dropdowns instead of raw object IDs. Format: `"{name} -- {objectId.slice(0, 10)}..."`.
 9. **Update `handleCreateMarket()` in SellOrdersTab** to persist the MarketConfig ID back to `db.tradeNodes.update(ssuId, { marketConfigId })`.
 
-### Phase 3: Item Type Autocomplete Component
+### Phase 3: Item Type Autocomplete Component [COMPLETE]
 
 1. **Create `TypeSearchInput` component** at `apps/periscope/src/components/TypeSearchInput.tsx`:
    - Props: `value: number | null`, `onChange: (typeId: number | null) => void`, `placeholder?: string`, `className?: string`
@@ -257,14 +257,14 @@ For the sell orders tab, add:
 3. **Replace type ID input in `BuyOrdersTab`** -- change `orderTypeId` from `string` to `number | null`, replace the `<input type="number">` (lines 1090-1102) with `<TypeSearchInput value={orderTypeId} onChange={setOrderTypeId} placeholder="Search items..." />`. Update `handleFundBuyOrder` to use `orderTypeId` directly. Update the disabled check similarly.
 4. **Resolve type names in buy order list** -- add `typeNameMap` via `useLiveQuery(() => db.gameTypes.toArray())` and `useMemo` (same pattern as `apps/periscope/src/views/Assets.tsx` lines 32-41). Replace `Type #{order.typeId}` (line 1238) with `{typeNameMap[order.typeId] ?? "Type #" + order.typeId}`. Also add `#{order.typeId}` as a muted suffix for reference.
 
-### Phase 4: Trade Node Selection Improvements
+### Phase 4: Trade Node Selection Improvements [COMPLETE]
 
 1. **Enhance Trade Node dropdown in Buy Orders** -- replace `orderSsuId` raw text input (lines 1076-1088) with a `<select>` populated from Trade Nodes. Cross-reference each Trade Node with `orgMarketInfo.authorizedSsus` to show which nodes are authorized delivery points. Format options: `"{tradeName} -- {objectId.slice(0, 10)}... {isAuthorized ? '(authorized)' : '(not authorized)'}"`
 2. **Add status badges** to all Trade Node dropdowns -- cross-reference Trade Node objectId with `discovery.assemblies` to get `status`. Show a small colored dot: green for "online", yellow for "anchoring", gray for "offline"/"unknown".
 3. **Filter "Add SSU" section** (lines 970-1011) to only show Trade Nodes that are NOT already in `orgMarketInfo.authorizedSsus`. Replace the current dual selector/text-input pattern with a simple `<select>` of unadded Trade Nodes.
 4. **Edge case:** If user has no Trade Nodes, show a hint: "Enable an SSU as a Trade Node first (see above)" in both the buy order SSU selector and the "Add SSU" section.
 
-### Phase 5: Sell Order Inventory Browser
+### Phase 5: Sell Order Inventory Browser [COMPLETE]
 
 1. **Create `SsuInventoryPanel` component** at `apps/periscope/src/components/SsuInventoryPanel.tsx`:
    - Props: `assemblyId: string`, `assemblyType: string`, `onSelectItem: (typeId: number) => void`
@@ -302,7 +302,7 @@ For the sell orders tab, add:
 
 ## Deferred
 
-- **MarketConfig auto-discovery** -- Discovering which SSUs already have MarketConfig objects requires scanning shared objects or events. For now, we track MarketConfig IDs locally after creation. Full discovery (scan `MarketConfig` objects where `admin` = user address) deferred to post-hackathon.
+- ~~**MarketConfig auto-discovery**~~ **DONE** -- `discoverMarketConfig()` was added to `ssu-market.ts` using GraphQL object scan. `SellOrdersTab` auto-discovers MarketConfig for each Trade Node on mount, clearing stale configs on tenant switch.
 - **Buy order type name resolution on chain** -- The chain stores `type_id` as a u64. Name resolution is always client-side via gameTypes. No on-chain change needed.
 - **Automated buy order fill** -- Currently uses stakeholder-confirmed manual fill. Automated fill (checking extension inventory on-chain) is a separate feature.
 - **Multi-org support** -- Current implementation assumes a single org. Multi-org OrgMarket management deferred.
@@ -312,21 +312,44 @@ For the sell orders tab, add:
 
 ## Verification Log (2026-03-15)
 
-All file paths, line numbers, types, and patterns verified against the codebase:
+Pre-implementation verification -- all file paths, line numbers, types, and patterns were verified against the codebase at plan creation time. See original plan for full details.
 
-- **GovernanceTrade.tsx**: 1477 lines. `SellOrdersTab` at lines 194-515, `BuyOrdersTab` at lines 519-1414. All referenced line numbers (`orgMarketId` at 539, manual input at 842-894, `orderSsuId` at 1076-1088, `orderTypeId` at 1090-1102, `Type #{order.typeId}` at 1238, confirm fill at 1290-1371, tab buttons at 153, tab content at 155) verified correct.
-- **ssu-market.ts**: `queryOrgMarket` at lines 406-432, `queryBuyOrders` at lines 438-490. No `discoverOrgMarket` function exists (to be added). Exported via `packages/chain-shared/src/index.ts`.
-- **treasury.ts**: `buildFundBuyOrder` at lines 195-227. Confirmed.
-- **ssu_market.move**: `MarketAuth` witness at line 44, `MarketConfig` at lines 47-51, `OrgMarket` at lines 62-68, `OrgMarketCreatedEvent` at lines 93-97. All confirmed.
-- **db/index.ts**: Current version is V13. V14 slot available for `tradeNodes` table.
-- **db/types.ts**: `OrganizationRecord` at lines 439-446. `orgMarketId` field does not exist yet (to be added). No `TradeNodeRecord` type exists yet.
-- **config.ts (periscope)**: `EXTENSION_TEMPLATES` at lines 116-207 (6 templates). No `ssu_market` template exists yet. `getTemplate()` at line 213.
-- **config.ts (chain-shared)**: `getContractAddresses()` returns `ContractAddresses` with `ssuMarket?: { packageId: string }`. Package ID `0xdb9df1...` confirmed for both stillness and utopia.
-- **queries.ts**: `OwnedAssembly` type at lines 6-13 with `objectId`, `type`, `typeId`, `status`, `extensionType?`, `ownerCapId?`. Confirmed.
-- **useOwnedAssemblies.ts**: Returns React Query result wrapping `{ character: CharacterInfo | null, assemblies: OwnedAssembly[] }`. Confirmed.
-- **useExtensionDeploy.ts**: `deploy()` takes `{ template, assemblyId, assemblyType, characterId, ownerCapId, tenant, config? }`. Returns `{ deploy, reset, status, txDigest, error }`. Confirmed.
-- **transactions.ts**: `buildAuthorizeExtension()` maps `smart_storage_unit` and `protocol_depot` to `storage_unit::StorageUnit` Move type (lines 48-55). Confirmed.
-- **inventory.ts**: `fetchAssemblyInventory(client, assemblyId, assemblyType)` returns `Promise<AssemblyInventory[]>`. `AssemblyInventory` has `items: InventoryItem[]` with `typeId` and `quantity`. Confirmed.
-- **Assets.tsx**: `typeNameMap` pattern at lines 32-41 using `useLiveQuery(() => db.gameTypes.toArray())` + `useMemo`. Confirmed.
-- **governance.ts**: `queryClaimEvents()` at lines 246-316. Uses `client.queryEvents()` with `MoveEventType` filter, `EventId` cursor, pagination. Pattern confirmed for reuse in `discoverOrgMarket()`.
-- **Note**: `OwnedAssembly.type` is always `"storage_unit"` for SSUs (Smart Storage Units and Protocol Depots both map to `storage_unit` in `parseAssemblyType`). The plan's defensive filter for `"smart_storage_unit" | "protocol_depot"` is harmless but won't match in practice.
+## Post-Implementation Review (2026-03-17)
+
+All five phases verified complete. Implementation closely followed the plan with these notable deviations:
+
+### Implementation deviations from plan
+
+1. **`discoverOrgMarket()` uses GraphQL object scan, not event queries** -- The plan specified `queryEvents` with `OrgMarketCreatedEvent`, but the implementation uses a GraphQL `objects(filter: { type })` query to scan all `OrgMarket` shared objects and match by `org_id`. This is functionally equivalent and arguably more reliable (doesn't depend on event indexing).
+
+2. **`discoverMarketConfig()` was implemented (originally deferred)** -- The plan listed MarketConfig auto-discovery as deferred, but `discoverMarketConfig()` was added to `ssu-market.ts`. `SellOrdersTab` calls it on mount for all Trade Nodes, auto-populating `marketConfigId` and clearing stale configs on tenant switch.
+
+3. **`useSellOrders` hook added (not in plan)** -- A new `useSellOrders.ts` hook wraps `queryAllSellOrders()` with React Query (15s refetch interval). The `SellOrdersForNode` sub-component in `GovernanceTrade.tsx` uses it to display active sell orders per Trade Node with cancel/edit-price actions.
+
+4. **`queryAllSellOrders()` added to chain-shared (not in plan)** -- New function in `ssu-market.ts` for querying sell orders from a `MarketConfig` object's dynamic fields.
+
+5. **Trade Node auto-sync from on-chain state** -- The `TradeNodeManager` component auto-discovers Trade Nodes by cross-referencing `authorizedSsus` from OrgMarket, local extension records, and assembly extension fields. SSUs found on-chain are auto-registered in `db.tradeNodes` without requiring manual "Enable" flow.
+
+6. **`TypeSearchInput` uses bundled `types.json` fallback** -- Beyond Dexie search, the component also loads a static `/data/types.json` file for name resolution when `db.gameTypes` has no match. This handles cold-start before DataInitializer finishes.
+
+7. **`SsuInventoryPanel` supports `filterKind` prop** -- The plan didn't include inventory kind filtering, but the implementation adds a `filterKind?: InventoryKind` prop (e.g., `"owner"`) to show only owner inventory (items available to sell) vs escrowed inventory. The SellOrdersTab uses `filterKind="owner"`.
+
+8. **`SsuInventoryPanel` uses bundled `types.json` for type names** -- Instead of `useLiveQuery` on `db.gameTypes`, the component uses a React Query-cached fetch of `/data/types.json` with `staleTime: Infinity`. Functionally equivalent, avoids Dexie reactive subscription overhead for read-only data.
+
+9. **GovernanceTrade.tsx grew to 2053 lines** -- Plan expected modifications to a 1477-line file. The substantial growth reflects the addition of `TradeNodeManager`, `SellOrdersForNode`, and significantly expanded sell/buy order management UI.
+
+10. **`ssu_market` template uses different `utopia` package ID** -- Plan specified `0xdb9df1...` for both stillness and utopia. Implementation uses `0x53c2bf5e90d12b8a92594ab959f3d883dc2afdaf6031e9640151f82582a17501` for utopia (correct for a separately published contract).
+
+### Files created/modified (confirmed)
+
+| File | Status |
+|------|--------|
+| `apps/periscope/src/db/types.ts` | `orgMarketId` on `OrganizationRecord` + `TradeNodeRecord` type -- DONE |
+| `apps/periscope/src/db/index.ts` | V14 migration with `tradeNodes: "id"` + `tradeNodes` EntityTable -- DONE |
+| `packages/chain-shared/src/ssu-market.ts` | `discoverOrgMarket()` + `discoverMarketConfig()` + `queryAllSellOrders()` -- DONE |
+| `apps/periscope/src/hooks/useOrgMarket.ts` | Created -- DONE |
+| `apps/periscope/src/hooks/useSellOrders.ts` | Created (not in plan) -- DONE |
+| `apps/periscope/src/chain/config.ts` | `ssu_market` template added -- DONE |
+| `apps/periscope/src/views/GovernanceTrade.tsx` | Full refactor with TradeNodeManager, filtered SSU pickers, TypeSearchInput, SsuInventoryPanel, sell order management -- DONE |
+| `apps/periscope/src/components/TypeSearchInput.tsx` | Created -- DONE |
+| `apps/periscope/src/components/SsuInventoryPanel.tsx` | Created -- DONE |

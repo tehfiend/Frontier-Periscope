@@ -4,20 +4,40 @@ import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useAppStore } from "@/stores/appStore";
 import { db } from "@/db";
 import { AddCharacterDialog } from "./AddCharacterDialog";
-import { ChevronDown, Users, User, Plus, Trash2 } from "lucide-react";
-import type { CharacterRecord } from "@/db/types";
+import { TENANTS, type TenantId } from "@/chain/config";
+import { ChevronDown, Users, User, Link2, Gamepad2, Wallet, PenLine, Plus, Trash2, ArrowLeftRight } from "lucide-react";
+import type { CharacterRecord, CharacterSource } from "@/db/types";
+
+function SourceIcon({ source }: { source?: CharacterSource }) {
+	switch (source) {
+		case "log":
+			return <span title="From game logs"><Gamepad2 size={10} className="text-zinc-600" /></span>;
+		case "wallet":
+			return <span title="From wallet"><Wallet size={10} className="text-zinc-600" /></span>;
+		case "manual":
+			return <span title="Manual entry"><PenLine size={10} className="text-zinc-600" /></span>;
+		default:
+			return null;
+	}
+}
+
+const TENANT_IDS = Object.keys(TENANTS) as TenantId[];
 
 function CharacterEntry({
 	char,
 	isActive,
 	onClick,
 	onDelete,
+	onChangeServer,
 }: {
 	char: CharacterRecord;
 	isActive: boolean;
 	onClick: () => void;
 	onDelete: () => void;
+	onChangeServer: (newTenant: TenantId) => void;
 }) {
+	const otherTenants = TENANT_IDS.filter((t) => t !== char.tenant);
+
 	return (
 		<div
 			className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-zinc-800 ${
@@ -27,14 +47,42 @@ function CharacterEntry({
 			<button type="button" onClick={onClick} className="flex flex-1 items-center gap-2 min-w-0">
 				<User size={14} className="shrink-0" />
 				<div className="flex flex-1 flex-col items-start gap-0 truncate">
-					{char.tribe && (
-						<span className="truncate text-[10px] leading-tight text-zinc-500">
-							{char.tribe}
-						</span>
-					)}
 					<span className="truncate leading-tight">{char.characterName}</span>
+					<span className="truncate text-[10px] leading-tight text-zinc-600">
+						{char.tribe
+							? char.tribe
+							: char.tribeId
+								? `Tribe #${char.tribeId}`
+								: char.tenant ?? ""}
+					</span>
+				</div>
+				<div className="flex items-center gap-1.5">
+					<SourceIcon source={char.source} />
+					{char.isActive && (
+						<span className="h-1.5 w-1.5 rounded-full bg-green-500" title="Online" />
+					)}
+					<span title={char.suiAddress ? `Linked: ${char.suiAddress.slice(0, 10)}...` : "Not linked"}>
+						{char.suiAddress ? (
+							<Link2 size={12} className="text-cyan-500" />
+						) : (
+							<Link2 size={12} className="text-zinc-700" />
+						)}
+					</span>
 				</div>
 			</button>
+			{otherTenants.length === 1 && (
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						onChangeServer(otherTenants[0]);
+					}}
+					className="shrink-0 rounded p-1 text-zinc-700 transition-colors hover:bg-zinc-700 hover:text-amber-400"
+					title={`Move to ${TENANTS[otherTenants[0]].name}`}
+				>
+					<ArrowLeftRight size={12} />
+				</button>
+			)}
 			<button
 				type="button"
 				onClick={(e) => {
@@ -59,11 +107,20 @@ export function CharacterSwitcher() {
 	const setActiveCharacterId = useAppStore((s) => s.setActiveCharacterId);
 	const collapsed = useAppStore((s) => s.sidebarCollapsed);
 
-	// Filter characters to match the active server (include legacy characters with no tenant)
+	// Only show characters belonging to the active server
 	const filteredCharacters = useMemo(
-		() => allCharacters.filter((c) => !c.tenant || c.tenant === tenant),
+		() => allCharacters.filter((c) => c.tenant === tenant),
 		[allCharacters, tenant],
 	);
+
+	// Reset selection when active character doesn't belong to this server
+	useEffect(() => {
+		if (activeCharacterId === "all") return;
+		const stillValid = filteredCharacters.some((c) => c.id === activeCharacterId);
+		if (!stillValid) {
+			setActiveCharacterId("all");
+		}
+	}, [activeCharacterId, filteredCharacters, setActiveCharacterId]);
 
 	// Close dropdown on outside click
 	useEffect(() => {
@@ -81,8 +138,12 @@ export function CharacterSwitcher() {
 			? "All Characters"
 			: activeCharacter?.characterName ?? "Unknown";
 
-	const displayTribe =
-		activeCharacterId === "all" ? undefined : activeCharacter?.tribe ?? undefined;
+	const subtitle =
+		activeCharacterId === "all"
+			? filteredCharacters.length > 0
+				? `${filteredCharacters.length} character${filteredCharacters.length !== 1 ? "s" : ""}`
+				: undefined
+			: activeCharacter?.tenant ?? undefined;
 
 	return (
 		<>
@@ -100,12 +161,12 @@ export function CharacterSwitcher() {
 					{!collapsed && (
 						<>
 							<div className="flex flex-1 flex-col items-start truncate">
-								{displayTribe && (
-									<span className="truncate text-[10px] leading-tight text-zinc-500">
-										{displayTribe}
+								<span className="truncate leading-tight">{displayName}</span>
+								{subtitle && (
+									<span className="truncate text-[10px] leading-tight text-zinc-600">
+										{subtitle}
 									</span>
 								)}
-								<span className="truncate leading-tight">{displayName}</span>
 							</div>
 							<ChevronDown
 								size={14}
@@ -142,6 +203,12 @@ export function CharacterSwitcher() {
 										onClick={() => {
 											setActiveCharacterId(char.id);
 											setOpen(false);
+										}}
+										onChangeServer={async (newTenant) => {
+											await db.characters.update(char.id, {
+												tenant: newTenant,
+												updatedAt: new Date().toISOString(),
+											});
 										}}
 										onDelete={async () => {
 											if (!confirm(`Remove "${char.characterName}"?`)) return;

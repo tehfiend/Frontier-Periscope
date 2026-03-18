@@ -27,6 +27,7 @@ export function useChainSonar() {
 	const tenant = useActiveTenant();
 	const chainEnabled = useSonarStore((s) => s.chainEnabled);
 	const setChainStatus = useSonarStore((s) => s.setChainStatus);
+	const pingChain = useSonarStore((s) => s.pingChain);
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const cursorsRef = useRef<Record<string, string | null>>({});
 	const initializedRef = useRef(false);
@@ -100,7 +101,8 @@ export function useChainSonar() {
 				const cursor = cursorsRef.current[key] ?? null;
 
 				try {
-					const result = await queryEventsGql(client, moveEventType, {
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual @mysten/sui versions
+					const result = await queryEventsGql(client as any, moveEventType, {
 						cursor,
 						limit: 50,
 					});
@@ -172,11 +174,12 @@ export function useChainSonar() {
 			// Persist cursors to DB
 			await db.sonarState.update("chain", {
 				status: "active",
-				cursors: { ...cursorsRef.current },
+				cursors: cursorsRef.current as Record<string, string>,
 				lastPollAt: new Date().toISOString(),
 			});
 
 			setChainStatus("active");
+			pingChain();
 		} catch (err) {
 			console.error("[ChainSonar] Poll error:", err);
 			setChainStatus("error");
@@ -187,7 +190,7 @@ export function useChainSonar() {
 				})
 				.catch(() => {});
 		}
-	}, [client, tenant, setChainStatus]);
+	}, [client, tenant, setChainStatus, pingChain]);
 
 	// Initialize cursors from DB on first enable
 	useEffect(() => {

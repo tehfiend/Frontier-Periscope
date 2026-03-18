@@ -10,18 +10,14 @@ import { usePeerSync } from "@/hooks/usePeerSync";
 import { useLogWatcher } from "@/hooks/useLogWatcher";
 import { useLocalSonar } from "@/hooks/useLocalSonar";
 import { useChainSonar } from "@/hooks/useChainSonar";
-import { useSonarAlerts } from "@/hooks/useSonarAlerts";
 
 export function Layout() {
 	useNotifications();
 	useKeyboardShortcuts();
 	usePeerSync();
-
-	// Sonar & log hooks run at Layout level so events stream on all pages
 	useLogWatcher();
 	useLocalSonar();
 	useChainSonar();
-	useSonarAlerts();
 
 	return (
 		<div className="flex h-screen overflow-hidden bg-zinc-950">

@@ -18,7 +18,7 @@ const dAppKit = createDAppKit({
 			network: network as "testnet",
 		}),
 	defaultNetwork: "testnet",
-	autoConnect: true,
+	autoConnect: false,
 	slushWalletConfig: {
 		appName: "Assembly Permissions",
 		origin: "https://vault.evefrontier.com",

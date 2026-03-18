@@ -2,25 +2,22 @@ import { create } from "zustand";
 import { db } from "@/db";
 import type { SonarChannelStatus, SonarEventType } from "@/db/types";
 
-const ALL_PING_TYPES: SonarEventType[] = [
-	"system_change",
-	"item_deposited",
-	"item_withdrawn",
-	"item_minted",
-	"item_burned",
-];
+type SonarTab = "pings" | "logFeed" | "chainFeed";
 
 interface SonarState {
 	localEnabled: boolean;
 	chainEnabled: boolean;
 	localStatus: SonarChannelStatus;
 	chainStatus: SonarChannelStatus;
+	/** Incremented on each poll cycle to trigger ping animation */
+	localPingCount: number;
+	chainPingCount: number;
 
-	// Tab state
-	activeTab: "pings" | "logFeed" | "chainFeed";
+	// Sonar tab state
+	activeTab: SonarTab;
 
 	// Ping settings
-	pingEventTypes: SonarEventType[];
+	pingEventTypes: Set<SonarEventType>;
 	pingAudioEnabled: boolean;
 	pingNotifyEnabled: boolean;
 
@@ -29,38 +26,30 @@ interface SonarState {
 	setChainEnabled: (v: boolean) => void;
 	setLocalStatus: (s: SonarChannelStatus) => void;
 	setChainStatus: (s: SonarChannelStatus) => void;
-	setActiveTab: (tab: SonarState["activeTab"]) => void;
-	setPingEventTypes: (types: SonarEventType[]) => void;
+	pingLocal: () => void;
+	pingChain: () => void;
+	setActiveTab: (tab: SonarTab) => void;
+	setPingEventTypes: (types: Set<SonarEventType>) => void;
+	togglePingEventType: (type: SonarEventType) => void;
 	setPingAudioEnabled: (v: boolean) => void;
 	setPingNotifyEnabled: (v: boolean) => void;
 }
 
-function persistPingSettings(state: {
-	pingEventTypes: SonarEventType[];
-	pingAudioEnabled: boolean;
-	pingNotifyEnabled: boolean;
-}) {
-	db.settings
-		.put({
-			key: "sonarPingSettings",
-			value: {
-				pingEventTypes: state.pingEventTypes,
-				pingAudioEnabled: state.pingAudioEnabled,
-				pingNotifyEnabled: state.pingNotifyEnabled,
-			},
-		})
-		.catch(() => {});
-}
+const DEFAULT_PING_TYPES: SonarEventType[] = [
+	"system_change",
+	"item_deposited",
+	"item_withdrawn",
+];
 
-export const useSonarStore = create<SonarState>((set, get) => ({
+export const useSonarStore = create<SonarState>((set) => ({
 	localEnabled: true,
 	chainEnabled: true,
 	localStatus: "off",
 	chainStatus: "off",
-
+	localPingCount: 0,
+	chainPingCount: 0,
 	activeTab: "pings",
-
-	pingEventTypes: [...ALL_PING_TYPES],
+	pingEventTypes: new Set(DEFAULT_PING_TYPES),
 	pingAudioEnabled: false,
 	pingNotifyEnabled: false,
 
@@ -80,23 +69,30 @@ export const useSonarStore = create<SonarState>((set, get) => ({
 		set({ chainStatus: s });
 		db.sonarState.update("chain", { status: s }).catch(() => {});
 	},
+	pingLocal: () => set((s) => ({ localPingCount: s.localPingCount + 1 })),
+	pingChain: () => set((s) => ({ chainPingCount: s.chainPingCount + 1 })),
 	setActiveTab: (tab) => set({ activeTab: tab }),
 	setPingEventTypes: (types) => {
 		set({ pingEventTypes: types });
-		const s = get();
-		persistPingSettings({ ...s, pingEventTypes: types });
+		persistPingSettings(types);
 	},
-	setPingAudioEnabled: (v) => {
-		set({ pingAudioEnabled: v });
-		const s = get();
-		persistPingSettings({ ...s, pingAudioEnabled: v });
-	},
-	setPingNotifyEnabled: (v) => {
-		set({ pingNotifyEnabled: v });
-		const s = get();
-		persistPingSettings({ ...s, pingNotifyEnabled: v });
-	},
+	togglePingEventType: (type) =>
+		set((s) => {
+			const next = new Set(s.pingEventTypes);
+			if (next.has(type)) next.delete(type);
+			else next.add(type);
+			persistPingSettings(next);
+			return { pingEventTypes: next };
+		}),
+	setPingAudioEnabled: (v) => set({ pingAudioEnabled: v }),
+	setPingNotifyEnabled: (v) => set({ pingNotifyEnabled: v }),
 }));
+
+function persistPingSettings(types: Set<SonarEventType>) {
+	db.settings
+		.put({ key: "sonarPingTypes", value: JSON.stringify([...types]) })
+		.catch(() => {});
+}
 
 // Restore persisted state from DB on load
 db.sonarState.toArray().then((states) => {
@@ -110,19 +106,4 @@ db.sonarState.toArray().then((states) => {
 			store.setChainStatus(s.status);
 		}
 	}
-});
-
-// Restore ping settings from DB on load
-db.settings.get("sonarPingSettings").then((entry) => {
-	if (!entry?.value) return;
-	const v = entry.value as {
-		pingEventTypes?: SonarEventType[];
-		pingAudioEnabled?: boolean;
-		pingNotifyEnabled?: boolean;
-	};
-	useSonarStore.setState({
-		...(v.pingEventTypes != null ? { pingEventTypes: v.pingEventTypes } : {}),
-		...(v.pingAudioEnabled != null ? { pingAudioEnabled: v.pingAudioEnabled } : {}),
-		...(v.pingNotifyEnabled != null ? { pingNotifyEnabled: v.pingNotifyEnabled } : {}),
-	});
 });

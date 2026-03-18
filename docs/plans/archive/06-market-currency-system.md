@@ -1,8 +1,8 @@
 # Plan: Market & Currency System
 
-**Status:** Code Complete — Awaiting Contract Deployment
+**Status:** COMPLETE — All phases implemented and contracts deployed
 **Created:** 2026-03-14
-**Updated:** 2026-03-15 (plan review: all code implemented, contracts not yet deployed)
+**Updated:** 2026-03-17 (plan review: all code + contracts deployed, plan archived)
 **Module:** multi (contracts, chain-shared, periscope, gas-station)
 
 ## Overview
@@ -51,55 +51,62 @@ The economy loop is: **Faucets** (currency enters player hands) — buy orders l
 - **Sponsor:** `apps/gas-station/src/sponsor.ts` — Validates transaction targets against allowed package ID whitelist.
 - **Config:** `apps/gas-station/src/config.ts` — `getAllowedPackageIds()` collects static package IDs from `CONTRACT_ADDRESSES`. No dynamic registration.
 
-> **NOTE:** The "Current State" section above describes the state BEFORE Plan 06 execution. See "Implementation Status" below for what has been built.
+> **NOTE:** The "Current State" section above describes the state BEFORE Plan 06 execution. See "Implementation Status (2026-03-17)" below for the final delivered state.
 
-## Implementation Status (2026-03-15)
+## Implementation Status (2026-03-17)
 
-All code across all 3 phases has been written and committed. The plan is **code-complete** but contracts have NOT been deployed/upgraded on-chain.
+All code across all 3 phases has been written, committed, and deployed on-chain. The plan is **COMPLETE**.
 
-### Phase 1: Token Lifecycle + OrgTreasury — CODE COMPLETE
+### Phase 1: Token Lifecycle + OrgTreasury — COMPLETE + DEPLOYED
 | Deliverable | File | Status |
 |-------------|------|--------|
-| Treasury Move contract | `contracts/governance_ext/sources/treasury.move` (138 lines) | Written, NOT published |
-| Treasury TX builders | `packages/chain-shared/src/treasury.ts` (275 lines) | Complete |
+| Treasury Move contract | `contracts/governance_ext/sources/treasury.move` | Published at `0x670b8491481ab8f88a47f708918c83a6ba17427861d7d8a82e2a513176bec349` (v1) |
+| Treasury TX builders | `packages/chain-shared/src/treasury.ts` (268 lines) | Complete |
 | Gas station `/build-token` | `apps/gas-station/src/buildToken.ts` (194 lines) | Complete |
 | Gas station route | `apps/gas-station/src/index.ts` (line 74) | Registered |
 | Dynamic sponsor whitelist | `apps/gas-station/src/config.ts` | Complete (EXTRA_ALLOWED_PACKAGES + published-tokens.json) |
-| GovernanceFinance overhaul | `apps/periscope/src/views/GovernanceFinance.tsx` (1330 lines) | Complete (gas station + import mode) |
+| GovernanceFinance overhaul | `apps/periscope/src/views/GovernanceFinance.tsx` (1310 lines) | Complete (gas station + import mode) |
 | DB V13 migration | `apps/periscope/src/db/index.ts` | Complete (description, moduleName, orgTreasuryId) |
 | DB types update | `apps/periscope/src/db/types.ts` | Complete |
 | Zod schemas | `packages/shared/src/schemas/trading.ts` | Complete (buildTokenRequest/Response) |
 | Chain-shared exports | `packages/chain-shared/src/index.ts` | Complete (treasury export added) |
-| Types | `packages/chain-shared/src/types.ts` | Complete (OrgMarketInfo, BuyOrderInfo) |
-| Config placeholder | `packages/chain-shared/src/config.ts` | governanceExt.packageId = "" (awaits deploy) |
+| Types | `packages/chain-shared/src/types.ts` | Complete (OrgMarketInfo, BuyOrderInfo, governanceExt, originalPackageId) |
+| Config | `packages/chain-shared/src/config.ts` | governanceExt.packageId populated for both tenants |
 
-### Phase 2: Bidirectional SSU Market — CODE COMPLETE
+### Phase 2: Bidirectional SSU Market — COMPLETE + DEPLOYED (v3)
 | Deliverable | File | Status |
 |-------------|------|--------|
-| SSU Market upgrade (Move) | `contracts/ssu_market/sources/ssu_market.move` (426 lines) | Written (OrgMarket, buy orders, stock_items, buy_and_withdraw), NOT upgraded on-chain |
-| SSU Market Move.toml | `contracts/ssu_market/Move.toml` | Updated (published-at, governance dep) |
-| SSU Market TX builders | `packages/chain-shared/src/ssu-market.ts` (490 lines) | Complete (10 new functions: OrgMarket, buy orders, stock_items, buy_and_withdraw) |
-| GovernanceTrade view | `apps/periscope/src/views/GovernanceTrade.tsx` (1467 lines) | Complete |
+| SSU Market upgrade (Move) | `contracts/ssu_market/sources/ssu_market.move` (650 lines) | Upgraded to v3 at `0xeca760fe766302433fcc4c538d95f1f8960e863e5b789c63011dae18a20723d4` (original `0xdb9df1...`) |
+| SSU Market Move.toml | `contracts/ssu_market/Move.toml` | In upgrade mode (published-at, governance dep) |
+| SSU Market TX builders | `packages/chain-shared/src/ssu-market.ts` (637 lines) | Complete (OrgMarket, buy orders, v3 SellOrder functions) |
+| GovernanceTrade view | `apps/periscope/src/views/GovernanceTrade.tsx` (2053 lines) | Complete (updated to v3 SellOrder model) |
 | Router | `apps/periscope/src/router.tsx` | /governance/trade route added |
 | Sidebar | `apps/periscope/src/components/Sidebar.tsx` | Trade nav item added |
 | Dashboard | `apps/periscope/src/views/GovernanceDashboard.tsx` | Trade quick action added |
 
-### Phase 3: Integration — CODE COMPLETE
+### Phase 3: Integration — COMPLETE
 | Deliverable | Status |
 |-------------|--------|
 | GovernanceFinance gas station integration | Complete |
 | GovernanceFinance OrgTreasury deposit/mint/burn UI | Complete |
 | GovernanceFinance import mode (manual token import) | Complete |
+| Token query helpers (queryTokenSupply, queryOwnedCoins) | Complete in `packages/chain-shared/src/token-factory.ts` |
+| OrgTreasury/OrgMarket query helpers | Complete in treasury.ts / ssu-market.ts |
+| Config updates (governanceExt packageId) | Populated for both stillness and utopia tenants |
 
-### Deployment Blockers
-1. **`governance_ext` NOT published** — `governanceExt.packageId` is empty in config.ts. GovernanceFinance treasury functions will fail at runtime.
-2. **`ssu_market` NOT upgraded on-chain** — OrgMarket/buy-order Move functions do not exist in the deployed contract. GovernanceTrade buy-order tab fails at runtime. Sell-order tab may partially work.
-3. **Gas station NOT tested E2E** — `/build-token` endpoint coded but never tested with a real wallet.
+### Deployment Blockers — ALL RESOLVED
+1. ~~`governance_ext` NOT published~~ -- Published at `0x670b84...` (commit `8cce47d`). UpgradeCap: `0x3d7d55...`
+2. ~~`ssu_market` NOT upgraded on-chain~~ -- Upgraded to v3 at `0xeca760...`. OrgMarket/buy-order functions and v3 escrow-based SellOrder model all live on-chain.
+3. ~~Gas station NOT tested E2E~~ -- `/build-token` endpoint functional. In-browser bytecode patching also added as fallback.
 
 ### Additional Artifacts (not in original plan)
 - `scripts/create-token.sh` (151 lines) — CLI alternative to gas station for token creation
 - `scripts/upgrade-contract.sh` (124 lines) — Reusable contract upgrade helper
 - Gas station is now **optional** — GovernanceFinance supports "Import Token" mode for tokens created via CLI or other means
+- **ssu_market v3 evolution** — The original plan specified `stock_items` + `buy_and_withdraw` for sell-side atomic operations. These have been superseded by an escrow-based `SellOrder` model: `create_sell_order` (atomically escrows items), `cancel_sell_order` (returns items), `buy_sell_order` (buyer pays + receives items). The old functions are kept as deprecated for upgrade compatibility.
+- **`apps/ssu-market-dapp/`** — Separate standalone dApp for SSU market interaction (plan 12), built on top of the contract infrastructure from this plan.
+- **`governance_ext/Move.toml` still has `governance_ext = "0x0"`** — Should be switched to upgrade mode (`0x670b84...`) with `published-at` field before any future upgrade. Not a blocker since no upgrade is currently planned.
+- Multiple post-implementation wallet integration fixes (EVE Vault, auto-connect, bytecode patching fallback)
 
 ## Target State
 
@@ -1236,7 +1243,7 @@ export * from "./treasury";
 
 ## Open Questions
 
-### NEW: Game client deposit target inventory — UNRESOLVED (added 2026-03-15)
+### Game client deposit target inventory — UNRESOLVED (non-blocking)
 
 When a player deposits items to an SSU via the game client UI, which inventory do the items land in?
 - **Option A: Owner inventory** — accessed via `deposit_by_owner<T>()`. If so, the market extension cannot see or access these items. The SSU owner would need to manually move items from owner to extension inventory for buy order fills to work.
@@ -1245,7 +1252,7 @@ When a player deposits items to an SSU via the game client UI, which inventory d
 
 **Impact:** If Option A, the buy order fill model stays manual (stakeholder confirms). If Option B, automated fills are possible post-hackathon. Needs testing on live testnet.
 
-**Recommendation:** Proceed with manual confirmation model for hackathon. Investigate on testnet during Phase 2 implementation.
+**Status:** Not resolved. The hackathon shipped with the manual `confirm_buy_order_fill` model, which works regardless of which inventory items land in. This question is deferred to post-hackathon automated fills work.
 
 ## Previously Resolved Questions
 
@@ -1560,4 +1567,18 @@ The original plan assumed items could be programmatically transferred between SS
 - GovernanceDashboard grid is `grid-cols-3` — adding Trade quick action requires `grid-cols-4` (Phase 2)
 - All existing contracts use `edition = "2024"` (not `"2024.beta"` despite CLAUDE.md) — plan is consistent
 - `token_template/Move.toml` uses `token_template = "0x0"` — gas station approach of generating fresh source is correct (avoids bytecode patching complexity)
-- No implementation has been started — all CREATE files are absent, all MODIFY files are in their original state
+- ~~No implementation has been started — all CREATE files are absent, all MODIFY files are in their original state~~ (stale: all code implemented and deployed as of 2026-03-17)
+
+### Review Pass 3 (2026-03-17) — Archive Review
+
+All phases verified as complete with contracts deployed on-chain:
+
+1. **governance_ext** published at `0x670b84...` (v1). Config populated. UpgradeCap recorded in `Published.toml`.
+2. **ssu_market** upgraded to v3 at `0xeca760...`. Has evolved beyond original plan: escrow-based `SellOrder` model replaces `stock_items`/`buy_and_withdraw` (deprecated but kept). `originalPackageId` field added to types for coinType references.
+3. **GovernanceTrade.tsx** updated to use v3 `SellOrder` functions (buildCreateSellOrder, buildCancelSellOrder, buildBuySellOrder). Now 2053 lines (was 1467 at first commit).
+4. **governance_ext/Move.toml** still has `governance_ext = "0x0"` (fresh-publish mode). Should be switched to `"0x670b84..."` with `published-at` before any future upgrade.
+5. **DB schema** now at v16 (plan added v13; subsequent plans 13/15 added v14-v16).
+6. **ssu-market-dapp** (`apps/ssu-market-dapp/`) built as a separate standalone dApp leveraging plan 06 contract infrastructure.
+7. All deployment blockers resolved. Open question about game client deposit inventory remains non-blocking.
+
+**Decision: Move to archive.**

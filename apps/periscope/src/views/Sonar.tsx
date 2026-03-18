@@ -422,6 +422,7 @@ function LogFeedTab() {
 	const dpsReceived = useLogStore((s) => s.dpsReceived);
 	const activeSessionId = useLogStore((s) => s.activeSessionId);
 	const grantAccess = useLogStore((s) => s.grantAccess);
+	const clearAndReimport = useLogStore((s) => s.clearAndReimport);
 
 	const recentEvents = useLiveQuery(
 		() =>
@@ -536,9 +537,22 @@ function LogFeedTab() {
 			</div>
 			<div className="space-y-0.5 rounded-lg border border-zinc-800 bg-zinc-900/30 p-2">
 				{(!recentEvents || recentEvents.length === 0) && (
-					<p className="py-8 text-center text-sm text-zinc-600">
-						Waiting for game log events...
-					</p>
+					<div className="flex flex-col items-center gap-3 py-8">
+						<p className="text-sm text-zinc-600">
+							{activeSessionId
+								? "No events in this session yet."
+								: "Waiting for game log events..."}
+						</p>
+						{clearAndReimport && (
+							<button
+								type="button"
+								onClick={clearAndReimport}
+								className="rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+							>
+								Reimport all logs
+							</button>
+						)}
+					</div>
 				)}
 				{recentEvents?.map((event) => (
 					<LogEventRow key={event.id} event={event} />

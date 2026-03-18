@@ -8,8 +8,10 @@ export interface OwnedAssembly {
 	objectId: string;
 	type: "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot";
 	typeId: number;
+	itemId?: string;
 	status: string;
 	extensionType?: string;
+	dappUrl?: string;
 	ownerCapId?: string;
 }
 
@@ -41,10 +43,14 @@ function asRecord(obj: unknown): Record<string, unknown> {
  */
 function extractStatus(statusObj: unknown): string {
 	const fields = asRecord(statusObj);
-	// New format: status.status.variant (e.g., { status: { variant: "ONLINE" } })
-	const innerStatus = fields.status as { variant?: string } | undefined;
-	if (innerStatus?.variant) return innerStatus.variant.toLowerCase();
-	// Old format: status.current
+	// New format: { status: { "@variant": "ONLINE" } }
+	const innerStatus = asRecord(fields.status);
+	if (innerStatus["@variant"]) return String(innerStatus["@variant"]).toLowerCase();
+	if (innerStatus.variant) return String(innerStatus.variant).toLowerCase();
+	// Direct enum: { "@variant": "ONLINE" }
+	if (fields["@variant"]) return String(fields["@variant"]).toLowerCase();
+	if (fields.variant) return String(fields.variant).toLowerCase();
+	// Old format: { current: "online" }
 	if (fields.current) return String(fields.current);
 	return "unknown";
 }
@@ -163,14 +169,18 @@ export async function discoverCharacterAndAssemblies(
 				try {
 					const assemblyResult = await getObjectJson(client, assemblyId);
 					const assemblyFields = assemblyResult.json ?? {};
+					const keyObj = assemblyFields.key as Record<string, unknown> | undefined;
+					const metaObj = assemblyFields.metadata as Record<string, unknown> | undefined;
 					assemblies.push({
 						objectId: assemblyId,
 						type: at.kind,
 						typeId: Number(assemblyFields.type_id) || 0,
+						itemId: keyObj?.item_id ? String(keyObj.item_id) : undefined,
 						status: extractStatus(assemblyFields.status),
 						extensionType: assemblyFields.extension
 							? String(assemblyFields.extension)
 							: undefined,
+						dappUrl: metaObj?.url ? String(metaObj.url) : undefined,
 						ownerCapId: cap.objectId,
 					});
 				} catch {
@@ -216,15 +226,19 @@ export async function discoverCharacterAndAssemblies(
 					try {
 						const assemblyResult = await getObjectJson(client, assemblyId);
 						const assemblyFields = assemblyResult.json ?? {};
+						const keyObj2 = assemblyFields.key as Record<string, unknown> | undefined;
+						const metaObj2 = assemblyFields.metadata as Record<string, unknown> | undefined;
 
 						assemblies.push({
 							objectId: assemblyId,
 							type: assemblyKind,
 							typeId: Number(assemblyFields.type_id) || 0,
+							itemId: keyObj2?.item_id ? String(keyObj2.item_id) : undefined,
 							status: extractStatus(assemblyFields.status),
 							extensionType: assemblyFields.extension
 								? String(assemblyFields.extension)
 								: undefined,
+							dappUrl: metaObj2?.url ? String(metaObj2.url) : undefined,
 							ownerCapId: obj.objectId,
 						});
 					} catch {

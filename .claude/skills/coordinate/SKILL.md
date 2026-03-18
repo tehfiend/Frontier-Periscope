@@ -51,9 +51,9 @@ Read the task description or plan file. Determine:
 - `turbo.json`, `biome.json`, `.npmrc`, `.env.example`, `.gitignore`
 - `scripts/*`, `docker/*`, `CLAUDE.md`
 
-## Step 2: Propose Dispatch Plan
+## Step 2: Announce Dispatch Plan and Proceed
 
-Present your plan to the user for confirmation:
+Print a brief dispatch summary, then immediately proceed to Step 3. Do NOT ask for confirmation.
 
 ```
 ## Dispatch Plan
@@ -61,23 +61,8 @@ Present your plan to the user for confirmation:
 **Task:** {summary}
 **Modules affected:** {list}
 **Shared file changes:** {list or "none"}
-
-### Agents:
-1. **Agent 1** — {module}: {what it will do}
-   - Worktree: ../TehFrontier-wt1 (branch: wt1)
-   - Write scope: {files}
-2. **Agent 2** — {module}: {what it will do}
-   - Worktree: ../TehFrontier-wt2 (branch: wt2)
-   - Write scope: {files}
-
-### Coordinator prep:
-- [ ] {shared file change 1}
-- [ ] {shared file change 2}
-
-Proceed? (y/n)
+**Agents:** {count} — {brief description of each}
 ```
-
-Wait for user confirmation before proceeding.
 
 ## Step 3: Prepare Shared Files
 

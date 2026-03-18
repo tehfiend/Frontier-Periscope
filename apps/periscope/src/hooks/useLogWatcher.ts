@@ -14,9 +14,13 @@ import type { LogEvent } from "@/db/types";
 
 const POLL_INTERVAL = 5000;
 
+/** Module-level singleton — ensures only one poller runs even if hook is mounted multiple times */
+let activePollerCount = 0;
+
 export function useLogWatcher() {
 	const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const isPollerRef = useRef(false);
 	const {
 		setHasAccess,
 		setIsWatching,
@@ -257,8 +261,21 @@ export function useLogWatcher() {
 
 			// Process each game log file
 			for (const gameFile of gameFiles) {
-				const result = await processGameLog(gameFile.name, gameFile.handle);
 				const sessionId = gameFile.name.replace(".txt", "");
+
+				// If offsets exist but no events in DB, reset offset to reprocess
+				const existingOffset = await db.logOffsets.get(gameFile.name);
+				if (existingOffset && existingOffset.byteOffset > 0) {
+					const eventCount = await db.logEvents
+						.where("sessionId")
+						.equals(sessionId)
+						.count();
+					if (eventCount === 0) {
+						await db.logOffsets.delete(gameFile.name);
+					}
+				}
+
+				const result = await processGameLog(gameFile.name, gameFile.handle);
 
 				// Track the most recently modified file for live stats
 				if (gameFile.name > latestTimestamp) {
@@ -313,6 +330,10 @@ export function useLogWatcher() {
 
 	const startWatching = useCallback(() => {
 		if (intervalRef.current) return;
+		// Only one instance should poll at a time
+		if (activePollerCount > 0 && !isPollerRef.current) return;
+		activePollerCount++;
+		isPollerRef.current = true;
 		setIsWatching(true);
 		pollLogs();
 		intervalRef.current = setInterval(pollLogs, POLL_INTERVAL);
@@ -327,7 +348,13 @@ export function useLogWatcher() {
 				startWatching();
 			}
 		})();
-		return () => stopWatching();
+		return () => {
+			stopWatching();
+			if (isPollerRef.current) {
+				activePollerCount--;
+				isPollerRef.current = false;
+			}
+		};
 	}, [setHasAccess, startWatching, stopWatching]);
 
 	const grantAccess = useCallback(

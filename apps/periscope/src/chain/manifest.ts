@@ -375,3 +375,67 @@ export async function getTribeName(tribeId: number): Promise<string | null> {
 	const tribe = await db.manifestTribes.get(tribeId);
 	return tribe?.name ?? null;
 }
+
+/**
+ * Get tribe name, fetching from API if not cached.
+ * Tries to fetch the specific tribe first, falls back to bulk fetch.
+ */
+export async function ensureTribeName(
+	tribeId: number,
+	tenant: TenantId,
+): Promise<string | null> {
+	// Check cache first
+	const cached = await db.manifestTribes.get(tribeId);
+	if (cached?.name) return cached.name;
+
+	// Not cached — fetch all tribes for this tenant (they're small, ~200 total)
+	const datahubUrl = TENANTS[tenant].datahubUrl;
+	if (!datahubUrl) return null;
+
+	try {
+		const res = await fetch(`https://${datahubUrl}/v2/tribes/${tribeId}`);
+		if (res.ok) {
+			const body = await res.json();
+			const tribe = body.data ?? body;
+			if (tribe?.name) {
+				await db.manifestTribes.put({
+					id: tribeId,
+					name: tribe.name,
+					nameShort: tribe.nameShort ?? "",
+					description: tribe.description ?? "",
+					taxRate: tribe.taxRate ?? 0,
+					tribeUrl: tribe.tribeUrl ?? "",
+					tenant,
+					cachedAt: new Date().toISOString(),
+				});
+				return tribe.name as string;
+			}
+		}
+	} catch {
+		// API unavailable
+	}
+	return null;
+}
+
+/**
+ * Cache a character lookup result in manifestCharacters for offline access.
+ */
+export async function cacheCharacterFromLookup(
+	characterObjectId: string,
+	itemId: string,
+	suiAddress: string,
+	characterName: string,
+	tribeId: number,
+	tenant: string,
+): Promise<void> {
+	const now = new Date().toISOString();
+	await db.manifestCharacters.put({
+		id: characterObjectId,
+		characterItemId: itemId,
+		name: characterName,
+		suiAddress,
+		tribeId,
+		tenant,
+		cachedAt: now,
+	});
+}

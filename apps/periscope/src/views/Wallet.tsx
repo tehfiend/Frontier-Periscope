@@ -38,9 +38,9 @@ function extractTokenName(coinType: string): string {
 	return coinType;
 }
 
-/** Check if a coin type is the native SUI coin. */
+/** Check if a coin type is the native SUI coin (handles both short and full address forms). */
 function isSuiCoin(coinType: string): boolean {
-	return coinType === "0x2::sui::SUI";
+	return /^0x0*2::sui::SUI$/.test(coinType);
 }
 
 // ── Component ───────────────────────────────────────────────────────────────

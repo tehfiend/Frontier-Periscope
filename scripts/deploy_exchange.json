@@ -1,0 +1,226 @@
+[NOTE] Dependencies on Sui, MoveStdlib, Bridge, DeepBook, and SuiSystem are automatically added, but this feature is disabled for your package because you have explicitly included dependencies on Sui. Consider removing these dependencies from `Move.toml`.
+INCLUDING DEPENDENCY MoveStdlib
+INCLUDING DEPENDENCY Sui
+BUILDING exchange
+[0m[1m[38;5;11mwarning[W09001][0m[1m: unused alias[0m
+  [0m[36m┌─[0m contracts\exchange\sources\exchange.move:8:17
+  [0m[36m│[0m
+[0m[36m8[0m [0m[36m│[0m use sui::coin::{[0m[33mSelf[0m, Coin};
+  [0m[36m│[0m                 [0m[33m^^^^[0m [0m[33mUnused 'use' of alias 'coin'. Consider removing it[0m
+  [0m[36m│[0m
+  [0m[36m=[0m This warning can be suppressed with '#[allow(unused_use)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+[0m[1m[38;5;11mwarning[W09011][0m[1m: unused constant[0m
+   [0m[36m┌─[0m contracts\exchange\sources\exchange.move:14:7
+   [0m[36m│[0m
+[0m[36m14[0m [0m[36m│[0m const [0m[33mEInsufficientPayment[0m: vector<u8> = b"Insufficient payment for order";
+   [0m[36m│[0m       [0m[33m^^^^^^^^^^^^^^^^^^^^[0m [0m[33mThe constant 'EInsufficientPayment' is never used. Consider removing it.[0m
+   [0m[36m│[0m
+   [0m[36m=[0m This warning can be suppressed with '#[allow(unused_const)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+[0m[1m[38;5;11mwarning[W09009][0m[1m: unused struct field[0m
+   [0m[36m┌─[0m contracts\exchange\sources\exchange.move:64:5
+   [0m[36m│[0m
+[0m[36m64[0m [0m[36m│[0m     [0m[33mbook_id[0m: ID,
+   [0m[36m│[0m     [0m[33m^^^^^^^[0m [0m[33mThe 'book_id' field of the 'TradeEvent' type is unused[0m
+   [0m[36m│[0m
+   [0m[36m=[0m This warning can be suppressed with '#[allow(unused_field)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+[0m[1m[38;5;11mwarning[W09009][0m[1m: unused struct field[0m
+   [0m[36m┌─[0m contracts\exchange\sources\exchange.move:65:5
+   [0m[36m│[0m
+[0m[36m65[0m [0m[36m│[0m     [0m[33mbid_order_id[0m: u64,
+   [0m[36m│[0m     [0m[33m^^^^^^^^^^^^[0m [0m[33mThe 'bid_order_id' field of the 'TradeEvent' type is unused[0m
+   [0m[36m│[0m
+   [0m[36m=[0m This warning can be suppressed with '#[allow(unused_field)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+[0m[1m[38;5;11mwarning[W09009][0m[1m: unused struct field[0m
+   [0m[36m┌─[0m contracts\exchange\sources\exchange.move:66:5
+   [0m[36m│[0m
+[0m[36m66[0m [0m[36m│[0m     [0m[33mask_order_id[0m: u64,
+   [0m[36m│[0m     [0m[33m^^^^^^^^^^^^[0m [0m[33mThe 'ask_order_id' field of the 'TradeEvent' type is unused[0m
+   [0m[36m│[0m
+   [0m[36m=[0m This warning can be suppressed with '#[allow(unused_field)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+[0m[1m[38;5;11mwarning[W09009][0m[1m: unused struct field[0m
+   [0m[36m┌─[0m contracts\exchange\sources\exchange.move:67:5
+   [0m[36m│[0m
+[0m[36m67[0m [0m[36m│[0m     [0m[33mprice[0m: u64,
+   [0m[36m│[0m     [0m[33m^^^^^[0m [0m[33mThe 'price' field of the 'TradeEvent' type is unused[0m
+   [0m[36m│[0m
+   [0m[36m=[0m This warning can be suppressed with '#[allow(unused_field)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+[0m[1m[38;5;11mwarning[W09009][0m[1m: unused struct field[0m
+   [0m[36m┌─[0m contracts\exchange\sources\exchange.move:68:5
+   [0m[36m│[0m
+[0m[36m68[0m [0m[36m│[0m     [0m[33mamount[0m: u64,
+   [0m[36m│[0m     [0m[33m^^^^^^[0m [0m[33mThe 'amount' field of the 'TradeEvent' type is unused[0m
+   [0m[36m│[0m
+   [0m[36m=[0m This warning can be suppressed with '#[allow(unused_field)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+{
+  "digest": "Gnr8TSvQSESvEeRMBsKyNMTnCx5TMGjKyg7Q3Na6fzMp",
+  "transaction": {
+    "data": {
+      "messageVersion": "v1",
+      "transaction": {
+        "kind": "ProgrammableTransaction",
+        "inputs": [
+          {
+            "type": "pure",
+            "valueType": "address",
+            "value": "0xa4dee9f9182f8abcd0f8c0654d916893c1566fdc514a2b0888235e96e293883d"
+          }
+        ],
+        "transactions": [
+          {
+            "Publish": [
+              "0x0000000000000000000000000000000000000000000000000000000000000001",
+              "0x0000000000000000000000000000000000000000000000000000000000000002"
+            ]
+          },
+          {
+            "TransferObjects": [
+              [
+                {
+                  "Result": 0
+                }
+              ],
+              {
+                "Input": 0
+              }
+            ]
+          }
+        ]
+      },
+      "sender": "0xa4dee9f9182f8abcd0f8c0654d916893c1566fdc514a2b0888235e96e293883d",
+      "gasData": {
+        "payment": [
+          {
+            "objectId": "0x39a0cbc0616c8034d5489e0e2905c1b826e0aba0cf6a95d3fb87b2738007b3ff",
+            "version": 349181446,
+            "digest": "7nAghYRkd3zGQxM5NE8Cb2FPiauRALBTXLm6mMPhZZmH"
+          }
+        ],
+        "owner": "0xa4dee9f9182f8abcd0f8c0654d916893c1566fdc514a2b0888235e96e293883d",
+        "price": "1000",
+        "budget": "200000000"
+      }
+    },
+    "txSignatures": [
+      "AGxdJTfBNKzyu+dB5w9o6dkk0Lr4dzokAwRbr2vumwvG/Y30BDPxBiuKf+61g1AHUO05mXF6nEW6/jTqWcjsxgqkJmhNTJCw1EyhSB5HCuMNYQxVCjB8wiUmG4XMbFd+hw=="
+    ]
+  },
+  "effects": {
+    "messageVersion": "v1",
+    "status": {
+      "status": "success"
+    },
+    "executedEpoch": "1038",
+    "gasUsed": {
+      "computationCost": "1000000",
+      "storageCost": "23111600",
+      "storageRebate": "978120",
+      "nonRefundableStorageFee": "9880"
+    },
+    "modifiedAtVersions": [
+      {
+        "objectId": "0x39a0cbc0616c8034d5489e0e2905c1b826e0aba0cf6a95d3fb87b2738007b3ff",
+        "sequenceNumber": "349181446"
+      }
+    ],
+    "transactionDigest": "Gnr8TSvQSESvEeRMBsKyNMTnCx5TMGjKyg7Q3Na6fzMp",
+    "created": [
+      {
+        "owner": {
+          "AddressOwner": "0xa4dee9f9182f8abcd0f8c0654d916893c1566fdc514a2b0888235e96e293883d"
+        },
+        "reference": {
+          "objectId": "0x381b22d531d81c0ddff3c820dbebc92d99c85247876feb7471eff293fb37e137",
+          "version": 349181447,
+          "digest": "2AxFaHYqXZQTZkmTkR7b8q5PmXh6v3pceXz7ZxgbnJdf"
+        }
+      },
+      {
+        "owner": "Immutable",
+        "reference": {
+          "objectId": "0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d",
+          "version": 1,
+          "digest": "8mnR6DN8ux7KmYzXCtZ1jDX9W3rP2WujJedT5HuCH4vo"
+        }
+      }
+    ],
+    "mutated": [
+      {
+        "owner": {
+          "AddressOwner": "0xa4dee9f9182f8abcd0f8c0654d916893c1566fdc514a2b0888235e96e293883d"
+        },
+        "reference": {
+          "objectId": "0x39a0cbc0616c8034d5489e0e2905c1b826e0aba0cf6a95d3fb87b2738007b3ff",
+          "version": 349181447,
+          "digest": "7rvWaor5W8dhz74xGp4ARHaVc1M3TWJJjgSrV8aJncfz"
+        }
+      }
+    ],
+    "gasObject": {
+      "owner": {
+        "AddressOwner": "0xa4dee9f9182f8abcd0f8c0654d916893c1566fdc514a2b0888235e96e293883d"
+      },
+      "reference": {
+        "objectId": "0x39a0cbc0616c8034d5489e0e2905c1b826e0aba0cf6a95d3fb87b2738007b3ff",
+        "version": 349181447,
+        "digest": "7rvWaor5W8dhz74xGp4ARHaVc1M3TWJJjgSrV8aJncfz"
+      }
+    },
+    "dependencies": [
+      "6ykFBemxnnbiYLiP4ppaHYq5QHeK6B36QnXh5ZdAVJNK",
+      "8ZGaWUUUxNqB6EooQC7cngJccxgZZRMYgbzKRLSnExHM",
+      "9ubPgtPXXxWcbJS3bZYJdh5jvZez5ps8bf7HpQpbTcHk"
+    ]
+  },
+  "objectChanges": [
+    {
+      "type": "created",
+      "sender": "0xa4dee9f9182f8abcd0f8c0654d916893c1566fdc514a2b0888235e96e293883d",
+      "owner": {
+        "AddressOwner": "0xa4dee9f9182f8abcd0f8c0654d916893c1566fdc514a2b0888235e96e293883d"
+      },
+      "objectType": "0x2::package::UpgradeCap",
+      "objectId": "0x381b22d531d81c0ddff3c820dbebc92d99c85247876feb7471eff293fb37e137",
+      "version": "349181447",
+      "digest": "2AxFaHYqXZQTZkmTkR7b8q5PmXh6v3pceXz7ZxgbnJdf"
+    },
+    {
+      "type": "mutated",
+      "sender": "0xa4dee9f9182f8abcd0f8c0654d916893c1566fdc514a2b0888235e96e293883d",
+      "owner": {
+        "AddressOwner": "0xa4dee9f9182f8abcd0f8c0654d916893c1566fdc514a2b0888235e96e293883d"
+      },
+      "objectType": "0x2::coin::Coin<0x2::sui::SUI>",
+      "objectId": "0x39a0cbc0616c8034d5489e0e2905c1b826e0aba0cf6a95d3fb87b2738007b3ff",
+      "version": "349181447",
+      "previousVersion": "349181446",
+      "digest": "7rvWaor5W8dhz74xGp4ARHaVc1M3TWJJjgSrV8aJncfz"
+    },
+    {
+      "type": "published",
+      "packageId": "0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d",
+      "version": "1",
+      "digest": "8mnR6DN8ux7KmYzXCtZ1jDX9W3rP2WujJedT5HuCH4vo",
+      "modules": [
+        "exchange"
+      ]
+    }
+  ],
+  "balanceChanges": [
+    {
+      "owner": {
+        "AddressOwner": "0xa4dee9f9182f8abcd0f8c0654d916893c1566fdc514a2b0888235e96e293883d"
+      },
+      "coinType": "0x2::sui::SUI",
+      "amount": "-23133480"
+    }
+  ],
+  "timestampMs": "1773443882539",
+  "checkpoint": "309785644"
+}

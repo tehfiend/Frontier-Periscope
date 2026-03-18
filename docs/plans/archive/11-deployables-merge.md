@@ -1,7 +1,8 @@
 # Plan: Merge Deployables & Assemblies into Unified Structure Grid
 
-**Status:** Active
+**Status:** Complete
 **Created:** 2026-03-17
+**Completed:** 2026-03-17
 **Module:** periscope
 
 ## Overview
@@ -153,7 +154,7 @@ Click the notes cell to enter edit mode. Save on blur or Enter. Cancel on Escape
 
 ## Implementation Phases
 
-### Phase 1: Merge Views & Unified Grid
+### Phase 1: Merge Views & Unified Grid [COMPLETE]
 1. Create `StructureRow` type in `apps/periscope/src/views/Deployables.tsx` (or extract to a shared types file)
 2. Query both `db.deployables` (filtered by active character's addresses) and `db.assemblies` (all non-deleted) tables
 3. Map `DeployableIntel` records to `StructureRow` with `ownership: "mine"`, `source: "deployables"`
@@ -164,13 +165,13 @@ Click the notes cell to enter edit mode. Save on blur or Enter. Cancel on Escape
 8. Add stat cards for ownership breakdown (Mine vs Watched, plus Online/Offline/Fuel Warnings)
 9. Wire up "Sync Chain" button (own structures) and "Sync Targets" button (watched structures) as dual actions in the toolbar
 
-### Phase 2: Inline Notes Editing
+### Phase 2: Inline Notes Editing [COMPLETE]
 1. Create an `EditableCell` component that toggles between display and input on click
 2. Wire notes column to use `EditableCell`, saving to the correct DB table based on `source`
 3. Support Enter to save, Escape to cancel, blur to save
 4. Show a subtle pencil icon on hover to indicate editability
 
-### Phase 3: On-Chain Rename
+### Phase 3: On-Chain Rename [COMPLETE]
 1. Update Deployables sync to persist `ownerCapId` and `assemblyModule` (from `OwnedAssembly.type`) on `DeployableIntel` records. The `discoverCharacterAndAssemblies()` call already returns these values but they are not saved.
 2. Also store the Character Sui object ID (`characterObjectId`) in the `DeployableIntel` record during sync. This is needed for the `borrow_owner_cap` PTB step. Available from `discovery.character.characterObjectId`.
 3. Add `buildRenameTx` function to `apps/periscope/src/chain/transactions.ts` that builds the borrow-rename-return PTB. Reuse the `assemblyModuleMap` pattern from `buildAuthorizeExtension`.
@@ -183,7 +184,7 @@ Click the notes cell to enter edit mode. Save on blur or Enter. Cancel on Escape
 10. Handle error code 7 (`EMetadataNotSet`) gracefully -- assemblies may not have metadata initialized. Show user-friendly error: "This structure has no metadata set on-chain. Contact support or deploy a new one."
 11. The Move `name` parameter is `String` -- use `tx.pure.string(newName)` in the PTB.
 
-### Phase 4: Route Cleanup & Navigation
+### Phase 4: Route Cleanup & Navigation [COMPLETE]
 1. Change `/assemblies` route to redirect to `/deployables`
 2. Remove `Assemblies` import from router
 3. Update Sidebar: remove "Assemblies" entry, rename "Deployables" to "Structures"
@@ -203,22 +204,16 @@ Click the notes cell to enter edit mode. Save on blur or Enter. Cancel on Escape
 | `apps/periscope/src/db/types.ts` | Modify | Add `ownerCapId`, `assemblyModule`, and `characterObjectId` fields to `DeployableIntel` |
 | `apps/periscope/src/db/index.ts` | Modify | New DB version (V15) adding `ownerCapId` index to deployables table |
 
-## Open Questions
+## Open Questions (all resolved)
 
 1. **Should the `assemblies` DB table be migrated into `deployables`?**
-   - **Option A: Keep both tables, merge at query time** -- Pros: No migration risk, no data loss, simpler implementation. Cons: Two sources of truth, slightly more complex query logic.
-   - **Option B: Migrate `assemblies` into `deployables` with a DB version upgrade** -- Pros: Single source of truth, cleaner long-term. Cons: Migration complexity, risk of data loss, assemblies table used by sync.ts target sync.
-   - **Recommendation:** Option A for this plan. A future plan can consolidate tables after the UI is proven.
+   - **Resolved:** Option A -- keep both tables, merge at query time. Implemented as planned.
 
 2. **Should on-chain rename be sponsored or direct wallet sign?**
-   - **Option A: Always sponsored** -- Pros: Free for user. Cons: Requires gas station running, single point of failure.
-   - **Option B: Prefer sponsored, fallback to direct** -- Pros: Works even if gas station is down. Cons: Slightly more complex code.
-   - **Recommendation:** Option B. The `useSponsoredTransaction` hook already has an `available` flag that makes this straightforward.
+   - **Resolved:** Option B -- prefer sponsored, fallback to direct. Implemented via `sponsorAvailable` flag.
 
 3. **Should "Structures" be the new label or keep "Deployables"?**
-   - **Option A: Rename to "Structures"** -- Pros: More accurate for mixed owned/watched. Cons: New term, less EVE Frontier flavor.
-   - **Option B: Keep "Deployables"** -- Pros: Familiar EVE term. Cons: Slightly misleading when viewing others' structures.
-   - **Recommendation:** Option A ("Structures") -- it's the most inclusive and accurate.
+   - **Resolved:** Option A -- renamed to "Structures" in sidebar and page heading.
 
 ## Deferred
 
