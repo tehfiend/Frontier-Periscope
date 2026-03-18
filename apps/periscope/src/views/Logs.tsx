@@ -1,15 +1,16 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/db";
 import { useLogStore } from "@/stores/logStore";
-import { useLogWatcher } from "@/hooks/useLogWatcher";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { requestDirectoryAccess } from "@/lib/logFileAccess";
+import { GrantAccessView } from "@/components/GrantAccessView";
+import { LogEventRow } from "@/components/LogEventRow";
+import { fmtTime, fmtDateTime, formatDuration } from "@/lib/format";
 import type { LogEvent, LogSession } from "@/db/types";
 import { useState } from "react";
 import {
 	FileText,
 	FolderOpen,
-	Activity,
 	Pickaxe,
 	Swords,
 	Clock,
@@ -27,10 +28,17 @@ import {
 // ── Main View ───────────────────────────────────────────────────────────────
 
 export function Logs() {
-	const { hasAccess, activeTab, selectedSessionId } = useLogStore();
-	const { grantAccess, clearAndReimport } = useLogWatcher();
+	const { hasAccess, activeTab, selectedSessionId, grantAccess, clearAndReimport } =
+		useLogStore();
 
 	if (!hasAccess) {
+		if (!grantAccess) {
+			return (
+				<p className="py-8 text-center text-sm text-zinc-600">
+					Log watcher not initialized. Navigate to the Sonar page to grant access.
+				</p>
+			);
+		}
 		return <GrantAccessView onGrant={grantAccess} />;
 	}
 
@@ -40,64 +48,18 @@ export function Logs() {
 
 	return (
 		<div className="flex h-full flex-col">
-			<Header onChangeDir={grantAccess} onClearData={clearAndReimport} />
+			<Header
+				onChangeDir={grantAccess ?? (() => {})}
+				onClearData={clearAndReimport ?? (() => {})}
+			/>
 			<TabBar />
 			<div className="flex-1 overflow-y-auto p-4">
-				{activeTab === "live" && <LiveTab />}
 				{activeTab === "sessions" && <SessionsTab />}
 				{activeTab === "mining" && <MiningTab />}
 				{activeTab === "combat" && <CombatTab />}
 				{activeTab === "travel" && <TravelTab />}
 				{activeTab === "structures" && <StructuresTab />}
 				{activeTab === "chat" && <ChatTab />}
-			</div>
-		</div>
-	);
-}
-
-// ── Grant Access ────────────────────────────────────────────────────────────
-
-function GrantAccessView({
-	onGrant,
-}: { onGrant: (h: FileSystemDirectoryHandle) => void }) {
-	async function handleGrant() {
-		const handle = await requestDirectoryAccess();
-		if (handle) onGrant(handle);
-	}
-
-	return (
-		<div className="flex h-full items-center justify-center">
-			<div className="max-w-lg space-y-6 text-center">
-				<FolderOpen size={48} className="mx-auto text-teal-500" />
-				<div>
-					<h2 className="text-xl font-bold text-zinc-100">Connect Game Logs</h2>
-					<p className="mt-2 text-sm text-zinc-400">
-						Grant read access to your game log directory to enable live mining rates, DPS
-						tracking, and session analytics.
-					</p>
-				</div>
-				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-left">
-					<p className="text-xs font-medium text-zinc-400">
-						Navigate to this folder in the picker:
-					</p>
-					<p className="mt-1.5 select-all rounded bg-zinc-800/80 px-2.5 py-1.5 font-mono text-sm text-zinc-200">
-						Documents &rsaquo; Frontier &rsaquo; logs
-					</p>
-					<p className="mt-2 text-xs text-zinc-600">
-						The picker will open in your Documents folder. Navigate into{" "}
-						<span className="text-zinc-400">Frontier</span> &rarr;{" "}
-						<span className="text-zinc-400">logs</span>, then click
-						&ldquo;Select Folder&rdquo;. This gives access to both game logs
-						and chat logs (for travel tracking). You only need to do this once.
-					</p>
-				</div>
-				<button
-					type="button"
-					onClick={handleGrant}
-					className="rounded-lg bg-teal-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-500"
-				>
-					Select Log Directory
-				</button>
 			</div>
 		</div>
 	);
@@ -177,7 +139,6 @@ function Header({
 // ── Tab Bar ─────────────────────────────────────────────────────────────────
 
 const TABS = [
-	{ id: "live" as const, label: "Live", icon: Activity },
 	{ id: "sessions" as const, label: "Sessions", icon: Clock },
 	{ id: "mining" as const, label: "Mining", icon: Pickaxe },
 	{ id: "combat" as const, label: "Combat", icon: Swords },
@@ -205,119 +166,6 @@ function TabBar() {
 					{label}
 				</button>
 			))}
-		</div>
-	);
-}
-
-// ── Live Tab ────────────────────────────────────────────────────────────────
-
-function LiveTab() {
-	const { miningRate, miningOre, dpsDealt, dpsReceived, activeSessionId } = useLogStore();
-
-	const recentEvents = useLiveQuery(
-		() =>
-			activeSessionId
-				? db.logEvents
-						.where("sessionId")
-						.equals(activeSessionId)
-						.reverse()
-						.limit(50)
-						.toArray()
-				: [],
-		[activeSessionId],
-	);
-
-	// Session totals
-	const sessionMining = useLiveQuery(
-		() =>
-			activeSessionId
-				? db.logEvents
-						.where("[sessionId+type]")
-						.equals([activeSessionId, "mining"])
-						.toArray()
-				: [],
-		[activeSessionId],
-	);
-
-	const totalMined = sessionMining?.reduce((sum, e) => sum + (e.amount ?? 0), 0) ?? 0;
-
-	const sessionDamageDealt = useLiveQuery(
-		() =>
-			activeSessionId
-				? db.logEvents
-						.where("[sessionId+type]")
-						.equals([activeSessionId, "combat_dealt"])
-						.toArray()
-				: [],
-		[activeSessionId],
-	);
-	const totalDamageDealt =
-		sessionDamageDealt?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
-
-	const sessionDamageRecv = useLiveQuery(
-		() =>
-			activeSessionId
-				? db.logEvents
-						.where("[sessionId+type]")
-						.equals([activeSessionId, "combat_received"])
-						.toArray()
-				: [],
-		[activeSessionId],
-	);
-	const totalDamageRecv =
-		sessionDamageRecv?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
-
-	return (
-		<div className="space-y-4">
-			{/* Live stat cards */}
-			<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-				<StatCard
-					label="Mining Rate"
-					value={`${Math.round(miningRate)}/min`}
-					sub={miningOre ?? "—"}
-					color="text-amber-400"
-					icon={Pickaxe}
-					active={miningRate > 0}
-				/>
-				<StatCard
-					label="DPS Dealt"
-					value={dpsDealt.toFixed(1)}
-					sub="damage/sec"
-					color="text-cyan-400"
-					icon={Swords}
-					active={dpsDealt > 0}
-				/>
-				<StatCard
-					label="DPS Received"
-					value={dpsReceived.toFixed(1)}
-					sub="damage/sec"
-					color="text-red-400"
-					icon={Swords}
-					active={dpsReceived > 0}
-				/>
-				<StatCard
-					label="Session Totals"
-					value={totalMined.toLocaleString()}
-					sub={`ore mined | ${totalDamageDealt.toLocaleString()} dealt | ${totalDamageRecv.toLocaleString()} recv`}
-					color="text-zinc-300"
-					icon={Activity}
-				/>
-			</div>
-
-			{/* Activity feed */}
-			<div>
-				<h3 className="mb-2 text-sm font-medium text-zinc-400">Activity Feed</h3>
-				<div className="space-y-0.5 rounded-lg border border-zinc-800 bg-zinc-900/30 p-2">
-					{(!recentEvents || recentEvents.length === 0) && (
-						<p className="py-8 text-center text-sm text-zinc-600">
-							Waiting for game log events...
-						</p>
-					)}
-					{recentEvents?.map((event) => (
-						<EventRow key={event.id} event={event} />
-					))}
-				</div>
-			</div>
 		</div>
 	);
 }
@@ -1263,7 +1111,7 @@ function StructuresTab() {
 						</p>
 					)}
 					{filtered.slice(0, 500).map((e) => (
-						<EventRow key={e.id} event={e} />
+						<LogEventRow key={e.id} event={e} />
 					))}
 				</div>
 			</div>
@@ -1557,133 +1405,11 @@ function SessionDetailView() {
 					</h3>
 					<div className="max-h-[600px] space-y-0.5 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900/30 p-2">
 						{events?.map((event) => (
-							<EventRow key={event.id} event={event} />
+							<LogEventRow key={event.id} event={event} />
 						))}
 					</div>
 				</div>
 			</div>
-		</div>
-	);
-}
-
-// ── Shared Components ───────────────────────────────────────────────────────
-
-function StatCard({
-	label,
-	value,
-	sub,
-	color,
-	icon: Icon,
-	active,
-}: {
-	label: string;
-	value: string;
-	sub: string;
-	color: string;
-	icon: typeof Activity;
-	active?: boolean;
-}) {
-	return (
-		<div
-			className={`rounded-lg border bg-zinc-900/50 p-3 ${active ? "border-zinc-700" : "border-zinc-800"}`}
-		>
-			<div className="flex items-center gap-2">
-				<Icon size={14} className={active ? color : "text-zinc-600"} />
-				<p className="text-xs text-zinc-500">{label}</p>
-			</div>
-			<p
-				className={`mt-1 text-2xl font-bold ${active ? color : "text-zinc-600"}`}
-			>
-				{value}
-			</p>
-			<p className="mt-0.5 truncate text-xs text-zinc-600">{sub}</p>
-		</div>
-	);
-}
-
-const EVENT_COLORS: Record<string, string> = {
-	mining: "text-amber-400",
-	combat_dealt: "text-cyan-400",
-	combat_received: "text-red-400",
-	miss_dealt: "text-zinc-500",
-	miss_received: "text-zinc-500",
-	notify: "text-zinc-400",
-	info: "text-zinc-500",
-	hint: "text-zinc-600",
-	question: "text-yellow-400",
-	structure_departed: "text-orange-400",
-	gate_offline: "text-rose-400",
-	build_fail: "text-red-500",
-	dismantle: "text-orange-300",
-	system_change: "text-indigo-400",
-	chat: "text-emerald-400",
-};
-
-const EVENT_LABELS: Record<string, string> = {
-	mining: "MINE",
-	combat_dealt: "HIT",
-	combat_received: "DMG",
-	miss_dealt: "MISS",
-	miss_received: "MISS",
-	notify: "SYS",
-	info: "INFO",
-	hint: "HINT",
-	question: "???",
-	structure_departed: "LEFT",
-	gate_offline: "GATE",
-	build_fail: "FAIL",
-	dismantle: "DISM",
-	system_change: "JUMP",
-	chat: "CHAT",
-};
-
-function EventRow({ event }: { event: LogEvent }) {
-	const color = EVENT_COLORS[event.type] ?? "text-zinc-500";
-	const label = EVENT_LABELS[event.type] ?? event.type;
-	const time = fmtTime(event.timestamp);
-
-	let detail: string;
-	switch (event.type) {
-		case "mining":
-			detail = `${event.amount} ${event.ore}`;
-			break;
-		case "combat_dealt":
-			detail = `${event.damage} → ${event.target} (${event.weapon}, ${event.hitQuality})`;
-			break;
-		case "combat_received":
-			detail = `${event.damage} ← ${event.target} (${event.hitQuality})`;
-			break;
-		case "miss_dealt":
-			detail = `→ ${event.target} (${event.weapon})`;
-			break;
-		case "miss_received":
-			detail = `← ${event.target}`;
-			break;
-		case "structure_departed":
-			detail = `${event.structureName} left ${event.systemName}`;
-			break;
-		case "gate_offline":
-			detail = `${event.systemName} Traffic Control offline`;
-			break;
-		case "build_fail":
-		case "dismantle":
-			detail = event.message ?? "";
-			break;
-		case "system_change":
-			detail = `→ ${event.systemName}`;
-			break;
-		case "chat":
-			detail = `[${event.channel}] ${event.speaker}: ${event.message}`;
-			break;
-		default:
-			detail = event.message ?? "";
-	}
-
-	return (
-		<div className="flex items-center gap-2 rounded px-2 py-0.5 text-xs hover:bg-zinc-800/50">
-			<span className="shrink-0 font-mono text-zinc-600">{time}</span>
-			<span className={`shrink-0 w-10 font-mono font-bold ${color}`}>{label}</span>
-			<span className="truncate text-zinc-300">{detail}</span>
 		</div>
 	);
 }
@@ -1846,19 +1572,3 @@ function computeEncounters(
 	return encounters;
 }
 
-function fmtTime(iso: string): string {
-	return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-function fmtDateTime(iso: string): string {
-	const d = new Date(iso);
-	return `${d.toLocaleDateString([], { year: "numeric", month: "2-digit", day: "2-digit" })} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-}
-
-function formatDuration(ms: number): string {
-	const totalSec = Math.round(ms / 1000);
-	const min = Math.floor(totalSec / 60);
-	const sec = totalSec % 60;
-	if (min === 0) return `${sec}s`;
-	return `${min}m ${sec}s`;
-}

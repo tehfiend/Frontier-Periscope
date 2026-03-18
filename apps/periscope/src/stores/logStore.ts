@@ -15,8 +15,12 @@ interface LogState {
 	dpsReceived: number;
 
 	// UI
-	activeTab: "live" | "sessions" | "mining" | "combat" | "travel" | "structures" | "chat";
+	activeTab: "sessions" | "mining" | "combat" | "travel" | "structures" | "chat";
 	selectedSessionId: string | null;
+
+	// Callbacks registered by useLogWatcher (running at Layout level)
+	grantAccess: ((h: FileSystemDirectoryHandle) => void) | null;
+	clearAndReimport: (() => void) | null;
 
 	// Actions
 	setHasAccess: (v: boolean) => void;
@@ -30,6 +34,8 @@ interface LogState {
 	}) => void;
 	setActiveTab: (tab: LogState["activeTab"]) => void;
 	setSelectedSessionId: (id: string | null) => void;
+	setGrantAccess: (fn: ((h: FileSystemDirectoryHandle) => void) | null) => void;
+	setClearAndReimport: (fn: (() => void) | null) => void;
 }
 
 export const useLogStore = create<LogState>((set) => ({
@@ -40,8 +46,10 @@ export const useLogStore = create<LogState>((set) => ({
 	miningOre: null,
 	dpsDealt: 0,
 	dpsReceived: 0,
-	activeTab: "live",
+	activeTab: "sessions",
 	selectedSessionId: null,
+	grantAccess: null,
+	clearAndReimport: null,
 
 	setHasAccess: (v) => set({ hasAccess: v }),
 	setIsWatching: (v) => set({ isWatching: v }),
@@ -55,4 +63,6 @@ export const useLogStore = create<LogState>((set) => ({
 		})),
 	setActiveTab: (tab) => set({ activeTab: tab }),
 	setSelectedSessionId: (id) => set({ selectedSessionId: id }),
+	setGrantAccess: (fn) => set({ grantAccess: fn }),
+	setClearAndReimport: (fn) => set({ clearAndReimport: fn }),
 }));
