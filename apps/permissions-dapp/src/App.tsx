@@ -145,6 +145,7 @@ function Main() {
 									assemblyId={selectedAssemblyId}
 									packageId={packageId}
 									configObjectId={configObjectId}
+									aclRegistryPackageId={aclRegistryPackageId || undefined}
 								/>
 							)}
 
