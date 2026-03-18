@@ -5,6 +5,7 @@ import type {
 	AssemblyPolicy,
 	BetrayalAlert,
 	CacheMetadataEntry,
+	Celestial,
 	CharacterRecord,
 	ChatIntelEntry,
 	Constellation,
@@ -54,6 +55,7 @@ class PeriscopeDB extends Dexie {
 	// field — Dexie maps the first component. The actual PK is the compound index.
 	jumps!: EntityTable<Jump, "fromSystemId">;
 	gameTypes!: EntityTable<GameType, "id">;
+	celestials!: EntityTable<Celestial, "id">;
 
 	// Characters
 	characters!: EntityTable<CharacterRecord, "id">;
@@ -406,8 +408,7 @@ class PeriscopeDB extends Dexie {
 		// V16: Sonar — unified event log + channel state; backfill system_change from logEvents
 		this.version(16)
 			.stores({
-				sonarEvents:
-					"++id, [source+eventType], timestamp, characterId, assemblyId, sessionId",
+				sonarEvents: "++id, [source+eventType], timestamp, characterId, assemblyId, sessionId",
 				sonarState: "channel",
 			})
 			.upgrade(async (tx) => {
@@ -423,10 +424,7 @@ class PeriscopeDB extends Dexie {
 				]);
 
 				// Backfill: copy existing system_change events from logEvents to sonarEvents
-				const systemChanges = await logEvents
-					.where("type")
-					.equals("system_change")
-					.toArray();
+				const systemChanges = await logEvents.where("type").equals("system_change").toArray();
 
 				if (systemChanges.length > 0) {
 					const sessions = await logSessions.toArray();
@@ -456,9 +454,7 @@ class PeriscopeDB extends Dexie {
 
 					await sonarEvents.bulkAdd(sonarBatch);
 
-					const maxId = Math.max(
-						...systemChanges.map((e: { id?: number }) => e.id ?? 0),
-					);
+					const maxId = Math.max(...systemChanges.map((e: { id?: number }) => e.id ?? 0));
 					await sonarState.update("local", { lastProcessedLogId: maxId });
 				}
 			});
@@ -466,8 +462,12 @@ class PeriscopeDB extends Dexie {
 		this.version(17).stores({
 			deployables:
 				"id, objectId, assemblyType, owner, status, label, updatedAt, _hlc, ownerCapId, parentId, *tags",
-			assemblies:
-				"id, assemblyType, objectId, owner, status, updatedAt, _hlc, parentId, *tags",
+			assemblies: "id, assemblyType, objectId, owner, status, updatedAt, _hlc, parentId, *tags",
+		});
+
+		// V18: Celestials -- planet positions from mapObjects.db (lazy-loaded)
+		this.version(18).stores({
+			celestials: "id, systemId, typeId, index",
 		});
 	}
 }

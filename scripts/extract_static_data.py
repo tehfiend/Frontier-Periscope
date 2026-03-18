@@ -157,6 +157,8 @@ def extract_starmap(resfiles_dir: Path) -> dict:
     systems = {}
     for sys_id, sys_data in raw_systems.items():
         center = sys_data["center"]
+        planet_item_ids = sys_data.get("planetItemIDs", [])
+        planet_count_by_type = sys_data.get("planetCountByType", {})
         systems[sys_id] = {
             "id": sys_id,
             "center": [center[0], center[1], center[2]],
@@ -164,6 +166,10 @@ def extract_starmap(resfiles_dir: Path) -> dict:
             "regionId": sys_data["regionID"],
             "neighbours": sys_data.get("neighbours", []),
             "factionId": sys_data.get("factionID"),
+            "sunTypeId": sys_data.get("sunTypeID"),
+            "planetCount": len(planet_item_ids),
+            "planetCountByType": planet_count_by_type,
+            "planetItemIds": planet_item_ids,
         }
 
     # Build regions

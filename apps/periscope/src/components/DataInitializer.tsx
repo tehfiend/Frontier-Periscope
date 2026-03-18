@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
 import { db } from "@/db";
-import { useAppStore } from "@/stores/appStore";
 import { fetchAndStoreGameTypes } from "@/lib/worldApi";
-import { Telescope, Loader2 } from "lucide-react";
+import { useAppStore } from "@/stores/appStore";
+import { Loader2, Telescope } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface LoadingStep {
 	label: string;
@@ -21,9 +21,11 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 	}, []);
 
 	async function initialize() {
-		// Check if static data is already loaded
+		const STELLAR_DATA_VERSION = "2.0.0";
+
+		// Check if static data is already loaded and up-to-date
 		const meta = await db.cacheMetadata.get("stellarData");
-		if (meta) {
+		if (meta && meta.version === STELLAR_DATA_VERSION) {
 			setStaticDataReady(true);
 
 			// Check if profile is configured (any character exists, or legacy suiAddress)
@@ -48,6 +50,15 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 			return;
 		}
 
+		// Version mismatch or no data: clear stale data before re-import
+		if (meta) {
+			await db.solarSystems.clear();
+			await db.regions.clear();
+			await db.constellations.clear();
+			await db.jumps.clear();
+			await db.cacheMetadata.delete("stellarData");
+		}
+
 		// Load static data with progress tracking
 		const loadSteps: LoadingStep[] = [
 			{ label: "Solar systems", status: "pending" },
@@ -57,8 +68,12 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 		];
 		setSteps([...loadSteps]);
 
-		// biome-ignore lint/suspicious/noExplicitAny: Dexie table type is complex
-		async function loadStep(index: number, file: string, table: { bulkPut: (items: any[]) => any }) {
+		async function loadStep(
+			index: number,
+			file: string,
+			// biome-ignore lint/suspicious/noExplicitAny: Dexie table type is complex
+			table: { bulkPut: (items: any[]) => any },
+		) {
 			loadSteps[index].status = "loading";
 			setSteps([...loadSteps]);
 
@@ -78,7 +93,7 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 		// Save cache metadata
 		await db.cacheMetadata.put({
 			key: "stellarData",
-			version: "1.0.0",
+			version: STELLAR_DATA_VERSION,
 			importedAt: new Date().toISOString(),
 			counts: {
 				solarSystems: loadSteps[0].count ?? 0,
@@ -123,7 +138,9 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 												✓
 											</div>
 										)}
-										{step.status === "pending" && <div className="h-4 w-4 rounded-full bg-zinc-800" />}
+										{step.status === "pending" && (
+											<div className="h-4 w-4 rounded-full bg-zinc-800" />
+										)}
 										<span className={step.status === "done" ? "text-zinc-300" : "text-zinc-500"}>
 											{step.label}
 										</span>

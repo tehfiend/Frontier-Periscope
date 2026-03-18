@@ -8,6 +8,10 @@ export interface SolarSystem {
 	regionId: number;
 	neighbours: number[];
 	factionId?: number | null;
+	sunTypeId?: number;
+	planetCount?: number;
+	planetCountByType?: Record<number, number>;
+	planetItemIds?: number[];
 }
 
 export interface Constellation {
@@ -31,6 +35,16 @@ export interface Region {
 export interface Jump {
 	fromSystemId: number;
 	toSystemId: number;
+}
+
+export interface Celestial {
+	id: number; // celestialID
+	systemId: number; // solarSystemID
+	index: number; // celestialIndex (planet number 1-13)
+	typeId: number; // planet type (11, 12, 13, 2014-2016, 2063)
+	x: number; // position relative to sun (meters)
+	y: number;
+	z: number;
 }
 
 export interface GameType {
