@@ -72,8 +72,8 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0xbbca3a051fd616da4ebb34b4f67bf6d7111a32904e7fc4da29acd9a9b2bbb5ef",
 		},
 		gateAcl: {
-			packageId: "0x7e0ad0eff0aef4ea2b068209948c7036f2dbfcf51600029a0d27cd5bbf9ad44c",
-			configObjectId: "0xa543f9158e517955b90dc864fc4c1fb00cca8f6fe688495f4a609335800f9dd6",
+			packageId: "0x44ff830c866ba3be10d42526b4d65b1f8dd2ba88acba66e847f6004543af4583",
+			configObjectId: "0x61abf5d57a9383640b772ec962dec3bac6b5c50e10f1b0e7fc2328cdb6aee8be",
 		},
 		gateTribe: {
 			packageId: "0x7ce73cdc22d21410794818a31522bc85c25ef97c3685214796f7347d76fd3298",

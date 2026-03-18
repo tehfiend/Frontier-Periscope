@@ -1,12 +1,12 @@
 [package]
 name = "gate_acl"
 edition = "2024"
-published-at = "0x7e0ad0eff0aef4ea2b068209948c7036f2dbfcf51600029a0d27cd5bbf9ad44c"
+published-at = "0x44ff830c866ba3be10d42526b4d65b1f8dd2ba88acba66e847f6004543af4583"
 
 [dependencies]
-world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "v0.0.18" }
+world = { local = "../world_utopia" }
 acl_registry = { local = "../acl_registry" }
 
 [addresses]
-gate_acl = "0x7e0ad0eff0aef4ea2b068209948c7036f2dbfcf51600029a0d27cd5bbf9ad44c"
+gate_acl = "0x44ff830c866ba3be10d42526b4d65b1f8dd2ba88acba66e847f6004543af4583"
 acl_registry = "0x3b1cdef2e8ddbd17618357a2ea8101073f881086442507e722cb02aa3ffc3b55"
