@@ -13,6 +13,7 @@ export interface OwnedAssembly {
 	extensionType?: string;
 	dappUrl?: string;
 	ownerCapId?: string;
+	energySourceId?: string;
 }
 
 export interface CharacterInfo {
@@ -182,6 +183,9 @@ export async function discoverCharacterAndAssemblies(
 							: undefined,
 						dappUrl: metaObj?.url ? String(metaObj.url) : undefined,
 						ownerCapId: cap.objectId,
+						energySourceId: assemblyFields.energy_source_id
+							? String(assemblyFields.energy_source_id)
+							: undefined,
 					});
 				} catch {
 					assemblies.push({
@@ -190,6 +194,7 @@ export async function discoverCharacterAndAssemblies(
 						typeId: 0,
 						status: "unknown",
 						ownerCapId: cap.objectId,
+						energySourceId: undefined,
 					});
 				}
 			}
@@ -240,6 +245,9 @@ export async function discoverCharacterAndAssemblies(
 								: undefined,
 							dappUrl: metaObj2?.url ? String(metaObj2.url) : undefined,
 							ownerCapId: obj.objectId,
+							energySourceId: assemblyFields.energy_source_id
+								? String(assemblyFields.energy_source_id)
+								: undefined,
 						});
 					} catch {
 						assemblies.push({
@@ -248,6 +256,7 @@ export async function discoverCharacterAndAssemblies(
 							typeId: 0,
 							status: "unknown",
 							ownerCapId: obj.objectId,
+							energySourceId: undefined,
 						});
 					}
 				}

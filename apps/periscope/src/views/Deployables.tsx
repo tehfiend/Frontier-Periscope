@@ -326,7 +326,7 @@ export function Deployables() {
 					fuelLevel: fuelData.fuelLevel ?? existing?.fuelLevel,
 					fuelExpiresAt: fuelData.fuelExpiresAt ?? existing?.fuelExpiresAt,
 					notes: existing?.notes,
-					parentId: existing?.parentId,
+					parentId: assembly.energySourceId ?? existing?.parentId,
 					tags: existing?.tags ?? [],
 					source: "chain",
 					createdAt: existing?.createdAt ?? now,

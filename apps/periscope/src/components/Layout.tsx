@@ -10,6 +10,7 @@ import { usePeerSync } from "@/hooks/usePeerSync";
 import { useLogWatcher } from "@/hooks/useLogWatcher";
 import { useLocalSonar } from "@/hooks/useLocalSonar";
 import { useChainSonar } from "@/hooks/useChainSonar";
+import { useSonarAlerts } from "@/hooks/useSonarAlerts";
 
 export function Layout() {
 	useNotifications();
@@ -18,6 +19,7 @@ export function Layout() {
 	useLogWatcher();
 	useLocalSonar();
 	useChainSonar();
+	useSonarAlerts();
 
 	return (
 		<div className="flex h-screen overflow-hidden bg-zinc-950">
