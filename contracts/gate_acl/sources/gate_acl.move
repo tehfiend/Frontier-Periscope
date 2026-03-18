@@ -15,12 +15,19 @@ module gate_acl::gate_acl;
 use sui::clock::Clock;
 use world::{character::Character, gate::{Self, Gate}, in_game_id};
 use gate_acl::config::{Self, ExtensionConfig};
+use acl_registry::acl_registry::SharedAcl;
 
 #[error(code = 0)]
 const EAccessDenied: vector<u8> = b"Character not authorized to use this gate";
 
 #[error(code = 1)]
 const EGateNotConfigured: vector<u8> = b"Gate has no ACL config set";
+
+#[error(code = 2)]
+const ESharedAclMismatch: vector<u8> = b"SharedAcl object does not match configured ACL ID";
+
+#[error(code = 3)]
+const EGateNoSharedConfig: vector<u8> = b"Gate has no shared ACL config set";
 
 /// Typed witness for extension authorization.
 public struct GateAclAuth has drop {}
@@ -55,6 +62,58 @@ public fun can_jump(
     };
 
     let permit_duration = config::permit_duration_ms(acl);
+    let expires_at = clock.timestamp_ms() + permit_duration;
+
+    gate::issue_jump_permit<GateAclAuth>(
+        source_gate,
+        destination_gate,
+        character,
+        GateAclAuth {},
+        expires_at,
+        ctx,
+    );
+}
+
+/// Check a character against a SharedAcl referenced by the gate's config.
+/// The gate must have a SharedAclConfig set via config::set_shared_config().
+/// The caller passes the SharedAcl object; this function verifies it matches
+/// the configured ACL ID before checking the character.
+public fun can_jump_shared(
+    source_gate: &Gate,
+    destination_gate: &Gate,
+    character: &Character,
+    config: &ExtensionConfig,
+    shared_acl: &SharedAcl,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let gate_id = object::id(source_gate);
+    assert!(config::has_shared_config(config, gate_id), EGateNoSharedConfig);
+
+    let shared_config = config::get_shared_config(config, gate_id);
+
+    // Verify the passed SharedAcl matches the configured ACL ID
+    assert!(
+        object::id(shared_acl) == config::shared_acl_id(shared_config),
+        ESharedAclMismatch,
+    );
+
+    let char_tribe = character.tribe();
+    let char_id = in_game_id::item_id(&character.key());
+
+    // Check character against SharedAcl lists (same logic as can_jump)
+    let in_list = acl_registry::acl_registry::contains_tribe(shared_acl, char_tribe)
+        || acl_registry::acl_registry::contains_character(shared_acl, char_id);
+
+    if (acl_registry::acl_registry::is_allowlist(shared_acl)) {
+        // Allowlist mode: must be in list to pass
+        assert!(in_list, EAccessDenied);
+    } else {
+        // Denylist mode: must NOT be in list to pass
+        assert!(!in_list, EAccessDenied);
+    };
+
+    let permit_duration = config::shared_permit_duration_ms(shared_config);
     let expires_at = clock.timestamp_ms() + permit_duration;
 
     gate::issue_jump_permit<GateAclAuth>(

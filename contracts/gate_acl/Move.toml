@@ -1,9 +1,12 @@
 [package]
 name = "gate_acl"
 edition = "2024"
+published-at = "0x7e0ad0eff0aef4ea2b068209948c7036f2dbfcf51600029a0d27cd5bbf9ad44c"
 
 [dependencies]
 world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "v0.0.18" }
+acl_registry = { local = "../acl_registry" }
 
 [addresses]
-gate_acl = "0x0"
+gate_acl = "0x7e0ad0eff0aef4ea2b068209948c7036f2dbfcf51600029a0d27cd5bbf9ad44c"
+acl_registry = "0x0"

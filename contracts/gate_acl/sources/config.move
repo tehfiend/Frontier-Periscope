@@ -49,6 +49,20 @@ public struct AclConfig has store, drop {
     permit_duration_ms: u64,
 }
 
+/// Key type for shared ACL config dynamic fields.
+/// Uses a wrapper struct to avoid key collisions with existing AclConfig
+/// entries (which use bare ID keys).
+public struct SharedAclKey has copy, drop, store {
+    gate_id: ID,
+}
+
+/// Configuration binding a gate to a SharedAcl object.
+/// Stored as a dynamic field on ExtensionConfig keyed by SharedAclKey.
+public struct SharedAclConfig has store, drop {
+    shared_acl_id: ID,
+    permit_duration_ms: u64,
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 
 /// Create the shared config object. Called once at publish time.
@@ -221,4 +235,63 @@ public fun admins(config: &ExtensionConfig): &vector<address> {
 /// Get the admin tribes list.
 public fun admin_tribes(config: &ExtensionConfig): &vector<u32> {
     &config.admin_tribes
+}
+
+// ── Shared ACL config management ──────────────────────────────────────────
+
+/// Set or update the shared ACL binding for a gate. Requires authorization.
+/// A gate can use either inline AclConfig (set_config) or SharedAclConfig
+/// (set_shared_config), but they are stored under different keys and do not
+/// conflict.
+public fun set_shared_config(
+    config: &mut ExtensionConfig,
+    gate_id: ID,
+    shared_acl_id: ID,
+    permit_duration_ms: u64,
+    ctx: &TxContext,
+) {
+    assert!(is_authorized(config, ctx), ENotAuthorized);
+
+    let key = SharedAclKey { gate_id };
+    let shared_config = SharedAclConfig { shared_acl_id, permit_duration_ms };
+
+    if (dynamic_field::exists_(&config.id, key)) {
+        *dynamic_field::borrow_mut<SharedAclKey, SharedAclConfig>(&mut config.id, key) =
+            shared_config;
+    } else {
+        dynamic_field::add(&mut config.id, key, shared_config);
+    };
+}
+
+/// Remove the shared ACL binding for a gate. Requires authorization.
+public fun remove_shared_config(
+    config: &mut ExtensionConfig,
+    gate_id: ID,
+    ctx: &TxContext,
+) {
+    assert!(is_authorized(config, ctx), ENotAuthorized);
+    let key = SharedAclKey { gate_id };
+    if (dynamic_field::exists_(&config.id, key)) {
+        dynamic_field::remove<SharedAclKey, SharedAclConfig>(&mut config.id, key);
+    };
+}
+
+/// Check if a gate has a shared ACL config set.
+public fun has_shared_config(config: &ExtensionConfig, gate_id: ID): bool {
+    dynamic_field::exists_(&config.id, SharedAclKey { gate_id })
+}
+
+/// Read the shared ACL config for a gate. Aborts if not configured.
+public fun get_shared_config(config: &ExtensionConfig, gate_id: ID): &SharedAclConfig {
+    dynamic_field::borrow<SharedAclKey, SharedAclConfig>(&config.id, SharedAclKey { gate_id })
+}
+
+/// Get the SharedAcl object ID from a SharedAclConfig.
+public fun shared_acl_id(config: &SharedAclConfig): ID {
+    config.shared_acl_id
+}
+
+/// Get the permit duration from a SharedAclConfig.
+public fun shared_permit_duration_ms(config: &SharedAclConfig): u64 {
+    config.permit_duration_ms
 }
