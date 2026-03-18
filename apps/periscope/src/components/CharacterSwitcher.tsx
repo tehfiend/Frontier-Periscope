@@ -4,21 +4,8 @@ import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useAppStore } from "@/stores/appStore";
 import { db } from "@/db";
 import { AddCharacterDialog } from "./AddCharacterDialog";
-import { ChevronDown, Users, User, Link2, Gamepad2, Wallet, PenLine, Plus, Trash2 } from "lucide-react";
-import type { CharacterRecord, CharacterSource } from "@/db/types";
-
-function SourceIcon({ source }: { source?: CharacterSource }) {
-	switch (source) {
-		case "log":
-			return <span title="From game logs"><Gamepad2 size={10} className="text-zinc-600" /></span>;
-		case "wallet":
-			return <span title="From wallet"><Wallet size={10} className="text-zinc-600" /></span>;
-		case "manual":
-			return <span title="Manual entry"><PenLine size={10} className="text-zinc-600" /></span>;
-		default:
-			return null;
-	}
-}
+import { ChevronDown, Users, User, Plus, Trash2 } from "lucide-react";
+import type { CharacterRecord } from "@/db/types";
 
 function CharacterEntry({
 	char,
@@ -40,25 +27,12 @@ function CharacterEntry({
 			<button type="button" onClick={onClick} className="flex flex-1 items-center gap-2 min-w-0">
 				<User size={14} className="shrink-0" />
 				<div className="flex flex-1 flex-col items-start gap-0 truncate">
-					<span className="truncate leading-tight">{char.characterName}</span>
-					{char.tenant && (
-						<span className="truncate text-[10px] leading-tight text-zinc-600 capitalize">
-							{char.tenant}
+					{char.tribe && (
+						<span className="truncate text-[10px] leading-tight text-zinc-500">
+							{char.tribe}
 						</span>
 					)}
-				</div>
-				<div className="flex items-center gap-1.5">
-					<SourceIcon source={char.source} />
-					{char.isActive && (
-						<span className="h-1.5 w-1.5 rounded-full bg-green-500" title="Online" />
-					)}
-					<span title={char.suiAddress ? `Linked: ${char.suiAddress.slice(0, 10)}...` : "Not linked"}>
-						{char.suiAddress ? (
-							<Link2 size={12} className="text-cyan-500" />
-						) : (
-							<Link2 size={12} className="text-zinc-700" />
-						)}
-					</span>
+					<span className="truncate leading-tight">{char.characterName}</span>
 				</div>
 			</button>
 			<button
@@ -107,12 +81,8 @@ export function CharacterSwitcher() {
 			? "All Characters"
 			: activeCharacter?.characterName ?? "Unknown";
 
-	const subtitle =
-		activeCharacterId === "all"
-			? filteredCharacters.length > 0
-				? `${filteredCharacters.length} character${filteredCharacters.length !== 1 ? "s" : ""}`
-				: undefined
-			: activeCharacter?.tenant ?? undefined;
+	const displayTribe =
+		activeCharacterId === "all" ? undefined : activeCharacter?.tribe ?? undefined;
 
 	return (
 		<>
@@ -130,12 +100,12 @@ export function CharacterSwitcher() {
 					{!collapsed && (
 						<>
 							<div className="flex flex-1 flex-col items-start truncate">
-								<span className="truncate leading-tight">{displayName}</span>
-								{subtitle && (
-									<span className="truncate text-[10px] leading-tight text-zinc-600">
-										{subtitle}
+								{displayTribe && (
+									<span className="truncate text-[10px] leading-tight text-zinc-500">
+										{displayTribe}
 									</span>
 								)}
+								<span className="truncate leading-tight">{displayName}</span>
 							</div>
 							<ChevronDown
 								size={14}

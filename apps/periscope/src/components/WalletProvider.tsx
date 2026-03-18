@@ -14,7 +14,7 @@ const dAppKit = createDAppKit({
 		appName: "Frontier Periscope",
 		origin: "https://vault.evefrontier.com",
 	},
-	autoConnect: false,
+	autoConnect: true,
 });
 
 export function WalletProvider({ children }: { children: ReactNode }) {
