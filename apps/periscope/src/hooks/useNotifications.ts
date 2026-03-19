@@ -65,7 +65,7 @@ export function useNotifications() {
 
 		if (totalAlerts > prevCountRef.current && permissionRef.current === "granted") {
 			const newCount = totalAlerts - prevCountRef.current;
-			new Notification("EF Periscope", {
+			new Notification("Frontier Periscope", {
 				body: `${newCount} new alert${newCount > 1 ? "s" : ""} (${intelCount} intel, ${fuelAlertCount} fuel)`,
 				icon: "/icons/icon-192.png",
 				tag: "periscope-alert",

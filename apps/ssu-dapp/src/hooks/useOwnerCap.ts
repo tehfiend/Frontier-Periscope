@@ -1,54 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSuiClient } from "./useSuiClient";
-import { getWorldPackageId, getTenant } from "@/lib/constants";
 
-const FIND_OWNER_CAP = `
-	query($parentId: SuiAddress!, $ownerCapType: String!, $first: Int) {
-		object(address: $parentId) {
-			dynamicObjectField: receivingConnection(filter: { type: $ownerCapType }, first: $first) {
-				nodes {
-					address
-					version
-					digest
-				}
-			}
+const GET_OBJECT_REF = `
+	query($id: SuiAddress!) {
+		object(address: $id) {
+			address
+			version
+			digest
 		}
 	}
 `;
 
-/** Fallback: list objects received by the character object */
-const LIST_RECEIVED_OBJECTS = `
-	query($parentId: SuiAddress!, $first: Int) {
-		object(address: $parentId) {
-			receivingConnection(first: $first) {
-				nodes {
-					address
-					version
-					digest
-					asMoveObject {
-						contents { type { repr } json }
-					}
-				}
-			}
-		}
-	}
-`;
-
-interface GqlReceivedResponse {
+interface GqlObjectRefResponse {
 	object: {
-		receivingConnection: {
-			nodes: Array<{
-				address: string;
-				version: number;
-				digest: string;
-				asMoveObject?: {
-					contents?: {
-						type: { repr: string };
-						json: Record<string, unknown>;
-					};
-				};
-			}>;
-		};
+		address: string;
+		version: number;
+		digest: string;
 	} | null;
 }
 
@@ -59,10 +26,11 @@ export interface OwnerCapInfo {
 }
 
 /**
- * Find the OwnerCap<StorageUnit> receiving ticket for borrow_owner_cap.
+ * Fetch the OwnerCap<StorageUnit> object reference for borrow_owner_cap.
  *
- * The OwnerCap is "owned" by the Character object. To borrow it in a PTB,
- * we need its object ID + version + digest to create a Receiving<OwnerCap<T>> arg.
+ * We already know the ownerCapId from the SSU's owner_cap_id field.
+ * We just need the current version + digest to create a Receiving<OwnerCap<T>> arg.
+ * We also verify the connected wallet's Character is the one that owns this cap.
  */
 export function useOwnerCap(characterObjectId: string | undefined, ownerCapId: string | undefined) {
 	const client = useSuiClient();
@@ -72,37 +40,38 @@ export function useOwnerCap(characterObjectId: string | undefined, ownerCapId: s
 		queryFn: async (): Promise<OwnerCapInfo | null> => {
 			if (!characterObjectId || !ownerCapId) return null;
 
-			const tenant = getTenant();
-			const worldPkg = getWorldPackageId(tenant);
-			const ownerCapType = `${worldPkg}::access::OwnerCap<${worldPkg}::storage_unit::StorageUnit>`;
-
-			// Try listing received objects on the character
-			const result = await client.query<
-				GqlReceivedResponse,
-				{ parentId: string; first: number }
-			>({
-				query: LIST_RECEIVED_OBJECTS,
-				variables: { parentId: characterObjectId, first: 50 },
+			// Fetch the OwnerCap object to get version + digest
+			const r: { data?: GqlObjectRefResponse | null } = await client.query({
+				query: GET_OBJECT_REF,
+				variables: { id: ownerCapId },
 			});
 
-			const nodes = result.data?.object?.receivingConnection?.nodes ?? [];
+			const obj = r.data?.object;
+			if (!obj) return null;
 
-			// Find the OwnerCap matching the expected ownerCapId
-			for (const node of nodes) {
-				const typeRepr = node.asMoveObject?.contents?.type?.repr ?? "";
-				if (
-					node.address === ownerCapId ||
-					typeRepr.includes("OwnerCap") && typeRepr.includes("StorageUnit")
-				) {
-					return {
-						objectId: node.address,
-						version: node.version,
-						digest: node.digest,
-					};
-				}
-			}
+			// Verify this OwnerCap is owned by the connected wallet's Character
+			// by checking the cap's owner address matches the characterObjectId
+			const ownerQuery: { data?: { object: { owner: { address?: { address: string } } } | null } | null } =
+				await client.query({
+					query: `query($id: SuiAddress!) {
+						object(address: $id) {
+							owner {
+								... on ObjectOwner { address { address } }
+								... on AddressOwner { address { address } }
+							}
+						}
+					}`,
+					variables: { id: ownerCapId },
+				});
 
-			return null;
+			const capOwner = ownerQuery.data?.object?.owner?.address?.address;
+			if (capOwner !== characterObjectId) return null;
+
+			return {
+				objectId: obj.address,
+				version: obj.version,
+				digest: obj.digest,
+			};
 		},
 		enabled: !!characterObjectId && !!ownerCapId,
 		staleTime: 30_000,

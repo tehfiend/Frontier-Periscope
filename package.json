@@ -7,9 +7,6 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "db:generate": "turbo run db:generate --filter=@tehfrontier/db",
-    "db:migrate": "turbo run db:migrate --filter=@tehfrontier/db",
-    "db:studio": "turbo run db:studio --filter=@tehfrontier/db",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {

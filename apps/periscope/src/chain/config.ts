@@ -6,8 +6,6 @@ export interface TenantConfig {
 	evePackageId: string;
 	datahubUrl: string;
 	dappUrl: string;
-	/** Gas station URL for sponsored transactions + turret build service */
-	gasStationUrl?: string;
 }
 
 export const TENANTS = {
@@ -17,7 +15,6 @@ export const TENANTS = {
 		evePackageId: "0x2a66a89b5a735738ffa4423ac024d23571326163f324f9051557617319e59d60",
 		datahubUrl: "world-api-stillness.live.tech.evefrontier.com",
 		dappUrl: "https://dapps.evefrontier.com/?tenant=stillness",
-		gasStationUrl: "http://localhost:3100",
 	},
 	utopia: {
 		name: "Utopia",
@@ -25,7 +22,6 @@ export const TENANTS = {
 		evePackageId: "0xf0446b93345c1118f21239d7ac58fb82d005219b2016e100f074e4d17162a465",
 		datahubUrl: "world-api-utopia.uat.pub.evefrontier.com",
 		dappUrl: "https://uat.dapps.evefrontier.com/?tenant=utopia",
-		gasStationUrl: undefined,
 	},
 } as const;
 

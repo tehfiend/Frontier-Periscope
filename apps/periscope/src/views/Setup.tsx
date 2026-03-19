@@ -28,7 +28,7 @@ export function Setup() {
 			<div className="w-full max-w-md space-y-8 px-6">
 				<div className="flex flex-col items-center gap-4 text-center">
 					<Telescope className="h-16 w-16 text-cyan-500" />
-					<h1 className="text-3xl font-bold text-zinc-100">EF Periscope</h1>
+					<h1 className="text-3xl font-bold text-zinc-100">Frontier Periscope</h1>
 					<p className="text-sm text-zinc-400">
 						Privacy-first intel management for EVE Frontier.
 						<br />

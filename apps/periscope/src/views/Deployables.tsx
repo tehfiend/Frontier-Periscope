@@ -8,7 +8,7 @@ import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { discoverCharacterAndAssemblies } from "@/chain/queries";
 import { syncTargetAssemblies } from "@/chain/sync";
 import { buildRenameTx, isRenamableModule } from "@/chain/transactions";
-import { useSponsoredTransaction } from "@/hooks/useSponsoredTransaction";
+
 import { SystemSearch } from "@/components/SystemSearch";
 import { ensureCelestialsLoaded, PLANET_TYPE_NAMES } from "@/lib/celestials";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
@@ -174,7 +174,8 @@ export function Deployables() {
 	const { activeCharacter, activeSuiAddresses } = useActiveCharacter();
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
-	const { executeSponsored, available: sponsorAvailable } = useSponsoredTransaction();
+	const executeSponsored = null;
+	const sponsorAvailable = false;
 
 	const chainAddress = activeCharacter?.suiAddress ?? activeSuiAddresses[0] ?? null;
 	const hasAddress = !!chainAddress;

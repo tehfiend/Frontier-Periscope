@@ -232,7 +232,7 @@ function parseInventory(inv: unknown): InventoryData {
  * Normalize an inventory key ID for comparison.
  * GraphQL may return IDs with or without 0x prefix, leading zeros, etc.
  */
-function normalizeId(id: string): string {
+export function normalizeId(id: string): string {
 	const hex = id.replace(/^0x/i, "").toLowerCase();
 	return `0x${hex.padStart(64, "0")}`;
 }

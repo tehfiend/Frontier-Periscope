@@ -174,7 +174,7 @@ export function Sidebar() {
 				<img src="/periscope.svg" alt="Periscope" className="h-6 w-6 shrink-0" style={{ filter: "invert(73%) sepia(65%) saturate(500%) hue-rotate(140deg) brightness(95%)" }} />
 				{!collapsed && (
 					<div className="flex items-center gap-2">
-						<span className="text-sm font-semibold text-zinc-100">EF Periscope</span>
+						<span className="text-sm font-semibold text-zinc-100">Frontier Periscope</span>
 						<span
 							className={`h-2 w-2 shrink-0 rounded-full ${SERVER_DOTS[tenant] ?? "bg-zinc-500"}`}
 							title={tenant}

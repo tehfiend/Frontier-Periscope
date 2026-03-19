@@ -20,8 +20,6 @@ pnpm dev            # Start all dev servers
 pnpm lint           # Lint (biome check)
 pnpm lint:fix       # Auto-fix lint issues
 pnpm format         # Format all files
-pnpm db:generate    # Generate DB migrations
-pnpm db:migrate     # Apply DB migrations
 pnpm clean          # Clean all build artifacts
 ```
 
@@ -29,16 +27,13 @@ pnpm clean          # Clean all build artifacts
 
 | Module | Write Scope | Description |
 |--------|-------------|-------------|
-| web | `apps/web/` | Next.js 15 frontend (React 19, Tailwind v4, tRPC) |
-| api | `apps/api/` | Hono API server (tRPC, jose JWT auth) |
 | periscope | `apps/periscope/` | Frontier Periscope intel tool (Vite + React SPA) |
-| gas-station | `apps/gas-station/` | Express API: turret build/publish + sponsored TX |
 | permissions-dapp | `apps/permissions-dapp/` | Permissions management dapp (Vite + React) |
+| ssu-dapp | `apps/ssu-dapp/` | SSU inventory + transfer dapp (Vite + React) |
 | ssu-market-dapp | `apps/ssu-market-dapp/` | SSU Market trading dapp (Vite + React) |
 | shared | `packages/shared/` | Shared Zod validation schemas |
 | chain-shared | `packages/chain-shared/` | Move contract types, addresses, turret generator |
 | sui-client | `packages/sui-client/` | @mysten/sui gRPC wrapper |
-| db | `packages/db/` | Drizzle ORM schema + migrations |
 | tsconfig | `packages/tsconfig/` | Shared TypeScript configs |
 | contracts | `contracts/` | Move smart contracts (13 packages) |
 

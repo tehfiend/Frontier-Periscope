@@ -4,12 +4,14 @@ import { useMemo, useState } from "react";
 interface InventoryTableProps {
 	inventory: InventoryData;
 	isLoading?: boolean;
+	canTransfer?: boolean;
+	onTransfer?: (item: InventoryItem) => void;
 }
 
 type SortField = "name" | "quantity" | "volume";
 type SortDir = "asc" | "desc";
 
-export function InventoryTable({ inventory, isLoading }: InventoryTableProps) {
+export function InventoryTable({ inventory, isLoading, canTransfer, onTransfer }: InventoryTableProps) {
 	const [sortField, setSortField] = useState<SortField>("name");
 	const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -97,11 +99,20 @@ export function InventoryTable({ inventory, isLoading }: InventoryTableProps) {
 							>
 								Volume (m&#xB3;){sortIcon("volume")}
 							</th>
+							{canTransfer && (
+								<th className="px-3 py-2 text-right text-xs font-medium text-zinc-400">
+									Actions
+								</th>
+							)}
 						</tr>
 					</thead>
 					<tbody>
 						{sortedItems.map((item) => (
-							<ItemRow key={item.typeId} item={item} />
+							<ItemRow
+								key={item.typeId}
+								item={item}
+								onTransfer={canTransfer ? onTransfer : undefined}
+							/>
 						))}
 					</tbody>
 				</table>
@@ -110,7 +121,13 @@ export function InventoryTable({ inventory, isLoading }: InventoryTableProps) {
 	);
 }
 
-function ItemRow({ item }: { item: InventoryItem }) {
+function ItemRow({
+	item,
+	onTransfer,
+}: {
+	item: InventoryItem;
+	onTransfer?: (item: InventoryItem) => void;
+}) {
 	const totalVolume = (item.volume * item.quantity) / 1000;
 
 	return (
@@ -122,6 +139,17 @@ function ItemRow({ item }: { item: InventoryItem }) {
 			<td className="px-3 py-2 text-right font-mono text-xs text-zinc-500">
 				{totalVolume.toLocaleString()}
 			</td>
+			{onTransfer && (
+				<td className="px-3 py-2 text-right">
+					<button
+						type="button"
+						onClick={() => onTransfer(item)}
+						className="text-xs text-cyan-400 hover:text-cyan-300"
+					>
+						Transfer
+					</button>
+				</td>
+			)}
 		</tr>
 	);
 }

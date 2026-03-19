@@ -1,10 +1,18 @@
-import type { SlotType, SsuInventories } from "@/hooks/useInventory";
+import type { InventoryItem, SlotType, SsuInventories } from "@/hooks/useInventory";
 import { useState } from "react";
 import { InventoryTable } from "./InventoryTable";
+import type { DestinationEntry, TransferContext } from "./TransferDialog";
+import { TransferDialog } from "./TransferDialog";
 
 interface InventoryTabsProps {
 	inventories: SsuInventories;
 	isLoading?: boolean;
+	transferContext?: TransferContext | null;
+}
+
+interface DialogState {
+	item: InventoryItem;
+	sourceSlotIdx: number;
 }
 
 /**
@@ -52,8 +60,9 @@ function getSlotColor(
 	return PLAYER_COLORS[playerIndex % PLAYER_COLORS.length];
 }
 
-export function InventoryTabs({ inventories, isLoading }: InventoryTabsProps) {
+export function InventoryTabs({ inventories, isLoading, transferContext }: InventoryTabsProps) {
 	const [activeIdx, setActiveIdx] = useState(0);
+	const [dialogState, setDialogState] = useState<DialogState | null>(null);
 
 	const { slots } = inventories;
 	if (slots.length === 0) {
@@ -84,6 +93,76 @@ export function InventoryTabs({ inventories, isLoading }: InventoryTabsProps) {
 
 	// Get the active slot's color for the table accent
 	const activeColor = slotColors[activeIdx] ?? slotColors[0];
+
+	// Transfer logic: can the user transfer items from the active slot?
+	// Requires the active slot to have a cap AND at least one other cap key (visible or not)
+	const canTransferFromActive =
+		!!transferContext &&
+		transferContext.slotCaps.has(currentSlot.key) &&
+		[...transferContext.slotCaps.keys()].some((k) => k !== currentSlot.key);
+
+	function handleTransfer(item: InventoryItem) {
+		setDialogState({ item, sourceSlotIdx: activeIdx });
+	}
+
+	// Build TransferDialog props when dialog is open
+	const transferDialogProps = (() => {
+		if (!dialogState || !transferContext) return null;
+
+		const sourceSlot = slots[dialogState.sourceSlotIdx];
+		if (!sourceSlot) return null;
+
+		const withdrawCap = transferContext.slotCaps.get(sourceSlot.key);
+		if (!withdrawCap) return null;
+
+		const destinations: DestinationEntry[] = [];
+
+		// 1. Visible slots that have caps
+		for (const s of slots) {
+			if (s.key === sourceSlot.key) continue;
+			const depositCap = transferContext.slotCaps.get(s.key);
+			if (depositCap) destinations.push({ slot: s, depositCap });
+		}
+
+		// 2. Non-visible slots for which we have caps (e.g., player inventory not yet created)
+		for (const [capKey, capRef] of transferContext.slotCaps) {
+			if (capKey === sourceSlot.key) continue;
+			if (slots.some((s) => s.key === capKey)) continue;
+			destinations.push({
+				slot: {
+					key: capKey,
+					slotType: "player",
+					label: transferContext.characterName
+						? `Player: ${transferContext.characterName}`
+						: "My Player Inventory",
+					items: [],
+					maxCapacity: sourceSlot.maxCapacity,
+					usedCapacity: 0,
+				},
+				depositCap: capRef,
+			});
+		}
+
+		if (destinations.length === 0) return null;
+
+		// Visible slots the user cannot deposit to (no OwnerCap)
+		const inaccessibleSlots = slots.filter(
+			(s) =>
+				s.key !== sourceSlot.key &&
+				!transferContext.slotCaps.has(s.key) &&
+				!destinations.some((d) => d.slot.key === s.key),
+		);
+
+		return {
+			item: dialogState.item,
+			sourceSlot,
+			withdrawCap,
+			destinations,
+			inaccessibleSlots,
+			ssuObjectId: transferContext.ssuObjectId,
+			characterObjectId: transferContext.characterObjectId,
+		};
+	})();
 
 	return (
 		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
@@ -153,8 +232,21 @@ export function InventoryTabs({ inventories, isLoading }: InventoryTabsProps) {
 
 			{/* Content -- inventory table with colored left border */}
 			<div className={`border-l-2 pl-3 ${activeColor.border}`}>
-				<InventoryTable inventory={currentSlot} isLoading={isLoading} />
+				<InventoryTable
+					inventory={currentSlot}
+					isLoading={isLoading}
+					canTransfer={canTransferFromActive}
+					onTransfer={handleTransfer}
+				/>
 			</div>
+
+			{/* Transfer dialog */}
+			{dialogState && transferDialogProps && (
+				<TransferDialog
+					{...transferDialogProps}
+					onClose={() => setDialogState(null)}
+				/>
+			)}
 		</div>
 	);
 }

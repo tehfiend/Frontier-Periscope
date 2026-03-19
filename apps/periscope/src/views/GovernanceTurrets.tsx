@@ -43,7 +43,7 @@ export function GovernanceTurrets() {
 
 	const turrets = discovery?.assemblies.filter((a) => a.type === "turret") ?? [];
 	const selectedTurret = turrets.find((t) => t.objectId === selectedTurretId);
-	const gasStationUrl = TENANTS[tenant].gasStationUrl;
+	const gasStationUrl: string | undefined = undefined;
 	const isProcessing = buildStatus === "building-package" || buildStatus === "authorizing" || buildStatus === "signing";
 
 	function handleTurretSelect(turretId: string) {

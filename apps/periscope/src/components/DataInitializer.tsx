@@ -121,7 +121,7 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 				<div className="w-full max-w-md space-y-8 px-6">
 					<div className="flex flex-col items-center gap-4">
 						<Telescope className="h-12 w-12 text-cyan-500" />
-						<h1 className="text-2xl font-bold text-zinc-100">EF Periscope</h1>
+						<h1 className="text-2xl font-bold text-zinc-100">Frontier Periscope</h1>
 						<p className="text-sm text-zinc-400">Loading star map data...</p>
 					</div>
 

@@ -66,7 +66,7 @@ export function Dashboard() {
 					</span>
 				)}
 			</div>
-			<p className="mt-1 text-sm text-zinc-400">EF Periscope — see without being seen</p>
+			<p className="mt-1 text-sm text-zinc-400">Frontier Periscope — see without being seen</p>
 
 			{/* Static Data */}
 			<h2 className="mt-8 mb-3 flex items-center gap-2 text-sm font-medium text-zinc-400">

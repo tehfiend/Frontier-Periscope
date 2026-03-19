@@ -3,13 +3,16 @@ import { AssemblyHeader } from "@/components/AssemblyHeader";
 import { ExtensionInfo } from "@/components/ExtensionInfo";
 import { InventoryTabs } from "@/components/InventoryTabs";
 import { MetadataEditor } from "@/components/MetadataEditor";
-import { TransferPanel } from "@/components/TransferPanel";
+import type { TransferContext } from "@/components/TransferDialog";
 import { useAssembly } from "@/hooks/useAssembly";
 import { useCharacter } from "@/hooks/useCharacter";
+import { normalizeId } from "@/hooks/useInventory";
 import { useInventory } from "@/hooks/useInventory";
 import { useOwnerCap } from "@/hooks/useOwnerCap";
-import { getItemId } from "@/lib/constants";
+import { useOwnerCharacter } from "@/hooks/useOwnerCharacter";
+import { getItemId, getTenant, getWorldPackageId } from "@/lib/constants";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
+import { useMemo } from "react";
 
 interface SsuViewProps {
 	objectId: string;
@@ -34,10 +37,48 @@ export function SsuView({ objectId }: SsuViewProps) {
 	// Phase 2: Owner context (only when wallet is connected)
 	const { data: character } = useCharacter(walletAddress);
 	const { data: ownerCapInfo } = useOwnerCap(character?.characterObjectId, assembly?.ownerCapId);
+	const { data: charOwnerCapInfo } = useOwnerCap(
+		character?.characterObjectId,
+		character?.characterOwnerCapId ?? undefined,
+	);
+
+	// SSU owner character name (from ownerCapId)
+	const { data: ownerCharacterName } = useOwnerCharacter(assembly?.ownerCapId);
 
 	// Determine if connected wallet is the SSU owner
 	// The owner_cap_id on the SSU matches an OwnerCap held by the player's Character
 	const isOwner = !!ownerCapInfo && !!character;
+
+	// Build transfer context for inter-slot item transfers
+	const transferContext = useMemo<TransferContext | null>(() => {
+		if (!isOwner || !character || !ownerCapInfo || !assembly) return null;
+
+		const worldPkg = getWorldPackageId(getTenant());
+		const slotCaps = new Map<string, { info: typeof ownerCapInfo; typeArg: string }>();
+
+		// Extension/owner inventory: keyed by SSU's owner_cap_id
+		const ownerKey = normalizeId(assembly.ownerCapId);
+		slotCaps.set(ownerKey, {
+			info: ownerCapInfo,
+			typeArg: `${worldPkg}::storage_unit::StorageUnit`,
+		});
+
+		// Player inventory: keyed by Character's owner_cap_id
+		if (charOwnerCapInfo && character.characterOwnerCapId) {
+			const charKey = normalizeId(character.characterOwnerCapId);
+			slotCaps.set(charKey, {
+				info: charOwnerCapInfo,
+				typeArg: `${worldPkg}::character::Character`,
+			});
+		}
+
+		return {
+			ssuObjectId: objectId,
+			characterObjectId: character.characterObjectId,
+			characterName: character.characterName,
+			slotCaps,
+		};
+	}, [isOwner, character, ownerCapInfo, charOwnerCapInfo, assembly, objectId]);
 
 	// Loading state
 	if (assemblyLoading) {
@@ -78,10 +119,22 @@ export function SsuView({ objectId }: SsuViewProps) {
 	return (
 		<div className="mx-auto max-w-2xl space-y-4">
 			{/* Assembly header */}
-			<AssemblyHeader assembly={assembly} itemId={getItemId()} />
+			<AssemblyHeader
+				assembly={assembly}
+				itemId={getItemId()}
+				ownerCharacterName={ownerCharacterName}
+				connectedWalletAddress={walletAddress}
+				connectedCharacterName={character?.characterName}
+			/>
 
 			{/* Inventory tabs (always visible, no wallet required) */}
-			{inventories && <InventoryTabs inventories={inventories} isLoading={inventoryLoading} />}
+			{inventories && (
+				<InventoryTabs
+					inventories={inventories}
+					isLoading={inventoryLoading}
+					transferContext={transferContext}
+				/>
+			)}
 
 			{/* Owner panels (shown only when wallet connected + is owner) */}
 			{isOwner && character && ownerCapInfo && inventories && (
@@ -96,13 +149,6 @@ export function SsuView({ objectId }: SsuViewProps) {
 						assembly={assembly}
 						characterObjectId={character.characterObjectId}
 						ownerCap={ownerCapInfo}
-					/>
-
-					<TransferPanel
-						ssuObjectId={objectId}
-						characterObjectId={character.characterObjectId}
-						ownerCap={ownerCapInfo}
-						ownerInventory={inventories.ownerInventory}
 					/>
 
 					<MetadataEditor

@@ -1,38 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
+import { getObjectJson } from "@tehfrontier/chain-shared";
 import { useSuiClient } from "./useSuiClient";
 import { getWorldPackageId, getTenant } from "@/lib/constants";
-
-const FIND_CHARACTER_BY_OWNER = `
-	query($owner: SuiAddress!, $characterType: String!, $first: Int) {
-		address(address: $owner) {
-			objects(filter: { type: $characterType }, first: $first) {
-				nodes {
-					address
-					asMoveObject {
-						contents { json }
-					}
-				}
-			}
-		}
-	}
-`;
-
-interface GqlCharacterResponse {
-	address: {
-		objects: {
-			nodes: Array<{
-				address: string;
-				asMoveObject?: {
-					contents?: { json: Record<string, unknown> };
-				};
-			}>;
-		};
-	} | null;
-}
 
 /**
  * Find PlayerProfile object owned by wallet, then derive character object ID.
  * PlayerProfile has { character_id: ID } pointing to the shared Character object.
+ *
+ * Note: address.objects returns MoveObject nodes (not Object), so we use
+ * `contents { json }` directly instead of `asMoveObject { contents { json } }`.
  */
 const FIND_PLAYER_PROFILE = `
 	query($owner: SuiAddress!, $profileType: String!, $first: Int) {
@@ -40,9 +16,7 @@ const FIND_PLAYER_PROFILE = `
 			objects(filter: { type: $profileType }, first: $first) {
 				nodes {
 					address
-					asMoveObject {
-						contents { json }
-					}
+					contents { json }
 				}
 			}
 		}
@@ -54,9 +28,7 @@ interface GqlProfileResponse {
 		objects: {
 			nodes: Array<{
 				address: string;
-				asMoveObject?: {
-					contents?: { json: Record<string, unknown> };
-				};
+				contents?: { json: Record<string, unknown> };
 			}>;
 		};
 	} | null;
@@ -65,6 +37,8 @@ interface GqlProfileResponse {
 export interface CharacterInfo {
 	characterObjectId: string;
 	characterAddress: string;
+	characterName: string | null;
+	characterOwnerCapId: string | null;
 }
 
 /**
@@ -95,15 +69,31 @@ export function useCharacter(walletAddress: string | undefined) {
 			const profiles = profileResult.data?.address?.objects?.nodes ?? [];
 			if (profiles.length === 0) return null;
 
-			const profileJson = profiles[0].asMoveObject?.contents?.json;
+			const profileJson = profiles[0].contents?.json;
 			if (!profileJson) return null;
 
 			const characterId = String(profileJson.character_id ?? "");
 			if (!characterId) return null;
 
+			// Fetch the Character object to get the name + owner_cap_id
+			let characterName: string | null = null;
+			let characterOwnerCapId: string | null = null;
+			try {
+				const charResult = await getObjectJson(client, characterId);
+				const meta = charResult.json?.metadata as Record<string, unknown> | undefined;
+				characterName = meta?.name ? String(meta.name) : null;
+				characterOwnerCapId = charResult.json?.owner_cap_id
+					? String(charResult.json.owner_cap_id)
+					: null;
+			} catch {
+				// Non-fatal -- name and cap ID are optional
+			}
+
 			return {
 				characterObjectId: characterId,
 				characterAddress: walletAddress,
+				characterName,
+				characterOwnerCapId,
 			};
 		},
 		enabled: !!walletAddress,

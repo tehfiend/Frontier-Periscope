@@ -25,7 +25,6 @@ export function useSignAndExecute(): {
 				queryClient.invalidateQueries({ queryKey: ["itemNames"] });
 				queryClient.invalidateQueries({ queryKey: ["ownerCap"] });
 				queryClient.invalidateQueries({ queryKey: ["ssu-inventories"] });
-				queryClient.invalidateQueries({ queryKey: ["wallet-items"] });
 				return result;
 			} finally {
 				setIsPending(false);

@@ -12,8 +12,8 @@ export default defineConfig({
 			registerType: "prompt",
 			includeAssets: ["favicon.svg"],
 			manifest: {
-				name: "EF Periscope",
-				short_name: "EF Periscope",
+				name: "Frontier Periscope",
+				short_name: "Frontier Periscope",
 				description: "EVE Frontier intel management tool",
 				theme_color: "#09090b",
 				background_color: "#09090b",
