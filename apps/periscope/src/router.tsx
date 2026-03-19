@@ -30,20 +30,14 @@ const LazyManifest = lazy(() =>
 const LazyWallet = lazy(() =>
 	import("@/views/Wallet").then((m) => ({ default: m.Wallet })),
 );
-const LazyGovernanceDashboard = lazy(() =>
-	import("@/views/GovernanceDashboard").then((m) => ({ default: m.GovernanceDashboard })),
-);
 const LazyGovernanceTurrets = lazy(() =>
 	import("@/views/GovernanceTurrets").then((m) => ({ default: m.GovernanceTurrets })),
 );
-const LazyGovernanceFinance = lazy(() =>
-	import("@/views/GovernanceFinance").then((m) => ({ default: m.GovernanceFinance })),
+const LazyFinance = lazy(() =>
+	import("@/views/Finance").then((m) => ({ default: m.Finance })),
 );
 const LazyGovernanceClaims = lazy(() =>
 	import("@/views/GovernanceClaims").then((m) => ({ default: m.GovernanceClaims })),
-);
-const LazyGovernanceTrade = lazy(() =>
-	import("@/views/GovernanceTrade").then((m) => ({ default: m.GovernanceTrade })),
 );
 
 function LoadingFallback() {
@@ -102,14 +96,6 @@ function WalletPage() {
 	);
 }
 
-function GovernanceDashboardPage() {
-	return (
-		<Suspense fallback={<LoadingFallback />}>
-			<LazyGovernanceDashboard />
-		</Suspense>
-	);
-}
-
 function GovernanceTurretsPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
@@ -118,10 +104,10 @@ function GovernanceTurretsPage() {
 	);
 }
 
-function GovernanceFinancePage() {
+function FinancePage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
-			<LazyGovernanceFinance />
+			<LazyFinance />
 		</Suspense>
 	);
 }
@@ -130,14 +116,6 @@ function GovernanceClaimsPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
 			<LazyGovernanceClaims />
-		</Suspense>
-	);
-}
-
-function GovernanceTradePage() {
-	return (
-		<Suspense fallback={<LoadingFallback />}>
-			<LazyGovernanceTrade />
 		</Suspense>
 	);
 }
@@ -271,7 +249,9 @@ const turretConfigRoute = createRoute({
 const governanceRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/governance",
-	component: GovernanceDashboardPage,
+	beforeLoad: () => {
+		throw redirect({ to: "/governance/finance" });
+	},
 });
 
 const governanceTurretsRoute = createRoute({
@@ -283,19 +263,13 @@ const governanceTurretsRoute = createRoute({
 const governanceFinanceRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/governance/finance",
-	component: GovernanceFinancePage,
+	component: FinancePage,
 });
 
 const governanceClaimsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/governance/claims",
 	component: GovernanceClaimsPage,
-});
-
-const governanceTradeRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/governance/trade",
-	component: GovernanceTradePage,
 });
 
 const settingsRoute = createRoute({
@@ -364,7 +338,6 @@ const routeTree = rootRoute.addChildren([
 	governanceTurretsRoute,
 	governanceFinanceRoute,
 	governanceClaimsRoute,
-	governanceTradeRoute,
 	assetsRoute,
 	manifestRoute,
 	walletRoute,

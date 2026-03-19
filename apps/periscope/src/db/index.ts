@@ -476,6 +476,11 @@ class PeriscopeDB extends Dexie {
 			syncLog: null,
 			sharingGroups: null,
 		});
+
+		// V22: Market<T> replaces OrgTreasury -- currencies keyed by marketId, orgId removed
+		this.version(22).stores({
+			currencies: "id, symbol, coinType, packageId, marketId",
+		});
 	}
 }
 
