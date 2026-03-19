@@ -32,44 +32,46 @@ export interface OrderInfo {
 	isBid: boolean;
 }
 
-// ── SSU Market Types ────────────────────────────────────────────────────────
-
-/** @deprecated Use SellOrderInfo instead */
-export interface MarketListing {
-	typeId: number;
-	pricePerUnit: number;
-	available: boolean;
-}
-
-export interface SellOrderInfo {
-	typeId: number;
-	pricePerUnit: number;
-	quantity: number;
-}
+// ── Market Types ───────────────────────────────────────────────────────────
 
 export interface MarketInfo {
 	objectId: string;
-	admin: string;
-	ssuId: string;
+	creator: string;
+	authorized: string[];
+	feeBps: number;
+	feeRecipient: string;
+	nextSellId: number;
+	nextBuyId: number;
+	coinType: string;
+	totalSupply?: number;
 }
 
-// ── OrgMarket Types ────────────────────────────────────────────────────────
-
-export interface OrgMarketInfo {
-	objectId: string;
-	orgId: string;
-	admin: string;
-	authorizedSsus: string[];
-	nextOrderId: number;
-}
-
-export interface BuyOrderInfo {
-	orderId: number;
+export interface MarketSellListing {
+	listingId: number;
+	seller: string;
 	ssuId: string;
 	typeId: number;
 	pricePerUnit: number;
 	quantity: number;
-	poster: string;
+	postedAtMs: number;
+}
+
+export interface MarketBuyOrder {
+	orderId: number;
+	buyer: string;
+	typeId: number;
+	pricePerUnit: number;
+	quantity: number;
+}
+
+// ── SSU Config Types ───────────────────────────────────────────────────────
+
+export interface SsuConfigInfo {
+	objectId: string;
+	owner: string;
+	ssuId: string;
+	delegates: string[];
+	marketId: string | null;
 }
 
 // ── Toll Types ──────────────────────────────────────────────────────────────
@@ -138,34 +140,6 @@ export interface TurretPriorityDeployment {
 	publishedAt: string;
 }
 
-// ── Governance Types ───────────────────────────────────────────────────────
-
-export type OrgTier = "stakeholder" | "member" | "serf" | "opposition";
-
-export interface OrgTierData {
-	tribes: number[];
-	characters: number[];
-	addresses: string[];
-}
-
-export interface OrganizationInfo {
-	objectId: string;
-	name: string;
-	creator: string;
-	stakeholders: OrgTierData;
-	members: OrgTierData;
-	serfs: OrgTierData;
-	opposition: OrgTierData;
-}
-
-export interface OnChainClaim {
-	orgId: string;
-	systemId: number;
-	name: string;
-	claimedAt: number;
-	weight: number;
-}
-
 // ── Shared ACL Types ───────────────────────────────────────────────────────
 
 export interface SharedAclInfo {
@@ -176,37 +150,6 @@ export interface SharedAclInfo {
 	isAllowlist: boolean;
 	allowedTribes: number[];
 	allowedCharacters: number[];
-}
-
-// ── Currency Market Types ──────────────────────────────────────────────────
-
-export interface CurrencyMarketInfo {
-	objectId: string;
-	creator: string;
-	feeBps: number;
-	feeRecipient: string;
-	nextSellId: number;
-	nextBuyId: number;
-	coinType: string;
-}
-
-export interface CurrencyMarketSellListing {
-	listingId: number;
-	seller: string;
-	ssuId: string;
-	marketConfigId: string;
-	typeId: number;
-	pricePerUnit: number;
-	quantity: number;
-	postedAtMs: number;
-}
-
-export interface CurrencyMarketBuyOrder {
-	orderId: number;
-	buyer: string;
-	typeId: number;
-	pricePerUnit: number;
-	quantity: number;
 }
 
 // ── Contract Addresses ──────────────────────────────────────────────────────
@@ -224,7 +167,6 @@ export interface ContractAddresses {
 	lease?: { packageId: string; registryObjectId: string };
 	tokenTemplate?: { packageId: string };
 	governance?: { packageId: string; claimsRegistryObjectId: string };
-	governanceExt?: { packageId: string };
 	aclRegistry?: { packageId: string };
-	currencyMarket?: { packageId: string };
+	market?: { packageId: string };
 }

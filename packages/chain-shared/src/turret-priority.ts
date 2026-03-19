@@ -21,9 +21,17 @@ export const SHIP_CLASSES = {
 } as const;
 
 export const TURRET_TYPES = {
-	autocannon: { typeId: 92402, label: "Autocannon (Mini Turret)", effective: ["shuttle", "corvette"] },
+	autocannon: {
+		typeId: 92402,
+		label: "Autocannon (Mini Turret)",
+		effective: ["shuttle", "corvette"],
+	},
 	plasma: { typeId: 92403, label: "Plasma (Turret)", effective: ["frigate", "destroyer"] },
-	howitzer: { typeId: 92484, label: "Howitzer (Heavy Turret)", effective: ["cruiser", "combatBattlecruiser"] },
+	howitzer: {
+		typeId: 92484,
+		label: "Howitzer (Heavy Turret)",
+		effective: ["cruiser", "combatBattlecruiser"],
+	},
 } as const;
 
 // ── Config interface ────────────────────────────────────────────────────────
@@ -251,50 +259,6 @@ fun is_effective_class(group_id: u64): bool {
 ${effectiveClasses.map((_, i) => `    (EFFECTIVE_CLASS_${i} != 0 && group_id == EFFECTIVE_CLASS_${i})`).join(" ||\n")}
 }
 `;
-}
-
-// ── Governance turret config generator ───────────────────────────────────────
-
-import type { OrganizationInfo } from "./types";
-
-/**
- * Derive a TurretPriorityConfig from Organization membership data.
- *
- * - **Public mode:** Opposition tribes/chars → KOS. Stakeholder+member+serf → friendly.
- * - **Private mode:** Only stakeholder+member+serf → friendly. Everything else default. Opposition → KOS max.
- */
-export function generateOrgTurretConfig(
-	orgData: OrganizationInfo,
-	mode: "public" | "private",
-	overrides?: Partial<TurretPriorityConfig>,
-): TurretPriorityConfig {
-	const friendlyTribes = [
-		...orgData.stakeholders.tribes,
-		...orgData.members.tribes,
-		...orgData.serfs.tribes,
-	];
-	const friendlyCharacters = [
-		...orgData.stakeholders.characters,
-		...orgData.members.characters,
-		...orgData.serfs.characters,
-	];
-	const kosTribes = [...orgData.opposition.tribes];
-	const kosCharacters = [...orgData.opposition.characters];
-
-	const base: TurretPriorityConfig = {
-		...DEFAULT_TURRET_PRIORITY_CONFIG,
-		friendlyTribes,
-		friendlyCharacters,
-		kosTribes,
-		kosCharacters,
-	};
-
-	if (mode === "private") {
-		// Private mode: opposition gets maximum KOS weight
-		base.kosWeight = 150;
-	}
-
-	return { ...base, ...overrides };
 }
 
 /**

@@ -1,6 +1,6 @@
-import { Transaction } from "@mysten/sui/transactions";
-import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { bcs } from "@mysten/bcs";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import { Transaction } from "@mysten/sui/transactions";
 import { getCoinSupply, listCoinsGql } from "./graphql-queries";
 
 // WASM module — needs async init before use
@@ -64,7 +64,7 @@ export interface CreateTokenParams {
 export interface PublishTokenResult {
 	packageId: string;
 	coinType: string;
-	treasuryCapId: string;
+	marketId: string;
 	moduleName: string;
 }
 
@@ -98,22 +98,12 @@ export async function buildPublishToken(params: CreateTokenParams): Promise<Tran
 	// Values must be BCS-encoded Uint8Arrays
 	// Symbol: "TMPL" → user symbol
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			bcsBytes(symbol.toUpperCase()),
-			bcsBytes("TMPL"),
-			"Vector(U8)",
-		),
+		mod.update_constants(bytecodes, bcsBytes(symbol.toUpperCase()), bcsBytes("TMPL"), "Vector(U8)"),
 	);
 
 	// Name: "Template Token" → user name
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			bcsBytes(name),
-			bcsBytes("Template Token"),
-			"Vector(U8)",
-		),
+		mod.update_constants(bytecodes, bcsBytes(name), bcsBytes("Template Token"), "Vector(U8)"),
 	);
 
 	// Description: "A faction token" → user description
@@ -129,12 +119,7 @@ export async function buildPublishToken(params: CreateTokenParams): Promise<Tran
 	// Decimals: 9 → user decimals
 	if (decimals !== 9) {
 		bytecodes = new Uint8Array(
-			mod.update_constants(
-				bytecodes,
-				new Uint8Array([decimals]),
-				new Uint8Array([9]),
-				"U8",
-			),
+			mod.update_constants(bytecodes, new Uint8Array([decimals]), new Uint8Array([9]), "U8"),
 		);
 	}
 
@@ -156,17 +141,27 @@ export async function buildPublishToken(params: CreateTokenParams): Promise<Tran
 
 /** BCS-encode a string as vector<u8> for constant patching. */
 function bcsBytes(s: string): Uint8Array {
-	return bcs.vector(bcs.u8()).serialize(Array.from(new TextEncoder().encode(s))).toBytes();
+	return bcs
+		.vector(bcs.u8())
+		.serialize(Array.from(new TextEncoder().encode(s)))
+		.toBytes();
 }
 
 /**
  * Parse publish transaction results to extract token details.
+ * Looks for Market<T> in created objects (token template auto-creates
+ * a Market when publishing, locking the TreasuryCap inside).
  */
 export function parsePublishResult(
-	objectChanges: Array<{ type: string; packageId?: string; objectType?: string; objectId?: string }>,
+	objectChanges: Array<{
+		type: string;
+		packageId?: string;
+		objectType?: string;
+		objectId?: string;
+	}>,
 ): PublishTokenResult | null {
 	let packageId = "";
-	let treasuryCapId = "";
+	let marketId = "";
 	let coinType = "";
 	let moduleName = "";
 
@@ -179,72 +174,19 @@ export function parsePublishResult(
 				moduleName = modules[0];
 			}
 		}
-		if (
-			change.type === "created" &&
-			change.objectType?.includes("::coin::TreasuryCap<")
-		) {
-			treasuryCapId = change.objectId ?? "";
-			// Extract coinType from TreasuryCap<0xpkg::MODULE::MODULE>
-			const match = change.objectType.match(/TreasuryCap<(.+)>/);
+		if (change.type === "created" && change.objectType?.includes("::market::Market<")) {
+			marketId = change.objectId ?? "";
+			// Extract coinType from Market<0xpkg::MODULE::MODULE>
+			const match = change.objectType.match(/Market<(.+)>/);
 			if (match) {
 				coinType = match[1];
 			}
 		}
 	}
 
-	if (!packageId || !treasuryCapId || !coinType) return null;
+	if (!packageId || !marketId || !coinType) return null;
 
-	return { packageId, coinType, treasuryCapId, moduleName };
-}
-
-// ── Legacy API (kept for gas station compatibility) ─────────────────────────
-
-export function buildMintTokens(params: {
-	packageId: string;
-	moduleName: string;
-	coinType: string;
-	treasuryCapId: string;
-	amount: number;
-	recipient: string;
-	senderAddress: string;
-}): Transaction {
-	const tx = new Transaction();
-	tx.setSender(params.senderAddress);
-
-	tx.moveCall({
-		target: `${params.packageId}::${params.moduleName}::mint`,
-		typeArguments: [params.coinType],
-		arguments: [
-			tx.object(params.treasuryCapId),
-			tx.pure.u64(params.amount),
-			tx.pure.address(params.recipient),
-		],
-	});
-
-	return tx;
-}
-
-export function buildBurnTokens(params: {
-	packageId: string;
-	moduleName: string;
-	coinType: string;
-	treasuryCapId: string;
-	coinObjectId: string;
-	senderAddress: string;
-}): Transaction {
-	const tx = new Transaction();
-	tx.setSender(params.senderAddress);
-
-	tx.moveCall({
-		target: `${params.packageId}::${params.moduleName}::burn`,
-		typeArguments: [params.coinType],
-		arguments: [
-			tx.object(params.treasuryCapId),
-			tx.object(params.coinObjectId),
-		],
-	});
-
-	return tx;
+	return { packageId, coinType, marketId, moduleName };
 }
 
 // ── Query Helpers ───────────────────────────────────────────────────────────

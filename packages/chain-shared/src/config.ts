@@ -50,14 +50,11 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0x8bef45b3006c3112cbc4aa930a6aa521fc586cc8609c89514c4e14f514a578cb",
 			claimsRegistryObjectId: "0xa443242e14ddcdbfa0b6ad63305df464ac110fb6abc59b2ed59db8a37f42082f",
 		},
-		governanceExt: {
-			packageId: "0x670b8491481ab8f88a47f708918c83a6ba17427861d7d8a82e2a513176bec349",
-		},
 		aclRegistry: {
 			packageId: "0x3b1cdef2e8ddbd17618357a2ea8101073f881086442507e722cb02aa3ffc3b55",
 		},
-		currencyMarket: {
-			packageId: "0x07d9632d6f4e3288d8ea2330caa40850bfdb63f19aff20dbd66fb16a5cf035a6",
+		market: {
+			packageId: "", // Populated after market contract publish
 		},
 	},
 	utopia: {
@@ -103,14 +100,11 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0x8bef45b3006c3112cbc4aa930a6aa521fc586cc8609c89514c4e14f514a578cb",
 			claimsRegistryObjectId: "0xa443242e14ddcdbfa0b6ad63305df464ac110fb6abc59b2ed59db8a37f42082f",
 		},
-		governanceExt: {
-			packageId: "0x670b8491481ab8f88a47f708918c83a6ba17427861d7d8a82e2a513176bec349",
-		},
 		aclRegistry: {
 			packageId: "0x3b1cdef2e8ddbd17618357a2ea8101073f881086442507e722cb02aa3ffc3b55",
 		},
-		currencyMarket: {
-			packageId: "0x07d9632d6f4e3288d8ea2330caa40850bfdb63f19aff20dbd66fb16a5cf035a6",
+		market: {
+			packageId: "", // Populated after market contract publish
 		},
 	},
 };
