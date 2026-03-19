@@ -2,22 +2,21 @@ import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import { useCurrentAccount, useCurrentClient } from "@mysten/dapp-kit-react";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import {
-	type CurrencyMarketBuyOrder,
-	type CurrencyMarketInfo,
-	type CurrencyMarketSellListing,
-	buildCancelCurrencyMarketBuyOrder,
+	type MarketBuyOrder,
+	type MarketInfo,
+	type MarketSellListing,
+	buildCancelBuyOrder,
 	buildCancelSellListing,
-	buildFillBuyOrder,
-	queryCurrencyMarketBuyOrders,
-	queryCurrencyMarketDetails,
-	queryCurrencyMarketListings,
+	queryMarketBuyOrders,
+	queryMarketDetails,
+	queryMarketListings,
 } from "@tehfrontier/chain-shared";
 import { AlertCircle, ArrowLeft, Loader2, RefreshCw, ShoppingCart, Tag } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { PostBuyOrderForm } from "./PostBuyOrderForm";
 import { PostSellListingForm } from "./PostSellListingForm";
 
-interface CurrencyMarketDetailProps {
+interface MarketDetailProps {
 	packageId: string;
 	marketId: string;
 	onBack: () => void;
@@ -25,14 +24,14 @@ interface CurrencyMarketDetailProps {
 
 type TabId = "listings" | "orders";
 
-export function CurrencyMarketDetail({ packageId, marketId, onBack }: CurrencyMarketDetailProps) {
+export function MarketDetail({ packageId, marketId, onBack }: MarketDetailProps) {
 	const account = useCurrentAccount();
 	const client = useCurrentClient() as SuiGraphQLClient;
 	const { mutateAsync, isPending } = useSignAndExecute();
 
-	const [market, setMarket] = useState<CurrencyMarketInfo | null>(null);
-	const [listings, setListings] = useState<CurrencyMarketSellListing[]>([]);
-	const [buyOrders, setBuyOrders] = useState<CurrencyMarketBuyOrder[]>([]);
+	const [market, setMarket] = useState<MarketInfo | null>(null);
+	const [listings, setListings] = useState<MarketSellListing[]>([]);
+	const [buyOrders, setBuyOrders] = useState<MarketBuyOrder[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string>();
 	const [activeTab, setActiveTab] = useState<TabId>("listings");
@@ -44,9 +43,9 @@ export function CurrencyMarketDetail({ packageId, marketId, onBack }: CurrencyMa
 		setError(undefined);
 		try {
 			const [details, ls, orders] = await Promise.all([
-				queryCurrencyMarketDetails(client, marketId),
-				queryCurrencyMarketListings(client, marketId),
-				queryCurrencyMarketBuyOrders(client, marketId),
+				queryMarketDetails(client, marketId),
+				queryMarketListings(client, marketId, packageId),
+				queryMarketBuyOrders(client, marketId, packageId),
 			]);
 			setMarket(details);
 			setListings(ls);
@@ -55,7 +54,7 @@ export function CurrencyMarketDetail({ packageId, marketId, onBack }: CurrencyMa
 			setError(err instanceof Error ? err.message : "Failed to load market");
 		}
 		setLoading(false);
-	}, [client, marketId]);
+	}, [client, marketId, packageId]);
 
 	useEffect(() => {
 		loadMarketData();
@@ -83,31 +82,11 @@ export function CurrencyMarketDetail({ packageId, marketId, onBack }: CurrencyMa
 		if (!account || !market) return;
 		setError(undefined);
 		try {
-			const tx = buildCancelCurrencyMarketBuyOrder({
+			const tx = buildCancelBuyOrder({
 				packageId,
 				marketId,
 				coinType: market.coinType,
 				orderId,
-				senderAddress: account.address,
-			});
-			await mutateAsync(tx);
-			await loadMarketData();
-		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
-		}
-	}
-
-	async function handleFillBuyOrder(orderId: number, sellerAddress: string, qty: number) {
-		if (!account || !market) return;
-		setError(undefined);
-		try {
-			const tx = buildFillBuyOrder({
-				packageId,
-				marketId,
-				coinType: market.coinType,
-				orderId,
-				sellerAddress,
-				fillQuantity: qty,
 				senderAddress: account.address,
 			});
 			await mutateAsync(tx);
@@ -150,11 +129,17 @@ export function CurrencyMarketDetail({ packageId, marketId, onBack }: CurrencyMa
 			<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
-						<button type="button" onClick={onBack} className="text-zinc-500 hover:text-zinc-300">
+						<button
+							type="button"
+							onClick={onBack}
+							className="text-zinc-500 hover:text-zinc-300"
+						>
 							<ArrowLeft size={16} />
 						</button>
 						<div>
-							<h2 className="text-sm font-medium text-zinc-200">{coinName} Market</h2>
+							<h2 className="text-sm font-medium text-zinc-200">
+								{coinName} Market
+							</h2>
 							<p className="font-mono text-[10px] text-zinc-600">
 								{marketId.slice(0, 16)}...{marketId.slice(-8)}
 							</p>
@@ -239,7 +224,9 @@ export function CurrencyMarketDetail({ packageId, marketId, onBack }: CurrencyMa
 					)}
 
 					{listings.length === 0 ? (
-						<p className="py-6 text-center text-xs text-zinc-600">No sell listings yet.</p>
+						<p className="py-6 text-center text-xs text-zinc-600">
+							No sell listings yet.
+						</p>
 					) : (
 						<div className="space-y-2">
 							{listings.map((listing) => (
@@ -249,10 +236,12 @@ export function CurrencyMarketDetail({ packageId, marketId, onBack }: CurrencyMa
 								>
 									<div className="flex items-start justify-between">
 										<div>
-											<p className="text-xs text-zinc-300">Item #{listing.typeId}</p>
+											<p className="text-xs text-zinc-300">
+												Item #{listing.typeId}
+											</p>
 											<p className="text-[10px] text-zinc-500">
-												{listing.pricePerUnit.toLocaleString()} per unit --{" "}
-												{listing.quantity.toLocaleString()} available
+												{listing.pricePerUnit.toLocaleString()} per unit
+												-- {listing.quantity.toLocaleString()} available
 											</p>
 											<p className="text-[10px] text-zinc-600">
 												SSU: {listing.ssuId.slice(0, 10)}...
@@ -264,7 +253,9 @@ export function CurrencyMarketDetail({ packageId, marketId, onBack }: CurrencyMa
 										{account?.address === listing.seller && (
 											<button
 												type="button"
-												onClick={() => handleCancelListing(listing.listingId)}
+												onClick={() =>
+													handleCancelListing(listing.listingId)
+												}
 												disabled={isPending}
 												className="rounded px-2 py-0.5 text-[10px] text-red-400 hover:bg-zinc-800 disabled:opacity-50"
 											>
@@ -306,7 +297,9 @@ export function CurrencyMarketDetail({ packageId, marketId, onBack }: CurrencyMa
 					)}
 
 					{buyOrders.length === 0 ? (
-						<p className="py-6 text-center text-xs text-zinc-600">No buy orders yet.</p>
+						<p className="py-6 text-center text-xs text-zinc-600">
+							No buy orders yet.
+						</p>
 					) : (
 						<div className="space-y-2">
 							{buyOrders.map((order) => (
@@ -316,13 +309,18 @@ export function CurrencyMarketDetail({ packageId, marketId, onBack }: CurrencyMa
 								>
 									<div className="flex items-start justify-between">
 										<div>
-											<p className="text-xs text-zinc-300">Want: Item #{order.typeId}</p>
+											<p className="text-xs text-zinc-300">
+												Want: Item #{order.typeId}
+											</p>
 											<p className="text-[10px] text-zinc-500">
 												{order.pricePerUnit.toLocaleString()} per unit --{" "}
 												{order.quantity.toLocaleString()} wanted
 											</p>
 											<p className="text-[10px] text-zinc-500">
-												Total escrowed: {(order.pricePerUnit * order.quantity).toLocaleString()}
+												Total escrowed:{" "}
+												{(
+													order.pricePerUnit * order.quantity
+												).toLocaleString()}
 											</p>
 											<p className="text-[10px] text-zinc-600">
 												Buyer: {order.buyer.slice(0, 10)}...
@@ -330,26 +328,16 @@ export function CurrencyMarketDetail({ packageId, marketId, onBack }: CurrencyMa
 										</div>
 										<div className="flex flex-col gap-1">
 											{account?.address === order.buyer && (
-												<>
-													<button
-														type="button"
-														onClick={() =>
-															handleFillBuyOrder(order.orderId, account.address, order.quantity)
-														}
-														disabled={isPending}
-														className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-500 disabled:opacity-50"
-													>
-														Confirm Fill
-													</button>
-													<button
-														type="button"
-														onClick={() => handleCancelBuyOrder(order.orderId)}
-														disabled={isPending}
-														className="rounded px-2 py-0.5 text-[10px] text-red-400 hover:bg-zinc-800 disabled:opacity-50"
-													>
-														Cancel
-													</button>
-												</>
+												<button
+													type="button"
+													onClick={() =>
+														handleCancelBuyOrder(order.orderId)
+													}
+													disabled={isPending}
+													className="rounded px-2 py-0.5 text-[10px] text-red-400 hover:bg-zinc-800 disabled:opacity-50"
+												>
+													Cancel
+												</button>
 											)}
 										</div>
 									</div>

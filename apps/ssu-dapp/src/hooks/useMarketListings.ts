@@ -1,25 +1,25 @@
 import { resolveItemNames } from "@/lib/items";
 import { useQuery } from "@tanstack/react-query";
-import { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { type MarketSellListing, queryMarketListings } from "@tehfrontier/chain-shared";
 import { getMarketPackageId } from "@/lib/constants";
-
-const client = new SuiGraphQLClient({
-	url: "https://graphql.testnet.sui.io/graphql",
-	network: "testnet",
-});
+import { useSuiClient } from "./useSuiClient";
 
 export interface SellListingWithName extends MarketSellListing {
 	name: string;
 }
 
-export function useMarketListings(marketId: string | undefined) {
-	const marketPackageId = getMarketPackageId();
+/**
+ * Fetch sell listings from a Market<T> by marketId.
+ * Only enabled when marketId is provided.
+ */
+export function useMarketListings(marketId: string | null | undefined) {
+	const client = useSuiClient();
+	const marketPackageId = getMarketPackageId() ?? "";
 
 	return useQuery({
 		queryKey: ["marketListings", marketId],
 		queryFn: async (): Promise<SellListingWithName[]> => {
-			if (!marketId) return [];
+			if (!marketId || !marketPackageId) return [];
 			const listings = await queryMarketListings(client, marketId, marketPackageId);
 
 			const typeIds = listings.map((l) => l.typeId);
@@ -30,7 +30,8 @@ export function useMarketListings(marketId: string | undefined) {
 				name: names.get(l.typeId) ?? `Item #${l.typeId}`,
 			}));
 		},
-		enabled: !!marketId,
-		refetchInterval: 15_000,
+		enabled: !!marketId && !!marketPackageId,
+		staleTime: 15_000,
+		refetchInterval: 30_000,
 	});
 }

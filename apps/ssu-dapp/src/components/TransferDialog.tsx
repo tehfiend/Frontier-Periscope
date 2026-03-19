@@ -19,12 +19,14 @@ export interface TransferContext {
 	characterName: string | null;
 	/** Maps normalized slot key -> cap info for all writable slots */
 	slotCaps: Map<string, CapRef>;
-	/** Present when this SSU has a MarketAuth extension */
-	marketConfigId?: string;
+	/** SsuConfig object ID (present when SSU has ssu_market extension) */
+	ssuConfigId?: string;
 	/** Latest ssu_market package ID for moveCall targets */
 	marketPackageId?: string;
-	/** Whether the connected wallet is the MarketConfig admin */
-	isAdmin: boolean;
+	/** Market<T> object ID (may be null if not linked yet) */
+	marketId?: string | null;
+	/** Whether the connected wallet is the SsuConfig owner or delegate */
+	isAuthorized: boolean;
 }
 
 export interface DestinationEntry {
@@ -49,10 +51,10 @@ interface TransferDialogProps {
 	inaccessibleSlots: LabeledInventory[];
 	ssuObjectId: string;
 	characterObjectId: string;
-	/** Market extension info for ssu_market PTBs */
-	marketConfigId?: string;
+	/** SsuConfig object ID for ssu_market PTBs */
+	ssuConfigId?: string;
 	marketPackageId?: string;
-	isAdmin?: boolean;
+	isAuthorized?: boolean;
 	onClose: () => void;
 }
 
@@ -136,7 +138,7 @@ function buildOwnerCapTransferPtb(
 function buildAdminMarketPtb(
 	tx: Transaction,
 	marketPkg: string,
-	marketConfigId: string,
+	ssuConfigId: string,
 	ssuObjectId: string,
 	characterObjectId: string,
 	item: InventoryItem,
@@ -145,7 +147,7 @@ function buildAdminMarketPtb(
 	recipientCharacterObjectId?: string,
 ) {
 	const args = [
-		tx.object(marketConfigId),
+		tx.object(ssuConfigId),
 		tx.object(ssuObjectId),
 		tx.object(characterObjectId),
 	];
@@ -168,7 +170,7 @@ function buildPlayerMarketPtb(
 	tx: Transaction,
 	worldPkg: string,
 	marketPkg: string,
-	marketConfigId: string,
+	ssuConfigId: string,
 	ssuObjectId: string,
 	characterObjectId: string,
 	item: InventoryItem,
@@ -214,7 +216,7 @@ function buildPlayerMarketPtb(
 	tx.moveCall({
 		target: `${marketPkg}::ssu_market::${fnName}`,
 		arguments: [
-			tx.object(marketConfigId),
+			tx.object(ssuConfigId),
 			tx.object(ssuObjectId),
 			tx.object(characterObjectId),
 			withdrawnItem,
@@ -229,10 +231,10 @@ function buildPlayerMarketPtb(
 function getMarketFunctionName(
 	sourceType: string,
 	destType: string,
-	isAdmin: boolean,
+	isAuthorized: boolean,
 	isSelfPlayer: boolean,
 ): string | null {
-	if (isAdmin) {
+	if (isAuthorized) {
 		if (sourceType === "owner" && destType === "open") return "admin_to_escrow";
 		if (sourceType === "open" && destType === "owner") return "admin_from_escrow";
 		if (sourceType === "owner" && destType === "player") return "admin_to_player";
@@ -256,9 +258,9 @@ export function TransferDialog({
 	inaccessibleSlots,
 	ssuObjectId,
 	characterObjectId,
-	marketConfigId,
+	ssuConfigId,
 	marketPackageId,
-	isAdmin,
+	isAuthorized,
 	onClose,
 }: TransferDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -298,8 +300,8 @@ export function TransferDialog({
 
 	// Show the "Send to player..." option if admin + market + source is owner or escrow
 	const showSearchOption =
-		isAdmin &&
-		!!marketConfigId &&
+		isAuthorized &&
+		!!ssuConfigId &&
 		(sourceSlot.slotType === "owner" || sourceSlot.slotType === "open");
 
 	async function handleTransfer() {
@@ -318,7 +320,7 @@ export function TransferDialog({
 
 			if (isSearchMode) {
 				// Phase 5: admin -> new player (character search)
-				if (!selectedCharacter || !marketConfigId || !marketPackageId) {
+				if (!selectedCharacter || !ssuConfigId || !marketPackageId) {
 					setError("Please select a recipient character");
 					return;
 				}
@@ -327,7 +329,7 @@ export function TransferDialog({
 				buildAdminMarketPtb(
 					tx,
 					marketPackageId,
-					marketConfigId,
+					ssuConfigId,
 					ssuObjectId,
 					characterObjectId,
 					item,
@@ -344,7 +346,7 @@ export function TransferDialog({
 
 			if (!dest) return;
 
-			if (dest.route === "market" && marketConfigId && marketPackageId) {
+			if (dest.route === "market" && ssuConfigId && marketPackageId) {
 				// Market-routed transfer
 				const isSelfDest =
 					dest.recipientCharacterObjectId === characterObjectId ||
@@ -352,7 +354,7 @@ export function TransferDialog({
 				const fnName = getMarketFunctionName(
 					sourceSlot.slotType,
 					dest.slot.slotType,
-					!!isAdmin,
+					!!isAuthorized,
 					isSelfDest,
 				);
 
@@ -374,7 +376,7 @@ export function TransferDialog({
 						tx,
 						worldPkg,
 						marketPackageId,
-						marketConfigId,
+						ssuConfigId,
 						ssuObjectId,
 						characterObjectId,
 						item,
@@ -389,7 +391,7 @@ export function TransferDialog({
 					buildAdminMarketPtb(
 						tx,
 						marketPackageId,
-						marketConfigId,
+						ssuConfigId,
 						ssuObjectId,
 						characterObjectId,
 						item,

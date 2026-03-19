@@ -23,7 +23,6 @@ export function PostSellListingForm({
 	const { mutateAsync, isPending } = useSignAndExecute();
 
 	const [ssuId, setSsuId] = useState("");
-	const [marketConfigId, setMarketConfigId] = useState("");
 	const [typeId, setTypeId] = useState("");
 	const [pricePerUnit, setPricePerUnit] = useState("");
 	const [quantity, setQuantity] = useState("");
@@ -44,7 +43,6 @@ export function PostSellListingForm({
 				marketId,
 				coinType,
 				ssuId: ssuId.trim(),
-				marketConfigId: marketConfigId.trim(),
 				typeId: Number(typeId),
 				pricePerUnit: Number(pricePerUnit),
 				quantity: Number(quantity),
@@ -61,7 +59,8 @@ export function PostSellListingForm({
 		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
 			<h3 className="mb-3 text-sm font-medium text-zinc-400">Post Sell Listing</h3>
 			<p className="mb-3 text-[10px] text-zinc-600">
-				Advertise items for sale at your SSU. Items stay in the SSU -- buyers visit to purchase.
+				Advertise items for sale at your SSU. Items stay in the SSU -- buyers visit to
+				purchase.
 			</p>
 
 			<div className="space-y-2">
@@ -75,21 +74,11 @@ export function PostSellListingForm({
 						className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
 					/>
 				</div>
-				<div>
-					<label className="mb-0.5 block text-[10px] text-zinc-500">
-						Market Config ID (SSU Market extension)
-					</label>
-					<input
-						type="text"
-						value={marketConfigId}
-						onChange={(e) => setMarketConfigId(e.target.value)}
-						placeholder="0x..."
-						className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
-					/>
-				</div>
 				<div className="flex gap-2">
 					<div className="flex-1">
-						<label className="mb-0.5 block text-[10px] text-zinc-500">Item Type ID</label>
+						<label className="mb-0.5 block text-[10px] text-zinc-500">
+							Item Type ID
+						</label>
 						<input
 							type="number"
 							value={typeId}

@@ -1,4 +1,4 @@
-import { CurrencyMarketBrowser } from "@/components/CurrencyMarketBrowser";
+import { MarketBrowser } from "@/components/MarketBrowser";
 import { MarketView } from "@/components/MarketView";
 import { DAppKitProvider, createDAppKit } from "@mysten/dapp-kit-react";
 import { SuiGraphQLClient } from "@mysten/sui/graphql";
@@ -30,7 +30,7 @@ const dAppKit = createDAppKit({
 	},
 });
 
-type TabId = "ssu-market" | "currency-market";
+type TabId = "ssu-market" | "market-browser";
 
 function getUrlParam(key: string): string | null {
 	const params = new URLSearchParams(window.location.search);
@@ -39,12 +39,12 @@ function getUrlParam(key: string): string | null {
 
 export function App() {
 	// Auto-detect tab based on URL params
-	const hasCurrencyMarketPkg = !!getUrlParam("currencyMarketPackageId");
+	const hasMarketPkg = !!getUrlParam("marketPackageId");
 	const [activeTab, setActiveTab] = useState<TabId>(
-		hasCurrencyMarketPkg ? "currency-market" : "ssu-market",
+		hasMarketPkg ? "market-browser" : "ssu-market",
 	);
-	const [currencyMarketPackageId, setCurrencyMarketPackageId] = useState(
-		getUrlParam("currencyMarketPackageId") ?? "",
+	const [marketPackageId, setMarketPackageId] = useState(
+		getUrlParam("marketPackageId") ?? "",
 	);
 
 	return (
@@ -72,44 +72,44 @@ export function App() {
 								</button>
 								<button
 									type="button"
-									onClick={() => setActiveTab("currency-market")}
+									onClick={() => setActiveTab("market-browser")}
 									className={`flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium ${
-										activeTab === "currency-market"
+										activeTab === "market-browser"
 											? "bg-zinc-800 text-cyan-400"
 											: "text-zinc-500 hover:text-zinc-400"
 									}`}
 								>
 									<ShoppingBag size={12} />
-									Currency Market
+									Market Browser
 								</button>
 							</div>
 						</div>
 					</header>
 					<main className="flex-1 overflow-auto p-4">
 						{activeTab === "ssu-market" && <MarketView />}
-						{activeTab === "currency-market" && (
+						{activeTab === "market-browser" && (
 							<div className="mx-auto max-w-2xl space-y-4">
 								{/* Package ID config */}
 								<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
 									<h3 className="mb-2 text-sm font-medium text-zinc-400">
-										Currency Market Package
+										Market Package
 									</h3>
 									<input
 										type="text"
-										value={currencyMarketPackageId}
-										onChange={(e) => setCurrencyMarketPackageId(e.target.value)}
-										placeholder="0x... (currency_market package ID)"
+										value={marketPackageId}
+										onChange={(e) => setMarketPackageId(e.target.value)}
+										placeholder="0x... (market package ID)"
 										className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
 									/>
 								</div>
 
-								{currencyMarketPackageId ? (
-									<CurrencyMarketBrowser packageId={currencyMarketPackageId} />
+								{marketPackageId ? (
+									<MarketBrowser packageId={marketPackageId} />
 								) : (
 									<div className="flex flex-col items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 py-12">
 										<ShoppingBag size={32} className="text-zinc-700" />
 										<p className="text-xs text-zinc-600">
-											Enter the Currency Market package ID to browse markets
+											Enter the Market package ID to browse markets
 										</p>
 									</div>
 								)}

@@ -1,19 +1,24 @@
 import { AssemblyActions } from "@/components/AssemblyActions";
-import { AssemblyHeader } from "@/components/AssemblyHeader";
+import { ContentTabs } from "@/components/ContentTabs";
 import { ExtensionInfo } from "@/components/ExtensionInfo";
-import { InventoryTabs } from "@/components/InventoryTabs";
-import { MetadataEditor } from "@/components/MetadataEditor";
+import { SsuInfoCard } from "@/components/SsuInfoCard";
 import type { TransferContext } from "@/components/TransferDialog";
 import { useAssembly } from "@/hooks/useAssembly";
+import { useBuyOrders } from "@/hooks/useBuyOrders";
 import { useCharacter } from "@/hooks/useCharacter";
-import { normalizeId } from "@/hooks/useInventory";
-import { useInventory } from "@/hooks/useInventory";
-import { useMarketConfig } from "@/hooks/useMarketConfig";
+import { normalizeId, useInventory } from "@/hooks/useInventory";
+import { useMarketListings } from "@/hooks/useMarketListings";
 import { useOwnerCap } from "@/hooks/useOwnerCap";
 import { useOwnerCharacter } from "@/hooks/useOwnerCharacter";
+import { useSsuConfig } from "@/hooks/useSsuConfig";
 import { getItemId, getTenant, getWorldPackageId } from "@/lib/constants";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useMemo } from "react";
+
+/** Hardcoded coin type per tenant for hackathon. TODO: make dynamic. */
+function getCoinType(): string {
+	return "";
+}
 
 interface SsuViewProps {
 	objectId: string;
@@ -46,24 +51,33 @@ export function SsuView({ objectId }: SsuViewProps) {
 	// SSU owner character name (from ownerCapId)
 	const { data: ownerCharacterName } = useOwnerCharacter(assembly?.ownerCapId);
 
-	// MarketConfig detection -- only when SSU has a MarketAuth extension
-	const { data: marketConfig } = useMarketConfig(objectId, assembly?.extensionType);
+	// SsuConfig detection -- only when SSU has a ssu_market extension
+	const { data: ssuConfig } = useSsuConfig(objectId, assembly?.extensionType);
+
+	// Market data -- only when SsuConfig has a linked market
+	const { data: listings } = useMarketListings(ssuConfig?.marketId);
+	const { data: buyOrders } = useBuyOrders(ssuConfig?.marketId);
 
 	// Determine if connected wallet is the SSU owner
 	// The owner_cap_id on the SSU matches an OwnerCap held by the player's Character
 	const isOwner = !!ownerCapInfo && !!character;
 
-	// Determine if connected wallet is the MarketConfig admin
-	const isMarketAdmin = !!marketConfig && !!walletAddress && marketConfig.admin === walletAddress;
+	// Determine if connected wallet is the SsuConfig owner
+	const isSsuOwner = !!ssuConfig && !!walletAddress && ssuConfig.owner === walletAddress;
+
+	// Determine if connected wallet is authorized (owner or delegate)
+	const isAuthorized =
+		isSsuOwner ||
+		(!!ssuConfig && !!walletAddress && ssuConfig.delegates.includes(walletAddress));
 
 	// Build transfer context for inter-slot item transfers
 	const transferContext = useMemo<TransferContext | null>(() => {
 		// Need at least a character to transfer (either as owner or as market participant)
 		if (!character || !assembly) return null;
 
-		// Without market extension, require SSU ownership for transfers
-		if (!marketConfig && !isOwner) return null;
-		if (!marketConfig && !ownerCapInfo) return null;
+		// Without ssu_market extension, require SSU ownership for transfers
+		if (!ssuConfig && !isOwner) return null;
+		if (!ssuConfig && !ownerCapInfo) return null;
 
 		const worldPkg = getWorldPackageId(getTenant());
 		const slotCaps = new Map<string, { info: typeof ownerCapInfo; typeArg: string }>();
@@ -91,11 +105,21 @@ export function SsuView({ objectId }: SsuViewProps) {
 			characterObjectId: character.characterObjectId,
 			characterName: character.characterName,
 			slotCaps,
-			marketConfigId: marketConfig?.configObjectId,
-			marketPackageId: marketConfig?.packageId,
-			isAdmin: isMarketAdmin,
+			ssuConfigId: ssuConfig?.ssuConfigId,
+			marketPackageId: ssuConfig?.packageId,
+			marketId: ssuConfig?.marketId,
+			isAuthorized,
 		};
-	}, [isOwner, isMarketAdmin, character, ownerCapInfo, charOwnerCapInfo, assembly, objectId, marketConfig]);
+	}, [
+		isOwner,
+		isAuthorized,
+		character,
+		ownerCapInfo,
+		charOwnerCapInfo,
+		assembly,
+		objectId,
+		ssuConfig,
+	]);
 
 	// Loading state
 	if (assemblyLoading) {
@@ -135,54 +159,58 @@ export function SsuView({ objectId }: SsuViewProps) {
 
 	return (
 		<div className="mx-auto max-w-2xl space-y-4">
-			{/* Assembly header */}
-			<AssemblyHeader
+			{/* Card 1: SSU Info + Edit */}
+			<SsuInfoCard
 				assembly={assembly}
 				itemId={getItemId()}
 				ownerCharacterName={ownerCharacterName}
 				connectedWalletAddress={walletAddress}
 				connectedCharacterName={character?.characterName}
+				isOwner={isOwner}
+				characterObjectId={character?.characterObjectId}
+				ownerCap={ownerCapInfo}
+				ssuObjectId={objectId}
 			/>
 
-			{/* Inventory tabs (always visible, no wallet required) */}
+			{/* Card 2: Content Tabs (Inventory + Market) */}
 			{inventories && (
-				<InventoryTabs
-					inventories={inventories}
-					isLoading={inventoryLoading}
-					transferContext={transferContext}
+				<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+					<ContentTabs
+						inventories={inventories}
+						inventoryLoading={inventoryLoading}
+						transferContext={transferContext}
+						ssuConfig={ssuConfig ?? null}
+						ssuObjectId={objectId}
+						characterObjectId={character?.characterObjectId}
+						ownerCap={ownerCapInfo}
+						isOwner={isOwner}
+						isAuthorized={isAuthorized}
+						isConnected={!!account}
+						coinType={getCoinType()}
+						listings={listings ?? []}
+						buyOrders={buyOrders ?? []}
+						walletAddress={walletAddress}
+					/>
+				</div>
+			)}
+
+			{/* Assembly status + Extension info (kept at bottom for now) */}
+			{isOwner && character && ownerCapInfo && (
+				<AssemblyActions
+					assembly={assembly}
+					characterObjectId={character.characterObjectId}
+					ownerCap={ownerCapInfo}
 				/>
 			)}
 
-			{/* Owner panels (shown only when wallet connected + is owner) */}
-			{isOwner && character && ownerCapInfo && inventories && (
-				<div className="space-y-4">
-					<div className="border-t border-zinc-800 pt-4">
-						<h2 className="mb-3 text-sm font-semibold tracking-wide text-zinc-400 uppercase">
-							Owner Controls
-						</h2>
-					</div>
-
-					<AssemblyActions
-						assembly={assembly}
-						characterObjectId={character.characterObjectId}
-						ownerCap={ownerCapInfo}
-					/>
-
-					<MetadataEditor
-						ssuObjectId={objectId}
-						characterObjectId={character.characterObjectId}
-						ownerCap={ownerCapInfo}
-						metadata={assembly.metadata}
-					/>
-
-					<ExtensionInfo
-						ssuObjectId={objectId}
-						characterObjectId={character.characterObjectId}
-						ownerCap={ownerCapInfo}
-						extensionType={assembly.extensionType}
-						isOwner={true}
-					/>
-				</div>
+			{isOwner && character && ownerCapInfo && (
+				<ExtensionInfo
+					ssuObjectId={objectId}
+					characterObjectId={character.characterObjectId}
+					ownerCap={ownerCapInfo}
+					extensionType={assembly.extensionType}
+					isOwner={true}
+				/>
 			)}
 
 			{/* Extension info for non-owners (read-only, shown only if extension is configured) */}

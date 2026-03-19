@@ -59,6 +59,12 @@ export function getSsuMarketOriginalPackageId(tenant?: string): string | null {
 	return m?.originalPackageId ?? m?.packageId ?? null;
 }
 
+/** Get the market package ID for the current tenant (for Market<T> queries) */
+export function getMarketPackageId(tenant?: string): string | null {
+	const t = (tenant ?? getTenant()) as TenantId;
+	return getContractAddresses(t).market?.packageId || null;
+}
+
 /**
  * Get the SSU object ID. Priority:
  * 1. Derived from itemId + tenant (handled externally via deriveObjectId)

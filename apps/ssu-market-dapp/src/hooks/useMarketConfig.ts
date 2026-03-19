@@ -1,7 +1,7 @@
+import { getConfigId } from "@/lib/constants";
 import { useQuery } from "@tanstack/react-query";
 import { SuiGraphQLClient } from "@mysten/sui/graphql";
-import { queryMarketConfig } from "@tehfrontier/chain-shared";
-import { getConfigId } from "@/lib/constants";
+import { querySsuConfig } from "@tehfrontier/chain-shared";
 
 const client = new SuiGraphQLClient({
 	url: "https://graphql.testnet.sui.io/graphql",
@@ -12,8 +12,8 @@ export function useMarketConfig() {
 	const configId = getConfigId();
 
 	return useQuery({
-		queryKey: ["marketConfig", configId],
-		queryFn: () => queryMarketConfig(client, configId),
+		queryKey: ["ssuConfig", configId],
+		queryFn: () => querySsuConfig(client, configId),
 		enabled: !!configId,
 		refetchInterval: 30_000,
 	});

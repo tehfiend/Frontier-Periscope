@@ -1,44 +1,59 @@
-import type { SellListingWithName } from "@/hooks/useMarketListings";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
-import { SSU_MARKET_PACKAGE_ID, getCoinType } from "@/lib/constants";
+import type { SsuConfigResult } from "@/hooks/useSsuConfig";
+import { decodeErrorMessage } from "@/lib/errors";
+import { resolveItemName } from "@/lib/items";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import type { SsuConfigInfo } from "@tehfrontier/chain-shared";
-import { buildBuyFromListing } from "@tehfrontier/chain-shared";
+import { type MarketSellListing, buildBuyFromListing } from "@tehfrontier/chain-shared";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 interface ListingCardProps {
-	listing: SellListingWithName;
-	config: SsuConfigInfo;
+	listing: MarketSellListing;
+	ssuConfig: SsuConfigResult;
+	characterObjectId?: string;
 	canBuy: boolean;
-	onConnect: () => void;
+	coinType: string;
+	ssuObjectId: string;
 }
 
-export function ListingCard({ listing, config, canBuy, onConnect }: ListingCardProps) {
+export function ListingCard({
+	listing,
+	ssuConfig,
+	characterObjectId,
+	canBuy,
+	coinType,
+	ssuObjectId,
+}: ListingCardProps) {
 	const [quantity, setQuantity] = useState(1);
 	const [error, setError] = useState<string | null>(null);
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
 
+	const { data: itemName } = useQuery({
+		queryKey: ["typeName", listing.typeId],
+		queryFn: () => resolveItemName(listing.typeId),
+		staleTime: 5 * 60_000,
+	});
+
 	const totalPrice = listing.pricePerUnit * quantity;
-	const coinType = getCoinType();
 	const maxQty = listing.quantity;
 
 	async function handleBuy() {
 		setError(null);
 
-		if (!account?.address || !coinType || !config.marketId) {
+		if (!account?.address || !coinType || !ssuConfig.marketId) {
 			setError("Missing wallet connection, coin type, or market configuration.");
 			return;
 		}
 
 		try {
 			const tx = buildBuyFromListing({
-				packageId: SSU_MARKET_PACKAGE_ID,
-				ssuConfigId: config.objectId,
-				marketId: config.marketId,
+				packageId: ssuConfig.packageId,
+				ssuConfigId: ssuConfig.ssuConfigId,
+				marketId: ssuConfig.marketId,
 				coinType,
-				ssuObjectId: config.ssuId,
-				characterObjectId: "", // TODO: resolve from chain via wallet address
+				ssuObjectId,
+				characterObjectId: characterObjectId ?? "",
 				listingId: listing.listingId,
 				quantity,
 				paymentObjectId: "", // Wallet resolves the payment coin
@@ -47,7 +62,7 @@ export function ListingCard({ listing, config, canBuy, onConnect }: ListingCardP
 
 			await signAndExecute(tx);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(decodeErrorMessage(String(err)));
 		}
 	}
 
@@ -55,7 +70,9 @@ export function ListingCard({ listing, config, canBuy, onConnect }: ListingCardP
 		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
 			<div className="flex items-start justify-between">
 				<div>
-					<p className="text-sm font-medium text-zinc-200">{listing.name}</p>
+					<p className="text-sm font-medium text-zinc-200">
+						{itemName ?? `Item #${listing.typeId}`}
+					</p>
 					<p className="text-xs text-zinc-500">Type ID: {listing.typeId}</p>
 				</div>
 				<div className="text-right">
@@ -66,10 +83,15 @@ export function ListingCard({ listing, config, canBuy, onConnect }: ListingCardP
 				</div>
 			</div>
 
-			<p className="mt-1 text-xs text-zinc-500">{maxQty.toLocaleString()} available</p>
+			<p className="mt-1 text-xs text-zinc-500">
+				{maxQty.toLocaleString()} available
+			</p>
 
 			<div className="mt-3 flex items-center gap-2">
-				<label className="text-xs text-zinc-500" htmlFor={`qty-${listing.listingId}`}>
+				<label
+					className="text-xs text-zinc-500"
+					htmlFor={`qty-${listing.listingId}`}
+				>
 					Qty:
 				</label>
 				<input
@@ -87,7 +109,7 @@ export function ListingCard({ listing, config, canBuy, onConnect }: ListingCardP
 					= {totalPrice.toLocaleString()} total
 				</span>
 				<div className="flex-1" />
-				{canBuy ? (
+				{canBuy && (
 					<button
 						type="button"
 						onClick={handleBuy}
@@ -95,14 +117,6 @@ export function ListingCard({ listing, config, canBuy, onConnect }: ListingCardP
 						className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						{isPending ? "Buying..." : "Buy"}
-					</button>
-				) : (
-					<button
-						type="button"
-						onClick={onConnect}
-						className="rounded bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-600"
-					>
-						Connect to Buy
 					</button>
 				)}
 			</div>

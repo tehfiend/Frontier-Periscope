@@ -21,12 +21,10 @@ export function useSignAndExecute(): {
 			try {
 				const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
 				// Invalidate market data after successful TX
-				queryClient.invalidateQueries({ queryKey: ["sellOrders"] });
-				queryClient.invalidateQueries({ queryKey: ["marketConfig"] });
+				queryClient.invalidateQueries({ queryKey: ["marketListings"] });
+				queryClient.invalidateQueries({ queryKey: ["marketBuyOrders"] });
+				queryClient.invalidateQueries({ queryKey: ["ssuConfig"] });
 				queryClient.invalidateQueries({ queryKey: ["ssuInventory"] });
-				queryClient.invalidateQueries({ queryKey: ["currencyMarkets"] });
-				queryClient.invalidateQueries({ queryKey: ["currencyMarketListings"] });
-				queryClient.invalidateQueries({ queryKey: ["currencyMarketBuyOrders"] });
 				return result;
 			} finally {
 				setIsPending(false);

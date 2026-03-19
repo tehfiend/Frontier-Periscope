@@ -4,10 +4,10 @@
  * This file is kept to avoid breaking any remaining references.
  */
 
-import type { MarketInfo } from "@tehfrontier/chain-shared";
+import type { SsuConfigInfo } from "@tehfrontier/chain-shared";
 
 interface ListingFormProps {
-	config: MarketInfo;
+	config: SsuConfigInfo;
 	onClose: () => void;
 }
 

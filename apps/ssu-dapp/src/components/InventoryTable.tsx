@@ -6,12 +6,21 @@ interface InventoryTableProps {
 	isLoading?: boolean;
 	canTransfer?: boolean;
 	onTransfer?: (item: InventoryItem) => void;
+	canSell?: boolean;
+	onSell?: (item: InventoryItem) => void;
 }
 
 type SortField = "name" | "quantity" | "volume";
 type SortDir = "asc" | "desc";
 
-export function InventoryTable({ inventory, isLoading, canTransfer, onTransfer }: InventoryTableProps) {
+export function InventoryTable({
+	inventory,
+	isLoading,
+	canTransfer,
+	onTransfer,
+	canSell,
+	onSell,
+}: InventoryTableProps) {
 	const [sortField, setSortField] = useState<SortField>("name");
 	const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -44,12 +53,17 @@ export function InventoryTable({ inventory, isLoading, canTransfer, onTransfer }
 		}
 	}
 
+	const hasActions = canTransfer || canSell;
+
 	// Loading skeleton
 	if (isLoading) {
 		return (
 			<div className="space-y-2">
 				{Array.from({ length: 4 }).map((_, i) => (
-					<div key={i} className="flex gap-3 rounded border border-zinc-800 bg-zinc-900/50 p-3">
+					<div
+						key={i}
+						className="flex gap-3 rounded border border-zinc-800 bg-zinc-900/50 p-3"
+					>
 						<div className="flex-1 space-y-1.5">
 							<div className="h-3 w-32 animate-pulse rounded bg-zinc-800" />
 							<div className="h-2.5 w-20 animate-pulse rounded bg-zinc-800" />
@@ -99,7 +113,7 @@ export function InventoryTable({ inventory, isLoading, canTransfer, onTransfer }
 							>
 								Volume (m&#xB3;){sortIcon("volume")}
 							</th>
-							{canTransfer && (
+							{hasActions && (
 								<th className="px-3 py-2 text-right text-xs font-medium text-zinc-400">
 									Actions
 								</th>
@@ -112,6 +126,7 @@ export function InventoryTable({ inventory, isLoading, canTransfer, onTransfer }
 								key={item.typeId}
 								item={item}
 								onTransfer={canTransfer ? onTransfer : undefined}
+								onSell={canSell ? onSell : undefined}
 							/>
 						))}
 					</tbody>
@@ -124,11 +139,14 @@ export function InventoryTable({ inventory, isLoading, canTransfer, onTransfer }
 function ItemRow({
 	item,
 	onTransfer,
+	onSell,
 }: {
 	item: InventoryItem;
 	onTransfer?: (item: InventoryItem) => void;
+	onSell?: (item: InventoryItem) => void;
 }) {
 	const totalVolume = (item.volume * item.quantity) / 1000;
+	const hasActions = !!onTransfer || !!onSell;
 
 	return (
 		<tr className="border-b border-zinc-800/50 last:border-0 hover:bg-zinc-900/50">
@@ -139,15 +157,28 @@ function ItemRow({
 			<td className="px-3 py-2 text-right font-mono text-xs text-zinc-500">
 				{totalVolume.toLocaleString()}
 			</td>
-			{onTransfer && (
+			{hasActions && (
 				<td className="px-3 py-2 text-right">
-					<button
-						type="button"
-						onClick={() => onTransfer(item)}
-						className="text-xs text-cyan-400 hover:text-cyan-300"
-					>
-						Transfer
-					</button>
+					<div className="flex items-center justify-end gap-2">
+						{onTransfer && (
+							<button
+								type="button"
+								onClick={() => onTransfer(item)}
+								className="text-xs text-cyan-400 hover:text-cyan-300"
+							>
+								Transfer
+							</button>
+						)}
+						{onSell && (
+							<button
+								type="button"
+								onClick={() => onSell(item)}
+								className="text-xs text-amber-400 hover:text-amber-300"
+							>
+								Sell
+							</button>
+						)}
+					</div>
 				</td>
 			)}
 		</tr>

@@ -8,6 +8,10 @@ interface InventoryTabsProps {
 	inventories: SsuInventories;
 	isLoading?: boolean;
 	transferContext?: TransferContext | null;
+	/** Callback when user clicks Sell on an item (bubbles up to ContentTabs) */
+	onSell?: (item: InventoryItem) => void;
+	/** Whether the Sell button should be shown (owner + market + connected) */
+	canSell?: boolean;
 }
 
 interface DialogState {
@@ -60,7 +64,13 @@ function getSlotColor(
 	return PLAYER_COLORS[playerIndex % PLAYER_COLORS.length];
 }
 
-export function InventoryTabs({ inventories, isLoading, transferContext }: InventoryTabsProps) {
+export function InventoryTabs({
+	inventories,
+	isLoading,
+	transferContext,
+	onSell,
+	canSell,
+}: InventoryTabsProps) {
 	const [activeIdx, setActiveIdx] = useState(0);
 	const [dialogState, setDialogState] = useState<DialogState | null>(null);
 
@@ -95,8 +105,8 @@ export function InventoryTabs({ inventories, isLoading, transferContext }: Inven
 	const activeColor = slotColors[activeIdx] ?? slotColors[0];
 
 	// Transfer logic: can the user transfer items from the active slot?
-	const hasMarket = !!transferContext?.marketConfigId;
-	const isAdmin = !!transferContext?.isAdmin;
+	const hasMarket = !!transferContext?.ssuConfigId;
+	const isAuthorized = !!transferContext?.isAuthorized;
 
 	const canTransferFromActive = (() => {
 		if (!transferContext) return false;
@@ -109,7 +119,7 @@ export function InventoryTabs({ inventories, isLoading, transferContext }: Inven
 		if (hasCapForSource && hasOtherCap) return true;
 
 		// Market path: admin can transfer from owner/escrow slots
-		if (hasMarket && isAdmin) {
+		if (hasMarket && isAuthorized) {
 			if (currentSlot.slotType === "owner" || currentSlot.slotType === "open") return true;
 		}
 
@@ -149,7 +159,7 @@ export function InventoryTabs({ inventories, isLoading, transferContext }: Inven
 
 				// Check if this destination is reachable via market extension
 				let marketReachable = false;
-				if (isAdmin) {
+				if (isAuthorized) {
 					// Admin can reach escrow + any player from owner/escrow
 					if (sourceSlot.slotType === "owner" && (s.slotType === "open" || s.slotType === "player"))
 						marketReachable = true;
@@ -206,7 +216,7 @@ export function InventoryTabs({ inventories, isLoading, transferContext }: Inven
 			addedKeys.add(capKey);
 		}
 
-		if (destinations.length === 0 && !(isAdmin && hasMarket)) return null;
+		if (destinations.length === 0 && !(isAuthorized && hasMarket)) return null;
 
 		// Visible slots the user cannot deposit to
 		const inaccessibleSlots = hasMarket
@@ -225,9 +235,9 @@ export function InventoryTabs({ inventories, isLoading, transferContext }: Inven
 			inaccessibleSlots,
 			ssuObjectId: transferContext.ssuObjectId,
 			characterObjectId: transferContext.characterObjectId,
-			marketConfigId: transferContext.marketConfigId,
+			ssuConfigId: transferContext.ssuConfigId,
 			marketPackageId: transferContext.marketPackageId,
-			isAdmin: transferContext.isAdmin,
+			isAuthorized: transferContext.isAuthorized,
 		};
 	})();
 
@@ -304,6 +314,8 @@ export function InventoryTabs({ inventories, isLoading, transferContext }: Inven
 					isLoading={isLoading}
 					canTransfer={canTransferFromActive}
 					onTransfer={handleTransfer}
+					canSell={canSell && currentSlot.slotType === "owner"}
+					onSell={onSell}
 				/>
 			</div>
 

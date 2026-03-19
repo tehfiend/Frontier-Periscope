@@ -5,9 +5,20 @@ import { useQuery } from "@tanstack/react-query";
 interface AssemblyHeaderProps {
 	assembly: AssemblyData;
 	itemId?: string | null;
+	ownerCharacterName?: string | null;
+	connectedWalletAddress?: string | null;
+	connectedCharacterName?: string | null;
+	onEdit?: () => void;
 }
 
-export function AssemblyHeader({ assembly, itemId }: AssemblyHeaderProps) {
+export function AssemblyHeader({
+	assembly,
+	itemId,
+	ownerCharacterName,
+	connectedWalletAddress,
+	connectedCharacterName,
+	onEdit,
+}: AssemblyHeaderProps) {
 	const name = assembly.metadata?.name || "Unnamed Storage Unit";
 	const description = assembly.metadata?.description || null;
 	const dappUrl = assembly.metadata?.url || null;
@@ -32,11 +43,57 @@ export function AssemblyHeader({ assembly, itemId }: AssemblyHeaderProps) {
 					</p>
 					{description && <p className="mt-1 text-sm text-zinc-400">{description}</p>}
 				</div>
-				<div className="shrink-0 text-right">
+				<div className="flex shrink-0 items-center gap-2">
+					{onEdit && (
+						<button
+							type="button"
+							onClick={onEdit}
+							className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+							title="Edit metadata"
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 20 20"
+								fill="currentColor"
+								className="h-4 w-4"
+							>
+								<path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
+							</svg>
+						</button>
+					)}
 					<p className="font-mono text-xs text-zinc-600" title={assembly.objectId}>
 						{assembly.objectId.slice(0, 10)}...{assembly.objectId.slice(-6)}
 					</p>
 				</div>
+			</div>
+
+			{/* Owner + connected character info */}
+			<div className="mt-3 space-y-1 border-t border-zinc-800 pt-2">
+				<p className="text-xs text-zinc-500">
+					Owner:{" "}
+					{ownerCharacterName ? (
+						<span className="font-medium text-zinc-300">{ownerCharacterName}</span>
+					) : (
+						<span className="font-mono text-zinc-600">
+							{assembly.ownerCapId.slice(0, 10)}...{assembly.ownerCapId.slice(-4)}
+						</span>
+					)}
+				</p>
+				{connectedWalletAddress && (
+					<p className="text-xs text-zinc-500">
+						Connected as:{" "}
+						{connectedCharacterName ? (
+							<span className="font-medium text-cyan-400">
+								{connectedCharacterName}
+							</span>
+						) : (
+							<span className="font-mono text-zinc-600">
+								{connectedWalletAddress.slice(0, 10)}...
+								{connectedWalletAddress.slice(-4)}
+							</span>
+						)}
+					</p>
+				)}
 			</div>
 
 			{assembly.extensionType && (
@@ -47,16 +104,6 @@ export function AssemblyHeader({ assembly, itemId }: AssemblyHeaderProps) {
 							{formatExtensionType(assembly.extensionType)}
 						</span>
 					</p>
-					{isMarketExtension(assembly.extensionType) && (
-						<a
-							href={buildMarketDappUrl(assembly.objectId)}
-							target="_blank"
-							rel="noopener noreferrer"
-							className="mt-1 inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
-						>
-							View Market &rarr;
-						</a>
-					)}
 				</div>
 			)}
 
@@ -86,7 +133,9 @@ function StatusBadge({ status, isOnline }: { status: string; isOnline: boolean }
 				isOnline ? "bg-emerald-900/50 text-emerald-400" : "bg-zinc-800 text-zinc-500"
 			}`}
 		>
-			<span className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-emerald-400" : "bg-zinc-600"}`} />
+			<span
+				className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-emerald-400" : "bg-zinc-600"}`}
+			/>
 			{status}
 		</span>
 	);
@@ -98,19 +147,4 @@ function formatExtensionType(ext: string): string {
 		return `${parts[parts.length - 2]}::${parts[parts.length - 1]}`;
 	}
 	return ext;
-}
-
-/** Check if the extension type indicates an SSU market extension */
-function isMarketExtension(ext: string): boolean {
-	const lower = ext.toLowerCase();
-	return lower.includes("ssu_market") || lower.includes("market");
-}
-
-/** Build a URL to the SSU market dApp for this SSU */
-function buildMarketDappUrl(ssuObjectId: string): string {
-	// The market dApp lives on port 3200 in dev, or at a relative path in prod.
-	// Use a relative origin assumption -- the market dApp needs a configId
-	// which is the SSU object ID for market SSUs.
-	const baseUrl = window.location.hostname === "localhost" ? "http://localhost:3200" : "/market";
-	return `${baseUrl}?configId=${ssuObjectId}`;
 }

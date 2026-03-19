@@ -1,62 +1,70 @@
-import { useState } from "react";
-import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import type { MarketInfo } from "@tehfrontier/chain-shared";
-import { buildUpdateSellPrice, buildCancelSellOrder } from "@tehfrontier/chain-shared";
-import type { SellOrderWithName } from "@/hooks/useMarketListings";
+import type { SellListingWithName } from "@/hooks/useMarketListings";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
-import { SSU_MARKET_PACKAGE_ID } from "@/lib/constants";
+import { getMarketPackageId, SSU_MARKET_PACKAGE_ID } from "@/lib/constants";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
+import type { SsuConfigInfo } from "@tehfrontier/chain-shared";
+import { buildCancelListing, buildUpdateSellListing } from "@tehfrontier/chain-shared";
+import { useState } from "react";
 
 interface OwnerViewProps {
-	config: MarketInfo;
-	orders: SellOrderWithName[];
-	ordersLoading: boolean;
+	config: SsuConfigInfo;
+	listings: SellListingWithName[];
+	listingsLoading: boolean;
 	characterObjectId: string;
 }
 
-export function OwnerView({ config, orders, ordersLoading, characterObjectId }: OwnerViewProps) {
-	const [editingTypeId, setEditingTypeId] = useState<number | null>(null);
+export function OwnerView({
+	config,
+	listings,
+	listingsLoading,
+	characterObjectId,
+}: OwnerViewProps) {
+	const [editingId, setEditingId] = useState<number | null>(null);
 	const [editPrice, setEditPrice] = useState("");
-	const [cancellingTypeId, setCancellingTypeId] = useState<number | null>(null);
-	const [cancelQty, setCancelQty] = useState("");
+	const [editQty, setEditQty] = useState("");
+	const [cancellingId, setCancellingId] = useState<number | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
 
-	async function handleUpdatePrice(typeId: number) {
-		if (!account?.address || !editPrice) return;
+	async function handleUpdateListing(listingId: number) {
+		if (!account?.address || !editPrice || !editQty || !config.marketId) return;
 		setError(null);
 		try {
-			const tx = buildUpdateSellPrice({
-				packageId: SSU_MARKET_PACKAGE_ID,
-				configObjectId: config.objectId,
-				typeId,
+			const tx = buildUpdateSellListing({
+				packageId: getMarketPackageId(),
+				marketId: config.marketId,
+				coinType: "", // TODO: resolve coin type
+				listingId,
 				pricePerUnit: Number(editPrice),
+				quantity: Number(editQty),
 				senderAddress: account.address,
 			});
 			await signAndExecute(tx);
-			setEditingTypeId(null);
+			setEditingId(null);
 			setEditPrice("");
+			setEditQty("");
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
 		}
 	}
 
-	async function handleCancel(typeId: number) {
-		if (!account?.address || !cancelQty || !characterObjectId) return;
+	async function handleCancel(listingId: number) {
+		if (!account?.address || !config.marketId) return;
 		setError(null);
 		try {
-			const tx = buildCancelSellOrder({
+			const tx = buildCancelListing({
 				packageId: SSU_MARKET_PACKAGE_ID,
-				configObjectId: config.objectId,
+				ssuConfigId: config.objectId,
+				marketId: config.marketId,
+				coinType: "", // TODO: resolve coin type
 				ssuObjectId: config.ssuId,
 				characterObjectId,
-				typeId,
-				quantity: Number(cancelQty),
+				listingId,
 				senderAddress: account.address,
 			});
 			await signAndExecute(tx);
-			setCancellingTypeId(null);
-			setCancelQty("");
+			setCancellingId(null);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
 		}
@@ -65,49 +73,47 @@ export function OwnerView({ config, orders, ordersLoading, characterObjectId }: 
 	return (
 		<div className="space-y-4">
 			<div className="space-y-3">
-				<h2 className="text-sm font-medium text-zinc-400">Sell Orders</h2>
+				<h2 className="text-sm font-medium text-zinc-400">Sell Listings</h2>
 
-				{ordersLoading ? (
+				{listingsLoading ? (
 					<div className="flex h-20 items-center justify-center">
 						<div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-700 border-t-cyan-500" />
 					</div>
-				) : orders.length === 0 ? (
+				) : listings.length === 0 ? (
 					<p className="text-center text-xs text-zinc-600">
-						No sell orders yet. Create one by escrowing items from your SSU inventory.
+						No sell listings yet. Create one by escrowing items from your SSU inventory.
 					</p>
 				) : (
 					<div className="space-y-2">
-						{orders.map((order) => (
+						{listings.map((listing) => (
 							<div
-								key={order.typeId}
+								key={listing.listingId}
 								className="rounded-lg border border-zinc-800 bg-zinc-900 p-3"
 							>
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-sm text-zinc-200">{order.name}</p>
+										<p className="text-sm text-zinc-200">{listing.name}</p>
 										<p className="text-xs text-zinc-500">
-											{order.pricePerUnit.toLocaleString()} per unit --{" "}
-											{order.quantity.toLocaleString()} available
+											{listing.pricePerUnit.toLocaleString()} per unit --{" "}
+											{listing.quantity.toLocaleString()} available
 										</p>
 									</div>
 									<div className="flex items-center gap-2">
 										<button
 											type="button"
 											onClick={() => {
-												setEditingTypeId(order.typeId);
-												setEditPrice(String(order.pricePerUnit));
+												setEditingId(listing.listingId);
+												setEditPrice(String(listing.pricePerUnit));
+												setEditQty(String(listing.quantity));
 											}}
 											disabled={isPending}
 											className="rounded px-2 py-0.5 text-xs text-cyan-500 hover:bg-zinc-800"
 										>
-											Edit Price
+											Edit
 										</button>
 										<button
 											type="button"
-											onClick={() => {
-												setCancellingTypeId(order.typeId);
-												setCancelQty(String(order.quantity));
-											}}
+											onClick={() => setCancellingId(listing.listingId)}
 											disabled={isPending}
 											className="rounded px-2 py-0.5 text-xs text-red-400 hover:bg-zinc-800"
 										>
@@ -116,18 +122,26 @@ export function OwnerView({ config, orders, ordersLoading, characterObjectId }: 
 									</div>
 								</div>
 
-								{/* Inline edit price */}
-								{editingTypeId === order.typeId && (
+								{/* Inline edit */}
+								{editingId === listing.listingId && (
 									<div className="mt-2 flex items-center gap-2 border-t border-zinc-800 pt-2">
 										<input
 											type="number"
 											value={editPrice}
 											onChange={(e) => setEditPrice(e.target.value)}
-											className="w-28 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-600 focus:outline-none"
+											placeholder="Price"
+											className="w-24 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-600 focus:outline-none"
+										/>
+										<input
+											type="number"
+											value={editQty}
+											onChange={(e) => setEditQty(e.target.value)}
+											placeholder="Qty"
+											className="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-600 focus:outline-none"
 										/>
 										<button
 											type="button"
-											onClick={() => handleUpdatePrice(order.typeId)}
+											onClick={() => handleUpdateListing(listing.listingId)}
 											disabled={isPending}
 											className="rounded bg-cyan-600 px-2 py-1 text-xs text-white hover:bg-cyan-500 disabled:opacity-50"
 										>
@@ -135,7 +149,7 @@ export function OwnerView({ config, orders, ordersLoading, characterObjectId }: 
 										</button>
 										<button
 											type="button"
-											onClick={() => setEditingTypeId(null)}
+											onClick={() => setEditingId(null)}
 											className="text-xs text-zinc-500 hover:text-zinc-300"
 										>
 											Cancel
@@ -143,20 +157,15 @@ export function OwnerView({ config, orders, ordersLoading, characterObjectId }: 
 									</div>
 								)}
 
-								{/* Inline cancel */}
-								{cancellingTypeId === order.typeId && (
+								{/* Inline cancel confirm */}
+								{cancellingId === listing.listingId && (
 									<div className="mt-2 flex items-center gap-2 border-t border-zinc-800 pt-2">
-										<label className="text-xs text-zinc-500">Qty:</label>
-										<input
-											type="number"
-											value={cancelQty}
-											onChange={(e) => setCancelQty(e.target.value)}
-											max={order.quantity}
-											className="w-24 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-600 focus:outline-none"
-										/>
+										<p className="text-xs text-zinc-500">
+											Cancel this listing?
+										</p>
 										<button
 											type="button"
-											onClick={() => handleCancel(order.typeId)}
+											onClick={() => handleCancel(listing.listingId)}
 											disabled={isPending}
 											className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-500 disabled:opacity-50"
 										>
@@ -164,7 +173,7 @@ export function OwnerView({ config, orders, ordersLoading, characterObjectId }: 
 										</button>
 										<button
 											type="button"
-											onClick={() => setCancellingTypeId(null)}
+											onClick={() => setCancellingId(null)}
 											className="text-xs text-zinc-500 hover:text-zinc-300"
 										>
 											Dismiss

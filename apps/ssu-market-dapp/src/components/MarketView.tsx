@@ -1,10 +1,10 @@
-import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
-import { useState } from "react";
 import { useMarketConfig } from "@/hooks/useMarketConfig";
 import { useMarketListings } from "@/hooks/useMarketListings";
+import { getConfigId } from "@/lib/constants";
+import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
+import { useState } from "react";
 import { BuyerView } from "./BuyerView";
 import { OwnerView } from "./OwnerView";
-import { getConfigId } from "@/lib/constants";
 
 const EVE_VAULT_NAME = "Eve Vault";
 
@@ -16,7 +16,9 @@ export function MarketView() {
 
 	const configId = getConfigId();
 	const { data: config, isLoading: configLoading, error: configError } = useMarketConfig();
-	const { data: orders, isLoading: ordersLoading } = useMarketListings(configId || undefined);
+	const { data: listings, isLoading: listingsLoading } = useMarketListings(
+		config?.marketId ?? undefined,
+	);
 
 	async function handleConnect() {
 		const eveVault =
@@ -65,14 +67,16 @@ export function MarketView() {
 	if (!config) {
 		return (
 			<div className="flex h-64 items-center justify-center text-zinc-500">
-				<p>MarketConfig not found for ID: {configId}</p>
+				<p>SsuConfig not found for ID: {configId}</p>
 			</div>
 		);
 	}
 
 	const isConnected = !!account;
 	const walletAddress = account?.address ?? null;
-	const isAdmin = isConnected && walletAddress === config.admin;
+	const isOwner = isConnected && walletAddress === config.owner;
+	const isAuthorized =
+		isOwner || (isConnected && !!walletAddress && config.delegates.includes(walletAddress));
 
 	return (
 		<div className="mx-auto max-w-2xl space-y-4">
@@ -96,9 +100,9 @@ export function MarketView() {
 						</button>
 					) : (
 						<div className="flex items-center gap-2">
-							{isAdmin && (
+							{isAuthorized && (
 								<span className="rounded bg-amber-900/50 px-2 py-0.5 text-xs text-amber-400">
-									Admin
+									{isOwner ? "Owner" : "Delegate"}
 								</span>
 							)}
 							<span className="font-mono text-xs text-zinc-500">
@@ -110,18 +114,18 @@ export function MarketView() {
 			</div>
 
 			{/* View toggle */}
-			{isAdmin ? (
+			{isAuthorized ? (
 				<OwnerView
 					config={config}
-					orders={orders ?? []}
-					ordersLoading={ordersLoading}
+					listings={listings ?? []}
+					listingsLoading={listingsLoading}
 					characterObjectId="" // TODO: resolve from chain
 				/>
 			) : (
 				<BuyerView
 					config={config}
-					orders={orders ?? []}
-					ordersLoading={ordersLoading}
+					listings={listings ?? []}
+					listingsLoading={listingsLoading}
 					isConnected={isConnected}
 					onConnect={handleConnect}
 				/>

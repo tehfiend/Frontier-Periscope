@@ -1,23 +1,18 @@
-import { useCurrentAccount, useCurrentClient } from "@mysten/dapp-kit-react";
+import { useCurrentClient } from "@mysten/dapp-kit-react";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import {
-	type CurrencyMarketInfo,
-	queryCurrencyMarketDetails,
-	queryCurrencyMarkets,
-} from "@tehfrontier/chain-shared";
+import { type MarketInfo, queryMarketDetails, queryMarkets } from "@tehfrontier/chain-shared";
 import { AlertCircle, Loader2, Search, Store } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { CurrencyMarketDetail } from "./CurrencyMarketDetail";
+import { MarketDetail } from "./MarketDetail";
 
-interface CurrencyMarketBrowserProps {
+interface MarketBrowserProps {
 	packageId: string;
 }
 
-export function CurrencyMarketBrowser({ packageId }: CurrencyMarketBrowserProps) {
-	const account = useCurrentAccount();
+export function MarketBrowser({ packageId }: MarketBrowserProps) {
 	const client = useCurrentClient() as SuiGraphQLClient;
 
-	const [markets, setMarkets] = useState<CurrencyMarketInfo[]>([]);
+	const [markets, setMarkets] = useState<MarketInfo[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string>();
 	const [selectedMarketId, setSelectedMarketId] = useState<string>();
@@ -28,7 +23,7 @@ export function CurrencyMarketBrowser({ packageId }: CurrencyMarketBrowserProps)
 		setLoading(true);
 		setError(undefined);
 		try {
-			const result = await queryCurrencyMarkets(client, packageId);
+			const result = await queryMarkets(client, packageId);
 			setMarkets(result);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to load markets");
@@ -45,7 +40,7 @@ export function CurrencyMarketBrowser({ packageId }: CurrencyMarketBrowserProps)
 		setLoading(true);
 		setError(undefined);
 		try {
-			const details = await queryCurrencyMarketDetails(client, lookupId.trim());
+			const details = await queryMarketDetails(client, lookupId.trim());
 			if (details) {
 				setSelectedMarketId(lookupId.trim());
 			} else {
@@ -59,7 +54,7 @@ export function CurrencyMarketBrowser({ packageId }: CurrencyMarketBrowserProps)
 
 	if (selectedMarketId) {
 		return (
-			<CurrencyMarketDetail
+			<MarketDetail
 				packageId={packageId}
 				marketId={selectedMarketId}
 				onBack={() => setSelectedMarketId(undefined)}
@@ -77,7 +72,7 @@ export function CurrencyMarketBrowser({ packageId }: CurrencyMarketBrowserProps)
 						type="text"
 						value={lookupId}
 						onChange={(e) => setLookupId(e.target.value)}
-						placeholder="CurrencyMarket Object ID (0x...)"
+						placeholder="Market Object ID (0x...)"
 						className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
 						onKeyDown={(e) => e.key === "Enter" && handleLookup()}
 					/>
@@ -125,7 +120,7 @@ export function CurrencyMarketBrowser({ packageId }: CurrencyMarketBrowserProps)
 
 				{!loading && !error && markets.length === 0 && (
 					<p className="py-6 text-center text-xs text-zinc-600">
-						No currency markets found on-chain for this package.
+						No markets found on-chain for this package.
 					</p>
 				)}
 
@@ -144,13 +139,16 @@ export function CurrencyMarketBrowser({ packageId }: CurrencyMarketBrowserProps)
 										{market.objectId.slice(-8)}
 									</p>
 									<p className="mt-0.5 text-[10px] text-zinc-500">
-										{market.coinType ? market.coinType.split("::").pop() : "Unknown coin"}
+										{market.coinType
+											? market.coinType.split("::").pop()
+											: "Unknown coin"}
 										{" -- "}
 										Fee: {(market.feeBps / 100).toFixed(1)}%
 									</p>
 									<p className="text-[10px] text-zinc-600">
 										{market.nextSellId} listing
-										{market.nextSellId !== 1 ? "s" : ""} -- {market.nextBuyId} order
+										{market.nextSellId !== 1 ? "s" : ""} --{" "}
+										{market.nextBuyId} order
 										{market.nextBuyId !== 1 ? "s" : ""}
 									</p>
 								</div>
