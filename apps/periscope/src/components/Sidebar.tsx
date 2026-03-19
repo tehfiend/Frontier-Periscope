@@ -24,10 +24,8 @@ import {
 	Route,
 	Database,
 	Cog,
-	Building2,
 	Coins,
 	Flag,
-	ShoppingBag,
 	Wallet,
 	Puzzle,
 	Navigation,
@@ -60,10 +58,8 @@ const navGroups: NavGroup[] = [
 	{
 		title: "Governance",
 		items: [
-			{ to: "/governance", icon: Building2, label: "Organization" },
 			{ to: "/governance/turrets", icon: Crosshair, label: "Turrets" },
 			{ to: "/governance/finance", icon: Coins, label: "Finance" },
-			{ to: "/governance/trade", icon: ShoppingBag, label: "Trade" },
 			{ to: "/governance/claims", icon: Flag, label: "Claims" },
 		],
 	},

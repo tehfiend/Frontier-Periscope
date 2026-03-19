@@ -504,14 +504,19 @@ export interface SystemNickname {
 
 export interface CurrencyRecord extends SyncMeta {
 	id: string;
-	orgId: string;
+	/** @deprecated orgId removed -- currencies are standalone via Market<T> */
+	orgId?: string;
 	symbol: string;
 	name: string;
 	description?: string;
 	moduleName?: string;
 	coinType: string;
 	packageId: string;
-	treasuryCapId: string;
+	/** Market<T> shared object ID (TreasuryCap auto-locked inside on publish) */
+	marketId?: string;
+	/** @deprecated treasuryCapId removed -- TreasuryCap locked in Market */
+	treasuryCapId?: string;
+	/** @deprecated orgTreasuryId removed -- replaced by marketId */
 	orgTreasuryId?: string;
 	decimals: number;
 	createdAt: string;

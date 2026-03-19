@@ -29,9 +29,9 @@ import { getTemplatesForAssemblyType } from "@/chain/config";
 import { db, notDeleted } from "@/db";
 import type { OwnedAssembly } from "@/chain/queries";
 import {
-	discoverMarketConfig,
+	discoverSsuConfig,
 	getContractAddresses,
-	queryMarketConfig,
+	querySsuConfig,
 } from "@tehfrontier/chain-shared";
 import { useQuery } from "@tanstack/react-query";
 
@@ -226,14 +226,14 @@ function OnChainObjects({
 	tradeNodes,
 	tenant,
 }: {
-	org?: { id: string; name: string; chainObjectId?: string; orgMarketId?: string };
+	org?: { id: string; name: string; chainObjectId?: string };
 	currencies: Array<{
 		id: string;
 		symbol: string;
 		name: string;
 		coinType: string;
 		packageId: string;
-		orgTreasuryId?: string;
+		marketId?: string;
 	}>;
 	tradeNodes: Array<{ id: string; name: string; marketConfigId?: string }>;
 	tenant: string;
@@ -258,16 +258,10 @@ function OnChainObjects({
 						) : (
 							<p className="pl-5 text-zinc-600">Not published to chain</p>
 						)}
-						{org.orgMarketId && (
-							<div className="pl-5">
-								<span className="text-zinc-400">OrgMarket: </span>
-								<span className="font-mono text-zinc-500">{org.orgMarketId}</span>
-							</div>
-						)}
 					</div>
 				)}
 
-				{/* Currencies / Treasury */}
+				{/* Currencies / Market */}
 				{currencies.map((c) => (
 					<div key={c.id} className="space-y-1">
 						<div className="flex items-center gap-1.5">
@@ -285,17 +279,17 @@ function OnChainObjects({
 								<span className="text-zinc-400">Coin Type: </span>
 								<span className="font-mono text-zinc-500">{c.coinType}</span>
 							</div>
-							{c.orgTreasuryId && (
+							{c.marketId && (
 								<div>
-									<span className="text-zinc-400">OrgTreasury: </span>
-									<span className="font-mono text-zinc-500">{c.orgTreasuryId}</span>
+									<span className="text-zinc-400">Market: </span>
+									<span className="font-mono text-zinc-500">{c.marketId}</span>
 								</div>
 							)}
 						</div>
 					</div>
 				))}
 
-				{/* Trade Nodes / MarketConfigs */}
+				{/* Trade Nodes / SsuConfigs */}
 				{tradeNodes.length > 0 && (
 					<div className="space-y-1">
 						<div className="flex items-center gap-1.5">
@@ -312,11 +306,11 @@ function OnChainObjects({
 								</span>
 								{tn.marketConfigId ? (
 									<div className="mt-0.5">
-										<span className="text-zinc-400">MarketConfig: </span>
+										<span className="text-zinc-400">SsuConfig: </span>
 										<span className="font-mono text-zinc-500">{tn.marketConfigId}</span>
 									</div>
 								) : (
-									<div className="mt-0.5 text-zinc-600">No MarketConfig</div>
+									<div className="mt-0.5 text-zinc-600">No SsuConfig</div>
 								)}
 							</div>
 						))}
@@ -419,28 +413,28 @@ function AssemblyCard({
 
 			{/* On-chain config discovery for SSU market */}
 			{isStorageType && (
-				<MarketConfigInfo assemblyId={assembly.objectId} tenant={tenant} />
+				<SsuConfigPanel assemblyId={assembly.objectId} tenant={tenant} />
 			)}
 		</div>
 	);
 }
 
-/** Discovers and displays MarketConfig for an SSU */
-function MarketConfigInfo({ assemblyId, tenant }: { assemblyId: string; tenant: string }) {
+/** Discovers and displays SsuConfig for an SSU */
+function SsuConfigPanel({ assemblyId, tenant }: { assemblyId: string; tenant: string }) {
 	const client = useSuiClient();
 	const addresses = getContractAddresses(tenant);
 	const originalPkgId = addresses.ssuMarket?.originalPackageId;
 
 	const { data: configId, isLoading } = useQuery({
-		queryKey: ["marketConfig-discover", assemblyId, originalPkgId],
-		queryFn: () => discoverMarketConfig(client, originalPkgId!, assemblyId),
+		queryKey: ["ssuConfig-discover", assemblyId, originalPkgId],
+		queryFn: () => discoverSsuConfig(client, originalPkgId!, assemblyId),
 		enabled: !!originalPkgId,
 		staleTime: 60_000,
 	});
 
 	const { data: config } = useQuery({
-		queryKey: ["marketConfig", configId],
-		queryFn: () => queryMarketConfig(client, configId!),
+		queryKey: ["ssuConfig", configId],
+		queryFn: () => querySsuConfig(client, configId!),
 		enabled: !!configId,
 		staleTime: 60_000,
 	});
@@ -448,7 +442,7 @@ function MarketConfigInfo({ assemblyId, tenant }: { assemblyId: string; tenant: 
 	if (isLoading) {
 		return (
 			<div className="mt-2 border-t border-zinc-800/50 pt-2 text-xs text-zinc-600">
-				<Loader2 size={10} className="inline animate-spin" /> Checking market...
+				<Loader2 size={10} className="inline animate-spin" /> Checking SsuConfig...
 			</div>
 		);
 	}
@@ -456,7 +450,7 @@ function MarketConfigInfo({ assemblyId, tenant }: { assemblyId: string; tenant: 
 	if (!configId) {
 		return (
 			<div className="mt-2 border-t border-zinc-800/50 pt-2 text-xs text-zinc-600">
-				No MarketConfig found
+				No SsuConfig found
 			</div>
 		);
 	}
@@ -465,15 +459,25 @@ function MarketConfigInfo({ assemblyId, tenant }: { assemblyId: string; tenant: 
 		<div className="mt-2 space-y-1 border-t border-zinc-800/50 pt-2">
 			<div className="flex items-center gap-1.5">
 				<Shield size={12} className="text-amber-500" />
-				<span className="text-xs text-zinc-400">MarketConfig</span>
+				<span className="text-xs text-zinc-400">SsuConfig</span>
 			</div>
 			<p className="font-mono text-xs text-zinc-500">
 				{configId}
 			</p>
 			{config && (
-				<p className="text-xs text-zinc-600">
-					Admin: {config.admin.slice(0, 10)}...
-				</p>
+				<div className="space-y-0.5 text-xs text-zinc-600">
+					<p>Owner: {config.owner.slice(0, 10)}...</p>
+					<p>SSU: {config.ssuId.slice(0, 10)}...</p>
+					{config.delegates.length > 0 && (
+						<p>Delegates: {config.delegates.length}</p>
+					)}
+					{config.marketId && (
+						<p>
+							Market: {config.marketId.slice(0, 10)}...
+							{config.marketId.slice(-6)}
+						</p>
+					)}
+				</div>
 			)}
 		</div>
 	);

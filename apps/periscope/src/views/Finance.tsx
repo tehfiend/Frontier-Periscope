@@ -1,8 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import {
-	useCurrentAccount,
-	useDAppKit,
-} from "@mysten/dapp-kit-react";
+import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -10,14 +7,15 @@ import {
 	Plus,
 	Loader2,
 	AlertCircle,
-	ArrowDownToLine,
 	Package,
 	Send,
 	Flame,
-	Target,
 	ChevronDown,
 	ChevronUp,
 	RefreshCw,
+	UserPlus,
+	UserMinus,
+	Settings,
 } from "lucide-react";
 
 import type { TenantId } from "@/chain/config";
@@ -26,45 +24,37 @@ import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { db, notDeleted } from "@/db";
 import type { CurrencyRecord } from "@/db/types";
 import {
-	buildDepositTreasuryCap,
-	buildMintAndTransfer,
+	buildMint,
 	buildBurn,
-	buildFundBounty,
-	queryOrgTreasury,
-	getContractAddresses,
+	buildAddAuthorized,
+	buildRemoveAuthorized,
+	buildUpdateFee,
+	queryMarkets,
+	queryMarketDetails,
 	queryTokenSupply,
 	queryOwnedCoins,
 	buildPublishToken,
 	parsePublishResult,
+	getContractAddresses,
 } from "@tehfrontier/chain-shared";
+import type { MarketInfo } from "@tehfrontier/chain-shared";
 
 type BuildStatus =
 	| "idle"
 	| "building"
-	| "depositing"
 	| "minting"
 	| "burning"
-	| "posting-bounty"
 	| "done"
 	| "error";
 
-export function GovernanceFinance() {
+export function Finance() {
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
-	const org = useLiveQuery(() => db.organizations.filter(notDeleted).first());
 	const currencies = useLiveQuery(
-		() =>
-			org
-				? db.currencies
-						.where("orgId")
-						.equals(org.id)
-						.filter(notDeleted)
-						.toArray()
-				: [],
-		[org?.id],
+		() => db.currencies.filter(notDeleted).toArray(),
 	);
 
 	const [creating, setCreating] = useState(false);
@@ -79,149 +69,72 @@ export function GovernanceFinance() {
 
 	const isProcessing =
 		buildStatus === "building" ||
-		buildStatus === "depositing" ||
 		buildStatus === "minting" ||
-		buildStatus === "burning" ||
-		buildStatus === "posting-bounty";
+		buildStatus === "burning";
 
-	// Sync currencies from chain — discovers tokens via OrgTreasury objects
-	// (deposited TreasuryCaps) and wallet-owned TreasuryCaps (not yet deposited)
-	const syncTreasuryCaps = useCallback(async () => {
-		if (!suiAddress || !org?.chainObjectId) return;
+	// Sync currencies from chain -- discovers tokens via Market<T> objects
+	const syncMarkets = useCallback(async () => {
+		if (!suiAddress) return;
 
 		const addresses = getContractAddresses(tenant);
-		const govExtPkg = addresses.governanceExt?.packageId;
-
-		const OBJECTS_QUERY = `
-			query($type: String!, $first: Int, $after: String) {
-				objects(filter: { type: $type }, first: $first, after: $after) {
-					nodes {
-						address
-						asMoveObject { contents { json type { repr } } }
-					}
-					pageInfo { hasNextPage endCursor }
-				}
-			}
-		`;
-
-		type ObjNode = { address: string; asMoveObject?: { contents?: { json?: Record<string, unknown>; type?: { repr: string } } } };
-		type ObjPage = { objects: { nodes: ObjNode[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } };
-
-		async function addCurrencyFromCoinType(
-			coinType: string,
-			treasuryObjectId: string,
-			orgTreasuryId?: string,
-		) {
-			const existing = await db.currencies.where("coinType").equals(coinType).first();
-			if (existing) {
-				// If found via OrgTreasury but local record missing orgTreasuryId, update it
-				if (orgTreasuryId && !existing.orgTreasuryId) {
-					await db.currencies.update(existing.id, { orgTreasuryId });
-				}
-				return;
-			}
-
-			const parts = coinType.split("::");
-			const packageId = parts[0] ?? "";
-			const moduleName = parts.length >= 2 ? parts[1] : "";
-			const structName = parts.length >= 3 ? parts[2] : moduleName;
-			const sym = structName.replace(/_TOKEN$/, "");
-
-			const now = new Date().toISOString();
-			await db.currencies.add({
-				id: crypto.randomUUID(),
-				orgId: org!.id,
-				symbol: sym,
-				name: `${sym} Token`,
-				description: "",
-				moduleName,
-				coinType,
-				packageId,
-				treasuryCapId: treasuryObjectId,
-				orgTreasuryId,
-				decimals: 9,
-				createdAt: now,
-				updatedAt: now,
-			});
-		}
+		const marketPkg = addresses.market?.packageId;
+		if (!marketPkg) return;
 
 		try {
-			// 1) Discover OrgTreasury shared objects (deposited TreasuryCaps)
-			if (govExtPkg) {
-				const treasuryType = `${govExtPkg}::treasury::OrgTreasury`;
-				let cursor: string | null = null;
-				let hasMore = true;
-				while (hasMore) {
-					const result: { data?: ObjPage } = await suiClient.query({
-						query: OBJECTS_QUERY,
-						variables: { type: treasuryType, first: 50, after: cursor },
-					});
-					const objects = result.data?.objects;
-					if (!objects) break;
+			const markets = await queryMarkets(suiClient, marketPkg);
 
-					for (const node of objects.nodes) {
-						const json = node.asMoveObject?.contents?.json;
-						const fullType = node.asMoveObject?.contents?.type?.repr;
-						if (!json || !fullType) continue;
-
-						// Check this treasury belongs to our org
-						if (String(json.org_id) !== org.chainObjectId) continue;
-
-						// Extract coinType from OrgTreasury<0xpkg::mod::STRUCT>
-						const match = fullType.match(/OrgTreasury<(.+)>/);
-						if (!match) continue;
-
-						// node.address is the OrgTreasury shared object ID
-						await addCurrencyFromCoinType(match[1], node.address, node.address);
-					}
-					hasMore = objects.pageInfo.hasNextPage;
-					cursor = objects.pageInfo.endCursor;
+			for (const market of markets) {
+				// Only import markets where the current user is creator or authorized
+				if (
+					market.creator !== suiAddress &&
+					!market.authorized.includes(suiAddress)
+				) {
+					continue;
 				}
-			}
 
-			// 2) Also check wallet-owned TreasuryCaps (not yet deposited)
-			const OWNED_QUERY = `
-				query($owner: SuiAddress!, $type: String!, $first: Int, $after: String) {
-					address(address: $owner) {
-						objects(filter: { type: $type }, first: $first, after: $after) {
-							nodes {
-								address
-								asMoveObject { contents { type { repr } } }
-							}
-							pageInfo { hasNextPage endCursor }
-						}
+				const existing = await db.currencies
+					.where("coinType")
+					.equals(market.coinType)
+					.first();
+				if (existing) {
+					// Update marketId if missing
+					if (!existing.marketId) {
+						await db.currencies.update(existing.id, {
+							marketId: market.objectId,
+						});
 					}
+					continue;
 				}
-			`;
-			type OwnedPage = { address: { objects: { nodes: ObjNode[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } } | null };
-			let cursor2: string | null = null;
-			let hasMore2 = true;
-			while (hasMore2) {
-				const result: { data?: OwnedPage } = await suiClient.query({
-					query: OWNED_QUERY,
-					variables: { owner: suiAddress, type: "0x2::coin::TreasuryCap", first: 50, after: cursor2 },
+
+				const parts = market.coinType.split("::");
+				const packageId = parts[0] ?? "";
+				const moduleName = parts.length >= 2 ? parts[1] : "";
+				const structName = parts.length >= 3 ? parts[2] : moduleName;
+				const sym = structName.replace(/_TOKEN$/, "");
+
+				const now = new Date().toISOString();
+				await db.currencies.add({
+					id: crypto.randomUUID(),
+					symbol: sym,
+					name: `${sym} Token`,
+					description: "",
+					moduleName,
+					coinType: market.coinType,
+					packageId,
+					marketId: market.objectId,
+					decimals: 9,
+					createdAt: now,
+					updatedAt: now,
 				});
-				const objects = result.data?.address?.objects;
-				if (!objects) break;
-
-				for (const obj of objects.nodes) {
-					const objectType = obj.asMoveObject?.contents?.type?.repr;
-					if (!objectType) continue;
-					const match = objectType.match(/TreasuryCap<(.+)>/);
-					if (!match) continue;
-					await addCurrencyFromCoinType(match[1], obj.address);
-				}
-				hasMore2 = objects.pageInfo.hasNextPage;
-				cursor2 = objects.pageInfo.endCursor;
 			}
 		} catch {
-			// Silent — sync is best-effort
+			// Silent -- sync is best-effort
 		}
-	}, [suiAddress, org, suiClient, tenant]);
+	}, [suiAddress, suiClient, tenant]);
 
 	useEffect(() => {
-		syncTreasuryCaps();
-	}, [syncTreasuryCaps]);
+		syncMarkets();
+	}, [syncMarkets]);
 
 	if (!activeCharacter || !suiAddress) {
 		return (
@@ -242,28 +155,8 @@ export function GovernanceFinance() {
 		);
 	}
 
-	if (!org) {
-		return (
-			<div className="mx-auto max-w-3xl p-6">
-				<Header />
-				<div className="flex flex-col items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 py-16">
-					<AlertCircle size={32} className="text-zinc-600" />
-					<p className="text-sm text-zinc-500">
-						Create an organization first
-					</p>
-					<a
-						href="/governance"
-						className="text-xs text-cyan-400 hover:text-cyan-300"
-					>
-						Go to Organization &rarr;
-					</a>
-				</div>
-			</div>
-		);
-	}
-
 	async function handleCreateCurrency() {
-		if (!symbol.trim() || !tokenName.trim() || !org) return;
+		if (!symbol.trim() || !tokenName.trim()) return;
 
 		setBuildStatus("building");
 		setBuildError("");
@@ -283,17 +176,20 @@ export function GovernanceFinance() {
 			});
 
 			// Parse the published package details from effects
-			// Use waitForTransaction to get objectTypes mapping
-			const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
+			const digest =
+				result.Transaction?.digest ??
+				result.FailedTransaction?.digest ??
+				"";
 			const fullResult = await suiClient.waitForTransaction({
 				digest,
 				include: { effects: true, objectTypes: true },
 			});
-			const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
+			const fullTx =
+				fullResult.Transaction ?? fullResult.FailedTransaction;
 			const changedObjects = fullTx?.effects?.changedObjects ?? [];
 			const objectTypesMap = fullTx?.objectTypes ?? {};
 
-			// Convert to old-style objectChanges for parsePublishResult
+			// Convert to objectChanges for parsePublishResult
 			const objectChanges: Array<{
 				type: string;
 				packageId?: string;
@@ -301,11 +197,17 @@ export function GovernanceFinance() {
 				objectId?: string;
 				modules?: string[];
 			}> = changedObjects.map((change) => {
-				if (change.outputState === "PackageWrite" && change.idOperation === "Created") {
+				if (
+					change.outputState === "PackageWrite" &&
+					change.idOperation === "Created"
+				) {
 					return { type: "published", packageId: change.objectId };
 				}
 				return {
-					type: change.idOperation === "Created" ? "created" : "mutated",
+					type:
+						change.idOperation === "Created"
+							? "created"
+							: "mutated",
 					objectId: change.objectId,
 					objectType: objectTypesMap[change.objectId],
 				};
@@ -321,14 +223,13 @@ export function GovernanceFinance() {
 			const now = new Date().toISOString();
 			await db.currencies.add({
 				id: crypto.randomUUID(),
-				orgId: org.id,
 				symbol: symbol.trim().toUpperCase(),
 				name: tokenName.trim(),
 				description: description.trim(),
 				moduleName: parsed.moduleName,
 				coinType: parsed.coinType,
 				packageId: parsed.packageId,
-				treasuryCapId: parsed.treasuryCapId,
+				marketId: parsed.marketId,
 				decimals,
 				createdAt: now,
 				updatedAt: now,
@@ -348,8 +249,6 @@ export function GovernanceFinance() {
 	return (
 		<div className="mx-auto max-w-3xl p-6">
 			<Header />
-
-			{/* No gas station warning removed — manual import is always available */}
 
 			{/* Status Banner */}
 			{buildStatus !== "idle" && buildStatus !== "done" && (
@@ -388,9 +287,7 @@ export function GovernanceFinance() {
 						<CurrencyCard
 							key={c.id}
 							currency={c}
-							org={org}
 							tenant={tenant}
-
 							suiAddress={suiAddress}
 							onStatusChange={(s, e) => {
 								setBuildStatus(s);
@@ -440,7 +337,9 @@ export function GovernanceFinance() {
 							</label>
 							<textarea
 								value={description}
-								onChange={(e) => setDescription(e.target.value)}
+								onChange={(e) =>
+									setDescription(e.target.value)
+								}
 								placeholder="e.g., Official currency of our organization"
 								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 								maxLength={500}
@@ -454,7 +353,9 @@ export function GovernanceFinance() {
 							<input
 								type="number"
 								value={decimals}
-								onChange={(e) => setDecimals(Number(e.target.value))}
+								onChange={(e) =>
+									setDecimals(Number(e.target.value))
+								}
 								min={0}
 								max={18}
 								className="w-32 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
@@ -465,12 +366,19 @@ export function GovernanceFinance() {
 								<button
 									type="button"
 									onClick={handleCreateCurrency}
-									disabled={!symbol.trim() || !tokenName.trim() || isProcessing}
+									disabled={
+										!symbol.trim() ||
+										!tokenName.trim() ||
+										isProcessing
+									}
 									className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									{isProcessing ? (
 										<span className="flex items-center gap-2">
-											<Loader2 size={14} className="animate-spin" />{" "}
+											<Loader2
+												size={14}
+												className="animate-spin"
+											/>{" "}
 											Publishing...
 										</span>
 									) : (
@@ -478,7 +386,9 @@ export function GovernanceFinance() {
 									)}
 								</button>
 							) : (
-								<span className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-zinc-500">EVE Vault not connected</span>
+								<span className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-zinc-500">
+									EVE Vault not connected
+								</span>
 							)}
 							<button
 								type="button"
@@ -490,8 +400,9 @@ export function GovernanceFinance() {
 						</div>
 						{isProcessing && (
 							<p className="text-xs text-zinc-500">
-								Your wallet will prompt you to sign. The token will be
-								published directly to Sui testnet.
+								Your wallet will prompt you to sign. The token
+								and Market will be published directly to Sui
+								testnet.
 							</p>
 						)}
 					</div>
@@ -519,7 +430,7 @@ function Header() {
 					Finance
 				</h1>
 				<p className="mt-1 text-sm text-zinc-500">
-					Create and manage organization currencies
+					Create and manage currencies via Market
 				</p>
 			</div>
 		</div>
@@ -537,10 +448,8 @@ function StatusBanner({
 }) {
 	const messages: Record<string, string> = {
 		building: "Building and publishing token on-chain...",
-		depositing: "Depositing TreasuryCap to OrgTreasury...",
 		minting: "Minting tokens...",
 		burning: "Burning tokens...",
-		"posting-bounty": "Posting bounty...",
 		error: "Operation failed",
 	};
 
@@ -558,7 +467,10 @@ function StatusBanner({
 				{isError ? (
 					<AlertCircle size={16} className="text-red-400" />
 				) : (
-					<Loader2 size={16} className="animate-spin text-cyan-400" />
+					<Loader2
+						size={16}
+						className="animate-spin text-cyan-400"
+					/>
 				)}
 				<span
 					className={`text-sm ${isError ? "text-red-300" : "text-cyan-300"}`}
@@ -582,13 +494,11 @@ function StatusBanner({
 
 function CurrencyCard({
 	currency,
-	org,
 	tenant,
 	suiAddress,
 	onStatusChange,
 }: {
 	currency: CurrencyRecord;
-	org: { id: string; name: string; chainObjectId?: string };
 	tenant: TenantId;
 	suiAddress: string;
 	onStatusChange: (status: BuildStatus, error?: string) => void;
@@ -598,10 +508,9 @@ function CurrencyCard({
 	const suiClient = useSuiClient();
 
 	const [expanded, setExpanded] = useState(false);
-	const [treasuryInfo, setTreasuryInfo] = useState<{
-		totalSupply: bigint;
-	} | null>(null);
-	const [loadingTreasury, setLoadingTreasury] = useState(false);
+	const [marketInfo, setMarketInfo] = useState<MarketInfo | null>(null);
+	const [loadingMarket, setLoadingMarket] = useState(false);
+	const [totalSupply, setTotalSupply] = useState<bigint | null>(null);
 
 	// Mint state
 	const [showMint, setShowMint] = useState(false);
@@ -616,35 +525,49 @@ function CurrencyCard({
 	>([]);
 	const [loadingCoins, setLoadingCoins] = useState(false);
 
-	// Bounty state
-	const [showBounty, setShowBounty] = useState(false);
-	const [bountyTarget, setBountyTarget] = useState("");
-	const [bountyAmount, setBountyAmount] = useState("");
-	const [bountyExpiry, setBountyExpiry] = useState("");
+	// Authorization state
+	const [showAuth, setShowAuth] = useState(false);
+	const [authAddress, setAuthAddress] = useState("");
+
+	// Fee state
+	const [showFees, setShowFees] = useState(false);
+	const [feeBps, setFeeBps] = useState("");
+	const [feeRecipient, setFeeRecipient] = useState("");
 
 	const isPublished = !!currency.packageId;
-	const hasTreasury = !!currency.orgTreasuryId;
+	const hasMarket = !!currency.marketId;
 	const addresses = getContractAddresses(tenant);
+	const marketPkg = addresses.market?.packageId;
+	const isCreator = marketInfo?.creator === suiAddress;
 
 	useEffect(() => {
-		if (expanded && hasTreasury && currency.orgTreasuryId) {
-			loadTreasuryInfo();
+		if (expanded && hasMarket && currency.marketId) {
+			loadMarketInfo();
 		}
-	}, [expanded, hasTreasury, currency.orgTreasuryId]);
+	}, [expanded, hasMarket, currency.marketId]);
 
-	async function loadTreasuryInfo() {
-		if (!currency.orgTreasuryId) return;
-		setLoadingTreasury(true);
+	async function loadMarketInfo() {
+		if (!currency.marketId) return;
+		setLoadingMarket(true);
 		try {
-			const info = await queryOrgTreasury(
+			const info = await queryMarketDetails(
 				suiClient,
-				currency.orgTreasuryId,
+				currency.marketId,
 			);
-			setTreasuryInfo(info);
+			setMarketInfo(info);
+
+			// Also load supply
+			if (currency.coinType) {
+				const supply = await queryTokenSupply(
+					suiClient,
+					currency.coinType,
+				);
+				setTotalSupply(supply.totalSupply);
+			}
 		} catch {
-			setTreasuryInfo(null);
+			setMarketInfo(null);
 		} finally {
-			setLoadingTreasury(false);
+			setLoadingMarket(false);
 		}
 	}
 
@@ -665,71 +588,9 @@ function CurrencyCard({
 		}
 	}
 
-	async function handleDeposit() {
-		if (!currency.treasuryCapId || !currency.coinType || !org.chainObjectId) return;
-
-		if (!addresses.governanceExt?.packageId) {
-			onStatusChange(
-				"error",
-				"GovernanceExt contract not deployed yet.",
-			);
-			return;
-		}
-
-		onStatusChange("depositing");
-		try {
-			const tx = buildDepositTreasuryCap({
-				governanceExtPackageId: addresses.governanceExt.packageId,
-				orgObjectId: org.chainObjectId,
-				treasuryCapId: currency.treasuryCapId,
-				coinType: currency.coinType,
-				senderAddress: suiAddress,
-			});
-
-			const result = await signAndExecute({ transaction: tx });
-
-			// Parse changedObjects to find OrgTreasury
-			const txResponse = await suiClient.waitForTransaction({
-				digest: result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "",
-				include: { effects: true, objectTypes: true },
-			});
-			const txData2 = txResponse.Transaction ?? txResponse.FailedTransaction;
-			const changed = txData2?.effects?.changedObjects ?? [];
-			const typeMap = txData2?.objectTypes ?? {};
-			const treasuryCreated = changed.find(
-				(change) =>
-					change.idOperation === "Created" &&
-					(typeMap[change.objectId] ?? "").includes("::treasury::OrgTreasury"),
-			);
-			const orgTreasuryId = treasuryCreated?.objectId;
-
-			if (orgTreasuryId) {
-				await db.currencies.update(currency.id, {
-					orgTreasuryId,
-					updatedAt: new Date().toISOString(),
-				});
-			}
-
-			onStatusChange("done");
-		} catch (err) {
-			onStatusChange(
-				"error",
-				err instanceof Error ? err.message : String(err),
-			);
-		}
-	}
-
 	async function handleMint() {
-		if (!mintAmount || !currency.orgTreasuryId || !currency.coinType || !org.chainObjectId)
+		if (!mintAmount || !currency.marketId || !currency.coinType || !marketPkg)
 			return;
-
-		if (!addresses.governanceExt?.packageId) {
-			onStatusChange(
-				"error",
-				"GovernanceExt contract not deployed yet.",
-			);
-			return;
-		}
 
 		onStatusChange("minting");
 		try {
@@ -738,28 +599,24 @@ function CurrencyCard({
 					Number(mintAmount) * 10 ** currency.decimals,
 				),
 			);
-			// Mint to the connected wallet (stakeholder mints to self)
-			const tx = buildMintAndTransfer({
-				governanceExtPackageId: addresses.governanceExt.packageId,
-				orgTreasuryId: currency.orgTreasuryId,
-				orgObjectId: org.chainObjectId,
+			const recipient = mintRecipient.trim() || suiAddress;
+			const tx = buildMint({
+				packageId: marketPkg,
+				marketId: currency.marketId,
 				coinType: currency.coinType,
-				amount,
-				recipient: suiAddress,
+				amount: Number(amount),
+				recipient,
 				senderAddress: suiAddress,
 			});
 
-			await signAndExecute({
-				transaction: tx,
-			});
+			await signAndExecute({ transaction: tx });
 			setShowMint(false);
 			setMintAmount("");
+			setMintRecipient("");
 			onStatusChange("done");
 
-			// Refresh treasury info after a short delay for chain consistency
-			if (currency.orgTreasuryId) {
-				setTimeout(() => loadTreasuryInfo(), 1500);
-			}
+			// Refresh after chain consistency delay
+			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
 			onStatusChange(
 				"error",
@@ -769,21 +626,14 @@ function CurrencyCard({
 	}
 
 	async function handleBurn() {
-		if (!burnCoinId || !currency.orgTreasuryId || !currency.coinType) return;
-
-		if (!addresses.governanceExt?.packageId) {
-			onStatusChange(
-				"error",
-				"GovernanceExt contract not deployed yet.",
-			);
+		if (!burnCoinId || !currency.marketId || !currency.coinType || !marketPkg)
 			return;
-		}
 
 		onStatusChange("burning");
 		try {
 			const tx = buildBurn({
-				governanceExtPackageId: addresses.governanceExt.packageId,
-				orgTreasuryId: currency.orgTreasuryId,
+				packageId: marketPkg,
+				marketId: currency.marketId,
 				coinType: currency.coinType,
 				coinObjectId: burnCoinId,
 				senderAddress: suiAddress,
@@ -795,9 +645,7 @@ function CurrencyCard({
 			onStatusChange("done");
 
 			// Refresh after chain consistency delay
-			if (currency.orgTreasuryId) {
-				setTimeout(() => loadTreasuryInfo(), 1500);
-			}
+			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
 			onStatusChange(
 				"error",
@@ -806,56 +654,74 @@ function CurrencyCard({
 		}
 	}
 
-	async function handlePostBounty() {
-		if (!bountyTarget || !bountyAmount || !currency.orgTreasuryId || !currency.coinType || !org.chainObjectId)
+	async function handleAddAuthorized() {
+		if (!authAddress.trim() || !currency.marketId || !currency.coinType || !marketPkg)
 			return;
 
-		if (!addresses.governanceExt?.packageId) {
-			onStatusChange(
-				"error",
-				"GovernanceExt contract not deployed yet.",
-			);
-			return;
-		}
-		if (!addresses.bountyBoard?.packageId || !addresses.bountyBoard?.boardObjectId) {
-			onStatusChange("error", "Bounty board contract not configured.");
-			return;
-		}
-
-		onStatusChange("posting-bounty");
+		onStatusChange("building");
 		try {
-			const rewardAmount = BigInt(
-				Math.floor(
-					Number(bountyAmount) * 10 ** currency.decimals,
-				),
-			);
-			const expiresAt = bountyExpiry
-				? Math.floor(new Date(bountyExpiry).getTime() / 1000)
-				: Math.floor(Date.now() / 1000) + 7 * 24 * 3600; // Default 7 days
-
-			const tx = buildFundBounty({
-				governanceExtPackageId: addresses.governanceExt.packageId,
-				bountyBoardPackageId: addresses.bountyBoard.packageId,
-				orgTreasuryId: currency.orgTreasuryId,
-				orgObjectId: org.chainObjectId,
-				boardObjectId: addresses.bountyBoard.boardObjectId,
+			const tx = buildAddAuthorized({
+				packageId: marketPkg,
+				marketId: currency.marketId,
 				coinType: currency.coinType,
-				rewardAmount,
-				targetCharacterId: Number(bountyTarget),
-				expiresAt,
+				addr: authAddress.trim(),
 				senderAddress: suiAddress,
 			});
 
 			await signAndExecute({ transaction: tx });
-			setShowBounty(false);
-			setBountyTarget("");
-			setBountyAmount("");
-			setBountyExpiry("");
+			setAuthAddress("");
 			onStatusChange("done");
+			setTimeout(() => loadMarketInfo(), 1500);
+		} catch (err) {
+			onStatusChange(
+				"error",
+				err instanceof Error ? err.message : String(err),
+			);
+		}
+	}
 
-			if (currency.orgTreasuryId) {
-				loadTreasuryInfo();
-			}
+	async function handleRemoveAuthorized(addr: string) {
+		if (!currency.marketId || !currency.coinType || !marketPkg) return;
+
+		onStatusChange("building");
+		try {
+			const tx = buildRemoveAuthorized({
+				packageId: marketPkg,
+				marketId: currency.marketId,
+				coinType: currency.coinType,
+				addr,
+				senderAddress: suiAddress,
+			});
+
+			await signAndExecute({ transaction: tx });
+			onStatusChange("done");
+			setTimeout(() => loadMarketInfo(), 1500);
+		} catch (err) {
+			onStatusChange(
+				"error",
+				err instanceof Error ? err.message : String(err),
+			);
+		}
+	}
+
+	async function handleUpdateFee() {
+		if (!currency.marketId || !currency.coinType || !marketPkg) return;
+
+		onStatusChange("building");
+		try {
+			const tx = buildUpdateFee({
+				packageId: marketPkg,
+				marketId: currency.marketId,
+				coinType: currency.coinType,
+				feeBps: Number(feeBps) || 0,
+				feeRecipient: feeRecipient.trim() || suiAddress,
+				senderAddress: suiAddress,
+			});
+
+			await signAndExecute({ transaction: tx });
+			setShowFees(false);
+			onStatusChange("done");
+			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
 			onStatusChange(
 				"error",
@@ -884,9 +750,9 @@ function CurrencyCard({
 							<span className="text-xs text-zinc-500">
 								{currency.name}
 							</span>
-							{hasTreasury && (
+							{hasMarket && (
 								<span className="rounded bg-green-500/10 px-1.5 py-0.5 text-xs text-green-400">
-									Treasury
+									Market
 								</span>
 							)}
 						</div>
@@ -917,56 +783,25 @@ function CurrencyCard({
 			{/* Expanded content */}
 			{expanded && (
 				<div className="border-t border-zinc-800 p-4">
-					{/* Deposit TreasuryCap (when published but no treasury) */}
-					{isPublished && !hasTreasury && org.chainObjectId && (
-						<div className="mb-4 rounded-lg border border-amber-900/30 bg-amber-950/10 p-3">
-							<p className="mb-2 text-xs text-amber-400">
-								Deposit the TreasuryCap into an OrgTreasury to
-								enable stakeholder minting. This is irreversible
-								-- the TreasuryCap cannot be extracted once
-								deposited.
-							</p>
-							{account ? (
-								<button
-									type="button"
-									onClick={handleDeposit}
-									className="flex items-center gap-1.5 rounded bg-amber-600/20 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-600/30"
-								>
-									<ArrowDownToLine size={12} />
-									Deposit to OrgTreasury
-								</button>
-							) : (
-								<span className="text-xs text-zinc-500">EVE Vault not connected</span>
-							)}
-						</div>
-					)}
-
-					{isPublished && !hasTreasury && !org.chainObjectId && (
-						<div className="mb-4 text-xs text-amber-400/80">
-							Publish your organization to chain first to deposit
-							TreasuryCap.
-						</div>
-					)}
-
-					{/* Treasury Dashboard */}
-					{hasTreasury && (
+					{/* Market Dashboard */}
+					{hasMarket && (
 						<div className="space-y-4">
-							{/* Supply info */}
+							{/* Market info */}
 							<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
 								<div className="mb-2 flex items-center justify-between">
 									<h4 className="text-xs font-medium text-zinc-400">
-										Treasury Overview
+										Market Overview
 									</h4>
 									<button
 										type="button"
-										onClick={loadTreasuryInfo}
+										onClick={loadMarketInfo}
 										className="text-zinc-500 hover:text-zinc-300"
 										title="Refresh"
 									>
 										<RefreshCw size={12} />
 									</button>
 								</div>
-								{loadingTreasury ? (
+								{loadingMarket ? (
 									<div className="flex items-center gap-2 text-xs text-zinc-500">
 										<Loader2
 											size={12}
@@ -974,39 +809,134 @@ function CurrencyCard({
 										/>
 										Loading...
 									</div>
-								) : treasuryInfo ? (
-									<div className="grid grid-cols-2 gap-3">
-										<div>
-											<p className="text-xs text-zinc-500">
-												Total Supply
-											</p>
-											<p className="text-sm font-medium text-zinc-200">
-												{formatTokenAmount(
-													treasuryInfo.totalSupply,
-													currency.decimals,
-												)}{" "}
-												{currency.symbol}
-											</p>
+								) : marketInfo ? (
+									<div className="space-y-2">
+										<div className="grid grid-cols-2 gap-3">
+											<div>
+												<p className="text-xs text-zinc-500">
+													Total Supply
+												</p>
+												<p className="text-sm font-medium text-zinc-200">
+													{totalSupply != null
+														? `${formatTokenAmount(totalSupply, currency.decimals)} ${currency.symbol}`
+														: "--"}
+												</p>
+											</div>
+											<div>
+												<p className="text-xs text-zinc-500">
+													Fee
+												</p>
+												<p className="text-sm font-medium text-zinc-200">
+													{marketInfo.feeBps} bps
+												</p>
+											</div>
 										</div>
 										<div>
 											<p className="text-xs text-zinc-500">
-												Treasury ID
+												Creator
 											</p>
 											<p className="font-mono text-xs text-zinc-400">
-												{currency.orgTreasuryId?.slice(
+												{marketInfo.creator.slice(
 													0,
 													10,
 												)}
 												...
-												{currency.orgTreasuryId?.slice(
-													-6,
+												{marketInfo.creator.slice(-6)}
+												{isCreator && (
+													<span className="ml-2 text-cyan-400">
+														(you)
+													</span>
 												)}
 											</p>
 										</div>
+										<div>
+											<p className="text-xs text-zinc-500">
+												Market ID
+											</p>
+											<p className="font-mono text-xs text-zinc-400">
+												{currency.marketId?.slice(
+													0,
+													10,
+												)}
+												...
+												{currency.marketId?.slice(-6)}
+											</p>
+										</div>
+										{marketInfo.authorized.length > 0 && (
+											<div>
+												<p className="text-xs text-zinc-500">
+													Authorized (
+													{marketInfo.authorized.length}
+													)
+												</p>
+												<div className="mt-1 space-y-0.5">
+													{marketInfo.authorized.map(
+														(addr) => (
+															<div
+																key={addr}
+																className="flex items-center justify-between"
+															>
+																<span className="font-mono text-xs text-zinc-400">
+																	{addr.slice(
+																		0,
+																		10,
+																	)}
+																	...
+																	{addr.slice(
+																		-6,
+																	)}
+																	{addr ===
+																		suiAddress && (
+																		<span className="ml-1 text-cyan-400">
+																			(you)
+																		</span>
+																	)}
+																</span>
+																{isCreator && (
+																	<button
+																		type="button"
+																		onClick={() =>
+																			handleRemoveAuthorized(
+																				addr,
+																			)
+																		}
+																		className="text-zinc-600 transition-colors hover:text-red-400"
+																		title="Remove"
+																	>
+																		<UserMinus
+																			size={
+																				12
+																			}
+																		/>
+																	</button>
+																)}
+															</div>
+														),
+													)}
+												</div>
+											</div>
+										)}
+										{marketInfo.feeRecipient && (
+											<div>
+												<p className="text-xs text-zinc-500">
+													Fee Recipient
+												</p>
+												<p className="font-mono text-xs text-zinc-400">
+													{marketInfo.feeRecipient.slice(
+														0,
+														10,
+													)}
+													...
+													{marketInfo.feeRecipient.slice(
+														-6,
+													)}
+												</p>
+											</div>
+										)}
 									</div>
 								) : (
 									<p className="text-xs text-zinc-600">
-										Click refresh to load treasury data
+										Click refresh to load market data
 									</p>
 								)}
 							</div>
@@ -1018,7 +948,8 @@ function CurrencyCard({
 									onClick={() => {
 										setShowMint(!showMint);
 										setShowBurn(false);
-										setShowBounty(false);
+										setShowAuth(false);
+										setShowFees(false);
 									}}
 									className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
 										showMint
@@ -1034,7 +965,8 @@ function CurrencyCard({
 									onClick={() => {
 										setShowBurn(!showBurn);
 										setShowMint(false);
-										setShowBounty(false);
+										setShowAuth(false);
+										setShowFees(false);
 										if (!showBurn) loadOwnedCoins();
 									}}
 									className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
@@ -1046,22 +978,54 @@ function CurrencyCard({
 									<Flame size={12} />
 									Burn
 								</button>
-								<button
-									type="button"
-									onClick={() => {
-										setShowBounty(!showBounty);
-										setShowMint(false);
-										setShowBurn(false);
-									}}
-									className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-										showBounty
-											? "bg-amber-600/20 text-amber-400"
-											: "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
-									}`}
-								>
-									<Target size={12} />
-									Post Bounty
-								</button>
+								{isCreator && (
+									<>
+										<button
+											type="button"
+											onClick={() => {
+												setShowAuth(!showAuth);
+												setShowMint(false);
+												setShowBurn(false);
+												setShowFees(false);
+											}}
+											className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+												showAuth
+													? "bg-amber-600/20 text-amber-400"
+													: "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+											}`}
+										>
+											<UserPlus size={12} />
+											Authorize
+										</button>
+										<button
+											type="button"
+											onClick={() => {
+												setShowFees(!showFees);
+												setShowMint(false);
+												setShowBurn(false);
+												setShowAuth(false);
+												if (marketInfo) {
+													setFeeBps(
+														String(
+															marketInfo.feeBps,
+														),
+													);
+													setFeeRecipient(
+														marketInfo.feeRecipient,
+													);
+												}
+											}}
+											className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+												showFees
+													? "bg-purple-600/20 text-purple-400"
+													: "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+											}`}
+										>
+											<Settings size={12} />
+											Fees
+										</button>
+									</>
+								)}
 							</div>
 
 							{/* Mint Form */}
@@ -1089,9 +1053,25 @@ function CurrencyCard({
 												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 											/>
 										</div>
-										<p className="text-xs text-zinc-600">
-											Mints to your wallet ({suiAddress.slice(0, 8)}...)
-										</p>
+										<div>
+											<label className="mb-1 block text-xs text-zinc-500">
+												Recipient (blank = your wallet)
+											</label>
+											<input
+												type="text"
+												value={mintRecipient}
+												onChange={(e) =>
+													setMintRecipient(
+														e.target.value,
+													)
+												}
+												placeholder={suiAddress.slice(
+													0,
+													16,
+												)}
+												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+											/>
+										</div>
 										{account ? (
 											<button
 												type="button"
@@ -1102,7 +1082,9 @@ function CurrencyCard({
 												Mint {currency.symbol}
 											</button>
 										) : (
-											<span className="text-xs text-zinc-500">EVE Vault not connected</span>
+											<span className="text-xs text-zinc-500">
+												EVE Vault not connected
+											</span>
 										)}
 									</div>
 								</div>
@@ -1172,86 +1154,98 @@ function CurrencyCard({
 													Burn Selected Coin
 												</button>
 											) : (
-												<span className="text-xs text-zinc-500">EVE Vault not connected</span>
+												<span className="text-xs text-zinc-500">
+													EVE Vault not connected
+												</span>
 											)}
 										</div>
 									)}
 								</div>
 							)}
 
-							{/* Bounty Form */}
-							{showBounty && (
+							{/* Authorization Form (creator only) */}
+							{showAuth && isCreator && (
 								<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
 									<h4 className="mb-3 text-xs font-medium text-zinc-400">
-										Post Bounty (funded from Treasury)
+										Add Authorized Minter
 									</h4>
 									<div className="space-y-3">
 										<div>
 											<label className="mb-1 block text-xs text-zinc-500">
-												Target Character ID
+												Sui Address
 											</label>
 											<input
-												type="number"
-												value={bountyTarget}
+												type="text"
+												value={authAddress}
 												onChange={(e) =>
-													setBountyTarget(
+													setAuthAddress(
 														e.target.value,
 													)
 												}
-												placeholder="e.g., 2112077599"
+												placeholder="0x..."
 												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 											/>
 										</div>
-										<div>
-											<label className="mb-1 block text-xs text-zinc-500">
-												Reward Amount (
-												{currency.symbol})
-											</label>
-											<input
-												type="number"
-												value={bountyAmount}
-												onChange={(e) =>
-													setBountyAmount(
-														e.target.value,
-													)
-												}
-												placeholder="e.g., 100"
-												min={0}
-												step="any"
-												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-											/>
-										</div>
-										<div>
-											<label className="mb-1 block text-xs text-zinc-500">
-												Expiration (optional, default 7
-												days)
-											</label>
-											<input
-												type="datetime-local"
-												value={bountyExpiry}
-												onChange={(e) =>
-													setBountyExpiry(
-														e.target.value,
-													)
-												}
-												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
-											/>
-										</div>
-										{account ? (
 										<button
 											type="button"
-											onClick={handlePostBounty}
-											disabled={
-												!bountyTarget ||
-												!bountyAmount
-											}
-											className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+											onClick={handleAddAuthorized}
+											disabled={!authAddress.trim()}
+											className="flex items-center gap-1.5 rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
 										>
-											Mint &amp; Post Bounty
+											<UserPlus size={12} />
+											Add Authorized
 										</button>
-									) : (
-										<span className="text-xs text-zinc-500">EVE Vault not connected</span>
-									)}
+									</div>
+								</div>
+							)}
+
+							{/* Fee Management (creator only) */}
+							{showFees && isCreator && (
+								<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
+									<h4 className="mb-3 text-xs font-medium text-zinc-400">
+										Update Fee Configuration
+									</h4>
+									<div className="space-y-3">
+										<div>
+											<label className="mb-1 block text-xs text-zinc-500">
+												Fee (basis points, 100 = 1%)
+											</label>
+											<input
+												type="number"
+												value={feeBps}
+												onChange={(e) =>
+													setFeeBps(e.target.value)
+												}
+												placeholder="e.g., 250"
+												min={0}
+												max={10000}
+												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+											/>
+										</div>
+										<div>
+											<label className="mb-1 block text-xs text-zinc-500">
+												Fee Recipient
+											</label>
+											<input
+												type="text"
+												value={feeRecipient}
+												onChange={(e) =>
+													setFeeRecipient(
+														e.target.value,
+													)
+												}
+												placeholder="0x..."
+												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+											/>
+										</div>
+										<button
+											type="button"
+											onClick={handleUpdateFee}
+											className="flex items-center gap-1.5 rounded bg-purple-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-purple-500"
+										>
+											<Settings size={12} />
+											Update Fee
+										</button>
 									</div>
 								</div>
 							)}
@@ -1279,18 +1273,6 @@ function CurrencyCard({
 									</span>
 								</p>
 							)}
-							{currency.treasuryCapId && !hasTreasury && (
-								<p>
-									<span className="text-zinc-500">
-										TreasuryCap:
-									</span>{" "}
-									<span className="font-mono">
-										{currency.treasuryCapId.slice(0, 10)}
-										...
-										{currency.treasuryCapId.slice(-6)}
-									</span>
-								</p>
-							)}
 						</div>
 					)}
 				</div>
@@ -1305,6 +1287,9 @@ function formatTokenAmount(raw: bigint, decimals: number): string {
 	const whole = raw / divisor;
 	const frac = raw % divisor;
 	if (frac === 0n) return whole.toString();
-	const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
+	const fracStr = frac
+		.toString()
+		.padStart(decimals, "0")
+		.replace(/0+$/, "");
 	return `${whole}.${fracStr}`;
 }
