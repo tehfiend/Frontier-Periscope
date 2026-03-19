@@ -2,20 +2,23 @@
 ///
 /// This module is compiled once and its bytecodes are patched at runtime
 /// to create custom tokens. The client replaces:
-///   - Module name: TOKEN_TEMPLATE → USER_TOKEN_NAME
-///   - OTW struct name: TOKEN_TEMPLATE → USER_TOKEN_NAME
+///   - Module name: TOKEN_TEMPLATE -> USER_TOKEN_NAME
+///   - OTW struct name: TOKEN_TEMPLATE -> USER_TOKEN_NAME
 ///   - Metadata byte vectors: symbol, name, description
 ///
-/// After publishing, the TreasuryCap holder can mint/burn tokens.
+/// After publishing, a Market<T> is created automatically with the
+/// TreasuryCap locked inside. Authorized addresses mint/burn via Market.
 module token_template::TOKEN_TEMPLATE;
 
 use sui::coin;
+use market::market;
 
 /// One-Time Witness for the token. Struct name gets patched.
 public struct TOKEN_TEMPLATE has drop {}
 
 /// Initialize the token currency. Creates TreasuryCap + CoinMetadata.
-/// TreasuryCap is transferred to the publisher. CoinMetadata is frozen.
+/// TreasuryCap is consumed by market::create_market (locked inside Market<T>).
+/// CoinMetadata is frozen.
 fun init(witness: TOKEN_TEMPLATE, ctx: &mut TxContext) {
     let (treasury, metadata) = coin::create_currency(
         witness,
@@ -26,25 +29,6 @@ fun init(witness: TOKEN_TEMPLATE, ctx: &mut TxContext) {
         option::none(),             // icon_url
         ctx,
     );
-    transfer::public_transfer(treasury, ctx.sender());
     transfer::public_freeze_object(metadata);
-}
-
-/// Mint new tokens. Only the TreasuryCap holder can call this.
-public entry fun mint<T>(
-    treasury: &mut coin::TreasuryCap<T>,
-    amount: u64,
-    recipient: address,
-    ctx: &mut TxContext,
-) {
-    let minted = coin::mint(treasury, amount, ctx);
-    transfer::public_transfer(minted, recipient);
-}
-
-/// Burn tokens. Only the TreasuryCap holder can call this.
-public entry fun burn<T>(
-    treasury: &mut coin::TreasuryCap<T>,
-    coin: coin::Coin<T>,
-) {
-    coin::burn(treasury, coin);
+    market::create_market(treasury, ctx);
 }

@@ -1,17 +1,17 @@
-/// SSU extension: vending machine for buying/selling items with Coin<T>.
+/// SSU extension: per-SSU configuration, inventory transfers, and trade execution.
 ///
-/// The SSU owner stocks inventory and sets prices per item type.
-/// Buyers pay Coin<T> to receive items from the SSU.
-/// Generic over the payment token -- works with any faction token or SUI.
+/// SsuConfig replaces MarketConfig -- supports owner + delegates authorization
+/// and optional Market<T> link for trade functions.
 ///
-/// v3: Escrow-based sell orders — create_sell_order atomically escrows items,
-/// cancel returns them, buy delivers to buyer. Replaces the old Listing flow.
+/// Transfer functions work without any market link (SsuConfig only).
+/// Trade functions (escrow_and_list, cancel_listing, buy_from_listing,
+/// fill_buy_order) require the market_id to be set and take &mut Market<T>.
 module ssu_market::ssu_market;
 
 use sui::coin::{Self, Coin};
-use sui::dynamic_field;
 use sui::event;
-use governance::org::{Self, Organization};
+use sui::clock::Clock;
+use market::market::{Self, Market};
 use world::storage_unit::{Self, StorageUnit};
 use world::character::Character;
 use world::inventory::Item;
@@ -19,162 +19,75 @@ use world::inventory::Item;
 // -- Error codes ----------------------------------------------------------------
 
 #[error(code = 0)]
-const ENotAdmin: vector<u8> = b"Only the market admin can modify listings";
+const ENotAuthorized: vector<u8> = b"Only the owner or delegates can perform this action";
 
 #[error(code = 1)]
-const EListingNotFound: vector<u8> = b"No listing found for this item type";
+const ENotOwner: vector<u8> = b"Only the owner can manage delegates and market link";
 
 #[error(code = 2)]
-const EInsufficientPayment: vector<u8> = b"Payment is less than the item price";
+const ESSUMismatch: vector<u8> = b"SSU does not match this config";
 
 #[error(code = 3)]
-const EListingDisabled: vector<u8> = b"This listing is not currently available";
+const EMarketNotLinked: vector<u8> = b"Market is not linked to this config";
 
 #[error(code = 4)]
-const EOrgMismatch: vector<u8> = b"Organization does not match this market";
+const EMarketMismatch: vector<u8> = b"Market does not match the linked market_id";
 
 #[error(code = 5)]
-const EExceedsOrderQuantity: vector<u8> = b"Fill quantity exceeds remaining order quantity";
+const EInsufficientPayment: vector<u8> = b"Payment is less than the required amount";
 
 #[error(code = 6)]
-const ENotAuthorizedSSU: vector<u8> = b"SSU is not authorized for this org market";
+const EInsufficientQuantity: vector<u8> = b"Requested quantity exceeds available quantity";
 
 #[error(code = 7)]
-const ESellOrderNotFound: vector<u8> = b"No sell order found for this item type";
-
-#[error(code = 8)]
-const EInsufficientQuantity: vector<u8> = b"Requested quantity exceeds sell order quantity";
-
-#[error(code = 9)]
 const EZeroQuantity: vector<u8> = b"Quantity must be greater than zero";
 
-#[error(code = 10)]
-const ESSUMismatch: vector<u8> = b"SSU does not match this market config";
+#[error(code = 8)]
+const ENotListingSeller: vector<u8> = b"Caller is not the listing seller";
 
 // -- Structs --------------------------------------------------------------------
 
 /// Typed witness for SSU extension authorization.
 public struct MarketAuth has drop {}
 
-/// Shared config object for a market SSU.
-public struct MarketConfig has key {
+/// Per-SSU configuration with owner, delegates, and optional market link.
+public struct SsuConfig has key {
     id: UID,
-    admin: address,
     ssu_id: ID,
-}
-
-/// Per-item listing stored as a dynamic field keyed by type_id.
-/// DEPRECATED: Kept for upgrade compatibility. Use SellOrder instead.
-public struct Listing has store, drop {
-    type_id: u64,
-    price_per_unit: u64,
-    available: bool,
-}
-
-/// Escrow-based sell order stored as dynamic field keyed by type_id.
-/// Items are held in the SSU extension inventory while the order is active.
-public struct SellOrder has store, drop {
-    type_id: u64,
-    price_per_unit: u64,
-    quantity: u64,
-}
-
-/// Per-org market: manages buy orders across multiple SSUs.
-/// Created once per org. Stakeholders manage authorized SSUs and buy orders.
-public struct OrgMarket has key {
-    id: UID,
-    org_id: ID,
-    admin: address,
-    authorized_ssus: vector<ID>,
-    next_order_id: u64,
-}
-
-/// Buy order: org wants to purchase items, paying Coin<T>.
-/// Stored as dynamic field on OrgMarket keyed by order_id.
-/// `ssu_id` tracks which SSU items should be delivered to (for UI display).
-public struct BuyOrder has store, drop {
-    order_id: u64,
-    ssu_id: ID,
-    type_id: u64,
-    price_per_unit: u64,
-    quantity: u64,
-    poster: address,
+    owner: address,
+    delegates: vector<address>,
+    market_id: Option<ID>,
 }
 
 // -- Events ---------------------------------------------------------------------
 
-/// Emitted when a legacy purchase occurs.
-public struct PurchaseEvent has copy, drop {
+public struct SsuConfigCreatedEvent has copy, drop {
+    config_id: ID,
+    owner: address,
     ssu_id: ID,
-    type_id: u64,
-    quantity: u64,
-    total_price: u64,
-    buyer: address,
 }
 
-public struct OrgMarketCreatedEvent has copy, drop {
-    org_market_id: ID,
-    org_id: ID,
-    admin: address,
+public struct DelegateAddedEvent has copy, drop {
+    config_id: ID,
+    delegate: address,
 }
 
-public struct BuyOrderCreatedEvent has copy, drop {
-    org_market_id: ID,
-    order_id: u64,
-    type_id: u64,
-    price_per_unit: u64,
-    quantity: u64,
-    poster: address,
+public struct DelegateRemovedEvent has copy, drop {
+    config_id: ID,
+    delegate: address,
 }
 
-public struct BuyOrderFilledEvent has copy, drop {
-    org_market_id: ID,
-    order_id: u64,
-    ssu_id: ID,
-    type_id: u64,
-    quantity: u64,
-    total_paid: u64,
-    seller: address,
-}
-
-// -- Sell Order Events ----------------------------------------------------------
-
-public struct SellOrderCreatedEvent has copy, drop {
+public struct MarketSetEvent has copy, drop {
+    config_id: ID,
     market_id: ID,
-    ssu_id: ID,
-    type_id: u64,
-    price_per_unit: u64,
-    quantity: u64,
-    seller: address,
 }
 
-public struct SellOrderCancelledEvent has copy, drop {
-    market_id: ID,
-    ssu_id: ID,
-    type_id: u64,
-    quantity_cancelled: u64,
-    remaining: u64,
-}
-
-public struct SellOrderFilledEvent has copy, drop {
-    market_id: ID,
-    ssu_id: ID,
-    type_id: u64,
-    quantity: u64,
-    total_paid: u64,
-    buyer: address,
-    seller: address,
-}
-
-public struct SellPriceUpdatedEvent has copy, drop {
-    market_id: ID,
-    type_id: u64,
-    old_price: u64,
-    new_price: u64,
+public struct MarketRemovedEvent has copy, drop {
+    config_id: ID,
 }
 
 public struct TransferEvent has copy, drop {
-    market_id: ID,
+    config_id: ID,
     ssu_id: ID,
     from_slot: vector<u8>,
     to_slot: vector<u8>,
@@ -183,347 +96,207 @@ public struct TransferEvent has copy, drop {
     sender: address,
 }
 
-// -- Init -----------------------------------------------------------------------
-
-fun init(ctx: &mut TxContext) {
-    // MarketConfig is created per-SSU via create_market
+public struct SellListingCancelledEvent has copy, drop {
+    config_id: ID,
+    ssu_id: ID,
+    listing_id: u64,
+    type_id: u64,
+    quantity: u64,
 }
 
-/// Create a market config for an SSU. Called by the SSU owner.
-public fun create_market(
+public struct BuyOrderFilledEvent has copy, drop {
+    config_id: ID,
+    ssu_id: ID,
+    order_id: u64,
+    type_id: u64,
+    quantity: u64,
+    total_paid: u64,
+    seller: address,
+}
+
+// -- Authorization helpers ------------------------------------------------------
+
+fun assert_authorized(config: &SsuConfig, ssu: &StorageUnit, ctx: &TxContext) {
+    let sender = ctx.sender();
+    assert!(sender == config.owner || config.delegates.contains(&sender), ENotAuthorized);
+    assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
+}
+
+fun assert_market_linked(config: &SsuConfig, market_id: ID) {
+    assert!(option::is_some(&config.market_id), EMarketNotLinked);
+    assert!(*option::borrow(&config.market_id) == market_id, EMarketMismatch);
+}
+
+// -- SsuConfig management -------------------------------------------------------
+
+/// Create an SsuConfig for an SSU. Called by the SSU owner.
+public fun create_ssu_config(
     ssu_id: ID,
     ctx: &mut TxContext,
 ) {
-    transfer::share_object(MarketConfig {
+    let config = SsuConfig {
         id: object::new(ctx),
-        admin: ctx.sender(),
+        ssu_id,
+        owner: ctx.sender(),
+        delegates: vector::empty(),
+        market_id: option::none(),
+    };
+
+    event::emit(SsuConfigCreatedEvent {
+        config_id: object::id(&config),
+        owner: ctx.sender(),
         ssu_id,
     });
+
+    transfer::share_object(config);
 }
 
-// -- Listing management (DEPRECATED — kept for upgrade compatibility) -----------
-
-/// DEPRECATED: Use create_sell_order instead.
-public fun set_listing(
-    config: &mut MarketConfig,
-    type_id: u64,
-    price_per_unit: u64,
-    available: bool,
+/// Add a delegate. Owner only.
+public fun add_delegate(
+    config: &mut SsuConfig,
+    addr: address,
     ctx: &TxContext,
 ) {
-    assert!(ctx.sender() == config.admin, ENotAdmin);
+    assert!(ctx.sender() == config.owner, ENotOwner);
+    config.delegates.push_back(addr);
 
-    let listing = Listing { type_id, price_per_unit, available };
-
-    if (dynamic_field::exists_(&config.id, type_id)) {
-        *dynamic_field::borrow_mut<u64, Listing>(&mut config.id, type_id) = listing;
-    } else {
-        dynamic_field::add(&mut config.id, type_id, listing);
-    };
+    event::emit(DelegateAddedEvent {
+        config_id: object::id(config),
+        delegate: addr,
+    });
 }
 
-/// DEPRECATED: Use cancel_sell_order instead.
-public fun remove_listing(
-    config: &mut MarketConfig,
-    type_id: u64,
+/// Remove a delegate. Owner only.
+public fun remove_delegate(
+    config: &mut SsuConfig,
+    addr: address,
     ctx: &TxContext,
 ) {
-    assert!(ctx.sender() == config.admin, ENotAdmin);
-    if (dynamic_field::exists_(&config.id, type_id)) {
-        dynamic_field::remove<u64, Listing>(&mut config.id, type_id);
-    };
-}
+    assert!(ctx.sender() == config.owner, ENotOwner);
+    let (found, idx) = config.delegates.index_of(&addr);
+    if (found) { config.delegates.remove(idx); };
 
-// -- Purchase (DEPRECATED) ------------------------------------------------------
-
-/// DEPRECATED: Use buy_sell_order instead.
-public fun buy_item<T>(
-    config: &MarketConfig,
-    mut payment: Coin<T>,
-    type_id: u64,
-    quantity: u64,
-    ctx: &mut TxContext,
-): Coin<T> {
-    assert!(dynamic_field::exists_(&config.id, type_id), EListingNotFound);
-    let listing = dynamic_field::borrow<u64, Listing>(&config.id, type_id);
-    assert!(listing.available, EListingDisabled);
-
-    let total_price = listing.price_per_unit * quantity;
-    assert!(coin::value(&payment) >= total_price, EInsufficientPayment);
-
-    // Split payment and send to admin
-    let fee_coin = coin::split(&mut payment, total_price, ctx);
-    transfer::public_transfer(fee_coin, config.admin);
-
-    event::emit(PurchaseEvent {
-        ssu_id: config.ssu_id,
-        type_id,
-        quantity,
-        total_price,
-        buyer: ctx.sender(),
-    });
-
-    // Return change
-    payment
-}
-
-// -- Sell Orders (v3 escrow) ----------------------------------------------------
-
-/// Create a sell order by escrowing items from owner inventory to extension inventory.
-/// If a SellOrder already exists for this type_id, adds to quantity and updates price.
-/// Called in a PTB: borrow_owner_cap -> withdraw_by_owner -> create_sell_order -> return_owner_cap.
-public fun create_sell_order(
-    config: &mut MarketConfig,
-    ssu: &mut StorageUnit,
-    character: &Character,
-    item: Item,
-    price_per_unit: u64,
-    ctx: &mut TxContext,
-) {
-    assert!(ctx.sender() == config.admin, ENotAdmin);
-    assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
-
-    let type_id = item.type_id();
-    let qty = (item.quantity() as u64);
-    assert!(qty > 0, EZeroQuantity);
-
-    // Escrow: move items into SSU extension inventory
-    storage_unit::deposit_item<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
-
-    // Create or update SellOrder
-    if (dynamic_field::exists_with_type<u64, SellOrder>(&config.id, type_id)) {
-        let order = dynamic_field::borrow_mut<u64, SellOrder>(&mut config.id, type_id);
-        order.quantity = order.quantity + qty;
-        order.price_per_unit = price_per_unit;
-    } else {
-        // Remove orphaned Listing if one exists for this key
-        if (dynamic_field::exists_with_type<u64, Listing>(&config.id, type_id)) {
-            dynamic_field::remove<u64, Listing>(&mut config.id, type_id);
-        };
-        dynamic_field::add(&mut config.id, type_id, SellOrder {
-            type_id, price_per_unit, quantity: qty,
-        });
-    };
-
-    event::emit(SellOrderCreatedEvent {
-        market_id: object::id(config),
-        ssu_id: config.ssu_id,
-        type_id, price_per_unit, quantity: qty,
-        seller: ctx.sender(),
+    event::emit(DelegateRemovedEvent {
+        config_id: object::id(config),
+        delegate: addr,
     });
 }
 
-/// Cancel (partially or fully) a sell order. Returns items to admin's owned inventory.
-public fun cancel_sell_order(
-    config: &mut MarketConfig,
-    ssu: &mut StorageUnit,
-    character: &Character,
-    type_id: u64,
-    quantity: u32,
-    ctx: &mut TxContext,
-) {
-    assert!(ctx.sender() == config.admin, ENotAdmin);
-    assert!((quantity as u64) > 0, EZeroQuantity);
-    assert!(
-        dynamic_field::exists_with_type<u64, SellOrder>(&config.id, type_id),
-        ESellOrderNotFound,
-    );
-
-    let order = dynamic_field::borrow<u64, SellOrder>(&config.id, type_id);
-    assert!((quantity as u64) <= order.quantity, EInsufficientQuantity);
-
-    // Withdraw from extension inventory
-    let item = storage_unit::withdraw_item<MarketAuth>(
-        ssu, character, MarketAuth {}, type_id, quantity, ctx,
-    );
-    // Return to admin's owned inventory on this SSU
-    storage_unit::deposit_to_owned<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
-
-    // Update or remove the sell order
-    let remaining = {
-        let order = dynamic_field::borrow_mut<u64, SellOrder>(&mut config.id, type_id);
-        order.quantity = order.quantity - (quantity as u64);
-        order.quantity
-    };
-
-    if (remaining == 0) {
-        dynamic_field::remove<u64, SellOrder>(&mut config.id, type_id);
-    };
-
-    event::emit(SellOrderCancelledEvent {
-        market_id: object::id(config),
-        ssu_id: config.ssu_id,
-        type_id,
-        quantity_cancelled: (quantity as u64),
-        remaining,
-    });
-}
-
-/// Buy items from a sell order. Pays Coin<T>, items deposited to buyer's owned inventory.
-/// Returns change coin.
-public fun buy_sell_order<T>(
-    config: &mut MarketConfig,
-    ssu: &mut StorageUnit,
-    buyer_character: &Character,
-    mut payment: Coin<T>,
-    type_id: u64,
-    quantity: u32,
-    ctx: &mut TxContext,
-): Coin<T> {
-    assert!((quantity as u64) > 0, EZeroQuantity);
-    assert!(
-        dynamic_field::exists_with_type<u64, SellOrder>(&config.id, type_id),
-        ESellOrderNotFound,
-    );
-
-    let order = dynamic_field::borrow<u64, SellOrder>(&config.id, type_id);
-    assert!((quantity as u64) <= order.quantity, EInsufficientQuantity);
-
-    let total_price = order.price_per_unit * (quantity as u64);
-    assert!(coin::value(&payment) >= total_price, EInsufficientPayment);
-
-    // Withdraw from extension inventory and deposit to buyer's owned inventory
-    let item = storage_unit::withdraw_item<MarketAuth>(
-        ssu, buyer_character, MarketAuth {}, type_id, quantity, ctx,
-    );
-    storage_unit::deposit_to_owned<MarketAuth>(ssu, buyer_character, item, MarketAuth {}, ctx);
-
-    // Split payment and send to admin
-    let fee_coin = coin::split(&mut payment, total_price, ctx);
-    transfer::public_transfer(fee_coin, config.admin);
-
-    // Update or remove sell order
-    let remaining = {
-        let order = dynamic_field::borrow_mut<u64, SellOrder>(&mut config.id, type_id);
-        order.quantity = order.quantity - (quantity as u64);
-        order.quantity
-    };
-
-    if (remaining == 0) {
-        dynamic_field::remove<u64, SellOrder>(&mut config.id, type_id);
-    };
-
-    event::emit(SellOrderFilledEvent {
-        market_id: object::id(config),
-        ssu_id: config.ssu_id,
-        type_id,
-        quantity: (quantity as u64),
-        total_paid: total_price,
-        buyer: ctx.sender(),
-        seller: config.admin,
-    });
-
-    payment
-}
-
-/// Update the price of an existing sell order.
-public fun update_sell_price(
-    config: &mut MarketConfig,
-    type_id: u64,
-    price_per_unit: u64,
+/// Link this SSU config to a Market. Owner only.
+public fun set_market(
+    config: &mut SsuConfig,
+    market_id: ID,
     ctx: &TxContext,
 ) {
-    assert!(ctx.sender() == config.admin, ENotAdmin);
-    assert!(
-        dynamic_field::exists_with_type<u64, SellOrder>(&config.id, type_id),
-        ESellOrderNotFound,
-    );
+    assert!(ctx.sender() == config.owner, ENotOwner);
+    config.market_id = option::some(market_id);
 
-    let order = dynamic_field::borrow_mut<u64, SellOrder>(&mut config.id, type_id);
-    let old_price = order.price_per_unit;
-    order.price_per_unit = price_per_unit;
-
-    event::emit(SellPriceUpdatedEvent {
-        market_id: object::id(config),
-        type_id, old_price, new_price: price_per_unit,
+    event::emit(MarketSetEvent {
+        config_id: object::id(config),
+        market_id,
     });
 }
+
+/// Unlink the Market from this SSU config. Owner only.
+public fun remove_market(
+    config: &mut SsuConfig,
+    ctx: &TxContext,
+) {
+    assert!(ctx.sender() == config.owner, ENotOwner);
+    config.market_id = option::none();
+
+    event::emit(MarketRemovedEvent {
+        config_id: object::id(config),
+    });
+}
+
+// -- SsuConfig read accessors ---------------------------------------------------
+
+public fun config_owner(config: &SsuConfig): address { config.owner }
+public fun config_ssu_id(config: &SsuConfig): ID { config.ssu_id }
+public fun config_market_id(config: &SsuConfig): Option<ID> { config.market_id }
+public fun config_delegates(config: &SsuConfig): vector<address> { config.delegates }
 
 // -- Inventory transfers --------------------------------------------------------
 
-fun assert_admin(config: &MarketConfig, ssu: &StorageUnit, ctx: &TxContext) {
-    assert!(ctx.sender() == config.admin, ENotAdmin);
-    assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
-}
-
-/// Admin: move items from owner inventory to escrow (open inventory).
+/// Admin/delegate: move items from owner inventory to escrow (open inventory).
 public fun admin_to_escrow(
-    config: &MarketConfig, ssu: &mut StorageUnit, character: &Character,
+    config: &SsuConfig, ssu: &mut StorageUnit, character: &Character,
     type_id: u64, quantity: u32, ctx: &mut TxContext,
 ) {
-    assert_admin(config, ssu, ctx);
+    assert_authorized(config, ssu, ctx);
     let item = storage_unit::withdraw_item<MarketAuth>(ssu, character, MarketAuth {}, type_id, quantity, ctx);
     storage_unit::deposit_to_open_inventory<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
     event::emit(TransferEvent {
-        market_id: object::id(config), ssu_id: config.ssu_id,
+        config_id: object::id(config), ssu_id: config.ssu_id,
         from_slot: b"owner", to_slot: b"escrow",
         type_id, quantity: (quantity as u64), sender: ctx.sender(),
     });
 }
 
-/// Admin: move items from escrow back to owner inventory.
+/// Admin/delegate: move items from escrow back to owner inventory.
 public fun admin_from_escrow(
-    config: &MarketConfig, ssu: &mut StorageUnit, character: &Character,
+    config: &SsuConfig, ssu: &mut StorageUnit, character: &Character,
     type_id: u64, quantity: u32, ctx: &mut TxContext,
 ) {
-    assert_admin(config, ssu, ctx);
+    assert_authorized(config, ssu, ctx);
     let item = storage_unit::withdraw_from_open_inventory<MarketAuth>(ssu, character, MarketAuth {}, type_id, quantity, ctx);
     storage_unit::deposit_item<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
     event::emit(TransferEvent {
-        market_id: object::id(config), ssu_id: config.ssu_id,
+        config_id: object::id(config), ssu_id: config.ssu_id,
         from_slot: b"escrow", to_slot: b"owner",
         type_id, quantity: (quantity as u64), sender: ctx.sender(),
     });
 }
 
-/// Admin: move items from owner inventory directly to a player's inventory.
+/// Admin/delegate: move items from owner inventory directly to a player's inventory.
 public fun admin_to_player(
-    config: &MarketConfig, ssu: &mut StorageUnit, admin_character: &Character,
+    config: &SsuConfig, ssu: &mut StorageUnit, admin_character: &Character,
     recipient_character: &Character, type_id: u64, quantity: u32, ctx: &mut TxContext,
 ) {
-    assert_admin(config, ssu, ctx);
+    assert_authorized(config, ssu, ctx);
     let item = storage_unit::withdraw_item<MarketAuth>(ssu, admin_character, MarketAuth {}, type_id, quantity, ctx);
     storage_unit::deposit_to_owned<MarketAuth>(ssu, recipient_character, item, MarketAuth {}, ctx);
     event::emit(TransferEvent {
-        market_id: object::id(config), ssu_id: config.ssu_id,
+        config_id: object::id(config), ssu_id: config.ssu_id,
         from_slot: b"owner", to_slot: b"player",
         type_id, quantity: (quantity as u64), sender: ctx.sender(),
     });
 }
 
-/// Admin: move items from escrow directly to a player's inventory.
+/// Admin/delegate: move items from escrow directly to a player's inventory.
 public fun admin_escrow_to_player(
-    config: &MarketConfig, ssu: &mut StorageUnit, admin_character: &Character,
+    config: &SsuConfig, ssu: &mut StorageUnit, admin_character: &Character,
     recipient_character: &Character, type_id: u64, quantity: u32, ctx: &mut TxContext,
 ) {
-    assert_admin(config, ssu, ctx);
+    assert_authorized(config, ssu, ctx);
     let item = storage_unit::withdraw_from_open_inventory<MarketAuth>(ssu, admin_character, MarketAuth {}, type_id, quantity, ctx);
     storage_unit::deposit_to_owned<MarketAuth>(ssu, recipient_character, item, MarketAuth {}, ctx);
     event::emit(TransferEvent {
-        market_id: object::id(config), ssu_id: config.ssu_id,
+        config_id: object::id(config), ssu_id: config.ssu_id,
         from_slot: b"escrow", to_slot: b"player",
         type_id, quantity: (quantity as u64), sender: ctx.sender(),
     });
 }
 
-/// Admin: move items from escrow to own player inventory.
+/// Admin/delegate: move items from escrow to own player inventory.
 public fun admin_escrow_to_self(
-    config: &MarketConfig, ssu: &mut StorageUnit, character: &Character,
+    config: &SsuConfig, ssu: &mut StorageUnit, character: &Character,
     type_id: u64, quantity: u32, ctx: &mut TxContext,
 ) {
-    assert_admin(config, ssu, ctx);
+    assert_authorized(config, ssu, ctx);
     let item = storage_unit::withdraw_from_open_inventory<MarketAuth>(ssu, character, MarketAuth {}, type_id, quantity, ctx);
     storage_unit::deposit_to_owned<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
     event::emit(TransferEvent {
-        market_id: object::id(config), ssu_id: config.ssu_id,
+        config_id: object::id(config), ssu_id: config.ssu_id,
         from_slot: b"escrow", to_slot: b"player",
         type_id, quantity: (quantity as u64), sender: ctx.sender(),
     });
 }
 
-/// Player: deposit an Item to escrow. Item must be provided (e.g., from withdraw_by_owner in the same PTB).
+/// Player: deposit an Item to escrow. SSU mismatch check only (no owner/delegate check).
 public fun player_to_escrow(
-    config: &MarketConfig, ssu: &mut StorageUnit, character: &Character,
+    config: &SsuConfig, ssu: &mut StorageUnit, character: &Character,
     item: Item, ctx: &mut TxContext,
 ) {
     assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
@@ -531,15 +304,15 @@ public fun player_to_escrow(
     let type_id = item.type_id();
     storage_unit::deposit_to_open_inventory<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
     event::emit(TransferEvent {
-        market_id: object::id(config), ssu_id: config.ssu_id,
+        config_id: object::id(config), ssu_id: config.ssu_id,
         from_slot: b"player", to_slot: b"escrow",
         type_id, quantity: qty, sender: ctx.sender(),
     });
 }
 
-/// Player: deposit an Item to owner inventory. Item must be provided (e.g., from withdraw_by_owner in the same PTB).
+/// Player: deposit an Item to owner inventory. SSU mismatch check only (no owner/delegate check).
 public fun player_to_owner(
-    config: &MarketConfig, ssu: &mut StorageUnit, character: &Character,
+    config: &SsuConfig, ssu: &mut StorageUnit, character: &Character,
     item: Item, ctx: &mut TxContext,
 ) {
     assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
@@ -547,228 +320,194 @@ public fun player_to_owner(
     let type_id = item.type_id();
     storage_unit::deposit_item<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
     event::emit(TransferEvent {
-        market_id: object::id(config), ssu_id: config.ssu_id,
+        config_id: object::id(config), ssu_id: config.ssu_id,
         from_slot: b"player", to_slot: b"owner",
         type_id, quantity: qty, sender: ctx.sender(),
     });
 }
 
-// -- OrgMarket management -------------------------------------------------------
+// -- Trade execution functions --------------------------------------------------
 
-/// Create an OrgMarket for an organization. One per org.
-public fun create_org_market(
-    org: &Organization,
-    ctx: &mut TxContext,
+/// Escrow items from owner inventory into extension inventory, then post a
+/// sell listing on the Market. Authorized users only.
+public fun escrow_and_list<T>(
+    config: &SsuConfig, market: &mut Market<T>,
+    ssu: &mut StorageUnit, character: &Character,
+    item: Item, price_per_unit: u64, clock: &Clock, ctx: &mut TxContext,
 ) {
-    assert!(org::is_stakeholder_address(org, ctx.sender()), ENotAdmin);
-    let market = OrgMarket {
-        id: object::new(ctx),
-        org_id: object::id(org),
-        admin: ctx.sender(),
-        authorized_ssus: vector::empty(),
-        next_order_id: 0,
-    };
+    assert_authorized(config, ssu, ctx);
+    assert_market_linked(config, object::id(market));
 
-    event::emit(OrgMarketCreatedEvent {
-        org_market_id: object::id(&market),
-        org_id: object::id(org),
-        admin: ctx.sender(),
-    });
+    let type_id = item.type_id();
+    let qty = (item.quantity() as u64);
 
-    transfer::share_object(market);
+    // Escrow: move items into SSU extension inventory
+    storage_unit::deposit_item<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
+
+    // Post listing on the Market
+    market::post_sell_listing<T>(market, config.ssu_id, type_id, price_per_unit, qty, clock, ctx);
 }
 
-/// Add an SSU as an authorized delivery point. Stakeholders only.
-/// The SSU must already have authorize_extension<MarketAuth>() called by its owner.
-public fun add_authorized_ssu(
-    market: &mut OrgMarket,
-    org: &Organization,
-    ssu_id: ID,
-    ctx: &TxContext,
+/// Cancel a sell listing on Market and return items from extension inventory
+/// to owner inventory. Authorized users only.
+public fun cancel_listing<T>(
+    config: &SsuConfig, market: &mut Market<T>,
+    ssu: &mut StorageUnit, character: &Character,
+    listing_id: u64, ctx: &mut TxContext,
 ) {
-    assert!(org::is_stakeholder_address(org, ctx.sender()), ENotAdmin);
-    market.authorized_ssus.push_back(ssu_id);
-}
+    assert_authorized(config, ssu, ctx);
+    assert_market_linked(config, object::id(market));
 
-/// Remove an SSU from authorized delivery points.
-public fun remove_authorized_ssu(
-    market: &mut OrgMarket,
-    org: &Organization,
-    ssu_id: ID,
-    ctx: &TxContext,
-) {
-    assert!(org::is_stakeholder_address(org, ctx.sender()), ENotAdmin);
-    let (found, idx) = market.authorized_ssus.index_of(&ssu_id);
-    if (found) { market.authorized_ssus.remove(idx); };
-}
+    // Read listing to get type_id + quantity before removing
+    let listing = market::borrow_sell_listing(market, listing_id);
+    assert!(market::listing_seller(listing) == ctx.sender(), ENotListingSeller);
+    let type_id = market::listing_type_id(listing);
+    let quantity = market::listing_quantity(listing);
 
-// -- Buy orders -----------------------------------------------------------------
+    // Remove listing from market (uses write accessor to avoid redundant seller check)
+    market::remove_sell_listing<T>(market, listing_id);
 
-/// Create a buy order on the org market. Stakeholders only.
-/// `ssu_id` indicates which SSU players should deliver items to.
-/// Escrowed Coin<T> stored as dynamic field on OrgMarket.
-public fun create_buy_order<T>(
-    market: &mut OrgMarket,
-    org: &Organization,
-    payment: Coin<T>,
-    ssu_id: ID,
-    type_id: u64,
-    price_per_unit: u64,
-    quantity: u64,
-    ctx: &mut TxContext,
-) {
-    assert!(org::is_stakeholder_address(org, ctx.sender()), ENotAdmin);
-    let total_cost = price_per_unit * quantity;
-    assert!(coin::value(&payment) >= total_cost, EInsufficientPayment);
+    // Withdraw items from extension inventory
+    let item = storage_unit::withdraw_item<MarketAuth>(
+        ssu, character, MarketAuth {}, type_id, (quantity as u32), ctx,
+    );
+    // Return to owner inventory
+    storage_unit::deposit_item<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
 
-    let order_id = market.next_order_id;
-    market.next_order_id = order_id + 1;
-
-    let record = BuyOrder {
-        order_id, ssu_id, type_id, price_per_unit, quantity,
-        poster: ctx.sender(),
-    };
-
-    dynamic_field::add(&mut market.id, order_id, record);
-    // Escrow coins with offset key (same pattern as bounty_board)
-    let coin_key = order_id + 1_000_000_000;
-    dynamic_field::add(&mut market.id, coin_key, payment);
-
-    event::emit(BuyOrderCreatedEvent {
-        org_market_id: object::id(market), order_id, type_id,
-        price_per_unit, quantity, poster: ctx.sender(),
+    event::emit(SellListingCancelledEvent {
+        config_id: object::id(config),
+        ssu_id: config.ssu_id,
+        listing_id,
+        type_id,
+        quantity,
     });
 }
 
-/// Fill a buy order (hackathon: manual confirmation model).
-public fun confirm_buy_order_fill<T>(
-    market: &mut OrgMarket,
-    org: &Organization,
-    order_id: u64,
-    seller: address,
-    quantity_filled: u64,
+/// Buyer purchases items from a sell listing. Atomic: payment -> seller,
+/// items -> buyer. Any buyer can call (no assert_authorized).
+/// Returns change coin.
+#[allow(lint(self_transfer))]
+public fun buy_from_listing<T>(
+    config: &SsuConfig, market: &mut Market<T>,
+    ssu: &mut StorageUnit, buyer_character: &Character,
+    listing_id: u64, quantity: u32, mut payment: Coin<T>,
     ctx: &mut TxContext,
+): Coin<T> {
+    assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
+    assert_market_linked(config, object::id(market));
+    assert!((quantity as u64) > 0, EZeroQuantity);
+
+    // Read listing data
+    let listing = market::borrow_sell_listing(market, listing_id);
+    let price_per_unit = market::listing_price_per_unit(listing);
+    let available = market::listing_quantity(listing);
+    let seller = market::listing_seller(listing);
+    let type_id = market::listing_type_id(listing);
+    assert!((quantity as u64) <= available, EInsufficientQuantity);
+
+    let total_price = price_per_unit * (quantity as u64);
+    assert!(coin::value(&payment) >= total_price, EInsufficientPayment);
+
+    // Calculate fee
+    let fee_bps = market::market_fee_bps(market);
+    let fee_recipient = market::market_fee_recipient(market);
+    let fee_amount = (total_price * fee_bps) / 10000;
+    let seller_amount = total_price - fee_amount;
+
+    // Split payment: fee to fee_recipient, net to seller
+    if (fee_amount > 0) {
+        let fee_coin = coin::split(&mut payment, fee_amount, ctx);
+        transfer::public_transfer(fee_coin, fee_recipient);
+    };
+    let seller_coin = coin::split(&mut payment, seller_amount, ctx);
+    transfer::public_transfer(seller_coin, seller);
+
+    // Withdraw items from extension inventory and deposit to buyer's owned inventory
+    let item = storage_unit::withdraw_item<MarketAuth>(
+        ssu, buyer_character, MarketAuth {}, type_id, quantity, ctx,
+    );
+    storage_unit::deposit_to_owned<MarketAuth>(ssu, buyer_character, item, MarketAuth {}, ctx);
+
+    // Update or remove listing
+    let remaining = available - (quantity as u64);
+    if (remaining == 0) {
+        market::remove_sell_listing<T>(market, listing_id);
+    } else {
+        let listing_mut = market::borrow_sell_listing_mut(market, listing_id);
+        market::set_listing_quantity(listing_mut, remaining);
+    };
+
+    // Return change
+    payment
+}
+
+/// Seller fills a buy order by providing items from the SSU.
+/// Items deposited to open inventory (for buyer to claim).
+/// Escrowed payment released to seller (minus fee).
+#[allow(lint(self_transfer))]
+public fun fill_buy_order<T>(
+    config: &SsuConfig, market: &mut Market<T>,
+    ssu: &mut StorageUnit, seller_character: &Character,
+    order_id: u64, quantity: u32, ctx: &mut TxContext,
 ) {
-    assert!(object::id(org) == market.org_id, EOrgMismatch);
-    assert!(org::is_stakeholder_address(org, ctx.sender()), ENotAdmin);
+    assert_authorized(config, ssu, ctx);
+    assert_market_linked(config, object::id(market));
+    assert!((quantity as u64) > 0, EZeroQuantity);
 
-    // Validate buy order exists
-    let record = dynamic_field::borrow<u64, BuyOrder>(&market.id, order_id);
-    assert!(quantity_filled <= record.quantity, EExceedsOrderQuantity);
+    // Read buy order data
+    let order = market::borrow_buy_order(market, order_id);
+    let price_per_unit = market::order_price_per_unit(order);
+    let available = market::order_quantity(order);
+    let type_id = market::order_type_id(order);
+    let buyer = market::order_buyer(order);
+    assert!((quantity as u64) <= available, EInsufficientQuantity);
 
-    let payment_amount = record.price_per_unit * quantity_filled;
+    let total_price = price_per_unit * (quantity as u64);
 
-    let type_id = record.type_id;
+    // Calculate fee
+    let fee_bps = market::market_fee_bps(market);
+    let fee_recipient = market::market_fee_recipient(market);
+    let fee_amount = (total_price * fee_bps) / 10000;
+    let seller_amount = total_price - fee_amount;
 
-    // Pay seller from escrowed coins
-    let coin_key = order_id + 1_000_000_000;
-    let escrowed = dynamic_field::borrow_mut<u64, Coin<T>>(&mut market.id, coin_key);
-    let payment = coin::split(escrowed, payment_amount, ctx);
-    transfer::public_transfer(payment, seller);
+    // Split escrowed payment from market
+    if (fee_amount > 0) {
+        let fee_coin = market::split_escrowed_coin<T>(market, order_id, fee_amount, ctx);
+        transfer::public_transfer(fee_coin, fee_recipient);
+    };
+    let seller_coin = market::split_escrowed_coin<T>(market, order_id, seller_amount, ctx);
+    transfer::public_transfer(seller_coin, ctx.sender());
 
-    // Update or remove order based on remaining quantity
-    let remaining_qty = {
-        let record = dynamic_field::borrow_mut<u64, BuyOrder>(&mut market.id, order_id);
-        record.quantity = record.quantity - quantity_filled;
-        record.quantity
-    }; // record reference dropped here
+    // Withdraw items from extension inventory and deposit to open inventory
+    // (buyer can claim from open inventory later)
+    let item = storage_unit::withdraw_item<MarketAuth>(
+        ssu, seller_character, MarketAuth {}, type_id, quantity, ctx,
+    );
+    storage_unit::deposit_to_open_inventory<MarketAuth>(ssu, seller_character, item, MarketAuth {}, ctx);
 
-    if (remaining_qty == 0) {
-        dynamic_field::remove<u64, BuyOrder>(&mut market.id, order_id);
-        // Return any remaining dust coins to admin
-        let remaining = dynamic_field::remove<u64, Coin<T>>(&mut market.id, coin_key);
-        if (coin::value(&remaining) > 0) {
-            transfer::public_transfer(remaining, ctx.sender());
+    // Update or remove buy order
+    let remaining = available - (quantity as u64);
+    if (remaining == 0) {
+        market::remove_buy_order<T>(market, order_id);
+        // Return any remaining dust coins to buyer
+        let remaining_coins = market::remove_escrowed_coin<T>(market, order_id);
+        if (coin::value(&remaining_coins) > 0) {
+            transfer::public_transfer(remaining_coins, buyer);
         } else {
-            coin::destroy_zero(remaining);
+            coin::destroy_zero(remaining_coins);
         };
+    } else {
+        let order_mut = market::borrow_buy_order_mut(market, order_id);
+        market::set_order_quantity(order_mut, remaining);
     };
 
     event::emit(BuyOrderFilledEvent {
-        org_market_id: object::id(market), order_id,
-        ssu_id: object::id_from_address(@0x0), // SSU tracked off-chain for hackathon
-        type_id, quantity: quantity_filled,
-        total_paid: payment_amount, seller,
+        config_id: object::id(config),
+        ssu_id: config.ssu_id,
+        order_id,
+        type_id,
+        quantity: (quantity as u64),
+        total_paid: total_price,
+        seller: ctx.sender(),
     });
-}
-
-/// Cancel a buy order. Returns escrowed coins to poster.
-public fun cancel_buy_order<T>(
-    market: &mut OrgMarket,
-    org: &Organization,
-    order_id: u64,
-    ctx: &mut TxContext,
-) {
-    assert!(org::is_stakeholder_address(org, ctx.sender()), ENotAdmin);
-    dynamic_field::remove<u64, BuyOrder>(&mut market.id, order_id);
-    let coin_key = order_id + 1_000_000_000;
-    let coins = dynamic_field::remove<u64, Coin<T>>(&mut market.id, coin_key);
-    transfer::public_transfer(coins, ctx.sender());
-}
-
-// -- SSU item operations (DEPRECATED — kept for upgrade compatibility) ----------
-
-/// DEPRECATED: Use create_sell_order instead.
-public fun stock_items(
-    config: &MarketConfig,
-    ssu: &mut StorageUnit,
-    character: &Character,
-    item: Item,
-    ctx: &mut TxContext,
-) {
-    assert!(ctx.sender() == config.admin, ENotAdmin);
-    storage_unit::deposit_item<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
-}
-
-/// DEPRECATED: Use buy_sell_order instead.
-public fun buy_and_withdraw<T>(
-    config: &MarketConfig,
-    ssu: &mut StorageUnit,
-    character: &Character,
-    payment: Coin<T>,
-    type_id: u64,
-    quantity: u32,
-    ctx: &mut TxContext,
-): (Item, Coin<T>) {
-    let change = buy_item<T>(config, payment, type_id, (quantity as u64), ctx);
-    let item = storage_unit::withdraw_item<MarketAuth>(
-        ssu, character, MarketAuth {}, type_id, quantity, ctx,
-    );
-    (item, change)
-}
-
-// -- Read accessors (legacy — kept for upgrade compatibility) -------------------
-
-public fun has_listing(config: &MarketConfig, type_id: u64): bool {
-    dynamic_field::exists_(&config.id, type_id)
-}
-
-public fun listing_price(config: &MarketConfig, type_id: u64): u64 {
-    dynamic_field::borrow<u64, Listing>(&config.id, type_id).price_per_unit
-}
-
-public fun listing_available(config: &MarketConfig, type_id: u64): bool {
-    dynamic_field::borrow<u64, Listing>(&config.id, type_id).available
-}
-
-public fun market_admin(config: &MarketConfig): address {
-    config.admin
-}
-
-public fun market_ssu_id(config: &MarketConfig): ID {
-    config.ssu_id
-}
-
-// -- Sell Order Read Accessors --------------------------------------------------
-
-public fun has_sell_order(config: &MarketConfig, type_id: u64): bool {
-    dynamic_field::exists_with_type<u64, SellOrder>(&config.id, type_id)
-}
-
-public fun sell_order_price(config: &MarketConfig, type_id: u64): u64 {
-    dynamic_field::borrow<u64, SellOrder>(&config.id, type_id).price_per_unit
-}
-
-public fun sell_order_quantity(config: &MarketConfig, type_id: u64): u64 {
-    dynamic_field::borrow<u64, SellOrder>(&config.id, type_id).quantity
 }

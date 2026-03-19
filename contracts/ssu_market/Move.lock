@@ -22,8 +22,8 @@ use_environment = "testnet"
 manifest_digest = "ED881AEE5B6E33C7A9D149CD1133047E41D103FAD527778F56F099E07F5F9C95"
 deps = { Sui = "Sui" }
 
-[pinned.testnet.governance]
-source = { local = '..\governance' }
+[pinned.testnet.market]
+source = { local = '..\market' }
 use_environment = "testnet"
 manifest_digest = "ED881AEE5B6E33C7A9D149CD1133047E41D103FAD527778F56F099E07F5F9C95"
 deps = { Sui = "Sui" }
@@ -31,5 +31,5 @@ deps = { Sui = "Sui" }
 [pinned.testnet.ssu_market]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "FAF8CFF1CFE53595C8C6BF04F68E3CE10BF5A9D348C67B17813338F56C9F30DC"
-deps = { Sui = "Sui", governance = "governance", world = "World" }
+manifest_digest = "8B181A2D44E76F302A4979B2655D78DD0DB98FE91DE337372B31B99E20BFA15D"
+deps = { Sui = "Sui", market = "market", world = "World" }

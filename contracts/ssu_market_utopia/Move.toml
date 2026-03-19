@@ -5,8 +5,7 @@ edition = "2024"
 [dependencies]
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "testnet-v1.66.2" }
 world = { local = "../world_utopia" }
-governance = { local = "../governance" }
+market = { local = "../market" }
 
 [addresses]
 ssu_market = "0x0"
-governance = "0x8bef45b3006c3112cbc4aa930a6aa521fc586cc8609c89514c4e14f514a578cb"
