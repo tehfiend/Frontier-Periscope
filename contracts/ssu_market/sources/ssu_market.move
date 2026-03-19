@@ -173,6 +173,16 @@ public struct SellPriceUpdatedEvent has copy, drop {
     new_price: u64,
 }
 
+public struct TransferEvent has copy, drop {
+    market_id: ID,
+    ssu_id: ID,
+    from_slot: vector<u8>,
+    to_slot: vector<u8>,
+    type_id: u64,
+    quantity: u64,
+    sender: address,
+}
+
 // -- Init -----------------------------------------------------------------------
 
 fun init(ctx: &mut TxContext) {
@@ -426,6 +436,120 @@ public fun update_sell_price(
     event::emit(SellPriceUpdatedEvent {
         market_id: object::id(config),
         type_id, old_price, new_price: price_per_unit,
+    });
+}
+
+// -- Inventory transfers --------------------------------------------------------
+
+fun assert_admin(config: &MarketConfig, ssu: &StorageUnit, ctx: &TxContext) {
+    assert!(ctx.sender() == config.admin, ENotAdmin);
+    assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
+}
+
+/// Admin: move items from owner inventory to escrow (open inventory).
+public fun admin_to_escrow(
+    config: &MarketConfig, ssu: &mut StorageUnit, character: &Character,
+    type_id: u64, quantity: u32, ctx: &mut TxContext,
+) {
+    assert_admin(config, ssu, ctx);
+    let item = storage_unit::withdraw_item<MarketAuth>(ssu, character, MarketAuth {}, type_id, quantity, ctx);
+    storage_unit::deposit_to_open_inventory<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
+    event::emit(TransferEvent {
+        market_id: object::id(config), ssu_id: config.ssu_id,
+        from_slot: b"owner", to_slot: b"escrow",
+        type_id, quantity: (quantity as u64), sender: ctx.sender(),
+    });
+}
+
+/// Admin: move items from escrow back to owner inventory.
+public fun admin_from_escrow(
+    config: &MarketConfig, ssu: &mut StorageUnit, character: &Character,
+    type_id: u64, quantity: u32, ctx: &mut TxContext,
+) {
+    assert_admin(config, ssu, ctx);
+    let item = storage_unit::withdraw_from_open_inventory<MarketAuth>(ssu, character, MarketAuth {}, type_id, quantity, ctx);
+    storage_unit::deposit_item<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
+    event::emit(TransferEvent {
+        market_id: object::id(config), ssu_id: config.ssu_id,
+        from_slot: b"escrow", to_slot: b"owner",
+        type_id, quantity: (quantity as u64), sender: ctx.sender(),
+    });
+}
+
+/// Admin: move items from owner inventory directly to a player's inventory.
+public fun admin_to_player(
+    config: &MarketConfig, ssu: &mut StorageUnit, admin_character: &Character,
+    recipient_character: &Character, type_id: u64, quantity: u32, ctx: &mut TxContext,
+) {
+    assert_admin(config, ssu, ctx);
+    let item = storage_unit::withdraw_item<MarketAuth>(ssu, admin_character, MarketAuth {}, type_id, quantity, ctx);
+    storage_unit::deposit_to_owned<MarketAuth>(ssu, recipient_character, item, MarketAuth {}, ctx);
+    event::emit(TransferEvent {
+        market_id: object::id(config), ssu_id: config.ssu_id,
+        from_slot: b"owner", to_slot: b"player",
+        type_id, quantity: (quantity as u64), sender: ctx.sender(),
+    });
+}
+
+/// Admin: move items from escrow directly to a player's inventory.
+public fun admin_escrow_to_player(
+    config: &MarketConfig, ssu: &mut StorageUnit, admin_character: &Character,
+    recipient_character: &Character, type_id: u64, quantity: u32, ctx: &mut TxContext,
+) {
+    assert_admin(config, ssu, ctx);
+    let item = storage_unit::withdraw_from_open_inventory<MarketAuth>(ssu, admin_character, MarketAuth {}, type_id, quantity, ctx);
+    storage_unit::deposit_to_owned<MarketAuth>(ssu, recipient_character, item, MarketAuth {}, ctx);
+    event::emit(TransferEvent {
+        market_id: object::id(config), ssu_id: config.ssu_id,
+        from_slot: b"escrow", to_slot: b"player",
+        type_id, quantity: (quantity as u64), sender: ctx.sender(),
+    });
+}
+
+/// Admin: move items from escrow to own player inventory.
+public fun admin_escrow_to_self(
+    config: &MarketConfig, ssu: &mut StorageUnit, character: &Character,
+    type_id: u64, quantity: u32, ctx: &mut TxContext,
+) {
+    assert_admin(config, ssu, ctx);
+    let item = storage_unit::withdraw_from_open_inventory<MarketAuth>(ssu, character, MarketAuth {}, type_id, quantity, ctx);
+    storage_unit::deposit_to_owned<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
+    event::emit(TransferEvent {
+        market_id: object::id(config), ssu_id: config.ssu_id,
+        from_slot: b"escrow", to_slot: b"player",
+        type_id, quantity: (quantity as u64), sender: ctx.sender(),
+    });
+}
+
+/// Player: deposit an Item to escrow. Item must be provided (e.g., from withdraw_by_owner in the same PTB).
+public fun player_to_escrow(
+    config: &MarketConfig, ssu: &mut StorageUnit, character: &Character,
+    item: Item, ctx: &mut TxContext,
+) {
+    assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
+    let qty = (item.quantity() as u64);
+    let type_id = item.type_id();
+    storage_unit::deposit_to_open_inventory<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
+    event::emit(TransferEvent {
+        market_id: object::id(config), ssu_id: config.ssu_id,
+        from_slot: b"player", to_slot: b"escrow",
+        type_id, quantity: qty, sender: ctx.sender(),
+    });
+}
+
+/// Player: deposit an Item to owner inventory. Item must be provided (e.g., from withdraw_by_owner in the same PTB).
+public fun player_to_owner(
+    config: &MarketConfig, ssu: &mut StorageUnit, character: &Character,
+    item: Item, ctx: &mut TxContext,
+) {
+    assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
+    let qty = (item.quantity() as u64);
+    let type_id = item.type_id();
+    storage_unit::deposit_item<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
+    event::emit(TransferEvent {
+        market_id: object::id(config), ssu_id: config.ssu_id,
+        from_slot: b"player", to_slot: b"owner",
+        type_id, quantity: qty, sender: ctx.sender(),
     });
 }
 
