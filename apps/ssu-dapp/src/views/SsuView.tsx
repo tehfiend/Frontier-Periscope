@@ -8,6 +8,7 @@ import { useAssembly } from "@/hooks/useAssembly";
 import { useCharacter } from "@/hooks/useCharacter";
 import { normalizeId } from "@/hooks/useInventory";
 import { useInventory } from "@/hooks/useInventory";
+import { useMarketConfig } from "@/hooks/useMarketConfig";
 import { useOwnerCap } from "@/hooks/useOwnerCap";
 import { useOwnerCharacter } from "@/hooks/useOwnerCharacter";
 import { getItemId, getTenant, getWorldPackageId } from "@/lib/constants";
@@ -45,23 +46,36 @@ export function SsuView({ objectId }: SsuViewProps) {
 	// SSU owner character name (from ownerCapId)
 	const { data: ownerCharacterName } = useOwnerCharacter(assembly?.ownerCapId);
 
+	// MarketConfig detection -- only when SSU has a MarketAuth extension
+	const { data: marketConfig } = useMarketConfig(objectId, assembly?.extensionType);
+
 	// Determine if connected wallet is the SSU owner
 	// The owner_cap_id on the SSU matches an OwnerCap held by the player's Character
 	const isOwner = !!ownerCapInfo && !!character;
 
+	// Determine if connected wallet is the MarketConfig admin
+	const isMarketAdmin = !!marketConfig && !!walletAddress && marketConfig.admin === walletAddress;
+
 	// Build transfer context for inter-slot item transfers
 	const transferContext = useMemo<TransferContext | null>(() => {
-		if (!isOwner || !character || !ownerCapInfo || !assembly) return null;
+		// Need at least a character to transfer (either as owner or as market participant)
+		if (!character || !assembly) return null;
+
+		// Without market extension, require SSU ownership for transfers
+		if (!marketConfig && !isOwner) return null;
+		if (!marketConfig && !ownerCapInfo) return null;
 
 		const worldPkg = getWorldPackageId(getTenant());
 		const slotCaps = new Map<string, { info: typeof ownerCapInfo; typeArg: string }>();
 
-		// Extension/owner inventory: keyed by SSU's owner_cap_id
-		const ownerKey = normalizeId(assembly.ownerCapId);
-		slotCaps.set(ownerKey, {
-			info: ownerCapInfo,
-			typeArg: `${worldPkg}::storage_unit::StorageUnit`,
-		});
+		// Extension/owner inventory: keyed by SSU's owner_cap_id (only if user is SSU owner)
+		if (isOwner && ownerCapInfo) {
+			const ownerKey = normalizeId(assembly.ownerCapId);
+			slotCaps.set(ownerKey, {
+				info: ownerCapInfo,
+				typeArg: `${worldPkg}::storage_unit::StorageUnit`,
+			});
+		}
 
 		// Player inventory: keyed by Character's owner_cap_id
 		if (charOwnerCapInfo && character.characterOwnerCapId) {
@@ -77,8 +91,11 @@ export function SsuView({ objectId }: SsuViewProps) {
 			characterObjectId: character.characterObjectId,
 			characterName: character.characterName,
 			slotCaps,
+			marketConfigId: marketConfig?.configObjectId,
+			marketPackageId: marketConfig?.packageId,
+			isAdmin: isMarketAdmin,
 		};
-	}, [isOwner, character, ownerCapInfo, charOwnerCapInfo, assembly, objectId]);
+	}, [isOwner, isMarketAdmin, character, ownerCapInfo, charOwnerCapInfo, assembly, objectId, marketConfig]);
 
 	// Loading state
 	if (assemblyLoading) {

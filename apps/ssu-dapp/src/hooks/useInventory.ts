@@ -33,6 +33,8 @@ export interface LabeledInventory extends InventoryData {
 	slotType: SlotType;
 	label: string;
 	characterName?: string;
+	/** Character object ID for player slots (resolved from OwnerCap owner) */
+	characterObjectId?: string;
 }
 
 /** All inventories from a StorageUnit */
@@ -86,6 +88,62 @@ interface DfResponse {
 			nodes: DfNode[];
 		};
 	} | null;
+}
+
+// ── OwnerCap -> Character object ID resolution ─────────────────────────────
+
+const GET_OWNER_OF_CAP = `
+	query($id: SuiAddress!) {
+		object(address: $id) {
+			owner {
+				... on ObjectOwner {
+					address { address }
+				}
+				... on AddressOwner {
+					address { address }
+				}
+			}
+		}
+	}
+`;
+
+interface CapOwnerResponse {
+	object: {
+		owner: {
+			address?: { address: string };
+		};
+	} | null;
+}
+
+const charIdCache = new Map<string, string>();
+
+/**
+ * Resolve an OwnerCap<Character> key to its Character object ID.
+ * The OwnerCap<Character> is owned by (sent to) the Character object,
+ * so its Sui-level owner IS the Character object ID.
+ */
+async function resolveCharacterObjectId(
+	client: SuiGraphQLClient,
+	ownerCapKey: string,
+): Promise<string | null> {
+	const cached = charIdCache.get(ownerCapKey);
+	if (cached) return cached;
+
+	try {
+		const r: { data?: CapOwnerResponse | null } = await client.query({
+			query: GET_OWNER_OF_CAP,
+			variables: { id: ownerCapKey },
+		});
+
+		const charId = r.data?.object?.owner?.address?.address;
+		if (charId) {
+			charIdCache.set(ownerCapKey, charId);
+			return charId;
+		}
+		return null;
+	} catch {
+		return null;
+	}
 }
 
 // ── Character name resolution via OwnerCap -> Character -> metadata ─────────
@@ -350,6 +408,24 @@ export function useInventory(
 		staleTime: 5 * 60_000,
 	});
 
+	// Resolve Character object IDs for player inventory slots
+	// (needed for admin -> player market transfers)
+	const characterObjectIdsQuery = useQuery({
+		queryKey: ["character-object-ids", playerKeys.join(",")],
+		queryFn: async (): Promise<Map<string, string>> => {
+			const idMap = new Map<string, string>();
+			await Promise.all(
+				playerKeys.map(async (ownerCapKey) => {
+					const charId = await resolveCharacterObjectId(client, ownerCapKey);
+					if (charId) idMap.set(ownerCapKey, charId);
+				}),
+			);
+			return idMap;
+		},
+		enabled: playerKeys.length > 0,
+		staleTime: 5 * 60_000,
+	});
+
 	// Collect all typeIds for name resolution
 	const allTypeIds = useMemo(() => {
 		const ids = new Set<number>();
@@ -369,12 +445,13 @@ export function useInventory(
 		staleTime: 5 * 60_000,
 	});
 
-	// Merge item names and character names into slots
+	// Merge item names, character names, and character object IDs into slots
 	const inventories = useMemo<SsuInventories | null>(() => {
 		if (rawSlots.length === 0 && !inventoryQuery.data) return null;
 
 		const nameMap = namesQuery.data ?? new Map<number, string>();
 		const charNameMap = characterNamesQuery.data ?? new Map<string, string>();
+		const charIdMap = characterObjectIdsQuery.data ?? new Map<string, string>();
 
 		const slots: LabeledInventory[] = rawSlots.map((slot) => {
 			const items = slot.items.map((item) => ({
@@ -384,9 +461,11 @@ export function useInventory(
 
 			let { label } = slot;
 			let characterName: string | undefined;
+			let characterObjectId: string | undefined;
 
 			if (slot.slotType === "player") {
 				characterName = charNameMap.get(slot.key);
+				characterObjectId = charIdMap.get(slot.key);
 				if (characterName) {
 					label = `Player: ${characterName}`;
 				}
@@ -397,6 +476,7 @@ export function useInventory(
 				items,
 				label,
 				characterName,
+				characterObjectId,
 			};
 		});
 
@@ -414,7 +494,7 @@ export function useInventory(
 					}
 				: emptyInventory,
 		};
-	}, [rawSlots, namesQuery.data, characterNamesQuery.data, inventoryQuery.data]);
+	}, [rawSlots, namesQuery.data, characterNamesQuery.data, characterObjectIdsQuery.data, inventoryQuery.data]);
 
 	return {
 		data: inventories,

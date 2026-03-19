@@ -1,3 +1,5 @@
+import type { CharacterSearchResult } from "@/hooks/useCharacterSearch";
+import { useCharacterSearch } from "@/hooks/useCharacterSearch";
 import type { InventoryItem, LabeledInventory } from "@/hooks/useInventory";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
@@ -17,24 +19,234 @@ export interface TransferContext {
 	characterName: string | null;
 	/** Maps normalized slot key -> cap info for all writable slots */
 	slotCaps: Map<string, CapRef>;
+	/** Present when this SSU has a MarketAuth extension */
+	marketConfigId?: string;
+	/** Latest ssu_market package ID for moveCall targets */
+	marketPackageId?: string;
+	/** Whether the connected wallet is the MarketConfig admin */
+	isAdmin: boolean;
 }
 
 export interface DestinationEntry {
 	slot: LabeledInventory;
-	depositCap: CapRef;
+	/** OwnerCap for direct deposit (may be absent for market-routed transfers) */
+	depositCap?: CapRef;
+	/** "ownerCap" = existing borrow/deposit PTB, "market" = ssu_market extension function */
+	route: "ownerCap" | "market";
+	/** Character object ID of the recipient (needed for admin -> player market transfers) */
+	recipientCharacterObjectId?: string;
 }
+
+/** Sentinel index for the "Send to player..." search option */
+const SEARCH_PLAYER_IDX = -2;
 
 interface TransferDialogProps {
 	item: InventoryItem;
 	sourceSlot: LabeledInventory;
-	withdrawCap: CapRef;
+	withdrawCap?: CapRef;
 	destinations: DestinationEntry[];
 	/** Visible slots the user cannot deposit to (no OwnerCap) -- shown disabled in dropdown */
 	inaccessibleSlots: LabeledInventory[];
 	ssuObjectId: string;
 	characterObjectId: string;
+	/** Market extension info for ssu_market PTBs */
+	marketConfigId?: string;
+	marketPackageId?: string;
+	isAdmin?: boolean;
 	onClose: () => void;
 }
+
+// ── PTB builders ─────────────────────────────────────────────────────────────
+
+function buildOwnerCapTransferPtb(
+	tx: Transaction,
+	worldPkg: string,
+	ssuObjectId: string,
+	characterObjectId: string,
+	item: InventoryItem,
+	qty: number,
+	withdrawCap: CapRef,
+	depositCap: CapRef,
+) {
+	// 1. Borrow source cap (for withdraw)
+	const [wCap, wReceipt] = tx.moveCall({
+		target: `${worldPkg}::character::borrow_owner_cap`,
+		typeArguments: [withdrawCap.typeArg],
+		arguments: [
+			tx.object(characterObjectId),
+			tx.receivingRef({
+				objectId: withdrawCap.info.objectId,
+				version: String(withdrawCap.info.version),
+				digest: withdrawCap.info.digest,
+			}),
+		],
+	});
+
+	// 2. Withdraw from source inventory
+	const withdrawnItem = tx.moveCall({
+		target: `${worldPkg}::storage_unit::withdraw_by_owner`,
+		typeArguments: [withdrawCap.typeArg],
+		arguments: [
+			tx.object(ssuObjectId),
+			tx.object(characterObjectId),
+			wCap,
+			tx.pure.u64(BigInt(item.typeId)),
+			tx.pure.u32(qty),
+		],
+	});
+
+	// 3. Return source cap
+	tx.moveCall({
+		target: `${worldPkg}::character::return_owner_cap`,
+		typeArguments: [withdrawCap.typeArg],
+		arguments: [tx.object(characterObjectId), wCap, wReceipt],
+	});
+
+	// 4. Borrow destination cap (for deposit)
+	const [dCap, dReceipt] = tx.moveCall({
+		target: `${worldPkg}::character::borrow_owner_cap`,
+		typeArguments: [depositCap.typeArg],
+		arguments: [
+			tx.object(characterObjectId),
+			tx.receivingRef({
+				objectId: depositCap.info.objectId,
+				version: String(depositCap.info.version),
+				digest: depositCap.info.digest,
+			}),
+		],
+	});
+
+	// 5. Deposit to destination inventory
+	// NOTE: deposit_by_owner arg order is (su, item, character, cap) -- item before character
+	tx.moveCall({
+		target: `${worldPkg}::storage_unit::deposit_by_owner`,
+		typeArguments: [depositCap.typeArg],
+		arguments: [tx.object(ssuObjectId), withdrawnItem, tx.object(characterObjectId), dCap],
+	});
+
+	// 6. Return destination cap
+	tx.moveCall({
+		target: `${worldPkg}::character::return_owner_cap`,
+		typeArguments: [depositCap.typeArg],
+		arguments: [tx.object(characterObjectId), dCap, dReceipt],
+	});
+}
+
+/** Build a market admin transfer PTB (no cap borrow needed) */
+function buildAdminMarketPtb(
+	tx: Transaction,
+	marketPkg: string,
+	marketConfigId: string,
+	ssuObjectId: string,
+	characterObjectId: string,
+	item: InventoryItem,
+	qty: number,
+	fnName: string,
+	recipientCharacterObjectId?: string,
+) {
+	const args = [
+		tx.object(marketConfigId),
+		tx.object(ssuObjectId),
+		tx.object(characterObjectId),
+	];
+
+	// admin_to_player / admin_escrow_to_player need recipient_character as 4th arg
+	if (recipientCharacterObjectId) {
+		args.push(tx.object(recipientCharacterObjectId));
+	}
+
+	args.push(tx.pure.u64(BigInt(item.typeId)), tx.pure.u32(qty));
+
+	tx.moveCall({
+		target: `${marketPkg}::ssu_market::${fnName}`,
+		arguments: args,
+	});
+}
+
+/** Build a player -> escrow/owner PTB (borrow cap, withdraw, return cap, then market deposit) */
+function buildPlayerMarketPtb(
+	tx: Transaction,
+	worldPkg: string,
+	marketPkg: string,
+	marketConfigId: string,
+	ssuObjectId: string,
+	characterObjectId: string,
+	item: InventoryItem,
+	qty: number,
+	withdrawCap: CapRef,
+	fnName: "player_to_escrow" | "player_to_owner",
+) {
+	// 1. Borrow player's OwnerCap<Character>
+	const [wCap, wReceipt] = tx.moveCall({
+		target: `${worldPkg}::character::borrow_owner_cap`,
+		typeArguments: [withdrawCap.typeArg],
+		arguments: [
+			tx.object(characterObjectId),
+			tx.receivingRef({
+				objectId: withdrawCap.info.objectId,
+				version: String(withdrawCap.info.version),
+				digest: withdrawCap.info.digest,
+			}),
+		],
+	});
+
+	// 2. Withdraw from player's inventory
+	const withdrawnItem = tx.moveCall({
+		target: `${worldPkg}::storage_unit::withdraw_by_owner`,
+		typeArguments: [withdrawCap.typeArg],
+		arguments: [
+			tx.object(ssuObjectId),
+			tx.object(characterObjectId),
+			wCap,
+			tx.pure.u64(BigInt(item.typeId)),
+			tx.pure.u32(qty),
+		],
+	});
+
+	// 3. Return player's cap
+	tx.moveCall({
+		target: `${worldPkg}::character::return_owner_cap`,
+		typeArguments: [withdrawCap.typeArg],
+		arguments: [tx.object(characterObjectId), wCap, wReceipt],
+	});
+
+	// 4. Call the market extension function with the withdrawn item
+	tx.moveCall({
+		target: `${marketPkg}::ssu_market::${fnName}`,
+		arguments: [
+			tx.object(marketConfigId),
+			tx.object(ssuObjectId),
+			tx.object(characterObjectId),
+			withdrawnItem,
+		],
+	});
+}
+
+/**
+ * Determine the market function name based on source/dest slot types and admin status.
+ * Returns null if this transfer cannot be routed via the market extension.
+ */
+function getMarketFunctionName(
+	sourceType: string,
+	destType: string,
+	isAdmin: boolean,
+	isSelfPlayer: boolean,
+): string | null {
+	if (isAdmin) {
+		if (sourceType === "owner" && destType === "open") return "admin_to_escrow";
+		if (sourceType === "open" && destType === "owner") return "admin_from_escrow";
+		if (sourceType === "owner" && destType === "player") return "admin_to_player";
+		if (sourceType === "open" && destType === "player" && isSelfPlayer)
+			return "admin_escrow_to_self";
+		if (sourceType === "open" && destType === "player") return "admin_escrow_to_player";
+	}
+	// Player functions (anyone can call)
+	if (sourceType === "player" && destType === "open") return "player_to_escrow";
+	if (sourceType === "player" && destType === "owner") return "player_to_owner";
+	return null;
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 export function TransferDialog({
 	item,
@@ -44,6 +256,9 @@ export function TransferDialog({
 	inaccessibleSlots,
 	ssuObjectId,
 	characterObjectId,
+	marketConfigId,
+	marketPackageId,
+	isAdmin,
 	onClose,
 }: TransferDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -53,20 +268,41 @@ export function TransferDialog({
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
 
+	// Phase 5: character search state for admin -> new player transfers
+	const [searchQuery, setSearchQuery] = useState("");
+	const [selectedCharacter, setSelectedCharacter] = useState<CharacterSearchResult | null>(null);
+	const { data: searchResults, isLoading: searchLoading } = useCharacterSearch(
+		selectedDestIdx === SEARCH_PLAYER_IDX ? searchQuery : "",
+	);
+
 	useEffect(() => {
 		dialogRef.current?.showModal();
 	}, []);
 
-	const dest = destinations[selectedDestIdx];
-	if (!dest) return null;
+	// When "Send to player..." is selected, use the searched character as destination
+	const isSearchMode = selectedDestIdx === SEARCH_PLAYER_IDX;
 
-	const remainingCapacity = dest.slot.maxCapacity - dest.slot.usedCapacity;
+	const dest = isSearchMode ? null : destinations[selectedDestIdx];
+
+	// For search mode, compute capacity from SSU's max capacity with 0 used
+	const searchDestCapacity = destinations[0]?.slot.maxCapacity ?? 0;
+
+	const remainingCapacity = isSearchMode
+		? searchDestCapacity
+		: dest
+			? dest.slot.maxCapacity - dest.slot.usedCapacity
+			: 0;
 	const maxByCapacity =
 		item.volume > 0 ? Math.floor(remainingCapacity / item.volume) : item.quantity;
 	const maxTransfer = Math.min(item.quantity, maxByCapacity);
 
+	// Show the "Send to player..." option if admin + market + source is owner or escrow
+	const showSearchOption =
+		isAdmin &&
+		!!marketConfigId &&
+		(sourceSlot.slotType === "owner" || sourceSlot.slotType === "open");
+
 	async function handleTransfer() {
-		if (!dest) return;
 		const qty = Number(quantity);
 		if (qty <= 0 || qty > maxTransfer) {
 			setError(`Quantity must be between 1 and ${maxTransfer}`);
@@ -80,68 +316,107 @@ export function TransferDialog({
 			const worldPkg = getWorldPackageId(getTenant());
 			const tx = new Transaction();
 
-			// 1. Borrow source cap (for withdraw)
-			const [wCap, wReceipt] = tx.moveCall({
-				target: `${worldPkg}::character::borrow_owner_cap`,
-				typeArguments: [withdrawCap.typeArg],
-				arguments: [
-					tx.object(characterObjectId),
-					tx.receivingRef({
-						objectId: withdrawCap.info.objectId,
-						version: String(withdrawCap.info.version),
-						digest: withdrawCap.info.digest,
-					}),
-				],
-			});
+			if (isSearchMode) {
+				// Phase 5: admin -> new player (character search)
+				if (!selectedCharacter || !marketConfigId || !marketPackageId) {
+					setError("Please select a recipient character");
+					return;
+				}
+				const fnName =
+					sourceSlot.slotType === "owner" ? "admin_to_player" : "admin_escrow_to_player";
+				buildAdminMarketPtb(
+					tx,
+					marketPackageId,
+					marketConfigId,
+					ssuObjectId,
+					characterObjectId,
+					item,
+					qty,
+					fnName,
+					selectedCharacter.characterObjectId,
+				);
+				await signAndExecute(tx);
+				setSuccess(
+					`Transferred ${qty}x ${item.name} to ${selectedCharacter.characterName}`,
+				);
+				return;
+			}
 
-			// 2. Withdraw from source inventory
-			const withdrawnItem = tx.moveCall({
-				target: `${worldPkg}::storage_unit::withdraw_by_owner`,
-				typeArguments: [withdrawCap.typeArg],
-				arguments: [
-					tx.object(ssuObjectId),
-					tx.object(characterObjectId),
-					wCap,
-					tx.pure.u64(BigInt(item.typeId)),
-					tx.pure.u32(qty),
-				],
-			});
+			if (!dest) return;
 
-			// 3. Return source cap
-			tx.moveCall({
-				target: `${worldPkg}::character::return_owner_cap`,
-				typeArguments: [withdrawCap.typeArg],
-				arguments: [tx.object(characterObjectId), wCap, wReceipt],
-			});
+			if (dest.route === "market" && marketConfigId && marketPackageId) {
+				// Market-routed transfer
+				const isSelfDest =
+					dest.recipientCharacterObjectId === characterObjectId ||
+					dest.slot.characterObjectId === characterObjectId;
+				const fnName = getMarketFunctionName(
+					sourceSlot.slotType,
+					dest.slot.slotType,
+					!!isAdmin,
+					isSelfDest,
+				);
 
-			// 4. Borrow destination cap (for deposit)
-			const [dCap, dReceipt] = tx.moveCall({
-				target: `${worldPkg}::character::borrow_owner_cap`,
-				typeArguments: [dest.depositCap.typeArg],
-				arguments: [
-					tx.object(characterObjectId),
-					tx.receivingRef({
-						objectId: dest.depositCap.info.objectId,
-						version: String(dest.depositCap.info.version),
-						digest: dest.depositCap.info.digest,
-					}),
-				],
-			});
+				if (!fnName) {
+					setError("This transfer route is not supported");
+					return;
+				}
 
-			// 5. Deposit to destination inventory
-			// NOTE: deposit_by_owner arg order is (su, item, character, cap) -- item before character
-			tx.moveCall({
-				target: `${worldPkg}::storage_unit::deposit_by_owner`,
-				typeArguments: [dest.depositCap.typeArg],
-				arguments: [tx.object(ssuObjectId), withdrawnItem, tx.object(characterObjectId), dCap],
-			});
+				const needsPlayerWithdraw =
+					fnName === "player_to_escrow" || fnName === "player_to_owner";
 
-			// 6. Return destination cap
-			tx.moveCall({
-				target: `${worldPkg}::character::return_owner_cap`,
-				typeArguments: [dest.depositCap.typeArg],
-				arguments: [tx.object(characterObjectId), dCap, dReceipt],
-			});
+				if (needsPlayerWithdraw) {
+					// Player functions: borrow cap + withdraw + return cap, then market fn
+					if (!withdrawCap) {
+						setError("Missing withdraw capability");
+						return;
+					}
+					buildPlayerMarketPtb(
+						tx,
+						worldPkg,
+						marketPackageId,
+						marketConfigId,
+						ssuObjectId,
+						characterObjectId,
+						item,
+						qty,
+						withdrawCap,
+						fnName as "player_to_escrow" | "player_to_owner",
+					);
+				} else {
+					// Admin functions: simple moveCall, no cap borrow needed
+					const recipientCharId =
+						dest.recipientCharacterObjectId ?? dest.slot.characterObjectId;
+					buildAdminMarketPtb(
+						tx,
+						marketPackageId,
+						marketConfigId,
+						ssuObjectId,
+						characterObjectId,
+						item,
+						qty,
+						fnName,
+						fnName === "admin_to_player" || fnName === "admin_escrow_to_player"
+							? recipientCharId
+							: undefined,
+					);
+				}
+			} else {
+				// OwnerCap direct transfer (existing path)
+				if (!withdrawCap || !dest.depositCap) {
+					setError("Missing transfer capabilities");
+					return;
+				}
+				buildOwnerCapTransferPtb(
+					tx,
+					worldPkg,
+					ssuObjectId,
+					characterObjectId,
+					item,
+					qty,
+					withdrawCap,
+					dest.depositCap,
+				);
+			}
 
 			await signAndExecute(tx);
 			setSuccess(`Transferred ${qty}x ${item.name} to ${dest.slot.label}`);
@@ -150,11 +425,17 @@ export function TransferDialog({
 		}
 	}
 
-	const remainingM3 = (remainingCapacity / 1000).toLocaleString();
-	const usedPct =
-		dest.slot.maxCapacity > 0
-			? Math.round((dest.slot.usedCapacity / dest.slot.maxCapacity) * 100)
-			: 0;
+	const displayCapacity = isSearchMode
+		? searchDestCapacity
+		: (dest?.slot.maxCapacity ?? 0);
+	const displayUsed = isSearchMode ? 0 : (dest?.slot.usedCapacity ?? 0);
+	const displayRemaining = displayCapacity - displayUsed;
+	const remainingM3 = (displayRemaining / 1000).toLocaleString();
+	const usedPct = displayCapacity > 0 ? Math.round((displayUsed / displayCapacity) * 100) : 0;
+
+	// Disable transfer button in search mode if no character is selected
+	const transferDisabled =
+		isPending || maxTransfer === 0 || (isSearchMode && !selectedCharacter);
 
 	return (
 		<dialog
@@ -215,9 +496,14 @@ export function TransferDialog({
 								value={selectedDestIdx}
 								onChange={(e) => {
 									const val = Number(e.target.value);
-									if (val >= 0) {
+									if (val >= -2) {
 										setSelectedDestIdx(val);
 										setError(null);
+										// Reset search state when switching away
+										if (val !== SEARCH_PLAYER_IDX) {
+											setSearchQuery("");
+											setSelectedCharacter(null);
+										}
 									}
 								}}
 								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
@@ -227,6 +513,11 @@ export function TransferDialog({
 										{d.slot.label}
 									</option>
 								))}
+								{showSearchOption && (
+									<option value={SEARCH_PLAYER_IDX}>
+										Send to player...
+									</option>
+								)}
 								{inaccessibleSlots.map((s) => (
 									<option key={s.key} value={-1} disabled>
 										{s.label} (no access)
@@ -239,6 +530,60 @@ export function TransferDialog({
 								</p>
 							)}
 						</div>
+
+						{/* Phase 5: Character search UI */}
+						{isSearchMode && (
+							<div className="space-y-2">
+								<label className="block text-xs text-zinc-500">
+									Search character by name
+								</label>
+								<input
+									type="text"
+									value={searchQuery}
+									onChange={(e) => {
+										setSearchQuery(e.target.value);
+										setSelectedCharacter(null);
+										setError(null);
+									}}
+									placeholder="Enter character name..."
+									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
+								/>
+								{searchLoading && searchQuery.length >= 2 && (
+									<p className="text-xs text-zinc-500">Searching...</p>
+								)}
+								{searchResults && searchResults.length > 0 && !selectedCharacter && (
+									<div className="max-h-32 overflow-y-auto rounded border border-zinc-700 bg-zinc-800">
+										{searchResults.map((c) => (
+											<button
+												key={c.characterObjectId}
+												type="button"
+												onClick={() => setSelectedCharacter(c)}
+												className="w-full px-3 py-1.5 text-left text-sm text-zinc-300 hover:bg-zinc-700"
+											>
+												{c.characterName}
+											</button>
+										))}
+									</div>
+								)}
+								{searchResults && searchResults.length === 0 && searchQuery.length >= 2 && !searchLoading && (
+									<p className="text-xs text-zinc-500">No characters found</p>
+								)}
+								{selectedCharacter && (
+									<div className="flex items-center justify-between rounded border border-cyan-800 bg-cyan-900/20 px-3 py-1.5 text-sm">
+										<span className="text-cyan-300">
+											{selectedCharacter.characterName}
+										</span>
+										<button
+											type="button"
+											onClick={() => setSelectedCharacter(null)}
+											className="text-xs text-zinc-500 hover:text-zinc-300"
+										>
+											Change
+										</button>
+									</div>
+								)}
+							</div>
+						)}
 
 						{/* Destination capacity indicator */}
 						<div className="text-xs text-zinc-500">
@@ -273,7 +618,7 @@ export function TransferDialog({
 							</div>
 						</div>
 
-						{maxTransfer === 0 && (
+						{maxTransfer === 0 && !isSearchMode && (
 							<p className="text-xs text-red-400">
 								Destination has no remaining capacity for this item.
 							</p>
@@ -283,7 +628,7 @@ export function TransferDialog({
 						<button
 							type="button"
 							onClick={handleTransfer}
-							disabled={isPending || maxTransfer === 0}
+							disabled={transferDisabled}
 							className="w-full rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
 						>
 							{isPending ? "Transferring..." : "Transfer"}

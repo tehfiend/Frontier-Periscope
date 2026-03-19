@@ -95,11 +95,32 @@ export function InventoryTabs({ inventories, isLoading, transferContext }: Inven
 	const activeColor = slotColors[activeIdx] ?? slotColors[0];
 
 	// Transfer logic: can the user transfer items from the active slot?
-	// Requires the active slot to have a cap AND at least one other cap key (visible or not)
-	const canTransferFromActive =
-		!!transferContext &&
-		transferContext.slotCaps.has(currentSlot.key) &&
-		[...transferContext.slotCaps.keys()].some((k) => k !== currentSlot.key);
+	const hasMarket = !!transferContext?.marketConfigId;
+	const isAdmin = !!transferContext?.isAdmin;
+
+	const canTransferFromActive = (() => {
+		if (!transferContext) return false;
+
+		// OwnerCap path: source has a cap AND at least one other cap key
+		const hasCapForSource = transferContext.slotCaps.has(currentSlot.key);
+		const hasOtherCap = [...transferContext.slotCaps.keys()].some(
+			(k) => k !== currentSlot.key,
+		);
+		if (hasCapForSource && hasOtherCap) return true;
+
+		// Market path: admin can transfer from owner/escrow slots
+		if (hasMarket && isAdmin) {
+			if (currentSlot.slotType === "owner" || currentSlot.slotType === "open") return true;
+		}
+
+		// Market path: player can transfer from their own player slot to owner/escrow
+		if (hasMarket && hasCapForSource && currentSlot.slotType === "player") {
+			// Player has cap for their own slot -- they can use player_to_escrow/player_to_owner
+			return true;
+		}
+
+		return false;
+	})();
 
 	function handleTransfer(item: InventoryItem) {
 		setDialogState({ item, sourceSlotIdx: activeIdx });
@@ -113,21 +134,61 @@ export function InventoryTabs({ inventories, isLoading, transferContext }: Inven
 		if (!sourceSlot) return null;
 
 		const withdrawCap = transferContext.slotCaps.get(sourceSlot.key);
-		if (!withdrawCap) return null;
+		// For admin market transfers, withdrawCap may not exist (admin doesn't need a cap)
+		// For OwnerCap transfers, withdrawCap is required
+		if (!withdrawCap && !hasMarket) return null;
 
 		const destinations: DestinationEntry[] = [];
+		const addedKeys = new Set<string>();
 
-		// 1. Visible slots that have caps
-		for (const s of slots) {
-			if (s.key === sourceSlot.key) continue;
-			const depositCap = transferContext.slotCaps.get(s.key);
-			if (depositCap) destinations.push({ slot: s, depositCap });
+		if (hasMarket) {
+			// Market-enabled SSU: build destinations based on role and source type
+			for (const s of slots) {
+				if (s.key === sourceSlot.key) continue;
+				if (addedKeys.has(s.key)) continue;
+
+				// Check if this destination is reachable via market extension
+				let marketReachable = false;
+				if (isAdmin) {
+					// Admin can reach escrow + any player from owner/escrow
+					if (sourceSlot.slotType === "owner" && (s.slotType === "open" || s.slotType === "player"))
+						marketReachable = true;
+					if (sourceSlot.slotType === "open" && (s.slotType === "owner" || s.slotType === "player"))
+						marketReachable = true;
+				}
+				// Player can reach escrow + owner from their own player slot
+				if (sourceSlot.slotType === "player" && withdrawCap) {
+					if (s.slotType === "open" || s.slotType === "owner") marketReachable = true;
+				}
+
+				if (marketReachable) {
+					destinations.push({
+						slot: s,
+						route: "market",
+						recipientCharacterObjectId: s.characterObjectId,
+					});
+					addedKeys.add(s.key);
+				}
+			}
 		}
 
-		// 2. Non-visible slots for which we have caps (e.g., player inventory not yet created)
+		// OwnerCap direct destinations (always available when both caps exist)
+		for (const s of slots) {
+			if (s.key === sourceSlot.key) continue;
+			if (addedKeys.has(s.key)) continue;
+			const depositCap = transferContext.slotCaps.get(s.key);
+			if (withdrawCap && depositCap) {
+				destinations.push({ slot: s, depositCap, route: "ownerCap" });
+				addedKeys.add(s.key);
+			}
+		}
+
+		// Non-visible slots for which we have caps (e.g., player inventory not yet created)
 		for (const [capKey, capRef] of transferContext.slotCaps) {
 			if (capKey === sourceSlot.key) continue;
+			if (addedKeys.has(capKey)) continue;
 			if (slots.some((s) => s.key === capKey)) continue;
+			if (!withdrawCap) continue;
 			destinations.push({
 				slot: {
 					key: capKey,
@@ -140,18 +201,21 @@ export function InventoryTabs({ inventories, isLoading, transferContext }: Inven
 					usedCapacity: 0,
 				},
 				depositCap: capRef,
+				route: "ownerCap",
 			});
+			addedKeys.add(capKey);
 		}
 
-		if (destinations.length === 0) return null;
+		if (destinations.length === 0 && !(isAdmin && hasMarket)) return null;
 
-		// Visible slots the user cannot deposit to (no OwnerCap)
-		const inaccessibleSlots = slots.filter(
-			(s) =>
-				s.key !== sourceSlot.key &&
-				!transferContext.slotCaps.has(s.key) &&
-				!destinations.some((d) => d.slot.key === s.key),
-		);
+		// Visible slots the user cannot deposit to
+		const inaccessibleSlots = hasMarket
+			? [] // market-enabled SSUs have no inaccessible slots (admin/player routes cover all)
+			: slots.filter(
+					(s) =>
+						s.key !== sourceSlot.key &&
+						!addedKeys.has(s.key),
+				);
 
 		return {
 			item: dialogState.item,
@@ -161,6 +225,9 @@ export function InventoryTabs({ inventories, isLoading, transferContext }: Inven
 			inaccessibleSlots,
 			ssuObjectId: transferContext.ssuObjectId,
 			characterObjectId: transferContext.characterObjectId,
+			marketConfigId: transferContext.marketConfigId,
+			marketPackageId: transferContext.marketPackageId,
+			isAdmin: transferContext.isAdmin,
 		};
 	})();
 

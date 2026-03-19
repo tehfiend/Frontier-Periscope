@@ -1,3 +1,5 @@
+import { type TenantId, getContractAddresses } from "@tehfrontier/chain-shared";
+
 /** World package IDs per tenant (Sui testnet) */
 export const WORLD_PACKAGE_IDS: Record<string, string> = {
 	stillness: "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c",
@@ -42,6 +44,19 @@ export function getWorldPackageId(tenant?: string): string {
 export function getRegistryAddress(tenant?: string): string {
 	const t = tenant ?? getTenant();
 	return OBJECT_REGISTRY_ADDRESSES[t] ?? OBJECT_REGISTRY_ADDRESSES.stillness;
+}
+
+/** Get the ssu_market package ID for the current tenant (latest version, for moveCall targets) */
+export function getSsuMarketPackageId(tenant?: string): string | null {
+	const t = (tenant ?? getTenant()) as TenantId;
+	return getContractAddresses(t).ssuMarket?.packageId ?? null;
+}
+
+/** Get the ssu_market original package ID for the current tenant (for type filtering in GraphQL) */
+export function getSsuMarketOriginalPackageId(tenant?: string): string | null {
+	const t = (tenant ?? getTenant()) as TenantId;
+	const m = getContractAddresses(t).ssuMarket;
+	return m?.originalPackageId ?? m?.packageId ?? null;
 }
 
 /**
