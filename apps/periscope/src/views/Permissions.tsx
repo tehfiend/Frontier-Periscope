@@ -14,6 +14,7 @@ import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { GroupCard } from "@/components/permissions/GroupCard";
 import { GroupEditor } from "@/components/permissions/GroupEditor";
 import { PolicyCard } from "@/components/permissions/PolicyCard";
+import { AclTab } from "@/components/permissions/AclTab";
 import { BetrayalAlertBanner, ReportBetrayalDialog } from "@/components/permissions/BetrayalAlertBanner";
 import { usePermissionGroups } from "@/hooks/usePermissionGroups";
 import { useAssemblyPolicies } from "@/hooks/useAssemblyPolicies";
@@ -24,7 +25,7 @@ import { useOwnedAssemblies, useActiveTenant } from "@/hooks/useOwnedAssemblies"
 import { db, notDeleted } from "@/db";
 import type { PermissionGroup, MemberKind, GroupMember, BetrayalAlert } from "@/db/types";
 
-type Tab = "groups" | "policies";
+type Tab = "groups" | "policies" | "acls";
 
 export function Permissions() {
 	const account = useCurrentAccount();
@@ -203,20 +204,27 @@ export function Permissions() {
 
 			{/* Tabs */}
 			<div className="mb-6 flex gap-1 rounded-lg bg-zinc-900/50 p-1">
-				{(["groups", "policies"] as Tab[]).map((t) => (
-					<button
-						key={t}
-						type="button"
-						onClick={() => setTab(t)}
-						className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-							tab === t
-								? "bg-zinc-800 text-cyan-400"
-								: "text-zinc-500 hover:text-zinc-300"
-						}`}
-					>
-						{t === "groups" ? "Groups" : "Policies"}
-					</button>
-				))}
+				{(["groups", "policies", "acls"] as Tab[]).map((t) => {
+					const labels: Record<Tab, string> = {
+						groups: "Groups",
+						policies: "Policies",
+						acls: "ACLs",
+					};
+					return (
+						<button
+							key={t}
+							type="button"
+							onClick={() => setTab(t)}
+							className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+								tab === t
+									? "bg-zinc-800 text-cyan-400"
+									: "text-zinc-500 hover:text-zinc-300"
+							}`}
+						>
+							{labels[t]}
+						</button>
+					);
+				})}
 			</div>
 
 			{/* Groups Tab */}
@@ -349,6 +357,9 @@ export function Permissions() {
 					)}
 				</div>
 			)}
+
+			{/* ACLs Tab */}
+			{tab === "acls" && <AclTab />}
 
 			{/* Group editor panel */}
 			{(editingGroup || isCreating) && (
