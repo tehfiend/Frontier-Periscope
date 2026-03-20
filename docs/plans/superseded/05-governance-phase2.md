@@ -1,9 +1,17 @@
 # Plan: Governance System Phase 2 — Post-Hackathon
 
-**Status:** Draft
+**Status:** Superseded
 **Created:** 2026-03-14
-**Updated:** 2026-03-15 (plan review: Phase 2b/2c partially superseded by Plan 06 execution)
-**Module:** multi (contracts, chain-shared, periscope, gas-station)
+**Updated:** 2026-03-19 (superseded by Plans 20+21)
+**Module:** multi (contracts, chain-shared, periscope)
+**Superseded by:** Plan 21 (Market Architecture Simplification) deleted governance_ext, currency_market, and Organization-based trade. Plan 20 consolidated dApps. The governance contract (org.move, claims.move) still exists on-chain for claims, but the finance/trade/alliance extensions described here are no longer viable -- Organization is no longer used as an authorization primitive for markets.
+
+> **NOTE (2026-03-18):** Several references in this plan are stale:
+> - `apps/gas-station/` has been removed from the codebase. All token creation is in-browser via WASM bytecode patching.
+> - `apps/web/`, `apps/api/`, `packages/db/` have been removed.
+> - P2P sync (`PeerSync.tsx`) has been removed from Periscope. Phase 2d Step 3 (P2P sync for claims) is no longer viable without reimplementation.
+> - DB schema V14 references in Phase 2e Step 5 should target Periscope's Dexie (IndexedDB) schema, not `packages/db/`.
+> - Phase 2b Step 1 (gas station `/build-token`) references code that no longer exists.
 
 ## Overview
 

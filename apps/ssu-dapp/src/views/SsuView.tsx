@@ -2,7 +2,7 @@ import { AssemblyActions } from "@/components/AssemblyActions";
 import { ContentTabs } from "@/components/ContentTabs";
 import { ExtensionInfo } from "@/components/ExtensionInfo";
 import { SsuInfoCard } from "@/components/SsuInfoCard";
-import type { TransferContext } from "@/components/TransferDialog";
+import type { CapRef, TransferContext } from "@/components/TransferDialog";
 import { useAssembly } from "@/hooks/useAssembly";
 import { useBuyOrders } from "@/hooks/useBuyOrders";
 import { useCharacter } from "@/hooks/useCharacter";
@@ -55,8 +55,8 @@ export function SsuView({ objectId }: SsuViewProps) {
 	const { data: ssuConfig } = useSsuConfig(objectId, assembly?.extensionType);
 
 	// Market data -- only when SsuConfig has a linked market
-	const { data: listings } = useMarketListings(ssuConfig?.marketId);
-	const { data: buyOrders } = useBuyOrders(ssuConfig?.marketId);
+	const { data: listings, isLoading: listingsLoading } = useMarketListings(ssuConfig?.marketId);
+	const { data: buyOrders, isLoading: buyOrdersLoading } = useBuyOrders(ssuConfig?.marketId);
 
 	// Determine if connected wallet is the SSU owner
 	// The owner_cap_id on the SSU matches an OwnerCap held by the player's Character
@@ -67,8 +67,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 
 	// Determine if connected wallet is authorized (owner or delegate)
 	const isAuthorized =
-		isSsuOwner ||
-		(!!ssuConfig && !!walletAddress && ssuConfig.delegates.includes(walletAddress));
+		isSsuOwner || (!!ssuConfig && !!walletAddress && ssuConfig.delegates.includes(walletAddress));
 
 	// Build transfer context for inter-slot item transfers
 	const transferContext = useMemo<TransferContext | null>(() => {
@@ -80,7 +79,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 		if (!ssuConfig && !ownerCapInfo) return null;
 
 		const worldPkg = getWorldPackageId(getTenant());
-		const slotCaps = new Map<string, { info: typeof ownerCapInfo; typeArg: string }>();
+		const slotCaps = new Map<string, CapRef>();
 
 		// Extension/owner inventory: keyed by SSU's owner_cap_id (only if user is SSU owner)
 		if (isOwner && ownerCapInfo) {
@@ -168,7 +167,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 				connectedCharacterName={character?.characterName}
 				isOwner={isOwner}
 				characterObjectId={character?.characterObjectId}
-				ownerCap={ownerCapInfo}
+				ownerCap={ownerCapInfo ?? undefined}
 				ssuObjectId={objectId}
 			/>
 
@@ -182,13 +181,15 @@ export function SsuView({ objectId }: SsuViewProps) {
 						ssuConfig={ssuConfig ?? null}
 						ssuObjectId={objectId}
 						characterObjectId={character?.characterObjectId}
-						ownerCap={ownerCapInfo}
+						ownerCap={ownerCapInfo ?? undefined}
 						isOwner={isOwner}
 						isAuthorized={isAuthorized}
 						isConnected={!!account}
 						coinType={getCoinType()}
 						listings={listings ?? []}
 						buyOrders={buyOrders ?? []}
+						listingsLoading={listingsLoading}
+						buyOrdersLoading={buyOrdersLoading}
 						walletAddress={walletAddress}
 					/>
 				</div>
@@ -203,26 +204,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 				/>
 			)}
 
-			{isOwner && character && ownerCapInfo && (
-				<ExtensionInfo
-					ssuObjectId={objectId}
-					characterObjectId={character.characterObjectId}
-					ownerCap={ownerCapInfo}
-					extensionType={assembly.extensionType}
-					isOwner={true}
-				/>
-			)}
-
-			{/* Extension info for non-owners (read-only, shown only if extension is configured) */}
-			{!isOwner && assembly.extensionType && (
-				<ExtensionInfo
-					ssuObjectId={objectId}
-					characterObjectId=""
-					ownerCap={{ objectId: "", version: 0, digest: "" }}
-					extensionType={assembly.extensionType}
-					isOwner={false}
-				/>
-			)}
+			<ExtensionInfo extensionType={assembly.extensionType} isOwner={isOwner} />
 		</div>
 	);
 }

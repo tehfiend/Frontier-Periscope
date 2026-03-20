@@ -1,5 +1,6 @@
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
+import { decodeErrorMessage } from "@/lib/errors";
 import { resolveItemName } from "@/lib/items";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import {
@@ -28,14 +29,15 @@ export function ListingAdminList({
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
 
-	const [editingId, setEditingId] = useState<number | null>(null);
-	const [editPrice, setEditPrice] = useState("");
-	const [editQty, setEditQty] = useState("");
-	const [cancellingId, setCancellingId] = useState<number | null>(null);
+	const [dialogState, setDialogState] = useState<
+		| null
+		| { type: "edit"; id: number; price: string; qty: string }
+		| { type: "cancel"; id: number }
+	>(null);
 	const [error, setError] = useState<string | null>(null);
 
 	async function handleUpdate(listingId: number) {
-		if (!account?.address || !editPrice || !editQty || !ssuConfig.marketId) return;
+		if (!account?.address || !ssuConfig.marketId || dialogState?.type !== "edit") return;
 		setError(null);
 		try {
 			const tx = buildUpdateSellListing({
@@ -43,14 +45,14 @@ export function ListingAdminList({
 				marketId: ssuConfig.marketId,
 				coinType,
 				listingId,
-				pricePerUnit: Number(editPrice),
-				quantity: Number(editQty),
+				pricePerUnit: Number(dialogState.price),
+				quantity: Number(dialogState.qty),
 				senderAddress: account.address,
 			});
 			await signAndExecute(tx);
-			setEditingId(null);
+			setDialogState(null);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(decodeErrorMessage(String(err)));
 		}
 	}
 
@@ -69,9 +71,9 @@ export function ListingAdminList({
 				senderAddress: account.address,
 			});
 			await signAndExecute(tx);
-			setCancellingId(null);
+			setDialogState(null);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(decodeErrorMessage(String(err)));
 		}
 	}
 
@@ -89,22 +91,33 @@ export function ListingAdminList({
 				<ListingAdminRow
 					key={listing.listingId}
 					listing={listing}
-					isEditing={editingId === listing.listingId}
-					isCancelling={cancellingId === listing.listingId}
-					editPrice={editPrice}
-					editQty={editQty}
+					isEditing={dialogState?.type === "edit" && dialogState.id === listing.listingId}
+					isCancelling={dialogState?.type === "cancel" && dialogState.id === listing.listingId}
+					editPrice={dialogState?.type === "edit" && dialogState.id === listing.listingId ? dialogState.price : ""}
+					editQty={dialogState?.type === "edit" && dialogState.id === listing.listingId ? dialogState.qty : ""}
 					isPending={isPending}
 					onEditStart={() => {
-						setEditingId(listing.listingId);
-						setEditPrice(String(listing.pricePerUnit));
-						setEditQty(String(listing.quantity));
+						setDialogState({
+							type: "edit",
+							id: listing.listingId,
+							price: String(listing.pricePerUnit),
+							qty: String(listing.quantity),
+						});
 					}}
-					onEditCancel={() => setEditingId(null)}
-					onEditPriceChange={setEditPrice}
-					onEditQtyChange={setEditQty}
+					onEditCancel={() => setDialogState(null)}
+					onEditPriceChange={(v) =>
+						setDialogState((prev) =>
+							prev?.type === "edit" ? { ...prev, price: v } : prev,
+						)
+					}
+					onEditQtyChange={(v) =>
+						setDialogState((prev) =>
+							prev?.type === "edit" ? { ...prev, qty: v } : prev,
+						)
+					}
 					onUpdate={() => handleUpdate(listing.listingId)}
-					onCancelStart={() => setCancellingId(listing.listingId)}
-					onCancelDismiss={() => setCancellingId(null)}
+					onCancelStart={() => setDialogState({ type: "cancel", id: listing.listingId })}
+					onCancelDismiss={() => setDialogState(null)}
 					onCancelConfirm={() => handleCancel(listing.listingId)}
 				/>
 			))}

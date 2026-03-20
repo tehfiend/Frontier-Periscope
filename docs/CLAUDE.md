@@ -51,14 +51,12 @@ Every plan must include:
 
 | Module | Write Scope | Description |
 |--------|-------------|-------------|
-| web | `apps/web/` | Next.js 15 frontend |
-| api | `apps/api/` | Hono API server |
-| periscope | `apps/periscope/` | Frontier Periscope intel tool |
-| gas-station | `apps/gas-station/` | Gas station API |
-| permissions-dapp | `apps/permissions-dapp/` | Permissions dapp |
+| periscope | `apps/periscope/` | Frontier Periscope intel tool (Vite + React SPA) |
+| ssu-dapp | `apps/ssu-dapp/` | SSU inventory + transfer + market dapp |
+| ssu-market-dapp | `apps/ssu-market-dapp/` | SSU Market trading dapp |
+| permissions-dapp | `apps/permissions-dapp/` | Permissions management dapp |
 | shared | `packages/shared/` | Shared Zod schemas |
-| chain-shared | `packages/chain-shared/` | Move contract types |
-| sui-client | `packages/sui-client/` | Sui SDK wrapper |
-| db | `packages/db/` | Drizzle ORM schema |
+| chain-shared | `packages/chain-shared/` | Move contract types, TX builders, queries |
+| sui-client | `packages/sui-client/` | @mysten/sui gRPC wrapper |
 | tsconfig | `packages/tsconfig/` | Shared TS configs |
-| contracts | `contracts/` | Move smart contracts |
+| contracts | `contracts/` | Move smart contracts (market, ssu_market, gate_*, turret_*, etc.) |

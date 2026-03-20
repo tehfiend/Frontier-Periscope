@@ -1,4 +1,8 @@
-import { getSsuMarketOriginalPackageId, getSsuMarketPackageId } from "@/lib/constants";
+import {
+	getSsuMarketOriginalPackageId,
+	getSsuMarketPackageId,
+	getSsuMarketPreviousPackageIds,
+} from "@/lib/constants";
 import { useQuery } from "@tanstack/react-query";
 import { discoverSsuConfig, querySsuConfig } from "@tehfrontier/chain-shared";
 import { useSuiClient } from "./useSuiClient";
@@ -25,7 +29,7 @@ export function useSsuConfig(
 ) {
 	const client = useSuiClient();
 
-	const hasMarketExtension = !!extensionType && extensionType.includes("ssu_market");
+	const hasMarketExtension = !!extensionType && extensionType.includes("::ssu_market::");
 	const originalPkgId = getSsuMarketOriginalPackageId();
 	const latestPkgId = getSsuMarketPackageId();
 
@@ -35,7 +39,12 @@ export function useSsuConfig(
 			if (!ssuObjectId || !originalPkgId || !latestPkgId) return null;
 
 			// Step 1: Discover the SsuConfig object for this SSU
-			const ssuConfigId = await discoverSsuConfig(client, originalPkgId, ssuObjectId);
+			const ssuConfigId = await discoverSsuConfig(
+				client,
+				originalPkgId,
+				ssuObjectId,
+				getSsuMarketPreviousPackageIds(),
+			);
 			if (!ssuConfigId) return null;
 
 			// Step 2: Query the SsuConfig to get owner, delegates, marketId

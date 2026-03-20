@@ -10,8 +10,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@mysten/dapp-kit": "^0.20.0",
-    "@mysten/sui": "^1.45.2",
+    "@mysten/dapp-kit-react": "^1.1.0",
+    "@mysten/sui": "^2.7.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@tanstack/react-query": "^5.67.2",

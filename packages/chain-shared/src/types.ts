@@ -162,7 +162,11 @@ export interface ContractAddresses {
 	gateTribe?: { packageId: string; configObjectId: string };
 	gateToll?: { packageId: string; configObjectId: string };
 	exchange?: { packageId: string };
-	ssuMarket?: { packageId: string; originalPackageId?: string };
+	ssuMarket?: {
+		packageId: string;
+		originalPackageId?: string;
+		previousOriginalPackageIds?: string[];
+	};
 	bountyBoard?: { packageId: string; boardObjectId: string };
 	lease?: { packageId: string; registryObjectId: string };
 	tokenTemplate?: { packageId: string };

@@ -43,6 +43,9 @@ const EZeroQuantity: vector<u8> = b"Quantity must be greater than zero";
 #[error(code = 9)]
 const EInvalidFeeBps: vector<u8> = b"Fee basis points must be <= 10000";
 
+#[error(code = 10)]
+const EAlreadyAuthorized: vector<u8> = b"Address is already in the authorized list";
+
 // -- Structs --------------------------------------------------------------------
 
 /// Unified market object: treasury + order book + authorization.
@@ -239,6 +242,8 @@ public fun add_authorized<T>(
     ctx: &TxContext,
 ) {
     assert!(ctx.sender() == market.creator, ENotCreator);
+    let (found, _) = market.authorized.index_of(&addr);
+    assert!(!found, EAlreadyAuthorized);
     market.authorized.push_back(addr);
 
     event::emit(AuthorizedAddedEvent {
@@ -255,12 +260,13 @@ public fun remove_authorized<T>(
 ) {
     assert!(ctx.sender() == market.creator, ENotCreator);
     let (found, idx) = market.authorized.index_of(&addr);
-    if (found) { market.authorized.remove(idx); };
-
-    event::emit(AuthorizedRemovedEvent {
-        market_id: object::id(market),
-        addr,
-    });
+    if (found) {
+        market.authorized.remove(idx);
+        event::emit(AuthorizedRemovedEvent {
+            market_id: object::id(market),
+            addr,
+        });
+    };
 }
 
 // -- Fee management (creator only) ----------------------------------------------

@@ -1,39 +1,35 @@
-import { useState } from "react";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
+	AlertCircle,
+	Box,
+	Building2,
+	CheckCircle2,
+	Coins,
+	Crosshair,
+	Database,
+	DoorOpen,
+	Link2,
+	Loader2,
+	Package,
 	Puzzle,
 	Shield,
-	Crosshair,
-	DoorOpen,
-	Box,
-	Loader2,
-	AlertCircle,
-	CheckCircle2,
+	ShoppingBag,
+	User,
 	Wifi,
 	WifiOff,
-	Link2,
-	User,
-	Package,
-	Database,
-	Building2,
-	Coins,
-	ShoppingBag,
 } from "lucide-react";
+import { useState } from "react";
 
-import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPanel";
-import { useOwnedAssemblies, useActiveTenant } from "@/hooks/useOwnedAssemblies";
-import { useActiveCharacter } from "@/hooks/useActiveCharacter";
-import { useSuiClient } from "@/hooks/useSuiClient";
 import { getTemplatesForAssemblyType } from "@/chain/config";
-import { db, notDeleted } from "@/db";
 import type { OwnedAssembly } from "@/chain/queries";
-import {
-	discoverSsuConfig,
-	getContractAddresses,
-	querySsuConfig,
-} from "@tehfrontier/chain-shared";
+import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPanel";
+import { db, notDeleted } from "@/db";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { useActiveTenant, useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { useQuery } from "@tanstack/react-query";
+import { discoverSsuConfig, getContractAddresses, querySsuConfig } from "@tehfrontier/chain-shared";
 
 const assemblyIcons = {
 	turret: Crosshair,
@@ -60,10 +56,7 @@ export function Extensions() {
 	const tenant = useActiveTenant();
 	const extensions = useLiveQuery(() => db.extensions.filter(notDeleted).toArray()) ?? [];
 	const org = useLiveQuery(() => db.organizations.filter(notDeleted).first());
-	const currencies = useLiveQuery(
-		() => (org ? db.currencies.where("orgId").equals(org.id).filter(notDeleted).toArray() : []),
-		[org?.id],
-	);
+	const currencies = useLiveQuery(() => db.currencies.filter(notDeleted).toArray());
 	const tradeNodesList = useLiveQuery(() => db.tradeNodes.toArray()) ?? [];
 	const [selectedAssembly, setSelectedAssembly] = useState<OwnedAssembly | null>(null);
 
@@ -80,7 +73,8 @@ export function Extensions() {
 						<>
 							<Link2 size={48} className="text-zinc-700" />
 							<p className="text-sm text-zinc-500">
-								No Sui address linked to <span className="text-zinc-300">{activeCharacter.characterName}</span>
+								No Sui address linked to{" "}
+								<span className="text-zinc-300">{activeCharacter.characterName}</span>
 							</p>
 							<p className="text-xs text-zinc-600">
 								Connect your wallet to auto-link, or add an address in Settings
@@ -89,9 +83,7 @@ export function Extensions() {
 					) : (
 						<>
 							<User size={48} className="text-zinc-700" />
-							<p className="text-sm text-zinc-500">
-								Select a character or connect your wallet
-							</p>
+							<p className="text-sm text-zinc-500">Select a character or connect your wallet</p>
 						</>
 					)}
 				</div>
@@ -137,7 +129,9 @@ export function Extensions() {
 			{character && (
 				<div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2 text-sm">
 					<span className="text-zinc-500">Character: </span>
-					<span className="text-zinc-300">{character.name ?? activeCharacter?.characterName ?? "Unknown"}</span>
+					<span className="text-zinc-300">
+						{character.name ?? activeCharacter?.characterName ?? "Unknown"}
+					</span>
 					<span className="ml-3 font-mono text-xs text-zinc-600">
 						{character.characterObjectId.slice(0, 10)}...
 					</span>
@@ -145,7 +139,12 @@ export function Extensions() {
 			)}
 
 			{/* On-Chain Objects */}
-			<OnChainObjects org={org} currencies={currencies ?? []} tradeNodes={tradeNodesList} tenant={tenant} />
+			<OnChainObjects
+				org={org}
+				currencies={currencies ?? []}
+				tradeNodes={tradeNodesList}
+				tenant={tenant}
+			/>
 
 			{assemblies.length === 0 ? (
 				<div className="flex flex-col items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 py-16">
@@ -160,9 +159,7 @@ export function Extensions() {
 			) : (
 				<div className="space-y-3">
 					<div className="flex items-center justify-between">
-						<h2 className="text-sm font-medium text-zinc-400">
-							Assemblies ({assemblies.length})
-						</h2>
+						<h2 className="text-sm font-medium text-zinc-400">Assemblies ({assemblies.length})</h2>
 						{!account && (
 							<div className="flex items-center gap-2 text-xs text-zinc-600">
 								<span>EVE Vault not connected -- extensions require a wallet</span>
@@ -173,9 +170,7 @@ export function Extensions() {
 						<AssemblyCard
 							key={assembly.objectId}
 							assembly={assembly}
-							extensionRecord={extensions.find(
-								(e) => e.assemblyId === assembly.objectId,
-							)}
+							extensionRecord={extensions.find((e) => e.assemblyId === assembly.objectId)}
 							onDeploy={() => setSelectedAssembly(assembly)}
 							walletConnected={!!account}
 							tenant={tenant}
@@ -208,10 +203,10 @@ function Header() {
 					Extensions
 				</h1>
 				<p className="mt-1 text-sm text-zinc-500">
-					{activeCharacter
-						? activeCharacter.characterName
-						: "Select a character"}
-					<span className="ml-2 rounded bg-zinc-800 px-1.5 py-0.5 text-xs capitalize">{tenant}</span>
+					{activeCharacter ? activeCharacter.characterName : "Select a character"}
+					<span className="ml-2 rounded bg-zinc-800 px-1.5 py-0.5 text-xs capitalize">
+						{tenant}
+					</span>
 				</p>
 			</div>
 		</div>
@@ -294,16 +289,12 @@ function OnChainObjects({
 					<div className="space-y-1">
 						<div className="flex items-center gap-1.5">
 							<ShoppingBag size={12} className="text-green-500" />
-							<span className="font-medium text-zinc-300">
-								Trade Nodes ({tradeNodes.length})
-							</span>
+							<span className="font-medium text-zinc-300">Trade Nodes ({tradeNodes.length})</span>
 						</div>
 						{tradeNodes.map((tn) => (
 							<div key={tn.id} className="pl-5">
 								<span className="text-zinc-300">{tn.name}</span>
-								<span className="ml-2 font-mono text-zinc-600">
-									{tn.id.slice(0, 14)}...
-								</span>
+								<span className="ml-2 font-mono text-zinc-600">{tn.id.slice(0, 14)}...</span>
 								{tn.marketConfigId ? (
 									<div className="mt-0.5">
 										<span className="text-zinc-400">SsuConfig: </span>
@@ -412,9 +403,7 @@ function AssemblyCard({
 			</div>
 
 			{/* On-chain config discovery for SSU market */}
-			{isStorageType && (
-				<SsuConfigPanel assemblyId={assembly.objectId} tenant={tenant} />
-			)}
+			{isStorageType && <SsuConfigPanel assemblyId={assembly.objectId} tenant={tenant} />}
 		</div>
 	);
 }
@@ -422,12 +411,13 @@ function AssemblyCard({
 /** Discovers and displays SsuConfig for an SSU */
 function SsuConfigPanel({ assemblyId, tenant }: { assemblyId: string; tenant: string }) {
 	const client = useSuiClient();
-	const addresses = getContractAddresses(tenant);
+	const addresses = getContractAddresses(tenant as Parameters<typeof getContractAddresses>[0]);
 	const originalPkgId = addresses.ssuMarket?.originalPackageId;
+	const previousPkgIds = addresses.ssuMarket?.previousOriginalPackageIds;
 
 	const { data: configId, isLoading } = useQuery({
 		queryKey: ["ssuConfig-discover", assemblyId, originalPkgId],
-		queryFn: () => discoverSsuConfig(client, originalPkgId!, assemblyId),
+		queryFn: () => discoverSsuConfig(client, originalPkgId!, assemblyId, previousPkgIds),
 		enabled: !!originalPkgId,
 		staleTime: 60_000,
 	});
@@ -461,16 +451,12 @@ function SsuConfigPanel({ assemblyId, tenant }: { assemblyId: string; tenant: st
 				<Shield size={12} className="text-amber-500" />
 				<span className="text-xs text-zinc-400">SsuConfig</span>
 			</div>
-			<p className="font-mono text-xs text-zinc-500">
-				{configId}
-			</p>
+			<p className="font-mono text-xs text-zinc-500">{configId}</p>
 			{config && (
 				<div className="space-y-0.5 text-xs text-zinc-600">
 					<p>Owner: {config.owner.slice(0, 10)}...</p>
 					<p>SSU: {config.ssuId.slice(0, 10)}...</p>
-					{config.delegates.length > 0 && (
-						<p>Delegates: {config.delegates.length}</p>
-					)}
+					{config.delegates.length > 0 && <p>Delegates: {config.delegates.length}</p>}
 					{config.marketId && (
 						<p>
 							Market: {config.marketId.slice(0, 10)}...

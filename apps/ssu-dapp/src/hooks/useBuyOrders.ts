@@ -12,7 +12,7 @@ export function useBuyOrders(marketId: string | null | undefined) {
 	const marketPackageId = getMarketPackageId() ?? "";
 
 	return useQuery({
-		queryKey: ["marketBuyOrders", marketId],
+		queryKey: ["marketBuyOrders", marketId, marketPackageId],
 		queryFn: async (): Promise<MarketBuyOrder[]> => {
 			if (!marketId || !marketPackageId) return [];
 			return queryMarketBuyOrders(client, marketId, marketPackageId);

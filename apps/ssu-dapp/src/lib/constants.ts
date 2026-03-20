@@ -59,6 +59,12 @@ export function getSsuMarketOriginalPackageId(tenant?: string): string | null {
 	return m?.originalPackageId ?? m?.packageId ?? null;
 }
 
+/** Get previous ssu_market original package IDs (for discovering SsuConfigs created before republish) */
+export function getSsuMarketPreviousPackageIds(tenant?: string): string[] {
+	const t = (tenant ?? getTenant()) as TenantId;
+	return getContractAddresses(t).ssuMarket?.previousOriginalPackageIds ?? [];
+}
+
 /** Get the market package ID for the current tenant (for Market<T> queries) */
 export function getMarketPackageId(tenant?: string): string | null {
 	const t = (tenant ?? getTenant()) as TenantId;

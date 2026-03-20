@@ -71,3 +71,87 @@
 - **File:** docs/plans/pending/10-server-switch-wallet-streamline.md
 - **Passes:** 4
 - **Result:** pending — Two-feature plan: (1) Multi-server support (Stillness/Utopia only, default Stillness, Settings page toggle, sidebar indicator, data segmentation via character tenant + address) and (2) Wallet streamline (auto-connect EVE Vault, remove ConnectButton/ConnectWalletButton, status indicators instead of buttons). Key findings: (1) Two separate `TenantId` types exist — chain-shared (literal union L3) and periscope/chain/config (keyof typeof TENANTS L40); both need nebula removed. (2) MOVE_TYPES/EVENT_TYPES hardcoded to stillness package only — `chain/client.ts` functions only work on Stillness; must convert to tenant-aware functions. (3) `WalletConnect` component exported but never imported — only `ConnectWalletButton` used (7 instances across 2 views). (4) `permissions-dapp` already has `autoConnect: true` but missing `slushWalletConfig`. (5) ~17 `as ChainTenantId` cast sites across 5 governance views become unnecessary once both TenantId types align. 5 phases, 24 files (all modify, 0 new). 2 open questions remain (wallet reconnect on server switch, AddCharacterDialog tenant selector).
+
+## 2026-03-19 — consolidate-dapps UI redesign
+- **Action:** UPDATE
+- **File:** docs/plans/active/20-consolidate-dapps.md
+- **Passes:** 3
+- **Result:** active — Added Phase 1 UI redesign: two-card layout (SsuInfoCard + ContentTabs), sell flow, market tab, buy order discovery. Key changes from original: (1) Replaced flat Phase 1 file list with 3 sub-phases (1A: SSU Info Card + Edit Toggle, 1B: Content Tabs + Sell Action, 1C: Market Tab) totaling 15 numbered steps. (2) Added 9 new Design Decisions (SSU layout, edit button, sell button placement, sell flow, market tab structure, coinType, OrgMarket discovery, buy orders). (3) Added Sell Flow Detail with exact `buildCreateSellOrder` params including `worldPackageId`. (4) Added Sell Button Visibility Rules and Buy Order Discovery sections. (5) Added Verification checklist (7 items). (6) Resolved all open questions. (7) File Summary expanded from 15 to 22 files. Codebase-verified: all chain-shared functions (`buildCreateSellOrder`, `queryAllSellOrders`, `discoverOrgMarket`, etc.) confirmed at correct paths, `resolveItemNames` correctly sourced from `@/lib/items` (not chain-shared), `getUrlParam` exists in `@/lib/constants`, Permissions.tsx tab type confirmed as `"groups" | "policies"`.
+
+## 2026-03-19 — ssu-inventory-transfers deployment (Plan 19, Phase 2)
+- **Action:** DEPLOY
+- **Files:** contracts/ssu_market, contracts/ssu_market_utopia, packages/chain-shared/src/config.ts
+- **Result:** Both ssu_market contracts upgraded to testnet with 7 new inventory transfer functions.
+  - Utopia: `0xde7c7dacdfb98fa507f1ee70ea13c056b8b00a6b2a9060ae387306e84147df1d` (v2)
+  - Stillness: `0x35c690bb9d049b78856e990bfe439709d098922de369d0f959a1b9737b6b824e` (v4)
+  - Sui CLI upgraded from v1.67.2 to v1.68.0 (protocol v117).
+  - Created `contracts/world_stillness/` for Stillness build dependency (git World dep had `world = "0x0"`).
+  - Updated config.ts, periscope EXTENSION_TEMPLATES, ssu-market-dapp constants, chain-events-reference, Plan 07 contract table.
+
+## 2026-03-19 — market-architecture-review
+- **Action:** CREATE
+- **File:** docs/plans/pending/21-market-architecture-review.md
+- **Passes:** 2
+- **Result:** pending — Deep dive on market architecture: MarketConfig vs OrgMarket, currency integration, simplification options. Exhaustive mapping of 4 contracts (ssu_market 775 lines, currency_market 425 lines, token_template 51 lines, governance_ext/treasury 139 lines), 2 chain-shared modules (ssu-market.ts 638 lines, currency-market.ts 495 lines), and 3 consuming dApps. Key findings: (1) OrgMarket's `authorized_ssus` is maintained but never asserted -- `ENotAuthorizedSSU` error code defined but unused. (2) Buy order fill is manual/trust-based (hackathon shortcut). (3) coinType is never stored on-chain -- always passed as generic `<T>` per-function. (4) Dynamic field key collision risk when adding buy orders to MarketConfig -- solved via wrapper struct keys (`BuyOrderKey`, `BuyOrderCoinKey`). Proposal: add per-SSU buy orders to MarketConfig with trustless atomic fills (seller provides items, receives escrowed payment in one TX). 4 open questions remain (coinType storage, fill mechanism, OrgMarket deprecation, CurrencyMarket future).
+
+## 2026-03-19 — market-architecture-simplification
+- **Action:** UPDATE
+- **File:** docs/plans/active/21-market-architecture-simplification.md
+- **Passes:** 3
+- **Result:** active — Rewrote plan: CurrencyMarket<T> as single market, remove MarketConfig + OrgMarket, atomic trade execution. Key findings: (1) Trade execution must live in ssu_market (only declaring module can construct `MarketAuth {}` -- Move struct construction is module-private). currency_market exposes read/write accessors. (2) currency_market has a sell/buy order key collision bug -- both use `u64` dynamic field keys with independent counters starting at 0. Fix via wrapper key structs (`SellKey`, `BuyKey`, `BuyCoinKey`). (3) MarketConfig struct definition must be retained (on-chain instances exist), repurposed as pure auth token for inventory transfers. (4) SellListing keeps `market_config_id` field (struct changes not allowed in upgrade) -- new listings pass dummy `@0x0`. 4 phases: strip ssu_market, upgrade currency_market + add trade execution, update chain-shared, update dApps.
+
+## 2026-03-19 — market-architecture clean publish
+- **Action:** UPDATE
+- **File:** docs/plans/active/21-market-architecture-simplification.md
+- **Passes:** 3
+- **Result:** active — Removed all upgrade-constraint workarounds, clean publish with ideal struct definitions. Key changes: (1) MarketConfig deleted entirely (struct + all functions) -- replaced by new `SsuAdmin` struct for transfer function authorization. (2) OrgMarket deleted entirely -- no vestiges. (3) SellListing `market_config_id` field removed -- clean struct. (4) All deprecated/dead code deleted -- no `#[deprecated]` annotations, no retained-for-compat structs. (5) Both ssu_market and currency_market get fresh publishes with new package IDs. (6) currency_market key collision fixed with wrapper key structs from the start (`SellKey`, `BuyKey`, `BuyCoinKey`). (7) Old honor-based `fill_buy_order` deleted from currency_market, replaced by atomic fills in ssu_market. (8) `sui::dynamic_field` import removed from ssu_market (no longer needed). 5 phases: fresh currency_market, fresh ssu_market, chain-shared updates, dApp updates, post-deploy setup. 17 files total. No open questions.
+
+## 2026-03-19 — market seamless flows
+- **Action:** UPDATE
+- **File:** docs/plans/active/21-market-architecture-simplification.md
+- **Passes:** 3
+- **Result:** active — Added currency_market_id to SsuAdmin, seamless single-PTB sell flow, explicit buy order UI, auto currency detection
+
+## 2026-03-19 — unified Market<T>
+- **Action:** UPDATE
+- **File:** docs/plans/active/21-market-architecture-simplification.md
+- **Passes:** 3
+- **Result:** active — Unified Market<T> replaces CurrencyMarket + OrgTreasury + Organization. Token template creates Market on publish. Four contracts replaced by one. Complete plan rewrite: Market<T> contains TreasuryCap + order book + authorized-minters list + fee config. Token template init() calls market::create_market() -- one publish creates currency + marketplace. New contracts/market/ package. ssu_market replaces MarketConfig with SsuAdmin (market_id for auto-discovery), trade execution via Market<T> write accessors. 7 phases, 28 files. Key review findings: (1) Design decisions table contradiction fixed (mint/burn removal). (2) Item data must be captured before deposit in escrow_and_list (deposit consumes Item). (3) cancel_listing uses write accessors (remove_sell_listing) not cancel_sell_listing to avoid redundant seller check. (4) SellOrder queries removed from ssu-market.ts (sell listings now on Market<T>). (5) governance.ts and treasury.ts kept frozen for periscope compatibility -- published contracts remain on-chain. (6) governance/governanceExt kept in ContractAddresses and config.ts.
+
+## 2026-03-19 — periscope governance cleanup
+- **Action:** UPDATE
+- **File:** docs/plans/active/21-market-architecture-simplification.md
+- **Passes:** 3
+- **Result:** active — Added periscope governance cleanup: remove Dashboard/Trade views, rework Finance to use Market<T>, update nav/router/DB. Key changes: (1) New Phase 7 with 14 steps covering full periscope governance teardown. (2) GovernanceDashboard + GovernanceTrade deleted (~2,600 LOC removed). (3) useOrgMarket + useSellOrders hooks deleted. (4) GovernanceFinance rewritten as Finance.tsx using Market<T> builders. (5) governance.ts deleted, claims.ts extracted with buildCreateClaim/buildRemoveClaim for GovernanceClaims. (6) treasury.ts deleted (no remaining consumers). (7) governance config entry kept (claims view needs packageId + claimsRegistryObjectId). (8) governanceExt config entry removed. (9) Dead code found: generateOrgTurretConfig in turret-priority.ts never imported by any app -- removed with OrganizationInfo. (10) Extensions.tsx also uses discoverMarketConfig/queryMarketConfig -- added to Phase 7. (11) ssu-market-dapp had 7 unaccounted component files using old types/builders -- added to Phase 6. (12) GovernanceTurrets and GovernanceClaims deferred to post-hackathon. (13) DB tables kept as legacy (Dexie append-only). (14) CurrencyRecord updated: orgId/treasuryCapId replaced with marketId. Plan expanded from 7 to 8 phases, 28 to 48 files.
+
+## 2026-03-19 — SsuConfig with delegation
+- **Action:** UPDATE
+- **File:** docs/plans/active/21-market-architecture-simplification.md
+- **Passes:** 2
+- **Result:** active — SsuAdmin -> SsuConfig with owner, delegates, optional market_id. Transfer functions work without market. Delegate management for SSU access delegation.
+
+## 2026-03-19 — Plans 20+21 execution
+- **Action:** EXECUTE
+- **Files:** 80+ files across contracts, chain-shared, ssu-dapp, ssu-market-dapp, periscope
+- **Agents:** 5 (3 waves: contracts, chain-shared, dApps)
+- **Result:** Complete. New contracts published:
+  - `market`: `0x1755eaaebe4335fcf5f467dfaab73ba21047bdfbda1d97425e6a2cb961a055f4`
+  - `ssu_market` (Stillness): `0x40576ea9e07fa8516abc4820a24be12b0ad7678d181afba5710312d2a0ca6e48`
+  - `ssu_market` (Utopia): `0xf6e9699d86cd58580dd7d4ea73f8d42841c72b4f23d9de71d2988baabc5f25a0`
+- Deleted: governance_ext, currency_market, governance (sources), GovernanceDashboard, GovernanceTrade
+- Net: +6,390 / -8,149 lines across 80 files
+
+## 2026-03-19 — Code review + fixes
+- **Action:** REVIEW + FIX
+- **Files:** 15 files across contracts, chain-shared, ssu-dapp, periscope
+- **Result:** 4 HIGH, 5 MEDIUM, 7 LOW issues found and fixed. Key fixes: authorized list dedup guard (market.move), fee overflow prevention (ssu_market.move), Extensions.tsx deprecated orgId filter, query cache keys, dialog state race condition, loading state threading.
+
+## 2026-03-19 — Contract deployment
+- **Action:** DEPLOY
+- **Files:** contracts/market, contracts/ssu_market, contracts/ssu_market_utopia
+- **Result:** 3 contracts published to Sui testnet. Config files updated (chain-shared/config.ts, ssu-market-dapp/constants.ts). Move.toml files updated with published-at addresses.
+
+## 2026-03-19 — Documentation update
+- **Action:** UPDATE
+- **Files:** Plans 05 (superseded), 07 (updated), 20+21 (archived), chain-events-reference, dispatch-log
+- **Result:** Plans 20+21 moved to archive/. Plan 05 moved to superseded/. Plan 07 updated for v9 (new contract table, deleted views, new architecture). Chain events reference updated for SsuConfig events.

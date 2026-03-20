@@ -32,8 +32,8 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		},
 		exchange: { packageId: "0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d" },
 		ssuMarket: {
-			packageId: "0xeca760fe766302433fcc4c538d95f1f8960e863e5b789c63011dae18a20723d4",
-			originalPackageId: "0xdb9df166063dc60ab0a450a768d4010f3e5939e554910d6aa1dc1b72e5dc8885",
+			packageId: "0x40576ea9e07fa8516abc4820a24be12b0ad7678d181afba5710312d2a0ca6e48",
+			originalPackageId: "0x40576ea9e07fa8516abc4820a24be12b0ad7678d181afba5710312d2a0ca6e48",
 		},
 		bountyBoard: {
 			packageId: "0xf55f7830828c66d6402add527e9e4ff9190aaae52bbb7ab723d24f455021b4bf",
@@ -54,7 +54,7 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0x3b1cdef2e8ddbd17618357a2ea8101073f881086442507e722cb02aa3ffc3b55",
 		},
 		market: {
-			packageId: "", // Populated after market contract publish
+			packageId: "0x1755eaaebe4335fcf5f467dfaab73ba21047bdfbda1d97425e6a2cb961a055f4",
 		},
 	},
 	utopia: {
@@ -82,8 +82,11 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		},
 		exchange: { packageId: "0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d" },
 		ssuMarket: {
-			packageId: "0x53c2bf5e90d12b8a92594ab959f3d883dc2afdaf6031e9640151f82582a17501",
-			originalPackageId: "0x53c2bf5e90d12b8a92594ab959f3d883dc2afdaf6031e9640151f82582a17501",
+			packageId: "0xf6e9699d86cd58580dd7d4ea73f8d42841c72b4f23d9de71d2988baabc5f25a0",
+			originalPackageId: "0xf6e9699d86cd58580dd7d4ea73f8d42841c72b4f23d9de71d2988baabc5f25a0",
+			previousOriginalPackageIds: [
+				"0x53c2bf5e90d12b8a92594ab959f3d883dc2afdaf6031e9640151f82582a17501",
+			],
 		},
 		bountyBoard: {
 			packageId: "0xf55f7830828c66d6402add527e9e4ff9190aaae52bbb7ab723d24f455021b4bf",
@@ -104,7 +107,7 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0x3b1cdef2e8ddbd17618357a2ea8101073f881086442507e722cb02aa3ffc3b55",
 		},
 		market: {
-			packageId: "", // Populated after market contract publish
+			packageId: "0x1755eaaebe4335fcf5f467dfaab73ba21047bdfbda1d97425e6a2cb961a055f4",
 		},
 	},
 };

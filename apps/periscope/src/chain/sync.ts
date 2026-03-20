@@ -2,23 +2,22 @@
 // Pulls data from Sui chain into local IndexedDB tables.
 
 import { db } from "@/db";
-import {
-	getOwnedAssemblies,
-	getCharacters,
-	queryEvents,
-	extractFields,
-	extractType,
-	extractObjectId,
-	getObjectDetails,
-} from "./client";
-import { getEventTypes, ASSEMBLY_TYPE_IDS, TENANTS, type TenantId } from "./config";
 import type {
-	DeployableIntel,
 	AssemblyIntel,
-	PlayerIntel,
-	KillmailIntel,
 	AssemblyStatus,
+	DeployableIntel,
+	KillmailIntel,
+	PlayerIntel,
 } from "@/db/types";
+import {
+	extractFields,
+	extractObjectId,
+	extractType,
+	getCharacters,
+	getOwnedAssemblies,
+	queryEvents,
+} from "./client";
+import { ASSEMBLY_TYPE_IDS, type TenantId, getEventTypes } from "./config";
 
 // ── Assembly Sync ───────────────────────────────────────────────────────────
 
@@ -47,7 +46,10 @@ function parseAssemblyStatus(fields: Record<string, unknown>): AssemblyStatus {
 }
 
 /** Parse fuel data from assembly fields. */
-function parseFuelData(fields: Record<string, unknown>): { fuelLevel?: number; fuelExpiresAt?: string } {
+function parseFuelData(fields: Record<string, unknown>): {
+	fuelLevel?: number;
+	fuelExpiresAt?: string;
+} {
 	const fuel = fields.fuel as Record<string, unknown> | undefined;
 	if (!fuel) return {};
 
@@ -136,6 +138,9 @@ export async function syncTargetAssemblies(
 
 		const existing = await db.assemblies.where("objectId").equals(objectId).first();
 
+		// Extract extension type from on-chain data
+		const extensionType = fields.extension ? String(fields.extension) : undefined;
+
 		const assembly: AssemblyIntel = {
 			id: existing?.id ?? crypto.randomUUID(),
 			objectId,
@@ -147,6 +152,7 @@ export async function syncTargetAssemblies(
 			lPoint: existing?.lPoint,
 			notes: existing?.notes,
 			parentId: existing?.parentId,
+			extensionType,
 			tags: existing?.tags ?? [],
 			source: "chain",
 			createdAt: existing?.createdAt ?? now,
@@ -203,10 +209,7 @@ export async function syncCharacter(
 // ── Killmail Sync ───────────────────────────────────────────────────────────
 
 /** Fetch and store recent killmails. */
-export async function syncKillmails(
-	limit = 50,
-	tenant: TenantId = "stillness",
-): Promise<number> {
+export async function syncKillmails(limit = 50, tenant: TenantId = "stillness"): Promise<number> {
 	const eventType = getEventTypes(tenant).KillmailCreated;
 
 	const result = await queryEvents({
@@ -238,8 +241,13 @@ export async function syncKillmails(
 		const lossType = parsed.loss_type as { variant?: string } | undefined;
 
 		const victimId = victimObj?.item_id ?? (parsed.victim as string) ?? "";
-		const killerId = killerObj?.item_id ?? (parsed.final_blow as string) ?? (parsed.killer as string) ?? "";
-		const systemId = systemObj?.item_id ? Number(systemObj.item_id) : (parsed.system_id ? Number(parsed.system_id) : undefined);
+		const killerId =
+			killerObj?.item_id ?? (parsed.final_blow as string) ?? (parsed.killer as string) ?? "";
+		const systemId = systemObj?.item_id
+			? Number(systemObj.item_id)
+			: parsed.system_id
+				? Number(parsed.system_id)
+				: undefined;
 
 		// Build involved list (killer + reporter if different)
 		const involved: string[] = [killerId];
@@ -297,9 +305,7 @@ export async function fullSync(address?: string): Promise<SyncResult> {
 		addresses = [address];
 	} else {
 		const characters = await db.characters.toArray();
-		addresses = characters
-			.filter((c) => c.suiAddress)
-			.map((c) => c.suiAddress as string);
+		addresses = characters.filter((c) => c.suiAddress).map((c) => c.suiAddress as string);
 	}
 
 	// Sync owned assemblies for each address
@@ -307,7 +313,9 @@ export async function fullSync(address?: string): Promise<SyncResult> {
 		try {
 			result.deployables += await syncOwnedAssemblies(addr);
 		} catch (e) {
-			result.errors.push(`Deployables (${addr.slice(0, 10)}): ${e instanceof Error ? e.message : String(e)}`);
+			result.errors.push(
+				`Deployables (${addr.slice(0, 10)}): ${e instanceof Error ? e.message : String(e)}`,
+			);
 		}
 	}
 
@@ -336,7 +344,9 @@ export async function fullSync(address?: string): Promise<SyncResult> {
 				if (r.status === "fulfilled") {
 					result.targets += r.value;
 				} else {
-					result.errors.push(`Target ${batch[j].address.slice(0, 10)}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+					result.errors.push(
+						`Target ${batch[j].address.slice(0, 10)}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
+					);
 				}
 			}
 		}

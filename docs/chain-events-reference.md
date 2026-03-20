@@ -32,7 +32,8 @@ Source: world-contracts v0.0.18, deployed extension contracts, Move source analy
 | gate_toll | `0xcef451bbe80afd7e495d5de87ace2989097731534ac100d0785f91a427e1f6a8` |
 | gate_unified | `0x364f68ad3272d9815f2fce74776a854af1e3cb8de58ad1a1d7a0e67ad436210f` |
 | exchange | `0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d` |
-| ssu_market | `0xdb9df166063dc60ab0a450a768d4010f3e5939e554910d6aa1dc1b72e5dc8885` |
+| market | `0x1755eaaebe4335fcf5f467dfaab73ba21047bdfbda1d97425e6a2cb961a055f4` |
+| ssu_market | `0x35c690bb9d049b78856e990bfe439709d098922de369d0f959a1b9737b6b824e` |
 | bounty_board | `0xf55f7830828c66d6402add527e9e4ff9190aaae52bbb7ab723d24f455021b4bf` |
 | lease | `0x9920aff314ff7dd22e86488fd44e9db7af55479a7f2240f06c97ded05c7bc7ce` |
 | acl_registry | *(deployed separately per-user)* |
@@ -585,41 +586,19 @@ These fire when assembly owners configure extensions on their structures.
 | `quantity_cancelled` | `u64` | Units removed from listing |
 | `remaining` | `u64` | Units still listed |
 
-#### SellPriceUpdatedEvent
-- **Module:** `ssu_market::ssu_market`
-- **Move Type:** `{ssuMarketPkg}::ssu_market::SellPriceUpdatedEvent`
+#### BuyOrderPostedEvent
+- **Module:** `market::market`
+- **Move Type:** `{marketPkg}::market::BuyOrderPostedEvent`
+- **Emitted When:** Buy order posted to a market
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `market_id` | `ID` | Market object ID |
-| `type_id` | `u64` | Item type |
-| `old_price` | `u64` | Previous price per unit |
-| `new_price` | `u64` | New price per unit |
-
-#### OrgMarketCreatedEvent
-- **Module:** `ssu_market::ssu_market`
-- **Move Type:** `{ssuMarketPkg}::ssu_market::OrgMarketCreatedEvent`
-- **Emitted When:** Organization creates a new market
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `org_market_id` | `ID` | New market object ID |
-| `org_id` | `ID` | Organization object ID |
-| `admin` | `address` | Market admin wallet |
-
-#### BuyOrderCreatedEvent
-- **Module:** `ssu_market::ssu_market`
-- **Move Type:** `{ssuMarketPkg}::ssu_market::BuyOrderCreatedEvent`
-- **Emitted When:** Organization places a buy order
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `org_market_id` | `ID` | Market object ID |
 | `order_id` | `u64` | Order sequence number |
+| `buyer` | `address` | Buyer's wallet address |
 | `type_id` | `u64` | Item type wanted |
 | `price_per_unit` | `u64` | Bid price in EVE |
 | `quantity` | `u64` | Units wanted |
-| `poster` | `address` | Order poster wallet |
 
 #### BuyOrderFilledEvent
 - **Module:** `ssu_market::ssu_market`
@@ -628,13 +607,83 @@ These fire when assembly owners configure extensions on their structures.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `org_market_id` | `ID` | Market object ID |
-| `order_id` | `u64` | Order being filled |
+| `config_id` | `ID` | SsuConfig object ID |
 | `ssu_id` | `ID` | SSU where delivery happened |
+| `order_id` | `u64` | Order being filled |
 | `type_id` | `u64` | Item type delivered |
 | `quantity` | `u64` | Units delivered |
 | `total_paid` | `u64` | Total EVE paid to seller |
 | `seller` | `address` | Delivering player's wallet |
+
+#### TransferEvent
+- **Module:** `ssu_market::ssu_market`
+- **Move Type:** `{ssuMarketPkg}::ssu_market::TransferEvent`
+- **Emitted When:** Items transferred between SSU inventory slots via admin or player functions
+- **Added in:** Plan 21 rewrite
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `config_id` | `ID` | SsuConfig object ID |
+| `ssu_id` | `ID` | SSU where transfer happened |
+| `from_slot` | `vector<u8>` | Source slot: `b"owner"`, `b"escrow"`, or `b"player"` |
+| `to_slot` | `vector<u8>` | Destination slot: `b"owner"`, `b"escrow"`, or `b"player"` |
+| `type_id` | `u64` | Item type transferred |
+| `quantity` | `u64` | Units transferred |
+| `sender` | `address` | Transaction sender wallet |
+
+#### SsuConfigCreatedEvent
+- **Module:** `ssu_market::ssu_market`
+- **Move Type:** `{ssuMarketPkg}::ssu_market::SsuConfigCreatedEvent`
+- **Emitted When:** New SsuConfig created for an SSU
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `config_id` | `ID` | New SsuConfig object ID |
+| `owner` | `address` | Config owner wallet |
+| `ssu_id` | `ID` | Associated SSU object ID |
+
+#### DelegateAddedEvent
+- **Module:** `ssu_market::ssu_market`
+- **Move Type:** `{ssuMarketPkg}::ssu_market::DelegateAddedEvent`
+- **Emitted When:** Delegate added to an SsuConfig
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `config_id` | `ID` | SsuConfig object ID |
+| `delegate` | `address` | Delegate wallet added |
+
+#### DelegateRemovedEvent
+- **Module:** `ssu_market::ssu_market`
+- **Move Type:** `{ssuMarketPkg}::ssu_market::DelegateRemovedEvent`
+- **Emitted When:** Delegate removed from an SsuConfig
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `config_id` | `ID` | SsuConfig object ID |
+| `delegate` | `address` | Delegate wallet removed |
+
+#### MarketSetEvent
+- **Module:** `ssu_market::ssu_market`
+- **Move Type:** `{ssuMarketPkg}::ssu_market::MarketSetEvent`
+- **Emitted When:** Market linked to an SsuConfig
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `config_id` | `ID` | SsuConfig object ID |
+| `market_id` | `ID` | Market object ID linked |
+
+#### SellListingCancelledEvent
+- **Module:** `ssu_market::ssu_market`
+- **Move Type:** `{ssuMarketPkg}::ssu_market::SellListingCancelledEvent`
+- **Emitted When:** Sell listing cancelled at an SSU
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `config_id` | `ID` | SsuConfig object ID |
+| `ssu_id` | `ID` | SSU hosting the listing |
+| `listing_id` | `u64` | Cancelled listing ID |
+| `type_id` | `u64` | Item type |
+| `quantity` | `u64` | Units cancelled |
 
 ### Exchange Events (Order Book)
 
@@ -867,7 +916,7 @@ Used in most events as `assembly_key`, `character_key`, etc. The `item_id` is th
 | **FuelEvent** | Fuel monitoring for owned nodes |
 | **GateLinkedEvent / GateUnlinkedEvent** | Route topology changes |
 | **SellOrderCreatedEvent** | New market listings |
-| **BuyOrderCreatedEvent / BuyOrderFilledEvent** | Supply/demand signals |
+| **BuyOrderPostedEvent / BuyOrderFilledEvent** | Supply/demand signals |
 | **TollCollectedEvent** | Gate revenue tracking |
 
 ### Tier 3 -- Administrative / Rare

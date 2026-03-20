@@ -1,18 +1,18 @@
-import { useState, useMemo, type ReactNode } from "react";
 import {
-	useReactTable,
+	type ColumnDef,
+	type ColumnFiltersState,
+	type SortingState,
+	flexRender,
 	getCoreRowModel,
-	getSortedRowModel,
-	getFilteredRowModel,
 	getFacetedRowModel,
 	getFacetedUniqueValues,
-	flexRender,
-	type ColumnDef,
-	type SortingState,
-	type ColumnFiltersState,
+	getFilteredRowModel,
+	getSortedRowModel,
+	useReactTable,
 } from "@tanstack/react-table";
-import { Search, X, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
-import { ColumnFilter, excelFilterFn } from "./ColumnFilter";
+import { ChevronDown, ChevronUp, ChevronsUpDown, Search, X } from "lucide-react";
+import { type ReactNode, useMemo, useState } from "react";
+import { ColumnFilter } from "./ColumnFilter";
 
 // ── Re-exports for consumers ────────────────────────────────────────────────
 
@@ -62,6 +62,12 @@ export function DataGrid<T>({
 
 	const hasFilters = columnFilters.length > 0;
 
+	// Compute total width from column definitions so the table overflows + scrolls
+	const totalWidth = useMemo(
+		() => table.getHeaderGroups()[0]?.headers.reduce((sum, h) => sum + h.getSize(), 0) ?? 0,
+		[table],
+	);
+
 	return (
 		<div className="flex flex-col gap-3">
 			{/* Toolbar */}
@@ -102,15 +108,18 @@ export function DataGrid<T>({
 
 			{/* Table */}
 			<div className="overflow-x-auto rounded-lg border border-zinc-800">
-				<table className="w-full text-sm">
+				<table className="text-sm" style={{ width: totalWidth, tableLayout: "fixed" }}>
 					<thead>
 						{table.getHeaderGroups().map((headerGroup) => (
 							<tr key={headerGroup.id} className="border-b border-zinc-800 bg-zinc-900/80">
 								{headerGroup.headers.map((header) => (
 									<th
 										key={header.id}
-										className="px-3 py-2 text-left font-medium text-zinc-400"
-										style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}
+										className="whitespace-nowrap px-3 py-2 text-left font-medium text-zinc-400"
+										style={{
+											minWidth: header.getSize(),
+											width: header.getSize(),
+										}}
 									>
 										{header.isPlaceholder ? null : (
 											<div className="flex items-center gap-1">
@@ -123,13 +132,12 @@ export function DataGrid<T>({
 													{{
 														asc: <ChevronUp size={12} />,
 														desc: <ChevronDown size={12} />,
-													}[header.column.getIsSorted() as string] ?? (
-														header.column.getCanSort() ? <ChevronsUpDown size={12} className="text-zinc-700" /> : null
-													)}
+													}[header.column.getIsSorted() as string] ??
+														(header.column.getCanSort() ? (
+															<ChevronsUpDown size={12} className="text-zinc-700" />
+														) : null)}
 												</button>
-												{header.column.getCanFilter() && (
-													<ColumnFilter column={header.column} />
-												)}
+												{header.column.getCanFilter() && <ColumnFilter column={header.column} />}
 											</div>
 										)}
 									</th>

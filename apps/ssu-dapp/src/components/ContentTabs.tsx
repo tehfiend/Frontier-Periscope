@@ -24,6 +24,8 @@ interface ContentTabsProps {
 	coinType: string;
 	listings: MarketSellListing[];
 	buyOrders: MarketBuyOrder[];
+	listingsLoading?: boolean;
+	buyOrdersLoading?: boolean;
 	walletAddress?: string;
 }
 
@@ -41,6 +43,8 @@ export function ContentTabs({
 	coinType,
 	listings,
 	buyOrders,
+	listingsLoading,
+	buyOrdersLoading,
 	walletAddress,
 }: ContentTabsProps) {
 	const [activeTab, setActiveTab] = useState<TabId>("inventory");
@@ -101,6 +105,8 @@ export function ContentTabs({
 					ssuConfig={ssuConfig}
 					listings={listings}
 					buyOrders={buyOrders}
+					listingsLoading={listingsLoading}
+					buyOrdersLoading={buyOrdersLoading}
 					isAuthorized={isAuthorized}
 					characterObjectId={characterObjectId}
 					isConnected={isConnected}

@@ -229,8 +229,8 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 		assemblyTypes: ["storage_unit", "smart_storage_unit", "protocol_depot"],
 		hasConfig: false,
 		packageIds: {
-			stillness: "0xdb9df166063dc60ab0a450a768d4010f3e5939e554910d6aa1dc1b72e5dc8885",
-			utopia: "0x53c2bf5e90d12b8a92594ab959f3d883dc2afdaf6031e9640151f82582a17501",
+			stillness: "0x40576ea9e07fa8516abc4820a24be12b0ad7678d181afba5710312d2a0ca6e48",
+			utopia: "0xf6e9699d86cd58580dd7d4ea73f8d42841c72b4f23d9de71d2988baabc5f25a0",
 		},
 		configObjectIds: {},
 		witnessType: "ssu_market::MarketAuth",
@@ -243,4 +243,41 @@ export function getTemplatesForAssemblyType(kind: AssemblyKind): ExtensionTempla
 
 export function getTemplate(id: string): ExtensionTemplate | undefined {
 	return EXTENSION_TEMPLATES.find((t) => t.id === id);
+}
+
+// ── Extension Classification ─────────────────────────────────────────────────
+
+export type ExtensionClassification = "default" | "periscope" | "periscope-outdated" | "unknown";
+
+export interface ExtensionInfo {
+	status: ExtensionClassification;
+	template?: ExtensionTemplate;
+}
+
+/**
+ * Classify an on-chain extension TypeName against known Periscope templates.
+ *
+ * The on-chain value looks like "0xabc123::turret_priority::TurretPriorityAuth".
+ * We match the module::Type suffix against each template's witnessType, then
+ * check whether the package ID prefix matches the current deployment for this tenant.
+ */
+export function classifyExtension(
+	extensionType: string | undefined | null,
+	tenant: TenantId,
+): ExtensionInfo {
+	if (!extensionType) return { status: "default" };
+
+	for (const template of EXTENSION_TEMPLATES) {
+		// Check if the witness type path matches (e.g. "turret_priority::TurretPriorityAuth")
+		if (!extensionType.includes(`::${template.witnessType}`)) continue;
+
+		const currentPkgId = template.packageIds[tenant];
+		if (currentPkgId && extensionType.startsWith(currentPkgId)) {
+			return { status: "periscope", template };
+		}
+		// Witness matches but package ID differs -- outdated deployment
+		return { status: "periscope-outdated", template };
+	}
+
+	return { status: "unknown" };
 }

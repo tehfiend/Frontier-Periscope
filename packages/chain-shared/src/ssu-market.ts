@@ -327,8 +327,28 @@ export async function querySsuConfig(
 /**
  * Discover an SsuConfig for a given SSU by searching on-chain.
  * Returns the SsuConfig object ID if found, null otherwise.
+ *
+ * Accepts an optional list of previous original package IDs to search
+ * as fallback -- SsuConfig objects retain their original type name
+ * permanently, so after a contract republish the old type must be searched.
  */
 export async function discoverSsuConfig(
+	client: SuiGraphQLClient,
+	ssuMarketPackageId: string,
+	ssuId: string,
+	previousPackageIds?: string[],
+): Promise<string | null> {
+	const pkgIds = [ssuMarketPackageId, ...(previousPackageIds ?? [])];
+
+	for (const pkgId of pkgIds) {
+		const result = await discoverSsuConfigByType(client, pkgId, ssuId);
+		if (result) return result;
+	}
+
+	return null;
+}
+
+async function discoverSsuConfigByType(
 	client: SuiGraphQLClient,
 	ssuMarketPackageId: string,
 	ssuId: string,

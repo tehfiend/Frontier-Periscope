@@ -115,6 +115,8 @@ export interface DeployableIntel extends IntelBase {
 	characterObjectId?: string;
 	/** Parent structure ID (reference to another deployable or assembly) */
 	parentId?: string;
+	/** On-chain extension TypeName (e.g. "0xabc::turret_priority::TurretPriorityAuth") */
+	extensionType?: string;
 }
 
 export interface AssemblyIntel extends IntelBase {
@@ -128,6 +130,8 @@ export interface AssemblyIntel extends IntelBase {
 	notes?: string;
 	/** Parent structure ID (reference to another deployable or assembly) */
 	parentId?: string;
+	/** On-chain extension TypeName (e.g. "0xabc::turret_priority::TurretPriorityAuth") */
+	extensionType?: string;
 }
 
 export interface PlayerIntel extends IntelBase {

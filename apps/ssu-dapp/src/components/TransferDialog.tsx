@@ -146,7 +146,7 @@ function buildAdminMarketPtb(
 	fnName: string,
 	recipientCharacterObjectId?: string,
 ) {
-	const args = [
+	const args: Parameters<typeof tx.moveCall>[0]["arguments"] = [
 		tx.object(ssuConfigId),
 		tx.object(ssuObjectId),
 		tx.object(characterObjectId),

@@ -80,10 +80,14 @@ function parseOptionId(value: unknown): string | null {
 	return null;
 }
 
-/** Parse Option<TypeName> — returns the type string or null */
+/** Parse Option<TypeName> — returns the type string or null.
+ *  GraphQL JSON represents TypeName as { name: "pkg::module::Type" }. */
 function parseExtension(value: unknown): string | null {
 	if (!value || typeof value !== "object") return null;
 	const v = value as Record<string, unknown>;
+	// Direct TypeName: { name: "pkg::module::Type" }
+	if (typeof v.name === "string") return v.name;
+	// Option wrapper: { Some: ... } or { vec: [...] }
 	const inner = v.Some ?? v.some ?? v.vec;
 	if (Array.isArray(inner)) return inner.length > 0 ? String(inner[0]) : null;
 	if (inner && typeof inner === "object") {

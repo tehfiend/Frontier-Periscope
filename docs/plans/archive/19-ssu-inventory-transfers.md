@@ -1,4 +1,4 @@
-# Plan 19: SSU Market Inter-Slot Transfers
+# Plan 19: SSU Inventory Transfers
 
 ## Overview
 
@@ -111,7 +111,7 @@ public fun admin_escrow_to_self(
 )   // = withdraw_from_open_inventory + deposit_to_owned(self)
 ```
 
-**Note:** `quantity` is `u32` to match the underlying `storage_unit::withdraw_item` / `withdraw_from_open_inventory` signatures. The `character` arg in admin functions is the admin's own character (needed for inventory event emission).
+**Note:** `quantity` is `u32` to match the underlying `storage_unit::withdraw_item` / `withdraw_from_open_inventory` signatures. The `character` arg in admin functions is the admin's own character (needed for inventory event emission). Both `deposit_item` and `deposit_to_open_inventory` check `parent_id(&item) == storage_unit_id` -- this is satisfied because all items are withdrawn from the same SSU within the same PTB.
 
 ### Transfer Matrix
 
@@ -144,7 +144,7 @@ public fun admin_escrow_to_self(
 
 ## Implementation Phases
 
-### Phase 1: Contract -- Add transfer functions to ssu_market
+### Phase 1: Contract -- Add transfer functions to ssu_market -- COMPLETE
 
 **Files:** `contracts/ssu_market/sources/ssu_market.move`, `contracts/ssu_market_utopia/sources/ssu_market.move`
 
@@ -292,28 +292,47 @@ public fun admin_escrow_to_self(
    }
    ```
 
-### Phase 2: Build and deploy contract upgrade
+### Phase 2: Build and deploy contract upgrade -- COMPLETE
 
-1. Build both `ssu_market` and `ssu_market_utopia`
-2. Publish upgrade to testnet (utopia)
-3. Verify new functions are callable via CLI or gas-station
+1. ~~Build both `ssu_market` and `ssu_market_utopia`~~ DONE
+2. ~~Publish upgrade to testnet (utopia first, then stillness)~~ DONE
+   - Utopia: `0xde7c7dacdfb98fa507f1ee70ea13c056b8b00a6b2a9060ae387306e84147df1d` (v2, tx `CbJEYpmESHXCUdoAUo8ZCvs8VD1PNiWMv813upq8BiBq`)
+   - Stillness: `0x35c690bb9d049b78856e990bfe439709d098922de369d0f959a1b9737b6b824e` (v4, tx `AynqR7yzmXSHBZ2vSkh6Pqpc6pUdZ7SsYiHPPQDhzhn7`)
+   - Note: Stillness required creating `contracts/world_stillness/` (local World dependency with correct address `0x28b49755...`) because the git dependency resolved to `0x0`.
+3. ~~Update `packages/chain-shared/src/config.ts`~~ DONE -- both tenant `ssuMarket.packageId` entries updated
+4. ~~Verify new functions are callable via dApp testing~~ DONE -- dApp wired up in Phases 3-5
 
-### Phase 3: Update ssu-dapp -- MarketConfig detection and TransferContext
+### Phase 3: Update ssu-dapp -- MarketConfig detection and TransferContext -- COMPLETE
 
 **Files:** `apps/ssu-dapp/src/hooks/useMarketConfig.ts` (new), `apps/ssu-dapp/src/lib/constants.ts`, `apps/ssu-dapp/src/views/SsuView.tsx`
 
-1. Add `SSU_MARKET_PACKAGE_IDS` to `apps/ssu-dapp/src/lib/constants.ts`:
+1. Add ssu_market package ID accessor to `apps/ssu-dapp/src/lib/constants.ts`:
    ```ts
-   export const SSU_MARKET_PACKAGE_IDS: Record<string, string> = {
-       stillness: "0xeca760fe766302433fcc4c538d95f1f8960e863e5b789c63011dae18a20723d4",
-       utopia: "...", // utopia package ID after Phase 2 deploy
-   };
+   import { getContractAddresses, type TenantId } from "@tehfrontier/chain-shared";
+
+   /** Get the ssu_market package ID for the current tenant (latest version, for moveCall targets) */
+   export function getSsuMarketPackageId(tenant?: string): string | null {
+       const t = (tenant ?? getTenant()) as TenantId;
+       return getContractAddresses(t).ssuMarket?.packageId ?? null;
+   }
+
+   /** Get the ssu_market original package ID for the current tenant (for type filtering in GraphQL) */
+   export function getSsuMarketOriginalPackageId(tenant?: string): string | null {
+       const t = (tenant ?? getTenant()) as TenantId;
+       const m = getContractAddresses(t).ssuMarket;
+       return m?.originalPackageId ?? m?.packageId ?? null;
+   }
    ```
+   **Note:** IDs already exist in `packages/chain-shared/src/config.ts` (`CONTRACT_ADDRESSES[tenant].ssuMarket`) -- do NOT duplicate them. After Phase 2 upgrades the contract, update the `packageId` values in `chain-shared/config.ts`, not here.
 
 2. Create `useMarketConfig` hook (`apps/ssu-dapp/src/hooks/useMarketConfig.ts`):
    - Uses `discoverMarketConfig` from `@tehfrontier/chain-shared` (already exists)
+   - Pass `originalPackageId` (not `packageId`) to `discoverMarketConfig` for GraphQL type filtering
    - Then `queryMarketConfig` to get admin address
-   - Returns `{ configObjectId, admin, packageId } | null`
+   - Returns `{ configObjectId: string, admin: string, packageId: string } | null`
+   - `packageId` = latest version from `getSsuMarketPackageId()` (used for PTB moveCall targets)
+   - `configObjectId` = MarketConfig object ID discovered on-chain
+   - `admin` = MarketConfig.admin address
    - Enabled only when SSU has a MarketAuth extension (check `assembly.extensionType` contains "ssu_market")
 
 3. Extend `TransferContext` in `TransferDialog.tsx`:
@@ -325,7 +344,7 @@ public fun admin_escrow_to_self(
    - Pass market info into `TransferContext` alongside existing slotCaps
    - When market extension active AND `isAdmin`: the transferContext should work for ALL visible slots (not just OwnerCap-gated ones)
 
-### Phase 3b: Update ssu-dapp -- destination computation and PTB construction
+### Phase 3b: Update ssu-dapp -- destination computation and PTB construction -- COMPLETE
 
 **Files:** `apps/ssu-dapp/src/components/TransferDialog.tsx`, `apps/ssu-dapp/src/components/InventoryTabs.tsx`
 
@@ -350,24 +369,27 @@ public fun admin_escrow_to_self(
 
 4. Important detail for player PTBs: the player functions take `item: Item` which comes from the `withdraw_by_owner` result in the same PTB. The borrow/return cap sequence wraps the withdraw, and the `player_to_escrow`/`player_to_owner` call comes after `return_owner_cap`.
 
-### Phase 4: Resolve recipient Character for admin -> player transfers
+### Phase 4: Resolve recipient Character for admin -> player transfers -- COMPLETE
 
 **Files:** `apps/ssu-dapp/src/hooks/useInventory.ts`, `apps/ssu-dapp/src/hooks/useOwnerCharacter.ts`
 
 Player inventory slots are keyed by `OwnerCap<Character>` ID. The admin transfer functions need the `Character` object ID (not the OwnerCap ID) as the `recipient_character` argument.
 
 1. Extend `LabeledInventory` interface with optional `characterObjectId?: string` field
-2. The resolution logic already exists in `useOwnerCharacter.ts` (lines 47-62):
+2. The resolution logic already exists in `useOwnerCharacter.ts` (lines 47-54):
    - Step 1: GraphQL query on the OwnerCap object -> its `owner` is the Character (ObjectOwner variant)
    - Step 2: The owner address IS the Character object ID
-   - No need for a second fetch -- the GraphQL owner address from step 1 is sufficient
+   - For Phase 4 we only need the Character object ID (from step 1), not the name (step 2 of useOwnerCharacter)
 3. In `useInventory.ts`, add a parallel query (alongside `characterNamesQuery`) that resolves `characterObjectId` for each player slot:
    - For each player key, query the OwnerCap<Character> object's owner -> that's the Character object ID
    - Merge into `LabeledInventory` alongside `characterName`
    - Cache results (5 min stale time, same as names)
-4. This resolution is only needed when `transferContext.isAdmin` is true (admin needs recipient char IDs). For non-admin users, skip this query to avoid unnecessary network calls.
+4. This resolution is only needed when the user is the SSU admin (admin needs recipient char IDs). Two options:
+   - **Option A (recommended):** Add an `isAdmin?: boolean` parameter to `useInventory` and pass it from `SsuView.tsx`. Only run the characterObjectId query when `isAdmin` is true.
+   - **Option B (implemented):** Always resolve characterObjectIds for all player slots (small overhead, simpler API). Character objects are shared and cheap to query.
+   - The extra query runs alongside the existing `characterNamesQuery` and reuses the same OwnerCap owner lookup pattern from `useOwnerCharacter.ts`.
 
-### Phase 5: Character search for admin -> new player transfers
+### Phase 5: Character search for admin -> new player transfers -- COMPLETE
 
 **Files:** `apps/ssu-dapp/src/hooks/useCharacterSearch.ts` (new), `apps/ssu-dapp/src/components/TransferDialog.tsx`
 
@@ -394,7 +416,8 @@ dApp needs a way to find the recipient by name.
 |------|--------|-------------|
 | `contracts/ssu_market/sources/ssu_market.move` | Modify | Add 7 transfer functions + assert_admin helper + TransferEvent |
 | `contracts/ssu_market_utopia/sources/ssu_market.move` | Modify | Same changes (utopia copy) |
-| `apps/ssu-dapp/src/lib/constants.ts` | Modify | Add SSU_MARKET_PACKAGE_IDS per tenant |
+| `packages/chain-shared/src/config.ts` | Modify | Update `ssuMarket.packageId` after contract upgrade (Phase 2) |
+| `apps/ssu-dapp/src/lib/constants.ts` | Modify | Add `getSsuMarketPackageId`/`getSsuMarketOriginalPackageId` helpers (import from chain-shared) |
 | `apps/ssu-dapp/src/hooks/useMarketConfig.ts` | Create | Discover + query MarketConfig for SSU (wraps chain-shared helpers) |
 | `apps/ssu-dapp/src/hooks/useCharacterSearch.ts` | Create | Search characters by name for admin -> new player transfers |
 | `apps/ssu-dapp/src/components/TransferDialog.tsx` | Modify | Role-aware PTB builders, character search UI for admin |

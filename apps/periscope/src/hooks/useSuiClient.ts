@@ -1,12 +1,25 @@
-import { useCurrentClient } from "@mysten/dapp-kit-react";
-import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import { useMemo } from "react";
+import { SuiGraphQLClient } from "@mysten/sui/graphql";
+import { useCurrentNetwork } from "@mysten/dapp-kit-react";
+
+const clientCache = new Map<string, SuiGraphQLClient>();
 
 /**
- * Typed wrapper for useCurrentClient() that returns SuiGraphQLClient.
- * At runtime, the DAppKit createClient callback returns SuiGraphQLClient,
- * but TypeScript erases the generic and returns ClientWithCoreApi.
- * This cast is safe because WalletProvider always creates SuiGraphQLClient.
+ * Returns a SuiGraphQLClient for the current network.
+ * Creates a direct instance rather than relying on the dapp-kit client
+ * cast, which can break when dapp-kit-core wraps the underlying client.
  */
 export function useSuiClient(): SuiGraphQLClient {
-	return useCurrentClient() as unknown as SuiGraphQLClient;
+	const network = useCurrentNetwork();
+	return useMemo(() => {
+		const key = network ?? "testnet";
+		const cached = clientCache.get(key);
+		if (cached) return cached;
+		const client = new SuiGraphQLClient({
+			url: `https://graphql.${key}.sui.io/graphql`,
+			network: key as "testnet",
+		});
+		clientCache.set(key, client);
+		return client;
+	}, [network]);
 }

@@ -294,7 +294,8 @@ public fun admin_escrow_to_self(
     });
 }
 
-/// Player: deposit an Item to escrow. SSU mismatch check only (no owner/delegate check).
+/// Player: deposit an Item to escrow. SSU mismatch check only -- no owner/delegate
+/// check because any player must be able to deposit items they want to sell.
 public fun player_to_escrow(
     config: &SsuConfig, ssu: &mut StorageUnit, character: &Character,
     item: Item, ctx: &mut TxContext,
@@ -411,7 +412,7 @@ public fun buy_from_listing<T>(
     // Calculate fee
     let fee_bps = market::market_fee_bps(market);
     let fee_recipient = market::market_fee_recipient(market);
-    let fee_amount = (total_price * fee_bps) / 10000;
+    let fee_amount = total_price / 10000 * fee_bps;
     let seller_amount = total_price - fee_amount;
 
     // Split payment: fee to fee_recipient, net to seller
@@ -467,7 +468,7 @@ public fun fill_buy_order<T>(
     // Calculate fee
     let fee_bps = market::market_fee_bps(market);
     let fee_recipient = market::market_fee_recipient(market);
-    let fee_amount = (total_price * fee_bps) / 10000;
+    let fee_amount = total_price / 10000 * fee_bps;
     let seller_amount = total_price - fee_amount;
 
     // Split escrowed payment from market
@@ -494,7 +495,7 @@ public fun fill_buy_order<T>(
         if (coin::value(&remaining_coins) > 0) {
             transfer::public_transfer(remaining_coins, buyer);
         } else {
-            coin::destroy_zero(remaining_coins);
+            remaining_coins.destroy_zero();
         };
     } else {
         let order_mut = market::borrow_buy_order_mut(market, order_id);

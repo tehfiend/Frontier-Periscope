@@ -9,6 +9,8 @@ interface MarketContentProps {
 	ssuConfig: SsuConfigResult;
 	listings: MarketSellListing[];
 	buyOrders: MarketBuyOrder[];
+	listingsLoading?: boolean;
+	buyOrdersLoading?: boolean;
 	isAuthorized: boolean;
 	characterObjectId?: string;
 	isConnected: boolean;
@@ -21,6 +23,8 @@ export function MarketContent({
 	ssuConfig,
 	listings,
 	buyOrders,
+	listingsLoading,
+	buyOrdersLoading,
 	isAuthorized,
 	characterObjectId,
 	isConnected,
@@ -38,7 +42,9 @@ export function MarketContent({
 			{/* Sell Listings Section */}
 			<div>
 				<h3 className="mb-3 text-sm font-medium text-zinc-400">Sell Listings</h3>
-				{isAuthorized ? (
+				{listingsLoading ? (
+					<p className="py-4 text-center text-xs text-zinc-600">Loading listings...</p>
+				) : isAuthorized ? (
 					<ListingAdminList
 						listings={listings}
 						ssuConfig={ssuConfig}
@@ -73,7 +79,9 @@ export function MarketContent({
 					)}
 				</div>
 
-				{buyOrders.length === 0 ? (
+				{buyOrdersLoading ? (
+					<p className="py-4 text-center text-xs text-zinc-600">Loading buy orders...</p>
+				) : buyOrders.length === 0 ? (
 					<p className="py-4 text-center text-xs text-zinc-600">No buy orders yet.</p>
 				) : (
 					<div className="space-y-2">

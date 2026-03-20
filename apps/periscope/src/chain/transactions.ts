@@ -100,6 +100,14 @@ export function buildAuthorizeExtension(params: AuthorizeExtensionParams): Trans
 		],
 	});
 
+	// Step 2b: For ssu_market extensions, also create SsuConfig (enables escrow transfers)
+	if (template.id === "ssu_market") {
+		tx.moveCall({
+			target: `${extensionPkg}::ssu_market::create_ssu_config`,
+			arguments: [tx.pure.id(assemblyId)],
+		});
+	}
+
 	// Step 3: Return OwnerCap
 	tx.moveCall({
 		target: `${worldPkg}::character::return_owner_cap`,

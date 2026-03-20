@@ -1,12 +1,15 @@
 # Plan: App Deployment & Data Strategy
 
-**Status:** Draft
+**Status:** Partially Superseded
 **Created:** 2026-03-17
+**Updated:** 2026-03-18 (server apps removed from codebase; Cloudflare Pages chosen for static apps; Phases 2-3 moot)
 **Module:** cross-cutting (all apps)
 
 ## Overview
 
-The TehFrontier monorepo contains 7 apps with fundamentally different deployment profiles. Three are in-game dApps (permissions-dapp, ssu-dapp, ssu-market-dapp) designed to run inside EVE Frontier's CEF-based in-game browser, loaded by URL with query parameters. Two are server-side services (api, gas-station) requiring Node.js + persistent state. One is a full-stack web app (web, Next.js). One is a standalone intel tool (periscope) that bundles 21 MB of extracted game data and uses browser-only APIs (File System Access, IndexedDB, Service Worker).
+**NOTE (2026-03-18):** The server apps (`apps/api`, `apps/gas-station`, `apps/web`) and `packages/db` have been removed from the codebase (commit `8e9e117`). The monorepo now contains 4 static SPAs only. Phases 2, 3, and server-related portions of this plan are moot. Cloudflare Pages has been chosen as the hosting provider -- see `docs/cloudflare-pages-setup.md` for the ssu-dapp configuration, which serves as the template for all apps.
+
+The TehFrontier monorepo contains 4 apps, all static Vite SPAs. Three are in-game dApps (permissions-dapp, ssu-dapp, ssu-market-dapp) designed to run inside EVE Frontier's CEF-based in-game browser, loaded by URL with query parameters. One is a standalone intel tool (periscope) that bundles 21 MB of extracted game data and uses browser-only APIs (File System Access, IndexedDB, Service Worker).
 
 This plan addresses three questions: (1) whether to bundle the 21 MB of static game data extracted from the client, (2) whether to add a self-service extraction feature so users can extract data themselves, and (3) what deployment strategy best fits each app type. The goal is a deployable setup that minimizes friction for end users while keeping the apps functional across their different runtime requirements.
 
@@ -119,27 +122,13 @@ Optimize all Vite SPA builds for production deployment.
 4. Verify all static SPAs build cleanly with `pnpm build` and produce correct `dist/` output
 5. Test each app locally with `vite preview` to verify routing and asset loading
 
-### Phase 2: Dockerize Server Apps
+### Phase 2: Dockerize Server Apps -- MOOT
 
-Create Dockerfiles for api and gas-station. Key challenge: these are monorepo workspace packages that depend on internal packages (chain-shared, shared, sui-client, db). The Dockerfiles must handle pnpm workspace resolution.
+> **REMOVED:** `apps/api`, `apps/gas-station`, and `apps/web` have been deleted from the codebase (commit `8e9e117`). No server apps remain. This phase is no longer applicable.
 
-1. Create root `.dockerignore` to exclude node_modules, .git, dist, contracts, apps/periscope/public/data, apps/web/.next
-2. Create `docker/Dockerfile.api` -- multi-stage build:
-   - Stage 1 (deps): Node 22 alpine, corepack enable pnpm, copy root package.json + pnpm-lock.yaml + pnpm-workspace.yaml + all package.json files, run `pnpm install --frozen-lockfile`
-   - Stage 2 (build): Copy source for api + its workspace deps (packages/shared, packages/db, packages/tsconfig), run `pnpm --filter @tehfrontier/api build`
-   - Stage 3 (runtime): Copy built output + node_modules, set CMD to `node dist/index.js`
-3. Create `docker/Dockerfile.gas-station` -- same multi-stage pattern, deps are packages/chain-shared + packages/tsconfig
-4. Update `docker/docker-compose.yml` to add api and gas-station services with healthchecks and `depends_on: postgres`
-5. Create `docker/docker-compose.prod.yml` override: env_file references, no exposed ports for postgres/redis, restart policies
+### Phase 3: Web App Deployment Config -- MOOT
 
-### Phase 3: Web App Deployment Config
-
-Configure the Next.js web app for production.
-
-1. Add `output: 'standalone'` to `next.config.ts` for Docker deployment (creates minimal standalone server)
-2. Create `docker/Dockerfile.web` using Next.js standalone output pattern
-3. Add Vercel-specific config (`vercel.json`) as an alternative deployment target
-4. Update `docker-compose.yml` to include the web service
+> **REMOVED:** `apps/web` has been deleted from the codebase. This phase is no longer applicable.
 
 ### Phase 4: Deployment Documentation
 
@@ -212,13 +201,9 @@ Currently `gasStationUrl` is hardcoded to `http://localhost:3100` for stillness 
 - **Option C: Use both -- env var as default, runtime override in Settings** -- Pros: Best of both worlds. Deployers set the default; power users can override. Cons: Slightly more code.
 - **Recommendation:** Option C. Add `VITE_GAS_STATION_URL` as an env var with fallback to current hardcoded value, and add an override field in the Settings view. The settings-stored value takes precedence if set.
 
-### 3. Which static hosting provider should be the primary target?
+### 3. Which static hosting provider should be the primary target? -- RESOLVED
 
-- **Option A: Vercel** -- Pros: Zero-config for Next.js (web app), good Vite SPA support, generous free tier, edge CDN, preview deployments. Cons: Vendor lock-in for Next.js features (middleware, ISR); free tier has bandwidth limits.
-- **Option B: Netlify** -- Pros: Excellent static site support, form handling, split testing, generous free tier. Cons: Slightly worse Next.js support; same bandwidth limits.
-- **Option C: GitHub Pages** -- Pros: Free, integrates with GitHub repo, no account needed. Cons: No server-side anything, custom domain setup is manual, no deploy previews, 100 MB limit per repo (data files are 21 MB).
-- **Option D: Self-hosted (VPS + nginx)** -- Pros: Full control, no vendor limits, co-locate with API/DB. Cons: Maintenance burden, no auto-deploy, manual SSL.
-- **Recommendation:** Option A (Vercel) for the primary static apps (periscope, dApps) and the web app (Next.js). Also create Netlify and nginx configs so users can choose. For server apps (api, gas-station), Docker on a VPS since they need persistent state and private keys.
+> **RESOLVED (2026-03-18):** Cloudflare Pages chosen. Configuration exists for ssu-dapp in `docs/cloudflare-pages-setup.md` with `_headers` and `_redirects` files in `apps/ssu-dapp/public/`. Template is ready to replicate for the other 3 apps. Free tier, edge CDN, auto-deploy from GitHub, preview deployments on PRs. No server apps remain, so Docker/VPS considerations are moot.
 
 ### 4. Should we create a unified deployment script?
 

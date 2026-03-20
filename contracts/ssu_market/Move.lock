@@ -17,7 +17,7 @@ manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D
 deps = { MoveStdlib = "MoveStdlib" }
 
 [pinned.testnet.World]
-source = { git = "https://github.com/evefrontier/world-contracts.git", subdir = 'contracts\world', rev = "8eb197e4573275d6f45b0da2c69ee793487a49fd" }
+source = { local = '..\world_stillness' }
 use_environment = "testnet"
 manifest_digest = "ED881AEE5B6E33C7A9D149CD1133047E41D103FAD527778F56F099E07F5F9C95"
 deps = { Sui = "Sui" }
@@ -31,5 +31,5 @@ deps = { Sui = "Sui" }
 [pinned.testnet.ssu_market]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "8B181A2D44E76F302A4979B2655D78DD0DB98FE91DE337372B31B99E20BFA15D"
+manifest_digest = "55936C26B627B8D02FA041FA50288CBD440CB3087AD70A42E27D2128B0BD5E79"
 deps = { Sui = "Sui", market = "market", world = "World" }

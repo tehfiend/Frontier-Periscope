@@ -1,35 +1,45 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
-import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
-import { useSuiClient } from "@/hooks/useSuiClient";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db, notDeleted } from "@/db";
-import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
-import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { discoverCharacterAndAssemblies } from "@/chain/queries";
 import { syncTargetAssemblies } from "@/chain/sync";
 import { buildRenameTx, isRenamableModule } from "@/chain/transactions";
+import { db, notDeleted } from "@/db";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
+import { useSuiClient } from "@/hooks/useSuiClient";
+import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { SystemSearch } from "@/components/SystemSearch";
-import { ensureCelestialsLoaded, PLANET_TYPE_NAMES } from "@/lib/celestials";
-import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import type { Celestial, SolarSystem, DeployableIntel, AssemblyStatus } from "@/db/types";
 import {
-	Package,
-	RefreshCw,
-	Fuel,
-	AlertTriangle,
-	Loader2,
-	User,
-	Link2,
-	ExternalLink,
-	Trash2,
-	AppWindow,
-	MapPin,
-} from "lucide-react";
-import { DataGrid, excelFilterFn, type ColumnDef } from "@/components/DataGrid";
+	ASSEMBLY_TYPE_IDS,
+	TENANTS,
+	type TenantId,
+	classifyExtension,
+	getTemplate,
+} from "@/chain/config";
+import type { OwnedAssembly } from "@/chain/queries";
+import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { EditableCell } from "@/components/EditableCell";
+import { SystemSearch } from "@/components/SystemSearch";
+import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPanel";
+import type { AssemblyStatus, Celestial, DeployableIntel, SolarSystem } from "@/db/types";
+import { PLANET_TYPE_NAMES, ensureCelestialsLoaded } from "@/lib/celestials";
 import { FUEL_CRITICAL_HOURS, FUEL_WARNING_HOURS } from "@/lib/constants";
-import { TENANTS, ASSEMBLY_TYPE_IDS } from "@/chain/config";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import {
+	AlertTriangle,
+	AppWindow,
+	ExternalLink,
+	Fuel,
+	Link2,
+	Loader2,
+	MapPin,
+	Package,
+	Puzzle,
+	RefreshCw,
+	Telescope,
+	Trash2,
+	User,
+} from "lucide-react";
 
 // ── Unified Row Type ────────────────────────────────────────────────────────
 
@@ -55,6 +65,7 @@ interface StructureRow {
 	assemblyModule?: string;
 	characterObjectId?: string;
 	parentId?: string;
+	extensionType?: string;
 	updatedAt: string;
 }
 
@@ -189,13 +200,11 @@ export function Deployables() {
 		[chainAddress],
 	);
 
-	const assemblies = useLiveQuery(
-		() => db.assemblies.filter(notDeleted).toArray(),
-		[],
-	);
+	const assemblies = useLiveQuery(() => db.assemblies.filter(notDeleted).toArray(), []);
 
 	const players = useLiveQuery(() => db.players.filter(notDeleted).toArray(), []);
 	const targets = useLiveQuery(() => db.targets.filter(notDeleted).toArray(), []);
+	const extensions = useLiveQuery(() => db.extensions.filter(notDeleted).toArray(), []);
 	const lastSync = useLiveQuery(() => db.settings.get("lastChainSync"));
 
 	// ── Solar System Lookup ──────────────────────────────────────────────────
@@ -216,6 +225,20 @@ export function Deployables() {
 		}
 		return map;
 	}, [players]);
+
+	// ── Extension Lookup (from local deploy records) ────────────────────────
+	const extensionByAssembly = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const ext of extensions ?? []) {
+			const tmpl = getTemplate(ext.templateId);
+			if (!tmpl) continue;
+			const pkgId = tmpl.packageIds[tenant as TenantId];
+			if (pkgId) {
+				map.set(ext.assemblyId, `${pkgId}::${tmpl.witnessType}`);
+			}
+		}
+		return map;
+	}, [extensions, tenant]);
 
 	// ── Merge Rows ───────────────────────────────────────────────────────────
 	const data: StructureRow[] = useMemo(() => {
@@ -247,6 +270,7 @@ export function Deployables() {
 				assemblyModule: d.assemblyModule,
 				characterObjectId: d.characterObjectId,
 				parentId: d.parentId,
+				extensionType: extensionByAssembly.get(d.objectId) ?? d.extensionType,
 				updatedAt: d.updatedAt,
 			});
 		}
@@ -258,9 +282,7 @@ export function Deployables() {
 
 			// Determine ownership: if the owner matches our addresses, mark as "mine"
 			const isMine =
-				chainAddress && a.owner === chainAddress
-					? true
-					: activeSuiAddresses.includes(a.owner);
+				chainAddress && a.owner === chainAddress ? true : activeSuiAddresses.includes(a.owner);
 
 			rows.push({
 				id: a.id,
@@ -277,17 +299,19 @@ export function Deployables() {
 				tags: a.tags,
 				source: "assemblies",
 				parentId: a.parentId,
+				extensionType: extensionByAssembly.get(a.objectId) ?? a.extensionType,
 				updatedAt: a.updatedAt,
 			});
 		}
 
 		return rows;
-	}, [deployables, assemblies, chainAddress, activeSuiAddresses, ownerNames]);
+	}, [deployables, assemblies, chainAddress, activeSuiAddresses, ownerNames, extensionByAssembly]);
 
 	// ── Sync State ───────────────────────────────────────────────────────────
 	const [syncing, setSyncing] = useState(false);
 	const [syncStatus, setSyncStatus] = useState<string | null>(null);
 	const [renamingId, setRenamingId] = useState<string | null>(null);
+	const [deployTarget, setDeployTarget] = useState<StructureRow | null>(null);
 
 	// ── Sync Own Structures ──────────────────────────────────────────────────
 	const handleSyncOwn = useCallback(async () => {
@@ -301,12 +325,8 @@ export function Deployables() {
 
 			for (const assembly of discovery.assemblies) {
 				const typeIdNum = assembly.typeId;
-				const typeName =
-					ASSEMBLY_TYPE_IDS[typeIdNum] ?? assembly.type.replace("_", " ");
-				const existing = await db.deployables
-					.where("objectId")
-					.equals(assembly.objectId)
-					.first();
+				const typeName = ASSEMBLY_TYPE_IDS[typeIdNum] ?? assembly.type.replace("_", " ");
+				const existing = await db.deployables.where("objectId").equals(assembly.objectId).first();
 
 				let fuelData: { fuelLevel?: number; fuelExpiresAt?: string } = {};
 				try {
@@ -328,6 +348,7 @@ export function Deployables() {
 					fuelExpiresAt: fuelData.fuelExpiresAt ?? existing?.fuelExpiresAt,
 					notes: existing?.notes,
 					parentId: assembly.energySourceId ?? existing?.parentId,
+					extensionType: assembly.extensionType ?? existing?.extensionType,
 					tags: existing?.tags ?? [],
 					source: "chain",
 					createdAt: existing?.createdAt ?? now,
@@ -335,11 +356,8 @@ export function Deployables() {
 					itemId: assembly.itemId ?? existing?.itemId,
 					dappUrl: assembly.dappUrl ?? existing?.dappUrl,
 					ownerCapId: assembly.ownerCapId ?? existing?.ownerCapId,
-					assemblyModule:
-						assemblyKindToModule(assembly.type) ?? existing?.assemblyModule,
-					characterObjectId:
-						discovery.character?.characterObjectId ??
-						existing?.characterObjectId,
+					assemblyModule: assemblyKindToModule(assembly.type) ?? existing?.assemblyModule,
+					characterObjectId: discovery.character?.characterObjectId ?? existing?.characterObjectId,
 				});
 				totalCount++;
 			}
@@ -359,8 +377,7 @@ export function Deployables() {
 	// ── Sync Targets ─────────────────────────────────────────────────────────
 	const handleSyncTargets = useCallback(async () => {
 		if (syncing) return;
-		const activeTargets =
-			targets?.filter((t) => t.watchStatus === "active") ?? [];
+		const activeTargets = targets?.filter((t) => t.watchStatus === "active") ?? [];
 		if (activeTargets.length === 0) {
 			setSyncStatus("No active targets to sync");
 			return;
@@ -391,17 +408,14 @@ export function Deployables() {
 	}, [data]);
 
 	// ── Save Parent ──────────────────────────────────────────────────────────
-	const handleSaveParent = useCallback(
-		async (row: StructureRow, parentId: string | undefined) => {
-			const now = new Date().toISOString();
-			if (row.source === "deployables") {
-				await db.deployables.update(row.id, { parentId, updatedAt: now });
-			} else {
-				await db.assemblies.update(row.id, { parentId, updatedAt: now });
-			}
-		},
-		[],
-	);
+	const handleSaveParent = useCallback(async (row: StructureRow, parentId: string | undefined) => {
+		const now = new Date().toISOString();
+		if (row.source === "deployables") {
+			await db.deployables.update(row.id, { parentId, updatedAt: now });
+		} else {
+			await db.assemblies.update(row.id, { parentId, updatedAt: now });
+		}
+	}, []);
 
 	// ── Save Notes ───────────────────────────────────────────────────────────
 	const handleSaveNotes = useCallback(async (row: StructureRow, newNotes: string) => {
@@ -421,11 +435,7 @@ export function Deployables() {
 
 	// ── Save Location ───────────────────────────────────────────────────────
 	const handleSaveLocation = useCallback(
-		async (
-			row: StructureRow,
-			systemId: number | undefined,
-			lPoint: string | undefined,
-		) => {
+		async (row: StructureRow, systemId: number | undefined, lPoint: string | undefined) => {
 			const now = new Date().toISOString();
 			if (row.source === "deployables") {
 				await db.deployables.update(row.id, {
@@ -562,8 +572,7 @@ export function Deployables() {
 					const disabledTooltip =
 						r.ownership !== "mine"
 							? "Only owned structures can be renamed"
-							: r.assemblyModule &&
-								  !isRenamableModule(r.assemblyModule)
+							: r.assemblyModule && !isRenamableModule(r.assemblyModule)
 								? "On-chain rename not supported for this structure type"
 								: !account
 									? "Connect wallet to rename"
@@ -578,13 +587,8 @@ export function Deployables() {
 							editable={!!canRename && !!account}
 							disabledTooltip={disabledTooltip}
 						>
-							<span className="font-medium text-zinc-100">
-								{r.label || "\u2014"}
-							</span>
-							<span
-								className="ml-2 font-mono text-xs text-zinc-600"
-								title={r.objectId}
-							>
+							<span className="font-medium text-zinc-100">{r.label || "\u2014"}</span>
+							<span className="ml-2 font-mono text-xs text-zinc-600" title={r.objectId}>
 								{r.objectId.slice(0, 8)}...
 							</span>
 						</EditableCell>
@@ -615,6 +619,60 @@ export function Deployables() {
 				filterFn: excelFilterFn,
 			},
 			{
+				id: "extension",
+				accessorFn: (d) => classifyExtension(d.extensionType, tenant as TenantId).status,
+				header: "Extension",
+				size: 150,
+				filterFn: excelFilterFn,
+				cell: ({ row }) => {
+					const r = row.original;
+					const info = classifyExtension(r.extensionType, tenant as TenantId);
+
+					const actionLabel =
+						info.status === "periscope-outdated"
+							? "Update"
+							: info.status === "periscope"
+								? "Change"
+								: "Deploy";
+
+					return (
+						<div className="flex items-center gap-1.5">
+							{info.status === "default" && <span className="text-xs text-zinc-600">Default</span>}
+							{info.status === "periscope" && (
+								<>
+									<Telescope size={14} className="text-cyan-500" />
+									<span className="text-xs text-cyan-400">
+										{info.template?.name ?? "Periscope"}
+									</span>
+								</>
+							)}
+							{info.status === "periscope-outdated" && (
+								<>
+									<Telescope size={14} className="text-amber-500" />
+									<AlertTriangle size={10} className="text-amber-400" />
+									<span className="text-xs text-amber-400">Outdated</span>
+								</>
+							)}
+							{info.status === "unknown" && (
+								<>
+									<Puzzle size={14} className="text-amber-500" />
+									<span className="text-xs text-amber-400">Custom</span>
+								</>
+							)}
+							{r.ownership === "mine" && (
+								<button
+									type="button"
+									onClick={() => setDeployTarget(r)}
+									className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-900/30"
+								>
+									{actionLabel}
+								</button>
+							)}
+						</div>
+					);
+				},
+			},
+			{
 				id: "location",
 				accessorFn: (d) => {
 					const sysName = d.systemId ? (systemNames.get(d.systemId) ?? "") : "";
@@ -640,8 +698,7 @@ export function Deployables() {
 			},
 			{
 				id: "parent",
-				accessorFn: (d) =>
-					d.parentId ? (parentLabels.get(d.parentId) ?? "") : "",
+				accessorFn: (d) => (d.parentId ? (parentLabels.get(d.parentId) ?? "") : ""),
 				header: "Parent",
 				size: 160,
 				filterFn: excelFilterFn,
@@ -684,13 +741,8 @@ export function Deployables() {
 					const r = row.original;
 					return (
 						<div className="min-w-0">
-							<span className="text-xs text-zinc-300">
-								{r.ownerName ?? "Unknown"}
-							</span>
-							<div
-								className="truncate font-mono text-xs text-zinc-600"
-								title={r.owner}
-							>
+							<span className="text-xs text-zinc-300">{r.ownerName ?? "Unknown"}</span>
+							<div className="truncate font-mono text-xs text-zinc-600" title={r.owner}>
 								{r.owner.slice(0, 6)}...{r.owner.slice(-4)}
 							</div>
 						</div>
@@ -705,9 +757,7 @@ export function Deployables() {
 				enableColumnFilter: false,
 				cell: ({ row }) => (
 					<span className="font-mono text-xs">
-						{row.original.fuelLevel != null
-							? row.original.fuelLevel.toLocaleString()
-							: "\u2014"}
+						{row.original.fuelLevel != null ? row.original.fuelLevel.toLocaleString() : "\u2014"}
 					</span>
 				),
 			},
@@ -723,9 +773,7 @@ export function Deployables() {
 				cell: ({ row }) => {
 					const hours = fuelHoursRemaining(row.original);
 					return (
-						<div
-							className={`flex items-center gap-1 text-xs ${fuelColorClass(hours)}`}
-						>
+						<div className={`flex items-center gap-1 text-xs ${fuelColorClass(hours)}`}>
 							{hours !== null && <Fuel size={12} />}
 							{formatRuntime(hours)}
 						</div>
@@ -770,7 +818,9 @@ export function Deployables() {
 				cell: ({ row }) => {
 					const r = row.original;
 					const dappHref = r.dappUrl
-						? (r.dappUrl.startsWith("http") ? r.dappUrl : `https://${r.dappUrl}`)
+						? r.dappUrl.startsWith("http")
+							? r.dappUrl
+							: `https://${r.dappUrl}`
 						: r.itemId
 							? `${TENANTS[tenant]?.dappUrl ?? `https://dapps.evefrontier.com/?tenant=${tenant}`}&itemId=${r.itemId}`
 							: undefined;
@@ -811,7 +861,21 @@ export function Deployables() {
 				},
 			},
 		],
-		[account, tenant, renamingId, handleRename, handleSaveNotes, handleSaveLocation, handleSaveParent, handleRemove, data, parentLabels, systems, systemNames],
+		[
+			account,
+			tenant,
+			renamingId,
+			handleRename,
+			handleSaveNotes,
+			handleSaveLocation,
+			handleSaveParent,
+			handleRemove,
+			setDeployTarget,
+			data,
+			parentLabels,
+			systems,
+			systemNames,
+		],
 	);
 
 	// ── No Address State ─────────────────────────────────────────────────────
@@ -828,21 +892,16 @@ export function Deployables() {
 							<Link2 size={36} className="text-zinc-700" />
 							<p className="text-sm text-zinc-500">
 								No Sui address linked to{" "}
-								<span className="text-zinc-300">
-									{activeCharacter.characterName}
-								</span>
+								<span className="text-zinc-300">{activeCharacter.characterName}</span>
 							</p>
 							<p className="text-xs text-zinc-600">
-								Link an address in Settings or re-add the character to
-								resolve from chain
+								Link an address in Settings or re-add the character to resolve from chain
 							</p>
 						</>
 					) : (
 						<>
 							<User size={36} className="text-zinc-700" />
-							<p className="text-sm text-zinc-500">
-								Select a character to view their structures
-							</p>
+							<p className="text-sm text-zinc-500">Select a character to view their structures</p>
 						</>
 					)}
 				</div>
@@ -860,8 +919,8 @@ export function Deployables() {
 						Structures
 					</h1>
 					<p className="mt-1 text-sm text-zinc-500">
-						{stats.total} structures &middot; {stats.mine} mine &middot;{" "}
-						{stats.watched} watched &middot; {stats.online} online
+						{stats.total} structures &middot; {stats.mine} mine &middot; {stats.watched} watched
+						&middot; {stats.online} online
 						{stats.warnings > 0 && (
 							<span className="ml-2 text-orange-400">
 								<AlertTriangle size={12} className="mr-0.5 inline" />
@@ -878,11 +937,7 @@ export function Deployables() {
 				<StatCard label="Watched" value={stats.watched} color="text-zinc-300" />
 				<StatCard label="Online" value={stats.online} color="text-green-400" />
 				<StatCard label="Offline" value={stats.offline} color="text-zinc-500" />
-				<StatCard
-					label="Fuel Warnings"
-					value={stats.warnings}
-					color="text-orange-400"
-				/>
+				<StatCard label="Fuel Warnings" value={stats.warnings} color="text-orange-400" />
 			</div>
 
 			{/* Data Grid */}
@@ -894,20 +949,14 @@ export function Deployables() {
 				emptyMessage='No structures found. Click "Sync Chain" to discover your on-chain deployables, or add targets in the Watchlist.'
 				actions={
 					<>
-						{syncStatus && (
-							<span className="text-xs text-zinc-500">{syncStatus}</span>
-						)}
+						{syncStatus && <span className="text-xs text-zinc-500">{syncStatus}</span>}
 						<button
 							type="button"
 							onClick={handleSyncOwn}
 							disabled={syncing}
 							className="flex shrink-0 items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
 						>
-							{syncing ? (
-								<Loader2 size={14} className="animate-spin" />
-							) : (
-								<RefreshCw size={14} />
-							)}
+							{syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
 							Sync Chain
 						</button>
 						<button
@@ -916,11 +965,7 @@ export function Deployables() {
 							disabled={syncing}
 							className="flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
 						>
-							{syncing ? (
-								<Loader2 size={14} className="animate-spin" />
-							) : (
-								<RefreshCw size={14} />
-							)}
+							{syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
 							Sync Targets
 						</button>
 					</>
@@ -932,8 +977,40 @@ export function Deployables() {
 					Last sync: {new Date(lastSync.value).toLocaleString()}
 				</p>
 			)}
+
+			{deployTarget && (
+				<DeployExtensionPanel
+					assembly={structureRowToAssembly(deployTarget)}
+					characterId={deployTarget.characterObjectId ?? ""}
+					tenant={tenant as TenantId}
+					onClose={() => setDeployTarget(null)}
+				/>
+			)}
 		</div>
 	);
+}
+
+/** Convert a StructureRow back to an OwnedAssembly for the deploy panel. */
+function structureRowToAssembly(row: StructureRow): OwnedAssembly {
+	// Map assemblyModule back to OwnedAssembly.type
+	const moduleToKind: Record<string, OwnedAssembly["type"]> = {
+		turret: "turret",
+		gate: "gate",
+		storage_unit: "storage_unit",
+		network_node: "network_node",
+	};
+	const kind = row.assemblyModule
+		? (moduleToKind[row.assemblyModule] ?? "storage_unit")
+		: "storage_unit";
+
+	return {
+		objectId: row.objectId,
+		type: kind,
+		typeId: 0,
+		status: row.status,
+		extensionType: row.extensionType,
+		ownerCapId: row.ownerCapId,
+	};
 }
 
 function LocationEditor({
@@ -945,19 +1022,11 @@ function LocationEditor({
 	row: StructureRow;
 	systems: SolarSystem[];
 	systemNames: Map<number, string>;
-	onSave: (
-		row: StructureRow,
-		systemId: number | undefined,
-		lPoint: string | undefined,
-	) => void;
+	onSave: (row: StructureRow, systemId: number | undefined, lPoint: string | undefined) => void;
 }) {
 	const [open, setOpen] = useState(false);
-	const [selectedSystem, setSelectedSystem] = useState<number | null>(
-		row.systemId ?? null,
-	);
-	const [selectedLPoint, setSelectedLPoint] = useState<string | null>(
-		row.lPoint ?? null,
-	);
+	const [selectedSystem, setSelectedSystem] = useState<number | null>(row.systemId ?? null);
+	const [selectedLPoint, setSelectedLPoint] = useState<string | null>(row.lPoint ?? null);
 	const [planets, setPlanets] = useState<Celestial[]>([]);
 	const [selectedPlanet, setSelectedPlanet] = useState<number | null>(() => {
 		// Parse planet index from existing lPoint (e.g. "P2-L3" -> 2)
@@ -997,9 +1066,7 @@ function LocationEditor({
 	// Build display text
 	const sysName = row.systemId ? (systemNames.get(row.systemId) ?? "") : "";
 	const displayText =
-		sysName && row.lPoint
-			? `${sysName} -- ${row.lPoint}`
-			: sysName || row.lPoint || "";
+		sysName && row.lPoint ? `${sysName} -- ${row.lPoint}` : sysName || row.lPoint || "";
 
 	function handleSystemChange(id: number | null) {
 		setSelectedSystem(id);
@@ -1027,11 +1094,7 @@ function LocationEditor({
 	}
 
 	function handleSave() {
-		onSave(
-			row,
-			selectedSystem ?? undefined,
-			selectedLPoint ?? undefined,
-		);
+		onSave(row, selectedSystem ?? undefined, selectedLPoint ?? undefined);
 		setOpen(false);
 	}
 
@@ -1140,9 +1203,7 @@ function LocationEditor({
 				{/* Preview */}
 				{(selectedSystem || selectedLPoint) && (
 					<div className="mt-2 rounded bg-zinc-800/50 px-2 py-1 text-xs text-zinc-300">
-						{selectedSystem
-							? (systemNames.get(selectedSystem) ?? `#${selectedSystem}`)
-							: ""}
+						{selectedSystem ? (systemNames.get(selectedSystem) ?? `#${selectedSystem}`) : ""}
 						{selectedSystem && selectedLPoint ? " -- " : ""}
 						{selectedLPoint ?? ""}
 					</div>
@@ -1195,15 +1256,11 @@ function ParentSelect({
 		if (!search) return options;
 		const q = search.toLowerCase();
 		return options.filter(
-			(o) =>
-				o.label.toLowerCase().includes(q) ||
-				o.assemblyType.toLowerCase().includes(q),
+			(o) => o.label.toLowerCase().includes(q) || o.assemblyType.toLowerCase().includes(q),
 		);
 	}, [options, search]);
 
-	const selectedLabel = value
-		? (options.find((o) => o.id === value)?.label ?? "Unknown")
-		: null;
+	const selectedLabel = value ? (options.find((o) => o.id === value)?.label ?? "Unknown") : null;
 
 	if (!open) {
 		return (
@@ -1254,28 +1311,20 @@ function ParentSelect({
 							setSearch("");
 						}}
 						className={`w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-800 ${
-							o.id === value
-								? "text-cyan-400"
-								: "text-zinc-300"
+							o.id === value ? "text-cyan-400" : "text-zinc-300"
 						}`}
 					>
 						<span className="font-medium">{o.label}</span>
 						<span className="ml-2 text-zinc-600">{o.assemblyType}</span>
 					</button>
 				))}
-				{filtered.length === 0 && (
-					<div className="px-3 py-2 text-xs text-zinc-600">No matches</div>
-				)}
+				{filtered.length === 0 && <div className="px-3 py-2 text-xs text-zinc-600">No matches</div>}
 			</div>
 		</div>
 	);
 }
 
-function StatCard({
-	label,
-	value,
-	color,
-}: { label: string; value: number; color: string }) {
+function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
 	return (
 		<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
 			<p className="text-xs text-zinc-500">{label}</p>

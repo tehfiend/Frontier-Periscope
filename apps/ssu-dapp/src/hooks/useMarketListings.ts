@@ -17,7 +17,7 @@ export function useMarketListings(marketId: string | null | undefined) {
 	const marketPackageId = getMarketPackageId() ?? "";
 
 	return useQuery({
-		queryKey: ["marketListings", marketId],
+		queryKey: ["marketListings", marketId, marketPackageId],
 		queryFn: async (): Promise<SellListingWithName[]> => {
 			if (!marketId || !marketPackageId) return [];
 			const listings = await queryMarketListings(client, marketId, marketPackageId);
