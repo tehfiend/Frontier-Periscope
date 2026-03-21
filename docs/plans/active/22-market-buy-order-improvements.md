@@ -640,19 +640,23 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
    - Compute total balance: `const totalBalance = ownedCoins?.reduce((sum, c) => sum + c.balance, 0n) ?? 0n;`.
    - Display "Balance: X SYMBOL" (read-only) instead of dropdown.
    - Warn if `totalBalance < totalBaseUnits` (insufficient balance).
+   - Fix line 119: change `pricePerUnit: Number(priceBaseUnits)` to `pricePerUnit: priceBaseUnits` (now bigint).
    - Call `buildPostBuyOrder` with `coinObjectIds: ownedCoins.map(c => c.objectId)` and `totalAmount: totalBaseUnits`.
 
-4. **`apps/ssu-dapp/src/components/ListingCard.tsx`** -- Use merged coin builder:
-   - Replace `paymentObjectId: ""` with coin merge pattern: `coinObjectIds: ownedCoins.map(c => c.objectId)`.
-   - Update arithmetic to use `BigInt` for `totalPriceBase` calculation.
+4. **`apps/ssu-dapp/src/components/ListingCard.tsx`** -- Use merged coin builder + BigInt fixes:
+   - Line 45: `listing.pricePerUnit * quantity` fails (bigint * number). Change to `listing.pricePerUnit * BigInt(quantity)`.
+   - Line 74: Replace `paymentObjectId: ""` with coin merge pattern. Add `useQuery` for `queryOwnedCoins` to fetch all coins, then pass `coinObjectIds: ownedCoins.map(c => c.objectId)`.
+   - `formatBaseUnits` calls on lines 48-49 already accept `bigint` -- no change needed there.
 
 5. **`apps/ssu-dapp/src/components/FillBuyOrderDialog.tsx`** -- BigInt arithmetic:
-   - `totalPaymentBase` should use `BigInt`: `BigInt(order.pricePerUnit) * BigInt(qty)`.
-   - Update `fmtAmount` to accept `bigint`.
+   - Line 47: `totalPaymentBase = order.pricePerUnit * qty` fails when `pricePerUnit` is bigint. Change to `order.pricePerUnit * BigInt(qty)`.
+   - Line 52: `fmtAmount(baseUnits: number)` type signature -> `fmtAmount(baseUnits: number | bigint)`. The underlying `formatBaseUnits` already accepts `number | bigint`.
+   - Line 172: `totalPaymentBase > 0` -> `totalPaymentBase > 0n` (bigint comparison).
 
 6. **`apps/ssu-dapp/src/components/MarketContent.tsx`** -- Major updates:
-   - `fmtPrice` calls must accept `bigint` pricePerUnit.
-   - Price * quantity calculations use `BigInt`.
+   - Line 77: `fmtPrice(baseUnits: number)` -> `fmtPrice(baseUnits: number | bigint)`. The underlying `formatBaseUnits` already accepts both.
+   - Line 165: `fmtPrice(order.pricePerUnit)` works without change once `fmtPrice` accepts bigint.
+   - Line 170: `fmtPrice(order.pricePerUnit * order.quantity)` fails -- bigint * number. Change to `fmtPrice(order.pricePerUnit * BigInt(order.quantity))`.
    - Cancel buy order handler passes `marketId` (unchanged -- buy orders still on Market).
 
 7. **`apps/ssu-dapp/src/components/ListingAdminList.tsx`** -- Change `pricePerUnit: Number(priceBase)` to `pricePerUnit: priceBase` (ensure `priceBase` is `bigint`).
