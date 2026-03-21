@@ -1,5 +1,11 @@
 # Dispatch Log
 
+## 2026-03-21 -- manifest-public-locations
+- **Action:** CREATE
+- **File:** docs/plans/active/24-manifest-public-locations.md
+- **Passes:** 4 (draft + 3 review passes, converged on pass 4 with minor fix only)
+- **Result:** active -- Add third manifest table `manifestLocations` to cache publicly revealed structure locations from `LocationRevealedEvent` chain events. New `ManifestLocation` interface with assembly ID, coordinates (x/y/z as strings), solar system, type ID, owner cap, and resolved L-point label. Discovery follows same incremental cursor pattern as `discoverCharactersFromEvents()` with `queryEventsGql` pagination. L-point resolution via new `resolveNearestLPoint()` utility in `lpoints.ts` that matches coordinates against celestial planet data (20% orbital radius threshold). Cross-references manifest locations with deployables/assemblies tables to auto-populate structure locations. Manifest UI gains third "Locations" tab with DataGrid showing assembly type, system name, L-point, and Suiscan links. 4 phases, 6 files (all modifications). Dexie V23 for new table. No open questions -- threshold resolved inline as design decision.
+
 ## 2026-03-21 -- private-map-system
 - **Action:** CREATE
 - **File:** docs/plans/pending/23-private-map-system.md
