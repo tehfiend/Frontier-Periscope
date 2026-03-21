@@ -1,5 +1,5 @@
 # Plan: Private Map System
-**Status:** Draft
+**Status:** Pending
 **Created:** 2026-03-21
 **Module:** contracts, chain-shared, periscope, ssu-dapp
 
@@ -45,6 +45,7 @@ public struct PrivateMap has key {
     name: String,
     creator: address,
     public_key: vector<u8>,    // X25519 public key (32 bytes)
+    revoked: vector<address>,  // addresses blocked from add_location
     next_location_id: u64,
 }
 
@@ -71,7 +72,7 @@ public struct MapLocation has store, drop {
 
 ### Crypto Flow
 
-1. **Key derivation:** `signPersonalMessage("TehFrontier Map Key v1")` -> SHA-256 hash of signature -> use as X25519 private key seed. Ed25519 signatures are deterministic, so same wallet = same derived key every time.
+1. **Key derivation:** `dAppKit.signPersonalMessage({ message: encode("TehFrontier Map Key v1") })` -> SHA-256 hash of the 64-byte Ed25519 signature -> use 32-byte hash as X25519 seed via `x25519.keygen(seed)`. Ed25519 signatures are deterministic, so same wallet = same derived key every time across devices.
 2. **Map creation:** Generate ephemeral X25519 keypair in memory. Store public key on-chain. Self-invite (seal private key with own wallet-derived X25519 public key). Discard ephemeral private key.
 3. **Inviting members:** Decrypt own invite to recover map private key. Re-encrypt map private key with invitee's X25519 public key (derived from their wallet address -- requires them to publish their X25519 public key first via an on-chain registration step, or the inviter provides the invitee's public key out-of-band).
 4. **Adding locations:** Decrypt own invite to recover map private key, derive map public key. Encrypt location data with `crypto_box_seal` using map's public key. Store as dynamic field.
@@ -79,7 +80,7 @@ public struct MapLocation has store, drop {
 
 ### Client-Side Crypto Library
 
-Use `tweetnacl` (or `tweetnacl-js`) for NaCl `crypto_box_seal` / `crypto_box_seal_open`. Use `@noble/hashes` (already in ssu-dapp) for SHA-256 key derivation. Use `@noble/curves` for Ed25519 -> X25519 conversion.
+Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_seal` / `crypto_box_seal_open`). Note: `tweetnacl` alone only has `crypto_box` (authenticated encryption); sealed boxes are a libsodium extension provided by `tweetnacl-sealedbox-js`. Use `@noble/hashes` (already a dependency of ssu-dapp) for SHA-256 key derivation. Use `@noble/curves` `x25519` export for key generation -- `x25519.keygen(seed?)` generates a keypair, `x25519.getPublicKey(secretKey)` derives a public key from a secret key.
 
 ### New Files
 
@@ -95,8 +96,8 @@ Use `tweetnacl` (or `tweetnacl-js`) for NaCl `crypto_box_seal` / `crypto_box_sea
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Key derivation message | `"TehFrontier Map Key v1"` | Versioned message allows future key rotation. Deterministic derivation means no local key storage. |
-| Encryption scheme | NaCl `crypto_box_seal` (X25519 + XSalsa20-Poly1305) | Anonymous sealed boxes -- only the recipient's public key is needed. Well-audited, widely available in JS via tweetnacl. |
-| Ed25519 -> X25519 conversion | `@noble/curves` `edwardsToMontgomeryPub` / `edwardsToMontgomeryPriv` | Standard curve conversion. Noble is the gold standard for JS crypto. |
+| Encryption scheme | NaCl `crypto_box_seal` (X25519 + XSalsa20-Poly1305) | Anonymous sealed boxes -- only the recipient's public key is needed. Well-audited. Requires `tweetnacl` + `tweetnacl-sealedbox-js` (tweetnacl alone lacks sealed boxes). |
+| X25519 key operations | `@noble/curves` `x25519.keygen(seed?)` / `x25519.getPublicKey(sk)` | Noble x25519 export handles keypair generation from seed and public key derivation. No separate ed25519->x25519 conversion needed -- we derive X25519 keys directly from SHA-256 hash of wallet signature. |
 | MapInvite as owned object | Transfer to invitee's address | Owned objects are only visible to the owner. GraphQL `address.objects` query finds them. Natural access control. |
 | Location storage | Dynamic fields on PrivateMap keyed by `LocationKey { location_id: u64 }` | Follows established pattern from `market.move` (SellKey, BuyKey). Avoids vector size limits. |
 | Structure ID field | `Option<ID>` on MapLocation | Allows both structure-linked locations (SSU, gate) and custom POIs (no structure). |
@@ -106,8 +107,9 @@ Use `tweetnacl` (or `tweetnacl-js`) for NaCl `crypto_box_seal` / `crypto_box_sea
 | No on-chain key registry | Inviter must know invitee's X25519 public key out-of-band | Avoids requiring all users to register public keys. Invite flow provides the public key. See Open Questions. |
 | Contract independence | No dependency on market, ssu_market, or world contracts | Private Map is a pure utility -- location data is opaque bytes. Structure IDs are stored as `Option<ID>` but not validated on-chain. |
 | Location removal | Creator or the address that added the location can remove it | Allows map housekeeping without concentrating all control on the creator. |
-| Soft revocation only | `remove_member` deletes their MapInvite (they lose the object) | Cannot prevent cached key usage. True revocation requires creating a new map. Documented limitation. |
-| Crypto libraries | `tweetnacl` + `@noble/hashes` + `@noble/curves` | tweetnacl for sealed boxes (no noble equivalent). Noble for hashing and curve conversion. All audited, small footprint. |
+| Soft revocation via blacklist | `revoke_member` adds address to `revoked` vector on PrivateMap | Cannot delete another user's owned object in Sui. `revoked` list blocks `add_location` calls. Cannot prevent decryption of existing data -- true revocation requires creating a new map. Documented limitation. |
+| Crypto libraries | `tweetnacl` + `tweetnacl-sealedbox-js` + `@noble/hashes` + `@noble/curves` | tweetnacl for NaCl primitives, tweetnacl-sealedbox-js for sealed box extension. Noble for SHA-256 hashing and x25519 key generation. All audited, small footprint. |
+| Wallet key derivation | `dAppKit.signPersonalMessage({ message })` via `useDAppKit()` | dapp-kit-react exposes `signPersonalMessage` on the DAppKit instance (not a separate hook). Already used pattern in the codebase. |
 
 ## Implementation Phases
 
@@ -115,32 +117,35 @@ Use `tweetnacl` (or `tweetnacl-js`) for NaCl `crypto_box_seal` / `crypto_box_sea
 
 1. Create `contracts/private_map/Move.toml` with Sui framework dependency (same pattern as `contracts/market/Move.toml`), `edition = "2024"`, `private_map = "0x0"` placeholder address.
 2. Create `contracts/private_map/sources/private_map.move` with:
-   - Error codes: `ENotCreator`, `ELocationNotFound`, `ENotLocationOwner`, `EInviteNotForThisMap`
+   - Error codes: `ENotCreator`, `ELocationNotFound`, `ENotLocationOwner`, `EInviteNotForThisMap`, `EMemberRevoked`, `EAlreadyRevoked`
    - Structs: `PrivateMap`, `MapInvite`, `LocationKey`, `MapLocation` (as specified in Target State)
-   - `create_map(name: String, public_key: vector<u8>, self_invite_encrypted_key: vector<u8>, ctx: &mut TxContext)` -- creates shared `PrivateMap`, transfers self-`MapInvite` to sender
+   - `create_map(name: String, public_key: vector<u8>, self_invite_encrypted_key: vector<u8>, ctx: &mut TxContext)` -- `#[allow(lint(share_owned))]` attribute (same as market.move). Creates shared `PrivateMap` with `revoked: vector[]`, transfers self-`MapInvite` to sender
    - `invite_member(map: &PrivateMap, recipient: address, encrypted_map_key: vector<u8>, ctx: &mut TxContext)` -- creator only. Creates `MapInvite` owned by `recipient`.
-   - `add_location(map: &mut PrivateMap, structure_id: Option<ID>, encrypted_data: vector<u8>, clock: &Clock, ctx: &mut TxContext)` -- any holder of a `MapInvite` for this map can add (but we cannot enforce this on-chain without passing the invite; instead, anyone can add -- the data is opaque bytes anyway; only members can decrypt). Increments `next_location_id`, adds `MapLocation` as dynamic field.
+   - `add_location(map: &mut PrivateMap, invite: &MapInvite, structure_id: Option<ID>, encrypted_data: vector<u8>, clock: &Clock, ctx: &mut TxContext)` -- requires `&MapInvite` with matching `map_id` (prevents spam from non-members). Asserts `invite.map_id == object::id(map)`. Also asserts sender is not in `revoked` list. Increments `next_location_id`, adds `MapLocation` as dynamic field.
    - `remove_location(map: &mut PrivateMap, location_id: u64, ctx: &TxContext)` -- creator or `added_by` address can remove.
-   - `remove_member(map: &PrivateMap, invite: MapInvite, ctx: &TxContext)` -- creator only. Consumes and deletes the `MapInvite` object. Requires the invite to be passed as an owned object (the creator cannot directly delete another user's owned object -- see Open Questions).
+   - `revoke_member(map: &mut PrivateMap, addr: address, ctx: &TxContext)` -- creator only. Adds address to `revoked` vector on the map. Does NOT delete their `MapInvite` (can't consume another user's owned object). Prevents the revoked address from calling `add_location`. They can still decrypt existing data -- true revocation requires creating a new map.
    - Read accessors: `map_name`, `map_creator`, `map_public_key`, `next_location_id`, `borrow_location`, `has_location`
-   - Events: `MapCreatedEvent`, `MemberInvitedEvent`, `LocationAddedEvent`, `LocationRemovedEvent`, `MemberRemovedEvent`
+   - Events: `MapCreatedEvent`, `MemberInvitedEvent`, `LocationAddedEvent`, `LocationRemovedEvent`, `MemberRevokedEvent`
 3. Write comprehensive tests covering:
-   - Map creation with self-invite
-   - Member invitation (creator only)
-   - Location add/remove lifecycle
-   - Authorization checks (non-creator cannot invite, non-creator/non-adder cannot remove location)
-   - Event emission verification
+   - Map creation with self-invite (verify PrivateMap shared, MapInvite transferred to creator)
+   - Member invitation (creator only, non-creator should fail with `ENotCreator`)
+   - Location add with valid MapInvite (verify dynamic field creation, `next_location_id` increment)
+   - Location add with wrong map's invite (should fail with `EInviteNotForThisMap`)
+   - Location remove by creator and by `added_by` address
+   - Location remove by unauthorized address (should fail with `ENotLocationOwner`)
+   - Member revocation (add to `revoked` list, verify `add_location` fails with `EMemberRevoked`)
+   - Event emission verification for all operations
 
 ### Phase 2: Client-Side Crypto (`packages/chain-shared/src/crypto.ts`)
 
 1. Create `packages/chain-shared/src/crypto.ts` with:
-   - `deriveMapKeyFromSignature(signature: Uint8Array): { publicKey: Uint8Array; secretKey: Uint8Array }` -- SHA-256 hash of Ed25519 signature, use as X25519 seed via `@noble/curves` ed25519 -> X25519 conversion
-   - `generateEphemeralX25519Keypair(): { publicKey: Uint8Array; secretKey: Uint8Array }` -- random X25519 keypair for new maps
-   - `sealForRecipient(plaintext: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array` -- NaCl `crypto_box_seal`
-   - `unsealWithKey(ciphertext: Uint8Array, recipientPublicKey: Uint8Array, recipientSecretKey: Uint8Array): Uint8Array` -- NaCl `crypto_box_seal_open`
+   - `deriveMapKeyFromSignature(signature: Uint8Array): { publicKey: Uint8Array; secretKey: Uint8Array }` -- SHA-256 hash of signature bytes (via `@noble/hashes/sha256`), then `x25519.keygen(hash)` to produce X25519 keypair. The `x25519` export from `@noble/curves/ed25519` accepts an optional 32-byte seed.
+   - `generateEphemeralX25519Keypair(): { publicKey: Uint8Array; secretKey: Uint8Array }` -- `x25519.keygen()` (no seed = random). Used for new map creation.
+   - `sealForRecipient(plaintext: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array` -- uses `tweetnacl-sealedbox-js` `seal(plaintext, recipientPublicKey)`
+   - `unsealWithKey(ciphertext: Uint8Array, recipientPublicKey: Uint8Array, recipientSecretKey: Uint8Array): Uint8Array` -- uses `tweetnacl-sealedbox-js` `open(ciphertext, recipientPublicKey, recipientSecretKey)`
    - `encodeLocationData(data: { solarSystemId: number; planet: number; lPoint: number; description?: string }): Uint8Array` -- JSON serialize + UTF-8 encode
    - `decodeLocationData(plaintext: Uint8Array): { solarSystemId: number; planet: number; lPoint: number; description?: string }` -- UTF-8 decode + JSON parse
-2. Add `tweetnacl` and `@noble/curves` as dependencies of `packages/chain-shared`.
+2. Add `tweetnacl`, `tweetnacl-sealedbox-js`, and `@noble/curves` as dependencies of `packages/chain-shared`. `@noble/hashes` is already a transitive dependency but should be added explicitly.
 3. Export from `packages/chain-shared/src/index.ts`.
 4. Write unit tests for crypto round-trip (seal -> unseal), key derivation determinism, and location data encoding.
 
@@ -151,8 +156,9 @@ Use `tweetnacl` (or `tweetnacl-js`) for NaCl `crypto_box_seal` / `crypto_box_sea
    - **TX builders:**
      - `buildCreateMap(params: { packageId, name, publicKey, selfInviteEncryptedKey, senderAddress })` -- calls `private_map::create_map`
      - `buildInviteMember(params: { packageId, mapId, recipient, encryptedMapKey, senderAddress })` -- calls `private_map::invite_member`
-     - `buildAddLocation(params: { packageId, mapId, structureId?, encryptedData, senderAddress })` -- calls `private_map::add_location`
+     - `buildAddLocation(params: { packageId, mapId, inviteId, structureId?, encryptedData, senderAddress })` -- calls `private_map::add_location` with `&MapInvite` reference
      - `buildRemoveLocation(params: { packageId, mapId, locationId, senderAddress })` -- calls `private_map::remove_location`
+     - `buildRevokeMember(params: { packageId, mapId, memberAddress, senderAddress })` -- calls `private_map::revoke_member`
    - **Queries:**
      - `queryPrivateMap(client, mapId)` -- fetch map details via `getObjectJson`
      - `queryMapInvitesForUser(client, packageId, userAddress)` -- discover all `MapInvite` objects owned by user via GraphQL `objects(filter: { type, owner })` query
@@ -202,7 +208,7 @@ Use `tweetnacl` (or `tweetnacl-js`) for NaCl `crypto_box_seal` / `crypto_box_sea
    - Per-map view showing decrypted locations, members, "Invite Member" action
    - "Add Location" dialog with system selector, planet/L-point fields, optional structure ID, description
    - "Remove Location" action per location row
-   - Key derivation via `signPersonalMessage` using `useDAppKit()` (or `useSignPersonalMessage` from dapp-kit-react)
+   - Key derivation via `dAppKit.signPersonalMessage({ message })` using `useDAppKit()` from dapp-kit-react
 2. Add `useMapKey` hook (`apps/periscope/src/hooks/useMapKey.ts`) -- derives X25519 keypair from wallet, caches in React state (not persisted). Uses `signPersonalMessage` + `deriveMapKeyFromSignature`.
 3. Add `usePrivateMaps` hook (`apps/periscope/src/hooks/usePrivateMaps.ts`) -- fetches user's MapInvites, resolves map details, decrypts location data.
 4. Add route `/maps` to `apps/periscope/src/router.tsx`.
@@ -225,7 +231,7 @@ Use `tweetnacl` (or `tweetnacl-js`) for NaCl `crypto_box_seal` / `crypto_box_sea
 | `packages/chain-shared/src/types.ts` | Modify | Add PrivateMapInfo, MapInviteInfo, MapLocationInfo, ContractAddresses.privateMap |
 | `packages/chain-shared/src/index.ts` | Modify | Add exports for crypto.ts and private-map.ts |
 | `packages/chain-shared/src/config.ts` | Modify | Add privateMap packageId to both tenant entries (after deploy) |
-| `packages/chain-shared/package.json` | Modify | Add tweetnacl, @noble/curves dependencies |
+| `packages/chain-shared/package.json` | Modify | Add tweetnacl, tweetnacl-sealedbox-js, @noble/curves, @noble/hashes dependencies |
 | `apps/periscope/src/views/Maps.tsx` | Create | Private maps management UI |
 | `apps/periscope/src/hooks/useMapKey.ts` | Create | Wallet-derived X25519 key hook |
 | `apps/periscope/src/hooks/usePrivateMaps.ts` | Create | Fetch + decrypt private maps hook |
@@ -244,15 +250,10 @@ Use `tweetnacl` (or `tweetnacl-js`) for NaCl `crypto_box_seal` / `crypto_box_sea
    - **Recommendation:** Option A (public key registry) for V1. The privacy concern is minimal -- an X25519 public key doesn't reveal anything actionable, and it's a one-time registration. The UX is vastly simpler. Could be a dynamic field on PrivateMap or a separate `KeyRegistry` shared object. Lean toward a global `KeyRegistry` so users only register once.
 
 2. **Should location add be permissionless or require MapInvite proof?**
-   - **Option A: Permissionless** -- Anyone can call `add_location`. Since the data is encrypted with the map's public key (which is on-chain), anyone could technically encrypt data. But only members can decrypt and verify it. Pros: simpler contract (no invite check). Cons: spam risk (anyone can add garbage locations).
-   - **Option B: Require MapInvite as function parameter** -- `add_location` takes `&MapInvite` and asserts `invite.map_id == map.id`. Pros: only members can add. Cons: requires passing an owned object as argument (works in Sui -- owned objects can be passed as `&MapInvite` by the owner).
-   - **Recommendation:** Option B. Pass `&MapInvite` to `add_location`. This prevents spam and ensures only invited members can contribute. The `MapInvite` is an owned object, so only the invitee can provide it. Pattern: `add_location(map: &mut PrivateMap, invite: &MapInvite, ...)` with assert `invite.map_id == object::id(map)`.
+   - **RESOLVED: Option B (require MapInvite).** `add_location` takes `&MapInvite` and asserts `invite.map_id == object::id(map)`. This prevents spam and ensures only invited members can contribute. Owned objects can be passed as immutable references by their owner in Sui PTBs.
 
 3. **How should member removal work given Sui's owned object model?**
-   - **Option A: Creator deletes invite by address** -- Not directly possible in Sui. Owned objects can only be consumed by their owner in a transaction.
-   - **Option B: Freezing/blacklist on the map** -- Add a `revoked: vector<address>` to PrivateMap. `add_location` and queries check this list. The invite object still exists but is functionally useless for adding locations. Members can still decrypt existing data.
-   - **Option C: No removal mechanism** -- If trust is broken, create a new map and re-invite. Document this as the expected flow.
-   - **Recommendation:** Option B for `add_location` gating (check `revoked` list), plus Option C as the documented "full revocation" path. The `revoked` vector prevents removed members from adding new locations, even though they can still read existing ones.
+   - **RESOLVED: Option B (revoked blacklist) + Option C (new map for full revocation).** `revoke_member` adds address to `revoked: vector<address>` on PrivateMap. `add_location` checks this list. Cannot delete another user's owned object, so the MapInvite persists -- revoked members can still decrypt existing data. True revocation requires creating a new map.
 
 4. **Should the `useMapKey` hook be duplicated in both periscope and ssu-dapp, or shared?**
    - **Option A: Duplicate** -- Each app has its own `useMapKey.ts`. Simple, no cross-app dependency. Cons: code duplication.
