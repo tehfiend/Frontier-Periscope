@@ -1,14 +1,18 @@
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
-import type { MarketBuyOrder, MarketSellListing } from "@tehfrontier/chain-shared";
-import { useState } from "react";
+import { getMarketPackageId } from "@/lib/constants";
+import type { MarketSellListing } from "@tehfrontier/chain-shared";
+import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
+import { useCharacterNames } from "@/hooks/useCharacterNames";
+import { useMemo, useState } from "react";
 import { CreateBuyOrderDialog } from "./CreateBuyOrderDialog";
+import { FillBuyOrderDialog } from "./FillBuyOrderDialog";
 import { ListingAdminList } from "./ListingAdminList";
 import { ListingBuyerList } from "./ListingBuyerList";
 
 interface MarketContentProps {
 	ssuConfig: SsuConfigResult;
 	listings: MarketSellListing[];
-	buyOrders: MarketBuyOrder[];
+	buyOrders: BuyOrderWithName[];
 	listingsLoading?: boolean;
 	buyOrdersLoading?: boolean;
 	isAuthorized: boolean;
@@ -17,6 +21,7 @@ interface MarketContentProps {
 	coinType: string;
 	walletAddress?: string;
 	ssuObjectId: string;
+	ownerCapReceivingId?: string;
 }
 
 export function MarketContent({
@@ -31,19 +36,38 @@ export function MarketContent({
 	coinType,
 	walletAddress,
 	ssuObjectId,
+	ownerCapReceivingId,
 }: MarketContentProps) {
 	const [showBuyOrderDialog, setShowBuyOrderDialog] = useState(false);
+	const [fillOrder, setFillOrder] = useState<BuyOrderWithName | null>(null);
+	const marketPkg = getMarketPackageId();
+
+	// Collect all addresses that need name resolution
+	const allAddresses = useMemo(() => {
+		const addrs: string[] = [];
+		for (const l of listings) addrs.push(l.seller);
+		for (const o of buyOrders) addrs.push(o.buyer);
+		return addrs;
+	}, [listings, buyOrders]);
+
+	const { data: nameMap } = useCharacterNames(allAddresses);
 
 	const marketId = ssuConfig.marketId;
 	if (!marketId) return null;
 
+	function formatAddress(addr: string): string {
+		const name = nameMap?.get(addr);
+		if (name) return name;
+		return `${addr.slice(0, 10)}...`;
+	}
+
 	return (
 		<div className="space-y-6">
-			{/* Sell Listings Section */}
+			{/* Sell Orders Section */}
 			<div>
-				<h3 className="mb-3 text-sm font-medium text-zinc-400">Sell Listings</h3>
+				<h3 className="mb-3 text-sm font-medium text-zinc-400">Sell Orders</h3>
 				{listingsLoading ? (
-					<p className="py-4 text-center text-xs text-zinc-600">Loading listings...</p>
+					<p className="py-4 text-center text-xs text-zinc-600">Loading sell orders...</p>
 				) : isAuthorized ? (
 					<ListingAdminList
 						listings={listings}
@@ -51,6 +75,7 @@ export function MarketContent({
 						characterObjectId={characterObjectId}
 						ssuObjectId={ssuObjectId}
 						coinType={coinType}
+						nameMap={nameMap}
 					/>
 				) : (
 					<ListingBuyerList
@@ -60,6 +85,7 @@ export function MarketContent({
 						isConnected={isConnected}
 						coinType={coinType}
 						ssuObjectId={ssuObjectId}
+						nameMap={nameMap}
 					/>
 				)}
 			</div>
@@ -93,7 +119,7 @@ export function MarketContent({
 								<div className="flex items-start justify-between">
 									<div>
 										<p className="text-xs text-zinc-300">
-											Want: Item #{order.typeId}
+											Want: {order.name}
 										</p>
 										<p className="text-[10px] text-zinc-500">
 											{order.pricePerUnit.toLocaleString()} per unit --{" "}
@@ -104,14 +130,25 @@ export function MarketContent({
 											{(order.pricePerUnit * order.quantity).toLocaleString()}
 										</p>
 										<p className="text-[10px] text-zinc-600">
-											Buyer: {order.buyer.slice(0, 10)}...
+											Buyer: {formatAddress(order.buyer)}
 										</p>
 									</div>
-									{walletAddress === order.buyer && (
-										<span className="rounded bg-cyan-900/30 px-1.5 py-0.5 text-[10px] text-cyan-400">
-											Your order
-										</span>
-									)}
+									<div className="flex flex-col items-end gap-1">
+										{walletAddress === order.buyer && (
+											<span className="rounded bg-cyan-900/30 px-1.5 py-0.5 text-[10px] text-cyan-400">
+												Your order
+											</span>
+										)}
+										{isConnected && walletAddress !== order.buyer && (
+											<button
+												type="button"
+												onClick={() => setFillOrder(order)}
+												className="rounded bg-amber-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-amber-500"
+											>
+												Fill
+											</button>
+										)}
+									</div>
 								</div>
 							</div>
 						))}
@@ -123,9 +160,22 @@ export function MarketContent({
 			{showBuyOrderDialog && ssuConfig.marketId && (
 				<CreateBuyOrderDialog
 					marketId={ssuConfig.marketId}
-					packageId={ssuConfig.packageId}
+					packageId={marketPkg ?? ""}
 					coinType={coinType}
 					onClose={() => setShowBuyOrderDialog(false)}
+				/>
+			)}
+
+			{/* Fill Buy Order Dialog */}
+			{fillOrder && ssuConfig.marketId && characterObjectId && ownerCapReceivingId && (
+				<FillBuyOrderDialog
+					order={fillOrder}
+					ssuConfig={ssuConfig}
+					coinType={coinType}
+					ssuObjectId={ssuObjectId}
+					characterObjectId={characterObjectId}
+					ownerCapReceivingId={ownerCapReceivingId}
+					onClose={() => setFillOrder(null)}
 				/>
 			)}
 		</div>

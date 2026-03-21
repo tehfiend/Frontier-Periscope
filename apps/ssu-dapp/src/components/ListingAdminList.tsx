@@ -17,6 +17,7 @@ interface ListingAdminListProps {
 	characterObjectId?: string;
 	ssuObjectId: string;
 	coinType: string;
+	nameMap?: Map<string, string>;
 }
 
 export function ListingAdminList({
@@ -25,6 +26,7 @@ export function ListingAdminList({
 	characterObjectId,
 	ssuObjectId,
 	coinType,
+	nameMap,
 }: ListingAdminListProps) {
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
@@ -80,7 +82,7 @@ export function ListingAdminList({
 	if (listings.length === 0) {
 		return (
 			<p className="py-4 text-center text-xs text-zinc-600">
-				No sell listings. Use the Sell button in the Inventory tab to create one.
+				No sell orders. Use the Sell button in the Inventory tab to create one.
 			</p>
 		);
 	}
@@ -91,6 +93,7 @@ export function ListingAdminList({
 				<ListingAdminRow
 					key={listing.listingId}
 					listing={listing}
+					nameMap={nameMap}
 					isEditing={dialogState?.type === "edit" && dialogState.id === listing.listingId}
 					isCancelling={dialogState?.type === "cancel" && dialogState.id === listing.listingId}
 					editPrice={dialogState?.type === "edit" && dialogState.id === listing.listingId ? dialogState.price : ""}
@@ -128,6 +131,7 @@ export function ListingAdminList({
 
 function ListingAdminRow({
 	listing,
+	nameMap,
 	isEditing,
 	isCancelling,
 	editPrice,
@@ -143,6 +147,7 @@ function ListingAdminRow({
 	onCancelConfirm,
 }: {
 	listing: MarketSellListing;
+	nameMap?: Map<string, string>;
 	isEditing: boolean;
 	isCancelling: boolean;
 	editPrice: string;
@@ -173,6 +178,9 @@ function ListingAdminRow({
 					<p className="text-xs text-zinc-500">
 						{listing.pricePerUnit.toLocaleString()} per unit --{" "}
 						{listing.quantity.toLocaleString()} available
+					</p>
+					<p className="text-[10px] text-zinc-600">
+						Seller: {nameMap?.get(listing.seller) ?? `${listing.seller.slice(0, 10)}...`}
 					</p>
 				</div>
 				<div className="flex items-center gap-2">

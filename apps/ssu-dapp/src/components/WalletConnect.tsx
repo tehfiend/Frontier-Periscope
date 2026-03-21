@@ -37,6 +37,18 @@ export function WalletConnect() {
 		} catch {
 			// Ignore disconnect errors
 		}
+		// Clear dapp-kit cached wallet state to prevent auto-reconnect
+		for (const key of Object.keys(localStorage)) {
+			if (key.includes("dapp-kit") || key.includes("wallet") || key.includes("slush")) {
+				localStorage.removeItem(key);
+			}
+		}
+		for (const key of Object.keys(sessionStorage)) {
+			if (key.includes("dapp-kit") || key.includes("wallet") || key.includes("slush")) {
+				sessionStorage.removeItem(key);
+			}
+		}
+		window.location.reload();
 	}
 
 	if (account) {

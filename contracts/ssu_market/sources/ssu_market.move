@@ -329,8 +329,8 @@ public fun player_to_owner(
 
 // -- Trade execution functions --------------------------------------------------
 
-/// Escrow items from owner inventory into extension inventory, then post a
-/// sell listing on the Market. Authorized users only.
+/// Move items into escrow (open inventory) and post a sell listing on the
+/// Market. When canceled, items return to owner inventory. Authorized users only.
 public fun escrow_and_list<T>(
     config: &SsuConfig, market: &mut Market<T>,
     ssu: &mut StorageUnit, character: &Character,
@@ -342,14 +342,14 @@ public fun escrow_and_list<T>(
     let type_id = item.type_id();
     let qty = (item.quantity() as u64);
 
-    // Escrow: move items into SSU extension inventory
-    storage_unit::deposit_item<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
+    // Escrow: move items into SSU open inventory (escrow)
+    storage_unit::deposit_to_open_inventory<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
 
     // Post listing on the Market
     market::post_sell_listing<T>(market, config.ssu_id, type_id, price_per_unit, qty, clock, ctx);
 }
 
-/// Cancel a sell listing on Market and return items from extension inventory
+/// Cancel a sell listing on Market and return items from escrow (open inventory)
 /// to owner inventory. Authorized users only.
 public fun cancel_listing<T>(
     config: &SsuConfig, market: &mut Market<T>,
@@ -368,8 +368,8 @@ public fun cancel_listing<T>(
     // Remove listing from market (uses write accessor to avoid redundant seller check)
     market::remove_sell_listing<T>(market, listing_id);
 
-    // Withdraw items from extension inventory
-    let item = storage_unit::withdraw_item<MarketAuth>(
+    // Withdraw items from escrow (open inventory)
+    let item = storage_unit::withdraw_from_open_inventory<MarketAuth>(
         ssu, character, MarketAuth {}, type_id, (quantity as u32), ctx,
     );
     // Return to owner inventory
@@ -423,8 +423,8 @@ public fun buy_from_listing<T>(
     let seller_coin = coin::split(&mut payment, seller_amount, ctx);
     transfer::public_transfer(seller_coin, seller);
 
-    // Withdraw items from extension inventory and deposit to buyer's owned inventory
-    let item = storage_unit::withdraw_item<MarketAuth>(
+    // Withdraw items from escrow (open inventory) and deposit to buyer's owned inventory
+    let item = storage_unit::withdraw_from_open_inventory<MarketAuth>(
         ssu, buyer_character, MarketAuth {}, type_id, quantity, ctx,
     );
     storage_unit::deposit_to_owned<MarketAuth>(ssu, buyer_character, item, MarketAuth {}, ctx);
@@ -442,8 +442,76 @@ public fun buy_from_listing<T>(
     payment
 }
 
-/// Seller fills a buy order by providing items from the SSU.
+/// Any player fills a buy order by providing items they already withdrew.
 /// Items deposited to open inventory (for buyer to claim).
+/// Escrowed payment released to seller (minus fee). No authorization required.
+#[allow(lint(self_transfer))]
+public fun player_fill_buy_order<T>(
+    config: &SsuConfig, market: &mut Market<T>,
+    ssu: &mut StorageUnit, character: &Character,
+    item: Item, order_id: u64, ctx: &mut TxContext,
+) {
+    assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
+    assert_market_linked(config, object::id(market));
+
+    let type_id = item.type_id();
+    let quantity = item.quantity();
+    assert!((quantity as u64) > 0, EZeroQuantity);
+
+    // Read buy order data
+    let order = market::borrow_buy_order(market, order_id);
+    let price_per_unit = market::order_price_per_unit(order);
+    let available = market::order_quantity(order);
+    let buyer = market::order_buyer(order);
+    assert!(type_id == market::order_type_id(order), ESSUMismatch);
+    assert!((quantity as u64) <= available, EInsufficientQuantity);
+
+    let total_price = price_per_unit * (quantity as u64);
+
+    // Calculate fee
+    let fee_bps = market::market_fee_bps(market);
+    let fee_recipient = market::market_fee_recipient(market);
+    let fee_amount = total_price / 10000 * fee_bps;
+    let seller_amount = total_price - fee_amount;
+
+    // Split escrowed payment from market
+    if (fee_amount > 0) {
+        let fee_coin = market::split_escrowed_coin<T>(market, order_id, fee_amount, ctx);
+        transfer::public_transfer(fee_coin, fee_recipient);
+    };
+    let seller_coin = market::split_escrowed_coin<T>(market, order_id, seller_amount, ctx);
+    transfer::public_transfer(seller_coin, ctx.sender());
+
+    // Deposit items to open inventory (for buyer to claim)
+    storage_unit::deposit_to_open_inventory<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
+
+    // Update or remove buy order
+    let remaining = available - (quantity as u64);
+    if (remaining == 0) {
+        market::remove_buy_order<T>(market, order_id);
+        let remaining_coins = market::remove_escrowed_coin<T>(market, order_id);
+        if (coin::value(&remaining_coins) > 0) {
+            transfer::public_transfer(remaining_coins, buyer);
+        } else {
+            remaining_coins.destroy_zero();
+        };
+    } else {
+        let order_mut = market::borrow_buy_order_mut(market, order_id);
+        market::set_order_quantity(order_mut, remaining);
+    };
+
+    event::emit(BuyOrderFilledEvent {
+        config_id: object::id(config),
+        ssu_id: config.ssu_id,
+        order_id,
+        type_id,
+        quantity: (quantity as u64),
+        total_paid: total_price,
+        seller: ctx.sender(),
+    });
+}
+
+/// Admin/delegate fills a buy order from SSU owner inventory.
 /// Escrowed payment released to seller (minus fee).
 #[allow(lint(self_transfer))]
 public fun fill_buy_order<T>(

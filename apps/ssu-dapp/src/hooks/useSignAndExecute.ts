@@ -20,6 +20,8 @@ export function useSignAndExecute(): {
 			setIsPending(true);
 			try {
 				const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+				// Wait briefly for the GraphQL indexer to process the new checkpoint
+				await new Promise((r) => setTimeout(r, 2000));
 				// Invalidate SSU data after successful TX
 				queryClient.invalidateQueries({ queryKey: ["assembly"] });
 				queryClient.invalidateQueries({ queryKey: ["itemNames"] });
@@ -27,6 +29,7 @@ export function useSignAndExecute(): {
 				queryClient.invalidateQueries({ queryKey: ["ssu-inventories"] });
 				queryClient.invalidateQueries({ queryKey: ["marketListings"] });
 				queryClient.invalidateQueries({ queryKey: ["marketBuyOrders"] });
+				queryClient.invalidateQueries({ queryKey: ["ownedCoins"] });
 				return result;
 			} finally {
 				setIsPending(false);

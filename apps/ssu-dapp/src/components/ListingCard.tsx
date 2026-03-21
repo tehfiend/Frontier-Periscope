@@ -14,6 +14,7 @@ interface ListingCardProps {
 	canBuy: boolean;
 	coinType: string;
 	ssuObjectId: string;
+	nameMap?: Map<string, string>;
 }
 
 export function ListingCard({
@@ -23,6 +24,7 @@ export function ListingCard({
 	canBuy,
 	coinType,
 	ssuObjectId,
+	nameMap,
 }: ListingCardProps) {
 	const [quantity, setQuantity] = useState(1);
 	const [error, setError] = useState<string | null>(null);
@@ -85,6 +87,9 @@ export function ListingCard({
 
 			<p className="mt-1 text-xs text-zinc-500">
 				{maxQty.toLocaleString()} available
+			</p>
+			<p className="text-[10px] text-zinc-600">
+				Seller: {nameMap?.get(listing.seller) ?? `${listing.seller.slice(0, 10)}...`}
 			</p>
 
 			<div className="mt-3 flex items-center gap-2">

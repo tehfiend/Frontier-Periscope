@@ -4,7 +4,7 @@ import {
 	getSsuMarketPreviousPackageIds,
 } from "@/lib/constants";
 import { useQuery } from "@tanstack/react-query";
-import { discoverSsuConfig, querySsuConfig } from "@tehfrontier/chain-shared";
+import { discoverSsuConfig, querySsuConfig, queryMarketDetails } from "@tehfrontier/chain-shared";
 import { useSuiClient } from "./useSuiClient";
 
 export interface SsuConfigResult {
@@ -12,6 +12,8 @@ export interface SsuConfigResult {
 	owner: string;
 	delegates: string[];
 	marketId: string | null;
+	/** Coin type from the linked Market<T>, e.g. "0xabc::ISK_TOKEN::ISK_TOKEN" */
+	coinType: string | null;
 	packageId: string;
 }
 
@@ -51,11 +53,19 @@ export function useSsuConfig(
 			const config = await querySsuConfig(client, ssuConfigId);
 			if (!config) return null;
 
+			// Step 3: If Market is linked, query it for the coin type
+			let coinType: string | null = null;
+			if (config.marketId) {
+				const market = await queryMarketDetails(client, config.marketId);
+				coinType = market?.coinType ?? null;
+			}
+
 			return {
 				ssuConfigId,
 				owner: config.owner,
 				delegates: config.delegates,
 				marketId: config.marketId,
+				coinType,
 				packageId: latestPkgId,
 			};
 		},

@@ -1,7 +1,8 @@
 import type { InventoryItem, SsuInventories } from "@/hooks/useInventory";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
-import type { MarketBuyOrder, MarketSellListing } from "@tehfrontier/chain-shared";
+import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
+import type { MarketSellListing } from "@tehfrontier/chain-shared";
 import { useState } from "react";
 import { InventoryTabs } from "./InventoryTabs";
 import { MarketContent } from "./MarketContent";
@@ -23,10 +24,12 @@ interface ContentTabsProps {
 	isConnected: boolean;
 	coinType: string;
 	listings: MarketSellListing[];
-	buyOrders: MarketBuyOrder[];
+	buyOrders: BuyOrderWithName[];
 	listingsLoading?: boolean;
 	buyOrdersLoading?: boolean;
 	walletAddress?: string;
+	/** Character's own OwnerCap ID (for player fill buy order) */
+	characterOwnerCapId?: string;
 }
 
 export function ContentTabs({
@@ -46,6 +49,7 @@ export function ContentTabs({
 	listingsLoading,
 	buyOrdersLoading,
 	walletAddress,
+	characterOwnerCapId,
 }: ContentTabsProps) {
 	const [activeTab, setActiveTab] = useState<TabId>("inventory");
 	const [sellDialogItem, setSellDialogItem] = useState<InventoryItem | null>(null);
@@ -54,6 +58,7 @@ export function ContentTabs({
 
 	// Sell button visible: isOwner + market linked + owner slot + connected
 	const canSell = isOwner && hasMarket && isConnected;
+
 
 	function handleSell(item: InventoryItem) {
 		setSellDialogItem(item);
@@ -113,6 +118,7 @@ export function ContentTabs({
 					coinType={coinType}
 					walletAddress={walletAddress}
 					ssuObjectId={ssuObjectId}
+					ownerCapReceivingId={characterOwnerCapId}
 				/>
 			)}
 

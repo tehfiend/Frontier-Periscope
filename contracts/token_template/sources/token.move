@@ -16,13 +16,16 @@ use market::market;
 /// One-Time Witness for the token. Struct name gets patched.
 public struct TOKEN_TEMPLATE has drop {}
 
+/// Decimals constant -- stored in the constant pool so the bytecode patcher can replace it.
+const DECIMALS: u8 = 9;
+
 /// Initialize the token currency. Creates TreasuryCap + CoinMetadata.
 /// TreasuryCap is consumed by market::create_market (locked inside Market<T>).
 /// CoinMetadata is frozen.
 fun init(witness: TOKEN_TEMPLATE, ctx: &mut TxContext) {
     let (treasury, metadata) = coin::create_currency(
         witness,
-        9,                          // decimals
+        DECIMALS,                   // decimals (patched by client)
         b"TMPL",                    // symbol (patched by client)
         b"Template Token",          // name (patched by client)
         b"A faction token",         // description (patched by client)

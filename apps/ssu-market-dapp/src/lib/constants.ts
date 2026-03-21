@@ -4,7 +4,7 @@ export const WORLD_PACKAGE_ID =
 
 /** SSU Market contract package ID */
 export const SSU_MARKET_PACKAGE_ID =
-	"0x40576ea9e07fa8516abc4820a24be12b0ad7678d181afba5710312d2a0ca6e48";
+	"0xc61ced466cc75112c32d62630b2d2df2eea4353dd92bc99bfb48b8b4144bcc69";
 
 /** Market contract package ID */
 export const MARKET_PACKAGE_ID =

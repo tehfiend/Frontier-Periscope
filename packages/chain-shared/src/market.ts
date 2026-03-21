@@ -15,6 +15,65 @@ import { Transaction } from "@mysten/sui/transactions";
 import { getDynamicFieldJson, getObjectJson, listDynamicFieldsGql } from "./graphql-queries";
 import type { MarketBuyOrder, MarketInfo, MarketSellListing } from "./types";
 
+// ── Market Creation ─────────────────────────────────────────────────────────
+
+export interface CreateMarketParams {
+	packageId: string;
+	coinType: string;
+	treasuryCapId: string;
+	senderAddress: string;
+}
+
+/** Build a TX to create a Market<T> by consuming TreasuryCap. */
+export function buildCreateMarket(params: CreateMarketParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	tx.moveCall({
+		target: `${params.packageId}::market::create_market`,
+		typeArguments: [params.coinType],
+		arguments: [tx.object(params.treasuryCapId)],
+	});
+
+	return tx;
+}
+
+/**
+ * Find a TreasuryCap<T> owned by the given address.
+ * Returns the object ID if found, null otherwise.
+ */
+export async function queryTreasuryCap(
+	client: SuiGraphQLClient,
+	coinType: string,
+	ownerAddress: string,
+): Promise<string | null> {
+	const QUERY = `
+		query($type: String!, $owner: SuiAddress!, $first: Int) {
+			objects(filter: { type: $type, owner: $owner }, first: $first) {
+				nodes { address }
+			}
+		}
+	`;
+
+	const treasuryType = `0x2::coin::TreasuryCap<${coinType}>`;
+
+	try {
+		const result: {
+			data?: {
+				objects: { nodes: Array<{ address: string }> };
+			};
+		} = await client.query({
+			query: QUERY,
+			variables: { type: treasuryType, owner: ownerAddress, first: 1 },
+		});
+
+		const nodes = result.data?.objects?.nodes ?? [];
+		return nodes.length > 0 ? nodes[0].address : null;
+	} catch {
+		return null;
+	}
+}
+
 // ── Mint/Burn (authorized access) ──────────────────────────────────────────
 
 export interface MintParams {
@@ -399,10 +458,9 @@ export async function queryMarketDetails(
 export async function queryMarketListings(
 	client: SuiGraphQLClient,
 	marketId: string,
-	marketPackageId: string,
+	_marketPackageId: string,
 ): Promise<MarketSellListing[]> {
 	const listings: MarketSellListing[] = [];
-	const sellKeyType = `${marketPackageId}::market::SellKey`;
 
 	try {
 		let cursor: string | null = null;
@@ -415,32 +473,24 @@ export async function queryMarketListings(
 			});
 
 			for (const df of page.entries) {
-				// Filter by SellKey type
 				if (!df.nameType.includes("SellKey")) continue;
 
-				// Extract listing_id from the key JSON
+				// Use inline value from the list response
+				const fields = df.valueJson as Record<string, unknown> | undefined;
+				if (!fields) continue;
+
 				const nameObj = df.nameJson as Record<string, unknown> | null;
 				const listingId = nameObj ? Number(nameObj.listing_id ?? 0) : 0;
 
-				try {
-					const fields = await getDynamicFieldJson(client, marketId, {
-						type: sellKeyType,
-						value: JSON.stringify({ listing_id: String(listingId) }),
-					});
-					if (!fields) continue;
-
-					listings.push({
-						listingId: Number(fields.listing_id ?? listingId),
-						seller: String(fields.seller ?? ""),
-						ssuId: String(fields.ssu_id ?? ""),
-						typeId: Number(fields.type_id ?? 0),
-						pricePerUnit: Number(fields.price_per_unit ?? 0),
-						quantity: Number(fields.quantity ?? 0),
-						postedAtMs: Number(fields.posted_at_ms ?? 0),
-					});
-				} catch {
-					// Skip individual field read errors
-				}
+				listings.push({
+					listingId: Number(fields.listing_id ?? listingId),
+					seller: String(fields.seller ?? ""),
+					ssuId: String(fields.ssu_id ?? ""),
+					typeId: Number(fields.type_id ?? 0),
+					pricePerUnit: Number(fields.price_per_unit ?? 0),
+					quantity: Number(fields.quantity ?? 0),
+					postedAtMs: Number(fields.posted_at_ms ?? 0),
+				});
 			}
 
 			hasMore = page.hasNextPage;
@@ -461,10 +511,9 @@ export async function queryMarketListings(
 export async function queryMarketBuyOrders(
 	client: SuiGraphQLClient,
 	marketId: string,
-	marketPackageId: string,
+	_marketPackageId: string,
 ): Promise<MarketBuyOrder[]> {
 	const orders: MarketBuyOrder[] = [];
-	const buyKeyType = `${marketPackageId}::market::BuyKey`;
 
 	try {
 		let cursor: string | null = null;
@@ -480,27 +529,20 @@ export async function queryMarketBuyOrders(
 				// Filter by BuyKey type (exclude BuyCoinKey)
 				if (!df.nameType.includes("BuyKey") || df.nameType.includes("BuyCoinKey")) continue;
 
-				// Extract order_id from the key JSON
+				// Use inline value from the list response
+				const fields = df.valueJson as Record<string, unknown> | undefined;
+				if (!fields) continue;
+
 				const nameObj = df.nameJson as Record<string, unknown> | null;
 				const orderId = nameObj ? Number(nameObj.order_id ?? 0) : 0;
 
-				try {
-					const fields = await getDynamicFieldJson(client, marketId, {
-						type: buyKeyType,
-						value: JSON.stringify({ order_id: String(orderId) }),
-					});
-					if (!fields) continue;
-
-					orders.push({
-						orderId: Number(fields.order_id ?? orderId),
-						buyer: String(fields.buyer ?? ""),
-						typeId: Number(fields.type_id ?? 0),
-						pricePerUnit: Number(fields.price_per_unit ?? 0),
-						quantity: Number(fields.quantity ?? 0),
-					});
-				} catch {
-					// Skip individual field read errors
-				}
+				orders.push({
+					orderId: Number(fields.order_id ?? orderId),
+					buyer: String(fields.buyer ?? ""),
+					typeId: Number(fields.type_id ?? 0),
+					pricePerUnit: Number(fields.price_per_unit ?? 0),
+					quantity: Number(fields.quantity ?? 0),
+				});
 			}
 
 			hasMore = page.hasNextPage;

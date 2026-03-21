@@ -261,6 +261,77 @@ export function buildBuyFromListing(params: BuyFromListingParams): Transaction {
 	return tx;
 }
 
+export interface PlayerFillBuyOrderParams {
+	packageId: string;
+	ssuConfigId: string;
+	marketId: string;
+	coinType: string;
+	worldPackageId: string;
+	ssuObjectId: string;
+	characterObjectId: string;
+	ownerCapReceivingId: string;
+	orderId: number;
+	typeId: number;
+	quantity: number;
+	senderAddress: string;
+}
+
+/**
+ * Build a PTB for any player to fill a buy order from their own inventory.
+ * Flow: borrow_owner_cap<Character> -> withdraw_by_owner -> player_fill_buy_order -> return_owner_cap
+ *
+ * Players have OwnerCap<Character> (not OwnerCap<StorageUnit> which is SSU-owner only).
+ */
+export function buildPlayerFillBuyOrder(params: PlayerFillBuyOrderParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	const capType = `${params.worldPackageId}::character::Character`;
+
+	// Step 1: Borrow OwnerCap<Character> from Character
+	const [ownerCap, receipt] = tx.moveCall({
+		target: `${params.worldPackageId}::character::borrow_owner_cap`,
+		typeArguments: [capType],
+		arguments: [tx.object(params.characterObjectId), tx.object(params.ownerCapReceivingId)],
+	});
+
+	// Step 2: Withdraw items from player's inventory (keyed by OwnerCap<Character> ID)
+	const [item] = tx.moveCall({
+		target: `${params.worldPackageId}::storage_unit::withdraw_by_owner`,
+		typeArguments: [capType],
+		arguments: [
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			ownerCap,
+			tx.pure.u64(params.typeId),
+			tx.pure.u32(params.quantity),
+		],
+	});
+
+	// Step 3: Fill the buy order with withdrawn items
+	tx.moveCall({
+		target: `${params.packageId}::ssu_market::player_fill_buy_order`,
+		typeArguments: [params.coinType],
+		arguments: [
+			tx.object(params.ssuConfigId),
+			tx.object(params.marketId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			item,
+			tx.pure.u64(params.orderId),
+		],
+	});
+
+	// Step 4: Return OwnerCap<Character>
+	tx.moveCall({
+		target: `${params.worldPackageId}::character::return_owner_cap`,
+		typeArguments: [capType],
+		arguments: [tx.object(params.characterObjectId), ownerCap, receipt],
+	});
+
+	return tx;
+}
+
 export interface FillBuyOrderParams {
 	packageId: string;
 	ssuConfigId: string;

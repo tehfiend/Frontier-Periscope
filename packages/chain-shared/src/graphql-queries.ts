@@ -97,6 +97,9 @@ interface GqlDynamicFieldsResponse {
 export interface DynamicFieldEntry {
 	nameType: string;
 	nameJson: unknown;
+	/** Value JSON (available for MoveValue dynamic fields inline) */
+	valueJson?: unknown;
+	valueType?: string;
 }
 
 /**
@@ -130,10 +133,18 @@ export async function listDynamicFieldsGql(
 	}
 
 	return {
-		entries: dfs.nodes.map((node) => ({
-			nameType: node.name.type.repr,
-			nameJson: node.name.json,
-		})),
+		entries: dfs.nodes.map((node) => {
+			const val = node.value;
+			// MoveValue has json+type inline; MoveObject only has address
+			const valueJson = val && "json" in val ? val.json : undefined;
+			const valueType = val && "type" in val ? val.type?.repr : undefined;
+			return {
+				nameType: node.name.type.repr,
+				nameJson: node.name.json,
+				valueJson,
+				valueType,
+			};
+		}),
 		hasNextPage: dfs.pageInfo.hasNextPage,
 		cursor: dfs.pageInfo.endCursor ?? null,
 	};
@@ -142,12 +153,12 @@ export async function listDynamicFieldsGql(
 // ── Coin List Query ─────────────────────────────────────────────────────────
 
 const LIST_COINS = `
-	query($owner: SuiAddress!, $coinType: String, $first: Int, $after: String) {
+	query($owner: SuiAddress!, $coinObjectType: String!, $first: Int, $after: String) {
 		address(address: $owner) {
-			coins(type: $coinType, first: $first, after: $after) {
+			objects(filter: { type: $coinObjectType }, first: $first, after: $after) {
 				nodes {
 					address
-					coinBalance
+					contents { json }
 				}
 				pageInfo { hasNextPage endCursor }
 			}
@@ -157,15 +168,20 @@ const LIST_COINS = `
 
 interface GqlCoinsResponse {
 	address: {
-		coins: {
-			nodes: Array<{ address: string; coinBalance: string }>;
+		objects: {
+			nodes: Array<{
+				address: string;
+				contents?: { json: Record<string, unknown> };
+			}>;
 			pageInfo: { hasNextPage: boolean; endCursor: string | null };
 		};
 	} | null;
 }
 
 /**
- * List coins owned by an address, replacing `client.getCoins(...)`.
+ * List coins owned by an address via objects query.
+ * The Sui GraphQL API no longer has a dedicated `coins` field --
+ * coins are queried as objects of type `0x2::coin::Coin<T>`.
  */
 export async function listCoinsGql(
 	client: SuiGraphQLClient,
@@ -177,31 +193,33 @@ export async function listCoinsGql(
 	hasNextPage: boolean;
 	cursor: string | null;
 }> {
+	const coinObjectType = `0x2::coin::Coin<${coinType}>`;
+
 	const result = await client.query<
 		GqlCoinsResponse,
-		{ owner: string; coinType: string; first: number; after: string | null }
+		{ owner: string; coinObjectType: string; first: number; after: string | null }
 	>({
 		query: LIST_COINS,
 		variables: {
 			owner,
-			coinType,
+			coinObjectType,
 			first: opts?.limit ?? 50,
 			after: opts?.cursor ?? null,
 		},
 	});
 
-	const coinsData = result.data?.address?.coins;
-	if (!coinsData) {
+	const objectsData = result.data?.address?.objects;
+	if (!objectsData) {
 		return { coins: [], hasNextPage: false, cursor: null };
 	}
 
 	return {
-		coins: coinsData.nodes.map((node) => ({
+		coins: objectsData.nodes.map((node) => ({
 			objectId: node.address,
-			balance: node.coinBalance,
+			balance: String(node.contents?.json?.balance ?? "0"),
 		})),
-		hasNextPage: coinsData.pageInfo.hasNextPage,
-		cursor: coinsData.pageInfo.endCursor ?? null,
+		hasNextPage: objectsData.pageInfo.hasNextPage,
+		cursor: objectsData.pageInfo.endCursor ?? null,
 	};
 }
 

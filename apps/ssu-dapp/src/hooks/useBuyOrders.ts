@@ -1,7 +1,12 @@
+import { resolveItemNames } from "@/lib/items";
 import { useQuery } from "@tanstack/react-query";
 import { type MarketBuyOrder, queryMarketBuyOrders } from "@tehfrontier/chain-shared";
 import { getMarketPackageId } from "@/lib/constants";
 import { useSuiClient } from "./useSuiClient";
+
+export interface BuyOrderWithName extends MarketBuyOrder {
+	name: string;
+}
 
 /**
  * Fetch buy orders from a Market<T> by marketId.
@@ -13,9 +18,17 @@ export function useBuyOrders(marketId: string | null | undefined) {
 
 	return useQuery({
 		queryKey: ["marketBuyOrders", marketId, marketPackageId],
-		queryFn: async (): Promise<MarketBuyOrder[]> => {
+		queryFn: async (): Promise<BuyOrderWithName[]> => {
 			if (!marketId || !marketPackageId) return [];
-			return queryMarketBuyOrders(client, marketId, marketPackageId);
+			const orders = await queryMarketBuyOrders(client, marketId, marketPackageId);
+
+			const typeIds = orders.map((o) => o.typeId);
+			const names = await resolveItemNames(typeIds);
+
+			return orders.map((o) => ({
+				...o,
+				name: names.get(o.typeId) ?? `Item #${o.typeId}`,
+			}));
 		},
 		enabled: !!marketId && !!marketPackageId,
 		staleTime: 15_000,

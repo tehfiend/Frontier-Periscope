@@ -15,10 +15,7 @@ import { getItemId, getTenant, getWorldPackageId } from "@/lib/constants";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useMemo } from "react";
 
-/** Hardcoded coin type per tenant for hackathon. TODO: make dynamic. */
-function getCoinType(): string {
-	return "";
-}
+/** Coin type is resolved dynamically from the linked Market<T> via SsuConfig. */
 
 interface SsuViewProps {
 	objectId: string;
@@ -185,12 +182,13 @@ export function SsuView({ objectId }: SsuViewProps) {
 						isOwner={isOwner}
 						isAuthorized={isAuthorized}
 						isConnected={!!account}
-						coinType={getCoinType()}
+						coinType={ssuConfig?.coinType ?? ""}
 						listings={listings ?? []}
 						buyOrders={buyOrders ?? []}
 						listingsLoading={listingsLoading}
 						buyOrdersLoading={buyOrdersLoading}
 						walletAddress={walletAddress}
+						characterOwnerCapId={charOwnerCapInfo?.objectId}
 					/>
 				</div>
 			)}

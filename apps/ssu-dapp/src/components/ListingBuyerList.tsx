@@ -9,6 +9,7 @@ interface ListingBuyerListProps {
 	isConnected: boolean;
 	coinType: string;
 	ssuObjectId: string;
+	nameMap?: Map<string, string>;
 }
 
 export function ListingBuyerList({
@@ -18,6 +19,7 @@ export function ListingBuyerList({
 	isConnected,
 	coinType,
 	ssuObjectId,
+	nameMap,
 }: ListingBuyerListProps) {
 	const activeListings = listings.filter((l) => l.quantity > 0);
 
@@ -40,6 +42,7 @@ export function ListingBuyerList({
 					canBuy={isConnected}
 					coinType={coinType}
 					ssuObjectId={ssuObjectId}
+					nameMap={nameMap}
 				/>
 			))}
 		</div>
