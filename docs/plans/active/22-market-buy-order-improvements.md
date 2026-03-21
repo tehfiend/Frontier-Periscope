@@ -329,21 +329,13 @@ Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
 
 9. Build: `cd contracts/market && sui move build && sui move test`.
 
-### Phase 2: Contract Changes -- ssu_market.move (both variants)
+### Phase 2a: Contract Changes -- ssu_market.move location + invite system
 
 For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_market_utopia/sources/ssu_market.move`:
 
-**Error codes and imports:**
-
-1. **Add error codes:**
-   ```move
-   #[error(code = 9)]
-   const ETypeMismatch: vector<u8> = b"Item type does not match buy order type";
-   ```
-
 **SsuConfig location fields:**
 
-2. **Update `SsuConfig` struct** -- add `is_public` and `location_data`:
+1. **Update `SsuConfig` struct** -- add `is_public` and `location_data`:
    ```move
    public struct SsuConfig has key {
        id: UID,
@@ -356,7 +348,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
    }
    ```
 
-3. **Update `create_ssu_config`** -- initialize new fields:
+2. **Update `create_ssu_config`** -- initialize new fields:
    ```move
    let config = SsuConfig {
        // ... existing fields ...
@@ -365,7 +357,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
    };
    ```
 
-4. **Add `set_location` function** -- owner only:
+3. **Add `set_location` function** -- owner only:
    ```move
    public fun set_location(
        config: &mut SsuConfig,
@@ -385,7 +377,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
    }
    ```
 
-5. **Add `LocationSetEvent`:**
+4. **Add `LocationSetEvent`:**
    ```move
    public struct LocationSetEvent has copy, drop {
        config_id: ID,
@@ -394,7 +386,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
    }
    ```
 
-6. **Add read accessors:**
+5. **Add read accessors:**
    ```move
    public fun config_is_public(config: &SsuConfig): bool { config.is_public }
    public fun config_location_data(config: &SsuConfig): vector<u8> { config.location_data }
@@ -402,7 +394,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
 
 **MarketInvite system:**
 
-7. **Add `MarketInvite` struct:**
+6. **Add `MarketInvite` struct:**
    ```move
    public struct MarketInvite has key, store {
        id: UID,
@@ -412,7 +404,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
    }
    ```
 
-8. **Add `send_invite` function** -- owner only, creates `MarketInvite` transferred to recipient:
+7. **Add `send_invite` function** -- owner only, creates `MarketInvite` transferred to recipient:
    ```move
    public fun send_invite(
        config: &SsuConfig,
@@ -439,7 +431,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
    }
    ```
 
-9. **Add `InviteSentEvent`:**
+8. **Add `InviteSentEvent`:**
    ```move
    public struct InviteSentEvent has copy, drop {
        config_id: ID,
@@ -448,54 +440,66 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
    }
    ```
 
-10. **Add MarketInvite read accessors:**
-    ```move
-    public fun invite_ssu_id(invite: &MarketInvite): ID { invite.ssu_id }
-    public fun invite_sender(invite: &MarketInvite): address { invite.sender }
-    public fun invite_encrypted_location_key(invite: &MarketInvite): vector<u8> {
-        invite.encrypted_location_key
-    }
-    ```
+9. **Add MarketInvite read accessors:**
+   ```move
+   public fun invite_ssu_id(invite: &MarketInvite): ID { invite.ssu_id }
+   public fun invite_sender(invite: &MarketInvite): address { invite.sender }
+   public fun invite_encrypted_location_key(invite: &MarketInvite): vector<u8> {
+       invite.encrypted_location_key
+   }
+   ```
+
+### Phase 2b: Contract Changes -- ssu_market.move bug fixes + event enrichment
+
+For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_market_utopia/sources/ssu_market.move`:
+
+**Error codes:**
+
+1. **Add error code** `ETypeMismatch` (code = 9):
+   ```move
+   #[error(code = 9)]
+   const ETypeMismatch: vector<u8> = b"Item type does not match buy order type";
+   ```
 
 **Fee and error fixes:**
 
-11. **Fix fee calculation** in `buy_from_listing` (line 415), `player_fill_buy_order` (line 474), and `fill_buy_order` (line 539) -- change:
-    ```move
-    let fee_amount = total_price / 10000 * fee_bps;
-    ```
-    to:
-    ```move
-    let fee_amount = total_price * fee_bps / 10000;
-    ```
+2. **Fix fee calculation** in `buy_from_listing` (line 415), `player_fill_buy_order` (line 474), and `fill_buy_order` (line 539) -- change:
+   ```move
+   let fee_amount = total_price / 10000 * fee_bps;
+   ```
+   to:
+   ```move
+   let fee_amount = total_price * fee_bps / 10000;
+   ```
 
-12. **Fix type mismatch error** in `player_fill_buy_order` -- change:
-    ```move
-    assert!(type_id == market::order_type_id(order), ESSUMismatch);
-    ```
-    to:
-    ```move
-    assert!(type_id == market::order_type_id(order), ETypeMismatch);
-    ```
+3. **Fix type mismatch error** in `player_fill_buy_order` -- change:
+   ```move
+   assert!(type_id == market::order_type_id(order), ESSUMismatch);
+   ```
+   to:
+   ```move
+   assert!(type_id == market::order_type_id(order), ETypeMismatch);
+   ```
 
 **Event enrichment:**
 
-13. **Update `BuyOrderFilledEvent`** in ssu_market -- add `buyer` and `price_per_unit`:
-    ```move
-    public struct BuyOrderFilledEvent has copy, drop {
-        config_id: ID,
-        ssu_id: ID,
-        order_id: u64,
-        type_id: u64,
-        quantity: u64,
-        total_paid: u64,
-        price_per_unit: u64,
-        seller: address,
-        buyer: address,
-    }
-    ```
-    Update both `player_fill_buy_order` and `fill_buy_order` to read buyer from the order and emit the enriched event.
+4. **Update `BuyOrderFilledEvent`** in ssu_market -- add `buyer` and `price_per_unit`:
+   ```move
+   public struct BuyOrderFilledEvent has copy, drop {
+       config_id: ID,
+       ssu_id: ID,
+       order_id: u64,
+       type_id: u64,
+       quantity: u64,
+       total_paid: u64,
+       price_per_unit: u64,
+       seller: address,
+       buyer: address,
+   }
+   ```
+   Update both `player_fill_buy_order` and `fill_buy_order` to read buyer from the order (already available via `market::order_buyer(order)`) and emit the enriched event.
 
-14. Build both: `cd contracts/ssu_market && sui move build` and `cd contracts/ssu_market_utopia && sui move build`.
+5. Build both: `cd contracts/ssu_market && sui move build` and `cd contracts/ssu_market_utopia && sui move build`.
 
 ### Phase 3: Publish Contracts
 
