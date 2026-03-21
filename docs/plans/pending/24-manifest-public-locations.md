@@ -145,6 +145,7 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 | Table name | `manifestLocations` | Follows existing pattern (`manifestCharacters`, `manifestTribes`). Clear distinction from the intel `locations` table (which stores user-created bookmarks). |
 | Primary key | `assembly_id` (structure object ID) | A structure can only have one revealed location. If re-revealed, we overwrite. This matches the on-chain `LocationRegistry` which uses `Table<ID, Coordinates>`. |
 | Store raw coordinates | Keep x, y, z as strings | The on-chain type uses `String` to support negative values and arbitrary precision. Converting to numbers loses precision for very large coordinates. Store raw and parse to numbers only when computing L-points. |
+| Ignore location_hash | Not stored in ManifestLocation | The `location_hash` field is a Poseidon2 hash used for on-chain proximity verification. We have the raw coordinates, so the hash is not useful for display or computation purposes. |
 | L-point resolution | Separate pass after event discovery | Computing L-points requires loading celestials data (~83K records). This should not block event fetching. Resolve as a second pass or on-demand when displaying. |
 | L-point resolution location | `lpoints.ts` utility | Keeps all L-point math in one file. The manifest module calls this utility when resolving labels. |
 | Event type | `{worldPkg}::location::LocationRevealedEvent` | Per `docs/chain-events-reference.md` line 458. This is the only event emitted when coordinates are published on-chain. |
@@ -167,7 +168,7 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 3. **Add `LocationRevealed` to `getEventTypes()`** in `apps/periscope/src/chain/config.ts` (inside the return object, after the ItemBurned line): `LocationRevealed: \`${pkg}::location::LocationRevealedEvent\``
 
 4. **Create `discoverLocationsFromEvents()`** in `apps/periscope/src/chain/manifest.ts`:
-   - Signature: `async function discoverLocationsFromEvents(client: SuiGraphQLClient, tenant: TenantId, worldPkg: string, limit?: number, ctx?: TaskContext): Promise<number>`
+   - Signature: `export async function discoverLocationsFromEvents(client: SuiGraphQLClient, tenant: TenantId, worldPkg: string, limit?: number, ctx?: TaskContext): Promise<number>`
    - Follow the `discoverCharactersFromEvents()` pattern (lines 137-283) but simpler (no Phase 2 name resolution needed)
    - Event type: `${worldPkg}::location::LocationRevealedEvent`
    - Cursor key: `manifestLocCursor:${worldPkg}`
@@ -203,11 +204,13 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
    - Add new constant: `export const L_POINT_MATCH_THRESHOLD = 0.20;` (20% of orbital radius)
 
 2. **Add `resolveManifestLocationLPoints()` to `apps/periscope/src/chain/manifest.ts`**:
-   - Load all manifest locations with null `lPoint` field
-   - Group by `solarsystem`
-   - For each system, load planets from `db.celestials` (ensure loaded via `ensureCelestialsLoaded()`)
-   - Call `resolveNearestLPoint()` for each location
-   - Batch-update `lPoint` field on manifest locations
+   - Add imports: `import { ensureCelestialsLoaded } from "@/lib/celestials"` and `import { resolveNearestLPoint } from "@/lib/lpoints"`
+   - Load all manifest locations with unresolved `lPoint` via `db.manifestLocations.filter(loc => !loc.lPoint).toArray()` (filter needed since `lPoint` is not indexed)
+   - Group results by `solarsystem` (e.g. using a `Map<number, ManifestLocation[]>`)
+   - Call `await ensureCelestialsLoaded()` once to ensure planet data is in IndexedDB
+   - For each system group, load planets from `db.celestials.where("systemId").equals(solarsystem).toArray()`
+   - Call `resolveNearestLPoint(Number(loc.x), Number(loc.y), Number(loc.z), planets)` for each location (note: parse string coords to numbers here)
+   - Batch-update `lPoint` field on manifest locations via `db.manifestLocations.update(loc.id, { lPoint })`
    - This can run as a background task or be called after event discovery completes
 
 3. **Integrate L-point resolution into `discoverLocationsFromEvents()`**:
@@ -217,9 +220,10 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 ### Phase 3: Deployable Auto-Population
 
 1. **Add `crossReferenceManifestLocations()` to `apps/periscope/src/chain/manifest.ts`**:
-   - Query all manifest locations
-   - For each, check if a deployable or assembly exists with matching `objectId`
-   - If found and the deployable/assembly lacks `systemId` or `lPoint`, update it with the manifest location data
+   - Query all manifest locations via `db.manifestLocations.toArray()`
+   - For each location, check if a deployable exists with matching `objectId` (via `db.deployables.where("objectId").equals(loc.id).first()` -- the manifest location `id` is the assembly's Sui object ID, which matches the deployable's `objectId` field)
+   - Also check assemblies via `db.assemblies.where("objectId").equals(loc.id).first()`
+   - If found and the deployable/assembly lacks `systemId` or `lPoint`, update it: `db.deployables.update(dep.id, { systemId: loc.solarsystem, lPoint: loc.lPoint, updatedAt: new Date().toISOString() })`
    - This bridges the manifest cache to the user's structure inventory
 
 2. **Call `crossReferenceManifestLocations()` at the end of `discoverLocationsFromEvents()`** (after L-point resolution)
