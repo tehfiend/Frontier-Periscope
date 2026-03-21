@@ -1,20 +1,18 @@
-# Plan: Market Buy Order Improvements + SSU Location System
+# Plan: Market Buy Order Improvements
 **Status:** Active
 **Created:** 2026-03-21
-**Updated:** 2026-03-21 (SSU location system replaces BuyOrderPool)
+**Updated:** 2026-03-21 (slimmed -- private location/invite moved to Plan 23)
 **Module:** contracts, chain-shared, ssu-dapp, ssu-market-dapp, periscope
 
 ## Overview
 
-The market system has several UX gaps and correctness issues that this plan addresses via fresh-publishing new contracts. Since we're republishing anyway, we take the opportunity to fix all known contract-level issues, add buy order struct improvements, and introduce an SSU-level location and invite system.
+The market system has several UX gaps and correctness issues that this plan addresses via fresh-publishing new contracts. Since we're republishing anyway, we take the opportunity to fix all known contract-level issues, add buy order struct improvements, and introduce a simple public/private visibility flag on `SsuConfig`.
 
 **Architectural decisions:**
 
 1. **Buy orders stay on per-SSU `Market<T>`** -- Buy orders remain as dynamic fields on `Market<T>` objects. Prices vary by location (location-dependent markets), so a shared buy order pool doesn't make sense. Buy orders gain `posted_at_ms` and `original_quantity` fields.
 
-2. **SSU-level location system** -- Location is a property of the SSU itself (on `SsuConfig`), not per-listing. All orders at an SSU inherit its location. Public SSUs store plaintext BCS-encoded solar system IDs; private SSUs store AES-GCM encrypted location data. Per-listing `is_public`/`solar_system_id` fields are NOT needed.
-
-3. **On-chain invite system** -- `MarketInvite` objects allow SSU owners to share encrypted location keys with specific recipients. The contract is crypto-agnostic (stores bytes); all encryption/decryption is client-side using Ed25519->X25519 key conversion and NaCl `crypto_box_seal`.
+2. **SSU visibility flag** -- `SsuConfig` gains a simple `is_public: bool` field. Public SSU locations come from the game's `LocationRegistry` (populated by the game server when the player uses in-game "Publish Location"). Our contract only tracks whether the SSU opts in to being discoverable in cross-market queries.
 
 **Core issues fixed:**
 1. `BuyOrder` struct lacks `posted_at_ms` timestamp (unlike `SellListing`), forcing a fragile event-correlation workaround limited to 50 events.
@@ -25,9 +23,8 @@ The market system has several UX gaps and correctness issues that this plan addr
 6. `MarketBuyOrder` type uses `number` for `pricePerUnit` -- precision loss for values > 2^53.
 
 **New features:**
-7. **SSU location + visibility** -- `SsuConfig` gains `is_public: bool` and `location_data: vector<u8>`. Public SSUs are discoverable in cross-market queries. Private SSUs encrypt their location.
-8. **Market invites** -- `MarketInvite` object transferred to recipients containing encrypted location symmetric key. Enables private SSU location sharing.
-9. **Cross-market sell listing queries** -- List all public sell listings for a given currency across ALL SSU markets.
+7. **SSU visibility** -- `SsuConfig` gains `is_public: bool`. Public SSUs are discoverable in cross-market queries. Location data for public SSUs comes from the game's `LocationRegistry` via existing world contracts.
+8. **Cross-market sell listing queries** -- List all public sell listings for a given currency across ALL SSU markets.
 
 **Approach:** Fresh-publish `market` package, both `ssu_market` variants, and `token_template` (which depends on `market`). Existing test markets/currencies become orphaned -- new ones are created after publish.
 
@@ -71,15 +68,15 @@ public struct SsuConfig has key {
     market_id: Option<ID>,
 }
 ```
-No location or visibility fields. No invite mechanism.
+No visibility field.
 
 **`contracts/token_template/sources/token.move`** -- depends on `market` package via `market = { local = "../market" }` in Move.toml. Republishing `market` means `token_template` also needs a Move.toml update (local dep still works, but `published-at` address in market changes).
 
 ### Location Data -- World Contracts
 
-**`world::location`** stores locations as Poseidon2 cryptographic hashes (`Location { location_hash: vector<u8> }`). These are NOT human-readable. The `LocationRegistry` maps assembly IDs to `Coordinates { solarsystem: u64, x: String, y: String, z: String }`, but is only populated by the game server via `reveal_location()`. There is no reliable way to read an SSU's solar system from chain -- it requires the user to provide it.
+**`world::location`** stores locations as Poseidon2 cryptographic hashes (`Location { location_hash: vector<u8> }`). These are NOT human-readable. The `LocationRegistry` maps assembly IDs to `Coordinates { solarsystem: u64, x: String, y: String, z: String }`, but is only populated by the game server via `reveal_location()` (called when the player uses in-game "Publish Location").
 
-**Implication for location data:** Location data (solar system ID) must be provided by the SSU owner when setting location, not derived from on-chain data. This is consistent with how the Periscope intel tool handles structure locations.
+**Implication for cross-market queries:** Public SSU locations can be resolved from the game's `LocationRegistry` by assembly ID. Our contract only needs `is_public: bool` to indicate discoverability -- no location data stored on `SsuConfig`.
 
 ### Chain-Shared Layer
 
@@ -89,7 +86,7 @@ No location or visibility fields. No invite mechanism.
 
 **`packages/chain-shared/src/market.ts`** -- `queryMarkets` (lines 350-421) already supports discovering all `Market<T>` objects for a given coin type via GraphQL type filtering. This is the foundation for cross-market sell listing queries.
 
-**`packages/chain-shared/src/ssu-market.ts`** -- `buildBuyFromListing` takes `paymentObjectId: string` -- a single coin object. `buildEscrowAndList` (line 140) does not accept any location params. `SsuConfigInfo` type has no location fields.
+**`packages/chain-shared/src/ssu-market.ts`** -- `buildBuyFromListing` takes `paymentObjectId: string` -- a single coin object. `buildEscrowAndList` (line 140) does not accept any location params. `SsuConfigInfo` type has no visibility field.
 
 ### Dapp Layer
 
@@ -99,7 +96,7 @@ No location or visibility fields. No invite mechanism.
 
 **`apps/ssu-dapp/src/components/FillBuyOrderDialog.tsx`** -- `totalPaymentBase = order.pricePerUnit * qty` uses `number * number`, potential precision issues.
 
-**`apps/ssu-dapp/src/hooks/useSsuConfig.ts`** -- `SsuConfigResult` has no location or visibility fields.
+**`apps/ssu-dapp/src/hooks/useSsuConfig.ts`** -- `SsuConfigResult` has no visibility field.
 
 **`apps/ssu-market-dapp/src/components/PostBuyOrderForm.tsx`** -- Manual coin object ID text input (not even a dropdown), uses raw `Number(pricePerUnit)` without decimal conversion.
 
@@ -124,7 +121,7 @@ Buy orders stay on `Market<T>` with struct improvements:
 
 Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
 
-1. **`SsuConfig` gains location fields:**
+1. **`SsuConfig` gains visibility flag:**
    ```move
    public struct SsuConfig has key {
        id: UID,
@@ -133,46 +130,42 @@ Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
        delegates: vector<address>,
        market_id: Option<ID>,
        is_public: bool,
-       location_data: vector<u8>,
    }
    ```
 
-2. **New `set_location` function** -- owner only:
+2. **New `set_visibility` function** -- owner only:
    ```move
-   public fun set_location(
+   public fun set_visibility(
        config: &mut SsuConfig,
        is_public: bool,
-       location_data: vector<u8>,
        ctx: &TxContext,
-   )
-   ```
+   ) {
+       assert!(ctx.sender() == config.owner, ENotOwner);
+       config.is_public = is_public;
 
-3. **New `MarketInvite` object:**
-   ```move
-   public struct MarketInvite has key, store {
-       id: UID,
-       ssu_id: ID,
-       sender: address,
-       encrypted_location_key: vector<u8>,
+       event::emit(VisibilitySetEvent {
+           config_id: object::id(config),
+           ssu_id: config.ssu_id,
+           is_public,
+       });
    }
    ```
 
-4. **New `send_invite` function** -- owner only, creates and transfers `MarketInvite` to recipient:
+3. **New `VisibilitySetEvent`:**
    ```move
-   public fun send_invite(
-       config: &SsuConfig,
-       recipient: address,
-       encrypted_location_key: vector<u8>,
-       ctx: &mut TxContext,
-   )
+   public struct VisibilitySetEvent has copy, drop {
+       config_id: ID,
+       ssu_id: ID,
+       is_public: bool,
+   }
    ```
+
+4. **Read accessor:** `config_is_public`.
 
 5. Fee calculation fixed: `total_price * fee_bps / 10000` in all three trade functions.
 6. New `ETypeMismatch` error code (code = 9) replaces misuse of `ESSUMismatch`.
 7. `escrow_and_list` signature unchanged (no per-listing location params needed -- SSU-level visibility covers it).
 8. `BuyOrderFilledEvent` enriched with `buyer`, `price_per_unit`.
-9. New events: `LocationSetEvent`, `InviteSentEvent`.
-10. Read accessors: `config_is_public`, `config_location_data`.
 
 ### Chain-Shared Layer
 
@@ -180,20 +173,19 @@ Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
 - `MarketBuyOrder.pricePerUnit` changes from `number` to `bigint`.
 - `MarketBuyOrder` gains `postedAtMs: number` and `originalQuantity: number`.
 - `MarketSellListing.pricePerUnit` changes from `number` to `bigint`.
-- `SsuConfigInfo` gains `isPublic: boolean` and `locationData: string` (hex-encoded bytes).
+- `SsuConfigInfo` gains `isPublic: boolean`.
 
 **Query changes:**
 - `queryMarketBuyOrders` updated: reads `posted_at_ms`, `original_quantity`, uses `BigInt()` for `price_per_unit`.
 - `queryMarketListings` uses `BigInt()` for `price_per_unit`.
 - New `queryAllListingsForCurrency(client, packageId, coinType)` -- discovers all `Market<coinType>` objects, queries listings on each, returns aggregated results filtered to public SSUs only.
-- `querySsuConfig` returns location fields.
+- `querySsuConfig` returns `isPublic` field.
 
 **TX builder changes:**
 - `buildPostBuyOrder` gains `coinObjectIds: string[]` (replaces `paymentObjectId`) and `totalAmount: bigint`. Uses merge+split pattern. Passes Clock.
 - `buildBuyFromListing` gains `coinObjectIds: string[]` (replaces `paymentObjectId`), uses merge pattern.
 - `pricePerUnit` param type changes to `bigint` in relevant builders.
-- New `buildSetLocation(params)` TX builder.
-- New `buildSendInvite(params)` TX builder.
+- New `buildSetVisibility(params)` TX builder.
 
 **Config changes:**
 - All package IDs updated for both tenants (`market`, `ssuMarket`).
@@ -202,12 +194,11 @@ Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
 ### Dapp Layer
 
 - `useBuyOrders.ts` reads `postedAtMs` directly from query, removes event workaround.
-- `useSsuConfig.ts` returns location fields from `SsuConfigInfo`.
+- `useSsuConfig.ts` returns `isPublic` from `SsuConfigInfo`.
 - `CreateBuyOrderDialog.tsx` replaces coin selector with total balance display + merged coin TX.
 - `FillBuyOrderDialog.tsx` uses `BigInt` arithmetic.
-- `SellDialog.tsx` no longer needs location params (SSU-level location covers it).
-- New location management UI in SSU admin settings.
-- New invite management UI (send invite, view received invites).
+- `SellDialog.tsx` no longer needs location params (SSU-level visibility covers it).
+- New visibility toggle in SSU admin settings (simple public/private switch).
 - `ssu-market-dapp` components updated for decimal formatting and cross-market queries.
 
 ## Design Decisions
@@ -215,13 +206,10 @@ Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Buy order storage | Stay on per-SSU `Market<T>` | Prices vary by location (location-dependent markets). A shared pool eliminates location context. Per-SSU buy orders keep pricing tied to the physical market location, which is more natural for an EVE-style economy. |
-| Location on SsuConfig (not Market) | `is_public` + `location_data` on SsuConfig | Location is per-SSU, not per-currency. One SSU may host multiple currencies -- they all share the same physical location. Storing on SsuConfig avoids duplication across Market objects. |
-| Location on SsuConfig (not SellListing) | SSU-level visibility covers all orders | Individual listings don't need their own `is_public`/`solar_system_id` -- all orders at a public SSU are public, all orders at a private SSU are private. Simplifies the contract and avoids redundant data. |
-| MarketInvite location | In ssu_market module (not separate) | `MarketInvite` references `SsuConfig` which is in ssu_market. Keeping them together avoids cross-module access patterns and extra dependencies. |
-| Encryption scheme | NaCl `crypto_box_seal` (anonymous encryption) | Simpler than `crypto_box` -- recipient doesn't need sender's public key to decrypt. Sender seals with recipient's X25519 public key (derived from their Ed25519 key). One fewer key to manage. |
-| Key derivation | `signPersonalMessage("TehFrontier Market Key v1")` -> X25519 | Deterministic derivation from wallet signature. No separate keypair management. Key can be re-derived anytime from the wallet. Cached in localStorage for performance. |
-| Public key discovery | From on-chain transaction history | Ed25519 public keys are embedded in transaction signatures. No on-chain key registry needed -- just scan the recipient's recent transactions to find their public key. |
-| Invite revocation | Re-encrypt location with new symmetric key | No on-chain revocation needed. Owner generates new symmetric key, re-encrypts `location_data`, and sends new invites to still-authorized recipients. Old invite keys become useless. Elegant, no state cleanup. |
+| Visibility on SsuConfig | `is_public: bool` only | Location is per-SSU, not per-currency. One SSU may host multiple currencies -- they all share the same physical location. A simple boolean is sufficient; public SSU coordinates come from the game's `LocationRegistry` (existing world contract). |
+| Location on SsuConfig (not SellListing) | SSU-level visibility covers all orders | Individual listings don't need their own `is_public` -- all orders at a public SSU are public, all orders at a private SSU are private. Simplifies the contract and avoids redundant data. |
+| Public SSU location source | Game's `LocationRegistry` via `storage_unit::reveal_location()` | Location coordinates for public SSUs are already available on-chain in `LocationRegistry`, populated by the game server when the player uses in-game "Publish Location". Our contract does NOT store location data -- it only stores the visibility flag. The dApp can query `LocationRegistry` by assembly ID to display coordinates. |
+| Private location sharing | Deferred to Plan 23 (Private Map System) | Encrypted location sharing, invite system, and private map features are decoupled from market improvements and handled by a separate plan. This keeps Plan 22 focused on market UX and correctness. |
 | Upgrade vs. fresh publish | Fresh publish | Sui compatible upgrade policy forbids adding struct fields. These are testnet contracts with test currencies -- no production data to preserve. |
 | Timestamp storage | Directly in `BuyOrder` struct | Fresh publish allows struct changes. Simplest, most consistent with `SellListing` pattern. |
 | Coin merging approach | `mergeCoins` + `splitCoins` in PTB | Standard Sui pattern for combining fragmented coins. No contract changes needed for merge. |
@@ -231,8 +219,6 @@ Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
 | `BuyOrderCancelledEvent` enrichment | Add `buyer`, `type_id`, `refund_amount` | Enables richer UI (order history, refund tracking) and better indexing without needing to correlate with post events. |
 | `token_template` changes | Move.toml only (no source changes) | Template uses `local = "../market"` dep which auto-resolves. Address stays `0x0` since templates are always fresh-published. |
 | Cross-market discovery | GraphQL type filtering (no on-chain registry) | `Market<T>` is generic over coin type T. GraphQL can filter by `{packageId}::market::Market<{coinType}>` to find all markets for a currency. |
-| `location_data` encoding | Opaque `vector<u8>` | Contract is crypto-agnostic. Public: BCS-encoded solar system ID (plaintext). Private: AES-GCM encrypted bytes. Client handles encoding/decoding. |
-| Key caching | Derived X25519 private key in localStorage | Re-derivable from wallet signature anytime. Cache avoids repeated signature prompts. Cleared on wallet disconnect. |
 
 ## Implementation Phases
 
@@ -329,13 +315,13 @@ Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
 
 9. Build: `cd contracts/market && sui move build && sui move test`.
 
-### Phase 2a: Contract Changes -- ssu_market.move location + invite system
+### Phase 2: Contract Changes -- ssu_market.move (visibility + bug fixes + event enrichment)
 
 For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_market_utopia/sources/ssu_market.move`:
 
-**SsuConfig location fields:**
+**SsuConfig visibility flag:**
 
-1. **Update `SsuConfig` struct** -- add `is_public` and `location_data`:
+1. **Update `SsuConfig` struct** -- add visibility flag:
    ```move
    public struct SsuConfig has key {
        id: UID,
@@ -344,32 +330,28 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
        delegates: vector<address>,
        market_id: Option<ID>,
        is_public: bool,
-       location_data: vector<u8>,
    }
    ```
 
-2. **Update `create_ssu_config`** -- initialize new fields:
+2. **Update `create_ssu_config`** -- initialize new field:
    ```move
    let config = SsuConfig {
        // ... existing fields ...
        is_public: false,
-       location_data: vector::empty(),
    };
    ```
 
-3. **Add `set_location` function** -- owner only:
+3. **Add `set_visibility` function** -- owner only:
    ```move
-   public fun set_location(
+   public fun set_visibility(
        config: &mut SsuConfig,
        is_public: bool,
-       location_data: vector<u8>,
        ctx: &TxContext,
    ) {
        assert!(ctx.sender() == config.owner, ENotOwner);
        config.is_public = is_public;
-       config.location_data = location_data;
 
-       event::emit(LocationSetEvent {
+       event::emit(VisibilitySetEvent {
            config_id: object::id(config),
            ssu_id: config.ssu_id,
            is_public,
@@ -377,85 +359,23 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
    }
    ```
 
-4. **Add `LocationSetEvent`:**
+4. **Add `VisibilitySetEvent`:**
    ```move
-   public struct LocationSetEvent has copy, drop {
+   public struct VisibilitySetEvent has copy, drop {
        config_id: ID,
        ssu_id: ID,
        is_public: bool,
    }
    ```
 
-5. **Add read accessors:**
+5. **Add read accessor:**
    ```move
    public fun config_is_public(config: &SsuConfig): bool { config.is_public }
-   public fun config_location_data(config: &SsuConfig): vector<u8> { config.location_data }
    ```
-
-**MarketInvite system:**
-
-6. **Add `MarketInvite` struct:**
-   ```move
-   public struct MarketInvite has key, store {
-       id: UID,
-       ssu_id: ID,
-       sender: address,
-       encrypted_location_key: vector<u8>,
-   }
-   ```
-
-7. **Add `send_invite` function** -- owner only, creates `MarketInvite` transferred to recipient:
-   ```move
-   public fun send_invite(
-       config: &SsuConfig,
-       recipient: address,
-       encrypted_location_key: vector<u8>,
-       ctx: &mut TxContext,
-   ) {
-       assert!(ctx.sender() == config.owner, ENotOwner);
-
-       let invite = MarketInvite {
-           id: object::new(ctx),
-           ssu_id: config.ssu_id,
-           sender: ctx.sender(),
-           encrypted_location_key,
-       };
-
-       event::emit(InviteSentEvent {
-           config_id: object::id(config),
-           ssu_id: config.ssu_id,
-           recipient,
-       });
-
-       transfer::transfer(invite, recipient);
-   }
-   ```
-
-8. **Add `InviteSentEvent`:**
-   ```move
-   public struct InviteSentEvent has copy, drop {
-       config_id: ID,
-       ssu_id: ID,
-       recipient: address,
-   }
-   ```
-
-9. **Add MarketInvite read accessors:**
-   ```move
-   public fun invite_ssu_id(invite: &MarketInvite): ID { invite.ssu_id }
-   public fun invite_sender(invite: &MarketInvite): address { invite.sender }
-   public fun invite_encrypted_location_key(invite: &MarketInvite): vector<u8> {
-       invite.encrypted_location_key
-   }
-   ```
-
-### Phase 2b: Contract Changes -- ssu_market.move bug fixes + event enrichment
-
-For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_market_utopia/sources/ssu_market.move`:
 
 **Error codes:**
 
-1. **Add error code** `ETypeMismatch` (code = 9):
+6. **Add error code** `ETypeMismatch` (code = 9):
    ```move
    #[error(code = 9)]
    const ETypeMismatch: vector<u8> = b"Item type does not match buy order type";
@@ -463,7 +383,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
 
 **Fee and error fixes:**
 
-2. **Fix fee calculation** in `buy_from_listing` (line 415), `player_fill_buy_order` (line 474), and `fill_buy_order` (line 539) -- change:
+7. **Fix fee calculation** in `buy_from_listing` (line 415), `player_fill_buy_order` (line 474), and `fill_buy_order` (line 539) -- change:
    ```move
    let fee_amount = total_price / 10000 * fee_bps;
    ```
@@ -472,7 +392,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
    let fee_amount = total_price * fee_bps / 10000;
    ```
 
-3. **Fix type mismatch error** in `player_fill_buy_order` -- change:
+8. **Fix type mismatch error** in `player_fill_buy_order` -- change:
    ```move
    assert!(type_id == market::order_type_id(order), ESSUMismatch);
    ```
@@ -483,7 +403,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
 
 **Event enrichment:**
 
-4. **Update `BuyOrderFilledEvent`** in ssu_market -- add `buyer` and `price_per_unit`:
+9. **Update `BuyOrderFilledEvent`** in ssu_market -- add `buyer` and `price_per_unit`:
    ```move
    public struct BuyOrderFilledEvent has copy, drop {
        config_id: ID,
@@ -499,7 +419,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
    ```
    Update both `player_fill_buy_order` and `fill_buy_order` to read buyer from the order (already available via `market::order_buyer(order)`) and emit the enriched event.
 
-5. Build both: `cd contracts/ssu_market && sui move build` and `cd contracts/ssu_market_utopia && sui move build`.
+10. Build both: `cd contracts/ssu_market && sui move build` and `cd contracts/ssu_market_utopia && sui move build`.
 
 ### Phase 3: Publish Contracts
 
@@ -554,23 +474,15 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
        delegates: string[];
        marketId: string | null;
        isPublic: boolean;
-       locationData: string; // hex-encoded bytes
    }
    ```
 
-4. **`packages/chain-shared/src/types.ts`** -- Add new types:
+4. **`packages/chain-shared/src/types.ts`** -- Add new type:
    ```typescript
    export interface CrossMarketListing extends MarketSellListing {
        marketId: string;
        coinType: string;
        ssuConfigId: string;
-   }
-
-   export interface MarketInviteInfo {
-       objectId: string;
-       ssuId: string;
-       sender: string;
-       encryptedLocationKey: string; // hex-encoded bytes
    }
    ```
 
@@ -610,23 +522,20 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
     - Implement merge pattern: merge all coins into base coin, pass base coin directly.
     - Change `pricePerUnit` to `bigint` in `EscrowAndListParams`.
 
-11. **`packages/chain-shared/src/ssu-market.ts`** -- Add location and invite TX builders:
+11. **`packages/chain-shared/src/ssu-market.ts`** -- Add visibility TX builder:
     ```typescript
-    export function buildSetLocation(params: SetLocationParams): Transaction
-    export function buildSendInvite(params: SendInviteParams): Transaction
+    export function buildSetVisibility(params: SetVisibilityParams): Transaction
     ```
 
-12. **`packages/chain-shared/src/ssu-market.ts`** -- Update `querySsuConfig` to return `isPublic` and `locationData` from the `SsuConfig` object.
+12. **`packages/chain-shared/src/ssu-market.ts`** -- Update `querySsuConfig` to return `isPublic` from the `SsuConfig` object.
 
-13. **`packages/chain-shared/src/ssu-market.ts`** -- Add `queryMarketInvites` function to discover `MarketInvite` objects owned by a given address.
-
-14. **`packages/chain-shared/src/config.ts`** -- Update all package IDs for both tenants:
+13. **`packages/chain-shared/src/config.ts`** -- Update all package IDs for both tenants:
     - `market.packageId` to new market package.
     - `ssuMarket.packageId` to new ssu_market package.
     - `ssuMarket.originalPackageId` to new ssu_market package (fresh publish = new original).
     - Add old `originalPackageId` values to `previousOriginalPackageIds`.
 
-15. **`packages/chain-shared/src/index.ts`** -- Export new types and functions.
+14. **`packages/chain-shared/src/index.ts`** -- Export new types and functions.
 
 ### Phase 5: Dapp Updates -- ssu-dapp
 
@@ -635,9 +544,9 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
    - Read `postedAtMs` and `originalQuantity` directly from the query result (now returned by `queryMarketBuyOrders`).
    - `BuyOrderWithName` interface becomes `interface BuyOrderWithName extends MarketBuyOrder { name: string; }` (no extra `postedAtMs` field -- it's in `MarketBuyOrder` now).
 
-2. **`apps/ssu-dapp/src/hooks/useSsuConfig.ts`** -- Add location fields:
-   - Add `isPublic: boolean` and `locationData: string` to `SsuConfigResult` interface.
-   - Map from `querySsuConfig` result which now returns these fields.
+2. **`apps/ssu-dapp/src/hooks/useSsuConfig.ts`** -- Add visibility field:
+   - Add `isPublic: boolean` to `SsuConfigResult` interface.
+   - Map from `querySsuConfig` result which now returns this field.
 
 3. **`apps/ssu-dapp/src/components/CreateBuyOrderDialog.tsx`** -- Replace coin selector:
    - Remove `paymentObjectId` state, auto-select `useEffect`, and `<select>` dropdown.
@@ -667,7 +576,16 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
 
 8. **`apps/ssu-dapp/src/components/SellDialog.tsx`** -- Change `pricePerUnit: Number(priceBaseUnits)` to `pricePerUnit: priceBaseUnits` (bigint). No location params needed (SSU-level covers it).
 
-### Phase 6: Dapp Updates -- ssu-market-dapp + periscope + location UI
+9. **`apps/ssu-dapp/src/components/VisibilitySettings.tsx`** (new) -- Simple visibility toggle for SSU admin:
+   - Shown in `SsuView.tsx` for SSU owner when `ssuConfig` exists.
+   - Toggle switch for public/private visibility.
+   - Optionally queries `LocationRegistry` for the SSU's assembly ID and displays coordinates if the SSU is public and the location has been published in-game.
+   - Calls `buildSetVisibility` on save with `{ isPublic }`.
+   - Depends on `@tehfrontier/chain-shared` for `buildSetVisibility`.
+
+10. **`apps/ssu-dapp/src/views/SsuView.tsx`** -- Render `VisibilitySettings` for SSU owners when `ssuConfig` is available.
+
+### Phase 6: Dapp Updates -- ssu-market-dapp + periscope
 
 1. **`apps/ssu-market-dapp/src/lib/constants.ts`** -- Update `SSU_MARKET_PACKAGE_ID` and `MARKET_PACKAGE_ID` to new values.
 
@@ -693,47 +611,31 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
 
 7. **`apps/periscope/src/chain/config.ts`** -- Update `EXTENSION_TEMPLATES` ssu_market `packageIds` for both tenants.
 
-8. **`apps/ssu-dapp/src/components/LocationSettings.tsx`** (new) -- Location management panel for SSU admin:
-   - Shown in `SsuView.tsx` for SSU owner when `ssuConfig` exists (rendered alongside or within `ExtensionInfo`).
-   - Toggle for public/private visibility.
-   - Solar system ID input (for public SSUs) or encrypted location display (for private).
-   - Calls `buildSetLocation` on save.
-   - Depends on `@tehfrontier/chain-shared` for `buildSetLocation`.
-
-9. **`apps/ssu-dapp/src/components/InviteManager.tsx`** (new) -- Invite management panel:
-   - "Send Invite" section (owner only) -- accepts recipient address, discovers their Ed25519 public key from transactions, encrypts location symmetric key client-side via `crypto_box_seal`, calls `buildSendInvite`.
-   - "Received Invites" section -- queries `MarketInvite` objects owned by connected wallet via `queryMarketInvites`, decrypts location key using X25519 private key (derived from `signPersonalMessage("TehFrontier Market Key v1")`), shows SSU location.
-   - Uses `tweetnacl` or `@noble/ed25519` for Ed25519->X25519 conversion and `crypto_box_seal`.
-   - Derived X25519 private key cached in localStorage, re-derivable from wallet signature.
-
-10. **`apps/ssu-dapp/src/views/SsuView.tsx`** -- Render `LocationSettings` and `InviteManager` for SSU owners/authorized users when `ssuConfig` is available. No extra prop threading needed since `ssuConfig` already contains `isPublic` and `locationData`.
-
 ## File Summary
 
 | File | Action | Description |
 |------|--------|-------------|
 | `contracts/market/sources/market.move` | Modify | Add `original_quantity` + `posted_at_ms` to `BuyOrder`. Update `post_buy_order` to take `&Clock`. Enrich `BuyOrderPostedEvent`, `BuyOrderFilledEvent`, `BuyOrderCancelledEvent`, `SellListingPostedEvent`. Add read accessors. Update tests. |
 | `contracts/market/Move.toml` | Modify | New `published-at` and `market` address after fresh publish |
-| `contracts/ssu_market/sources/ssu_market.move` | Modify | Add `is_public` + `location_data` to `SsuConfig`. Add `set_location` function. Add `MarketInvite` struct + `send_invite` function. Fix fee calc. Add `ETypeMismatch`. Enrich `BuyOrderFilledEvent`. Add `LocationSetEvent`, `InviteSentEvent`. |
+| `contracts/ssu_market/sources/ssu_market.move` | Modify | Add `is_public: bool` to `SsuConfig`. Add `set_visibility` function. Fix fee calc. Add `ETypeMismatch`. Enrich `BuyOrderFilledEvent`. Add `VisibilitySetEvent`. |
 | `contracts/ssu_market/Move.toml` | Modify | New `published-at` + `ssu_market` address |
 | `contracts/ssu_market_utopia/sources/ssu_market.move` | Modify | Same changes as stillness variant |
 | `contracts/ssu_market_utopia/Move.toml` | Modify | New `published-at` + address |
-| `packages/chain-shared/src/types.ts` | Modify | `pricePerUnit` -> `bigint` on `MarketBuyOrder` + `MarketSellListing`. Add `postedAtMs` + `originalQuantity` to `MarketBuyOrder`. Add `isPublic` + `locationData` to `SsuConfigInfo`. Add `CrossMarketListing`, `MarketInviteInfo` types. |
+| `packages/chain-shared/src/types.ts` | Modify | `pricePerUnit` -> `bigint` on `MarketBuyOrder` + `MarketSellListing`. Add `postedAtMs` + `originalQuantity` to `MarketBuyOrder`. Add `isPublic` to `SsuConfigInfo`. Add `CrossMarketListing` type. |
 | `packages/chain-shared/src/market.ts` | Modify | Update `queryMarketBuyOrders` for new fields + `BigInt`. Update `queryMarketListings` for `BigInt`. Add `queryAllListingsForCurrency`. Update `buildPostBuyOrder` with coin merge + Clock. Update `pricePerUnit` to `bigint` in builders. |
-| `packages/chain-shared/src/ssu-market.ts` | Modify | `coinObjectIds` merge in `buildBuyFromListing`. `bigint` for `pricePerUnit`. Add `buildSetLocation`, `buildSendInvite`. Update `querySsuConfig` for location fields. Add `queryMarketInvites`. |
+| `packages/chain-shared/src/ssu-market.ts` | Modify | `coinObjectIds` merge in `buildBuyFromListing`. `bigint` for `pricePerUnit`. Add `buildSetVisibility`. Update `querySsuConfig` for `isPublic`. |
 | `packages/chain-shared/src/config.ts` | Modify | All new package IDs for both tenants |
 | `packages/chain-shared/src/index.ts` | Modify | Export new types and functions |
 | `apps/ssu-dapp/src/hooks/useBuyOrders.ts` | Modify | Remove event workaround. Read `postedAtMs` + `originalQuantity` directly from query. |
-| `apps/ssu-dapp/src/hooks/useSsuConfig.ts` | Modify | Add `isPublic` + `locationData` to `SsuConfigResult`. |
+| `apps/ssu-dapp/src/hooks/useSsuConfig.ts` | Modify | Add `isPublic` to `SsuConfigResult`. |
 | `apps/ssu-dapp/src/components/CreateBuyOrderDialog.tsx` | Modify | Replace coin selector with balance display + merged TX. |
 | `apps/ssu-dapp/src/components/ListingCard.tsx` | Modify | Use merged coin builder, `BigInt` arithmetic |
 | `apps/ssu-dapp/src/components/FillBuyOrderDialog.tsx` | Modify | `BigInt` arithmetic for payment calculation. |
 | `apps/ssu-dapp/src/components/MarketContent.tsx` | Modify | `BigInt`-safe price formatting. |
 | `apps/ssu-dapp/src/components/ListingAdminList.tsx` | Modify | `pricePerUnit` now `bigint`, update `Number()` -> direct pass |
 | `apps/ssu-dapp/src/components/SellDialog.tsx` | Modify | `pricePerUnit` now `bigint` |
-| `apps/ssu-dapp/src/components/LocationSettings.tsx` | Create | Location management panel for SSU admin (public/private toggle, solar system ID) |
-| `apps/ssu-dapp/src/components/InviteManager.tsx` | Create | Invite management panel (send invites, view received invites, client-side crypto) |
-| `apps/ssu-dapp/src/views/SsuView.tsx` | Modify | Render LocationSettings and InviteManager for SSU owners |
+| `apps/ssu-dapp/src/components/VisibilitySettings.tsx` | Create | Simple public/private toggle for SSU admin, optional LocationRegistry coordinate display |
+| `apps/ssu-dapp/src/views/SsuView.tsx` | Modify | Render VisibilitySettings for SSU owners |
 | `apps/ssu-market-dapp/src/lib/constants.ts` | Modify | Update package IDs |
 | `apps/ssu-market-dapp/src/components/PostBuyOrderForm.tsx` | Modify | Add coin query + merge, decimal formatting |
 | `apps/ssu-market-dapp/src/components/PostSellListingForm.tsx` | Modify | `pricePerUnit: Number()` -> `BigInt()` |
@@ -744,7 +646,7 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
 
 ## Open Questions
 
-None -- fresh publish approach eliminates all upgrade compatibility concerns. Buy orders stay on Market<T> with struct improvements. Location is SSU-level on SsuConfig. MarketInvite is part of ssu_market module. All encryption/decryption is client-side. Cross-market queries filter by public SSU configs.
+None -- fresh publish approach eliminates all upgrade compatibility concerns. Buy orders stay on Market<T> with struct improvements. Visibility is a simple boolean on SsuConfig. Public SSU locations come from the game's LocationRegistry. Cross-market queries filter by `isPublic`. Private location sharing is deferred to Plan 23.
 
 ## Deferred
 
@@ -755,8 +657,5 @@ None -- fresh publish approach eliminates all upgrade compatibility concerns. Bu
 - **`number` -> `bigint` for `quantity` fields** -- Quantity values are unlikely to exceed 2^53 in practice (game item quantities). Deferred to avoid unnecessary churn.
 - **Market<T> `create_market` with custom fee** -- Currently `create_market` always sets `fee_bps: 0`. A `create_market_with_fee` variant could be useful but isn't needed now.
 - **Cross-market browse UI** -- This plan adds the contract fields and chain-shared query layer for cross-market currency browsing. A dedicated "Market Browser" view is a separate plan.
-- **Location coordinates (x, y, z)** -- Only solar system ID is stored. Full coordinates could be added in a future republish.
 - **Parallel cross-market queries** -- `queryAllListingsForCurrency` queries markets sequentially. `Promise.all` could parallelize. Deferred since testnet has <20 markets per currency.
-- **On-chain invite registry** -- Current design uses owned `MarketInvite` objects. A centralized registry of invitees could enable easier bulk management but adds complexity.
-- **Multi-invite batch send** -- `send_invite` creates one invite per call. A batch variant could reduce TX count for many invitees. Deferred until needed.
-- **Invite expiry** -- `MarketInvite` objects have no expiry. Revocation is via key rotation (re-encrypt location_data with new key). If explicit expiry is needed, add a `valid_until_ms: u64` field in a future republish.
+- **Private location sharing and encrypted map system** -- See Plan 23 (Private Map System).
