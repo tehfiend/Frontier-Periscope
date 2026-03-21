@@ -202,21 +202,70 @@ Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_se
 2. Update `contracts/private_map/Move.toml` with published-at address.
 3. Update `packages/chain-shared/src/config.ts` -- add `privateMap.packageId` to both tenant entries in `CONTRACT_ADDRESSES`.
 
-### Phase 5: Periscope Integration (maps management UI)
+### Phase 5: Manifest Caching (IndexedDB)
+
+Cache decrypted private map data in the Periscope manifest (same pattern as Characters and Tribes). This avoids re-fetching and re-decrypting on every page load.
+
+1. **`apps/periscope/src/db/types.ts`** -- Add new interfaces:
+   ```typescript
+   export interface ManifestPrivateMap {
+       id: string;              // PrivateMap object ID (primary key)
+       name: string;            // Map name
+       creator: string;         // Creator address
+       publicKey: string;       // Hex-encoded X25519 public key
+       decryptedMapKey: string; // Hex-encoded decrypted map secret key (from user's MapInvite)
+       inviteId: string;        // The user's MapInvite object ID
+       tenant: string;          // "stillness" or "utopia"
+       cachedAt: string;        // ISO timestamp
+   }
+
+   export interface ManifestMapLocation {
+       id: string;              // Composite key: "{mapId}:{locationId}"
+       mapId: string;           // PrivateMap object ID
+       locationId: number;      // Location ID within the map
+       structureId: string | null; // Optional structure link
+       solarSystemId: number;   // Decrypted
+       planet: number;          // Decrypted
+       lPoint: number;          // Decrypted
+       description: string;     // Decrypted (empty if none)
+       addedBy: string;         // Address that added this location
+       addedAtMs: number;       // Timestamp
+       tenant: string;
+       cachedAt: string;
+   }
+   ```
+
+2. **`apps/periscope/src/db/index.ts`** -- Add V23 (or next available version) with new tables:
+   ```typescript
+   // V23: Private Maps -- encrypted location sharing cache
+   this.version(23).stores({
+       manifestPrivateMaps: "id, name, creator, tenant, cachedAt",
+       manifestMapLocations: "id, mapId, solarSystemId, structureId, tenant, cachedAt, [mapId+locationId]",
+   });
+   ```
+
+3. **`apps/periscope/src/chain/manifest.ts`** -- Add private map sync functions:
+   - `syncPrivateMaps(walletKeyPair)` -- query user's `MapInvite` objects, for each: fetch `PrivateMap` details, decrypt the map key using the wallet-derived X25519 key, cache in `manifestPrivateMaps`. Uses `cachedAt` for staleness (re-sync if >1 hour old).
+   - `syncMapLocations(mapId, decryptedMapKey)` -- query all `MapLocation` dynamic fields on the map, decrypt each with the map key, cache in `manifestMapLocations`. Incremental: only fetch locations with `location_id >= nextLocationId` from last sync.
+   - `getDecryptedMapLocations(mapId)` -- read from cache, return sorted by `addedAtMs`.
+   - `invalidateMapCache(mapId)` -- delete all cached locations for a map (used after key rotation / map deletion).
+
+### Phase 6: Periscope Integration (maps management UI)
 
 1. Create `apps/periscope/src/views/Maps.tsx` -- main view for managing private maps:
-   - List all maps the user is invited to (via `queryMapInvitesForUser`)
+   - List all maps the user is invited to (reads from `manifestPrivateMaps` cache)
    - "Create Map" dialog with name field
-   - Per-map view showing decrypted locations, members, "Invite Member" action
+   - Per-map view showing decrypted locations (reads from `manifestMapLocations` cache), members, "Invite Member" action
    - "Add Location" dialog with system selector, planet/L-point fields, optional structure ID, description
    - "Remove Location" action per location row
+   - "Sync" button to force re-fetch from chain
    - Key derivation via `dAppKit.signPersonalMessage({ message })` using `useDAppKit()` from dapp-kit-react
 2. Add `useMapKey` hook (`apps/periscope/src/hooks/useMapKey.ts`) -- derives X25519 keypair from wallet, caches in React state (not persisted). Uses `signPersonalMessage` + `deriveMapKeyFromSignature`.
-3. Add `usePrivateMaps` hook (`apps/periscope/src/hooks/usePrivateMaps.ts`) -- fetches user's MapInvites, resolves map details, decrypts location data.
+3. Add `usePrivateMaps` hook (`apps/periscope/src/hooks/usePrivateMaps.ts`) -- reads from manifest cache, triggers `syncPrivateMaps` on mount if stale.
 4. Add route `/maps` to `apps/periscope/src/router.tsx`.
 5. Add navigation entry in sidebar.
 
-### Phase 6: ssu-dapp Integration (publish SSU to map)
+### Phase 7: ssu-dapp Integration (publish SSU to map)
 
 1. Add "Publish to Map" button in `apps/ssu-dapp/src/views/SsuView.tsx` header area (visible when wallet is connected and user has map invites).
 2. Create `apps/ssu-dapp/src/components/PublishToMapDialog.tsx` -- dialog that lists user's maps, encrypts the SSU's location data, and calls `buildAddLocation`.
@@ -234,9 +283,12 @@ Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_se
 | `packages/chain-shared/src/index.ts` | Modify | Add exports for crypto.ts and private-map.ts |
 | `packages/chain-shared/src/config.ts` | Modify | Add privateMap packageId to both tenant entries (after deploy) |
 | `packages/chain-shared/package.json` | Modify | Add tweetnacl, tweetnacl-sealedbox-js, @noble/curves, @noble/hashes dependencies |
-| `apps/periscope/src/views/Maps.tsx` | Create | Private maps management UI |
+| `apps/periscope/src/db/types.ts` | Modify | Add ManifestPrivateMap and ManifestMapLocation interfaces |
+| `apps/periscope/src/db/index.ts` | Modify | Add V23 schema with manifestPrivateMaps + manifestMapLocations tables |
+| `apps/periscope/src/chain/manifest.ts` | Modify | Add syncPrivateMaps, syncMapLocations, getDecryptedMapLocations, invalidateMapCache |
+| `apps/periscope/src/views/Maps.tsx` | Create | Private maps management UI (reads from manifest cache) |
 | `apps/periscope/src/hooks/useMapKey.ts` | Create | Wallet-derived X25519 key hook |
-| `apps/periscope/src/hooks/usePrivateMaps.ts` | Create | Fetch + decrypt private maps hook |
+| `apps/periscope/src/hooks/usePrivateMaps.ts` | Create | Reads from manifest cache, triggers sync when stale |
 | `apps/periscope/src/router.tsx` | Modify | Add /maps route |
 | `apps/periscope/src/components/Sidebar.tsx` | Modify | Add Maps nav entry |
 | `apps/ssu-dapp/src/views/SsuView.tsx` | Modify | Add "Publish to Map" button |
@@ -261,7 +313,7 @@ None -- all resolved.
 
 ## Deferred
 
-- **Cross-map location aggregation** -- Merging locations from multiple maps into a single view (Periscope could show all decrypted locations across all maps on the intel dashboard). Defer until basic map CRUD is working.
+- **Cross-map location aggregation** -- Merging locations from multiple maps into a single view (Periscope could query `manifestMapLocations` across all maps). The manifest cache makes this straightforward but defer until basic map CRUD is working.
 - **Admin delegation** -- Allowing map members to also invite others (requires an `admins: vector<address>` field). Keep V1 simple with creator-only invites.
 - **Map renaming / metadata editing** -- Low priority, add when needed.
 - **Bulk operations** -- Adding multiple locations in one TX, inviting multiple members in one TX. PTB composition makes this straightforward but not essential for V1.
