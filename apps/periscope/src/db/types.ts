@@ -451,6 +451,33 @@ export interface ManifestTribe {
 	cachedAt: string;
 }
 
+export interface ManifestLocation {
+	/** Assembly (structure) object ID -- primary key (from event.assembly_id) */
+	id: string;
+	/** In-game item ID from TenantItemId.item_id (from event.assembly_key.item_id) */
+	assemblyItemId: string;
+	/** Assembly type ID (u64, maps to ASSEMBLY_TYPE_IDS in config.ts) */
+	typeId: number;
+	/** Owner cap object ID */
+	ownerCapId: string;
+	/** Solar system ID */
+	solarsystem: number;
+	/** Raw X coordinate (string, supports negatives -- matches on-chain String type) */
+	x: string;
+	/** Raw Y coordinate */
+	y: string;
+	/** Raw Z coordinate */
+	z: string;
+	/** Resolved L-point label (e.g. "P2-L3") -- computed from coords + celestials */
+	lPoint?: string;
+	/** Tenant (stillness/utopia -- extracted from event.assembly_key.tenant) */
+	tenant: string;
+	/** When this location was revealed on-chain (from event tx timestamp) */
+	revealedAt: string;
+	/** When this entry was last cached */
+	cachedAt: string;
+}
+
 // ── Governance Types ────────────────────────────────────────────────────────
 
 export type OrgTier = "stakeholder" | "member" | "serf" | "opposition";

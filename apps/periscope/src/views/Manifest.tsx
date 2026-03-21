@@ -3,9 +3,10 @@ import { useSuiClient } from "@/hooks/useSuiClient";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/db";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
-import { TENANTS } from "@/chain/config";
+import { TENANTS, ASSEMBLY_TYPE_IDS } from "@/chain/config";
 import {
 	discoverCharactersFromEvents,
+	discoverLocationsFromEvents,
 	fetchCharacterByAddress,
 	refreshStaleCharacters,
 	discoverTribes,
@@ -22,8 +23,9 @@ import {
 	Clock,
 	ExternalLink,
 	Users,
+	MapPin,
 } from "lucide-react";
-import type { ManifestCharacter, ManifestTribe } from "@/db/types";
+import type { ManifestCharacter, ManifestLocation, ManifestTribe } from "@/db/types";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -258,9 +260,104 @@ const tribeColumns: ColumnDef<ManifestTribe, unknown>[] = [
 	},
 ];
 
+// ── Location Columns ────────────────────────────────────────────────────────
+
+function makeLocationColumns(
+	systemNames: Map<number, string>,
+): ColumnDef<ManifestLocation, unknown>[] {
+	return [
+		{
+			id: "assemblyType",
+			accessorFn: (loc) => ASSEMBLY_TYPE_IDS[loc.typeId] ?? String(loc.typeId),
+			header: "Type",
+			size: 160,
+			filterFn: excelFilterFn,
+			cell: ({ row }) => (
+				<span className="text-xs font-medium text-zinc-300">
+					{ASSEMBLY_TYPE_IDS[row.original.typeId] ?? `#${row.original.typeId}`}
+				</span>
+			),
+		},
+		{
+			id: "solarsystem",
+			accessorFn: (loc) => systemNames.get(loc.solarsystem) ?? String(loc.solarsystem),
+			header: "Solar System",
+			size: 180,
+			filterFn: excelFilterFn,
+			cell: ({ row }) => (
+				<span className="text-xs text-zinc-400">
+					{systemNames.get(row.original.solarsystem) ?? `#${row.original.solarsystem}`}
+				</span>
+			),
+		},
+		{
+			id: "lPoint",
+			accessorFn: (loc) => loc.lPoint ?? "",
+			header: "L-Point",
+			size: 90,
+			filterFn: excelFilterFn,
+			cell: ({ row }) => (
+				<span className="font-mono text-xs text-cyan-400">
+					{row.original.lPoint ?? "--"}
+				</span>
+			),
+		},
+		{
+			id: "id",
+			accessorKey: "id",
+			header: "Assembly ID",
+			size: 150,
+			enableColumnFilter: false,
+			cell: ({ row }) => (
+				<div className="flex items-center gap-1">
+					<span className="font-mono text-xs text-zinc-500" title={row.original.id}>
+						{row.original.id.slice(0, 8)}...{row.original.id.slice(-4)}
+					</span>
+					<a
+						href={`https://suiscan.xyz/testnet/object/${row.original.id}`}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-zinc-600 hover:text-cyan-400"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<ExternalLink size={10} />
+					</a>
+				</div>
+			),
+		},
+		{
+			id: "revealedAt",
+			accessorKey: "revealedAt",
+			header: "Revealed",
+			size: 110,
+			enableColumnFilter: false,
+			cell: ({ row }) => (
+				<span className="text-xs text-zinc-500">
+					{row.original.revealedAt
+						? new Date(row.original.revealedAt).toLocaleString()
+						: "--"}
+				</span>
+			),
+		},
+		{
+			id: "cachedAt",
+			accessorKey: "cachedAt",
+			header: "Cached",
+			size: 100,
+			enableColumnFilter: false,
+			cell: ({ row }) => (
+				<div className="flex items-center gap-1 text-xs text-zinc-600">
+					<Clock size={10} />
+					{formatAge(row.original.cachedAt)}
+				</div>
+			),
+		},
+	];
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
-type Tab = "characters" | "tribes";
+type Tab = "characters" | "tribes" | "locations";
 
 export function Manifest() {
 	const client = useSuiClient();
@@ -287,6 +384,25 @@ export function Manifest() {
 
 	const characterColumns = useMemo(() => makeCharacterColumns(tribeMap), [tribeMap]);
 
+	// Locations
+	const allLocations = useLiveQuery(() => db.manifestLocations.toArray()) ?? [];
+	const locations = useMemo(
+		() => allLocations.filter((l) => l.tenant === tenant),
+		[allLocations, tenant],
+	);
+
+	// System name lookup for location grid
+	const allSystems = useLiveQuery(() => db.solarSystems.toArray()) ?? [];
+	const systemNames = useMemo(() => {
+		const map = new Map<number, string>();
+		for (const s of allSystems) {
+			if (s.name) map.set(s.id, s.name);
+		}
+		return map;
+	}, [allSystems]);
+
+	const locationColumns = useMemo(() => makeLocationColumns(systemNames), [systemNames]);
+
 	// Lookup by address
 	const [lookupAddress, setLookupAddress] = useState("");
 	const [lookupLoading, setLookupLoading] = useState(false);
@@ -297,11 +413,16 @@ export function Manifest() {
 				await discoverCharactersFromEvents(client, tenant, worldPkg, 5000, ctx);
 			});
 			setSyncStatus("Character discovery queued — check Workers page");
-		} else {
+		} else if (tab === "tribes") {
 			enqueueTask(`Fetch Tribes (${tenant})`, async (ctx) => {
 				await discoverTribes(tenant, ctx);
 			});
 			setSyncStatus("Tribe fetch queued — check Workers page");
+		} else if (tab === "locations") {
+			enqueueTask(`Discover Locations (${tenant})`, async (ctx) => {
+				await discoverLocationsFromEvents(client, tenant, worldPkg, 5000, ctx);
+			});
+			setSyncStatus("Location discovery queued — check Workers page");
 		}
 	}, [tab, client, tenant, worldPkg]);
 
@@ -377,7 +498,7 @@ export function Manifest() {
 							Manifest
 						</h1>
 						<p className="mt-1 text-sm text-zinc-500">
-							{characters.length} characters &middot; {tribes.length} tribes &middot; {tribeCounts} unique tribes in characters
+							{characters.length} characters &middot; {tribes.length} tribes &middot; {locations.length} locations &middot; {tribeCounts} unique tribes in characters
 						</p>
 					</div>
 				</div>
@@ -401,7 +522,11 @@ export function Manifest() {
 						className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
 					>
 						{activeCount > 0 ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-						{tab === "characters" ? "Discover" : "Fetch Tribes"}
+						{tab === "characters"
+							? "Discover"
+							: tab === "tribes"
+								? "Fetch Tribes"
+								: "Discover Locations"}
 					</button>
 				</div>
 			</div>
@@ -431,6 +556,18 @@ export function Manifest() {
 				>
 					<Users size={14} />
 					Tribes ({tribes.length})
+				</button>
+				<button
+					type="button"
+					onClick={() => setTab("locations")}
+					className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+						tab === "locations"
+							? "bg-zinc-800 text-zinc-100"
+							: "text-zinc-500 hover:text-zinc-300"
+					}`}
+				>
+					<MapPin size={14} />
+					Locations ({locations.length})
 				</button>
 			</div>
 
@@ -468,13 +605,21 @@ export function Manifest() {
 					searchPlaceholder="Search names, IDs, addresses, tribes..."
 					emptyMessage='No characters cached yet. Click "Discover" to scan recent chain activity.'
 				/>
-			) : (
+			) : tab === "tribes" ? (
 				<DataGrid
 					columns={tribeColumns}
 					data={tribes}
 					keyFn={(t) => String(t.id)}
 					searchPlaceholder="Search tribe names, tags, descriptions..."
 					emptyMessage='No tribes cached yet. Click "Fetch Tribes" to load from the World API.'
+				/>
+			) : (
+				<DataGrid
+					columns={locationColumns}
+					data={locations}
+					keyFn={(l) => l.id}
+					searchPlaceholder="Search assembly types, systems, L-points..."
+					emptyMessage='No locations cached yet. Click "Discover Locations" to scan revealed locations.'
 				/>
 			)}
 		</div>

@@ -63,6 +63,7 @@ export function getEventTypes(tenant: TenantId) {
 		ItemWithdrawn: `${pkg}::inventory::ItemWithdrawnEvent`,
 		ItemMinted: `${pkg}::inventory::ItemMintedEvent`,
 		ItemBurned: `${pkg}::inventory::ItemBurnedEvent`,
+		LocationRevealed: `${pkg}::location::LocationRevealedEvent`,
 	};
 }
 
@@ -83,6 +84,13 @@ export const ASSEMBLY_TYPE_IDS: Record<number, string> = {
 	87162: "Portable Printer",
 	87566: "Portable Storage",
 	87160: "Refuge",
+	// Gates
+	88086: "Gate",
+	84955: "Gate",
+	// Turrets
+	92279: "Turret",
+	92401: "Turret",
+	92404: "Turret",
 };
 
 export const FUEL_TYPES: Record<number, { name: string; efficiency: number }> = {
