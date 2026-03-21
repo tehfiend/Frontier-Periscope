@@ -1,5 +1,5 @@
 # Plan: Manifest Public Locations
-**Status:** Pending
+**Status:** Active
 **Created:** 2026-03-21
 **Module:** periscope
 
@@ -151,6 +151,7 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 | Discovery pattern | Same incremental cursor as characters | Proven pattern. `queryEventsGql` pagination with cursor persistence in `db.settings`. Idempotent (re-running discovers only new events). |
 | Deployable auto-population | Cross-reference manifest locations with deployables table | When a manifest location is cached for an assembly_id that matches a deployable's objectId, auto-fill the deployable's `systemId` and `lPoint` fields. This connects the public location data to the user's structure inventory. |
 | Tab in Manifest UI | Third tab alongside Characters and Tribes | Natural extension of the manifest explorer. Same DataGrid pattern with filtering and sorting. |
+| L-point match threshold | 20% of orbital radius | Generous enough to match game-placed structures near L-points. Configurable constant for future tuning. |
 
 ## Implementation Phases
 
@@ -264,13 +265,10 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 | `apps/periscope/src/lib/lpoints.ts` | Modify | Add `resolveNearestLPoint()` function and Celestial import |
 | `apps/periscope/src/views/Manifest.tsx` | Modify | Add Locations tab, location columns, location discovery handler, location DataGrid |
 
-## Open Questions
+## Resolved Questions
 
 1. **L-point distance threshold -- what fraction of orbital radius is appropriate?**
-   - **Option A: 20% of orbital radius** -- Pros: Fairly generous, will match most structures placed near L-points. Cons: Could false-positive for structures between planets or at unusual positions.
-   - **Option B: 10% of orbital radius** -- Pros: More precise, fewer false matches. Cons: May miss structures that are near but not exactly at L-points.
-   - **Option C: No threshold, always return closest** -- Pros: Every location gets a label. Cons: Labels could be misleading for structures far from any L-point (e.g. in deep space between planets).
-   - **Recommendation:** Option A (20%). In practice, the game places structures at L-points, so a generous threshold is appropriate. Structures in weird positions are rare. The threshold can be tuned later if needed since `L_POINT_RATIOS` and the threshold are configurable constants.
+   - **Resolution: 20% of orbital radius (Option A).** In practice, the game places structures at L-points, so a generous threshold is appropriate. Structures in weird positions are rare. The threshold is a configurable constant (`L_POINT_MATCH_THRESHOLD` in `lpoints.ts`) that can be tuned later if observed in-game positions differ. Alternatives considered: 10% (too strict, may miss near-L-point structures) and no threshold (misleading labels for structures far from any L-point).
 
 ## Deferred
 
