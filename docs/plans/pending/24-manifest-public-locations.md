@@ -1,5 +1,5 @@
 # Plan: Manifest Public Locations
-**Status:** Draft
+**Status:** Pending
 **Created:** 2026-03-21
 **Module:** periscope
 
@@ -59,17 +59,17 @@ By caching these events locally, Periscope gains a persistent map of all publicl
 
 ```typescript
 export interface ManifestLocation {
-    /** Assembly (structure) object ID -- primary key */
+    /** Assembly (structure) object ID -- primary key (from event.assembly_id) */
     id: string;
-    /** Assembly item key (TenantItemId -- e.g. { tenant, item_id }) */
+    /** In-game item ID from TenantItemId.item_id (from event.assembly_key.item_id) */
     assemblyItemId: string;
-    /** Assembly type ID (u64, maps to ASSEMBLY_TYPE_IDS) */
+    /** Assembly type ID (u64, maps to ASSEMBLY_TYPE_IDS in config.ts) */
     typeId: number;
     /** Owner cap object ID */
     ownerCapId: string;
     /** Solar system ID */
     solarsystem: number;
-    /** Raw X coordinate (string, supports negatives) */
+    /** Raw X coordinate (string, supports negatives -- matches on-chain String type) */
     x: string;
     /** Raw Y coordinate */
     y: string;
@@ -77,14 +77,26 @@ export interface ManifestLocation {
     z: string;
     /** Resolved L-point label (e.g. "P2-L3") -- computed from coords + celestials */
     lPoint?: string;
-    /** Tenant (stillness/utopia) */
+    /** Tenant (stillness/utopia -- extracted from event.assembly_key.tenant) */
     tenant: string;
-    /** When this location was revealed on-chain (from event timestamp) */
+    /** When this location was revealed on-chain (from event tx timestamp) */
     revealedAt: string;
     /** When this entry was last cached */
     cachedAt: string;
 }
 ```
+
+**Field mapping from `LocationRevealedEvent`:**
+- `assembly_id` (ID) -> `id` (primary key)
+- `assembly_key.item_id` (u64 inside TenantItemId) -> `assemblyItemId` (string)
+- `assembly_key.tenant` (String inside TenantItemId) -> `tenant`
+- `type_id` (u64) -> `typeId` (number)
+- `owner_cap_id` (ID) -> `ownerCapId` (string)
+- `solarsystem` (u64) -> `solarsystem` (number)
+- `x`, `y`, `z` (String) -> `x`, `y`, `z` (string, kept as-is)
+- Event timestamp -> `revealedAt`
+
+The `assembly_key` field is a `TenantItemId` struct (`{ item_id: u64, tenant: String }` -- see `docs/world-contracts-reference.md` line 776). It will be parsed as a JSON object in the event's `parsedJson`, following the same pattern used in `discoverCharactersFromEvents()` (line 203 of `manifest.ts`).
 
 ### Dexie Table
 
@@ -154,29 +166,40 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 3. **Add `LocationRevealed` to `getEventTypes()`** in `apps/periscope/src/chain/config.ts` (inside the return object, after the ItemBurned line): `LocationRevealed: \`${pkg}::location::LocationRevealedEvent\``
 
 4. **Create `discoverLocationsFromEvents()`** in `apps/periscope/src/chain/manifest.ts`:
-   - Follow the `discoverCharactersFromEvents()` pattern (lines 137-283)
+   - Signature: `async function discoverLocationsFromEvents(client: SuiGraphQLClient, tenant: TenantId, worldPkg: string, limit?: number, ctx?: TaskContext): Promise<number>`
+   - Follow the `discoverCharactersFromEvents()` pattern (lines 137-283) but simpler (no Phase 2 name resolution needed)
    - Event type: `${worldPkg}::location::LocationRevealedEvent`
    - Cursor key: `manifestLocCursor:${worldPkg}`
-   - Parse fields: `assembly_id` -> `id`, `assembly_key` -> `assemblyItemId` (extract item_id), `type_id` -> `typeId`, `owner_cap_id` -> `ownerCapId`, `solarsystem`, `x`, `y`, `z`
-   - Set `tenant` from the assembly_key or from the function parameter
-   - Set `revealedAt` from event timestamp, `cachedAt` from current time
+   - Parse event `parsedJson` fields:
+     - `parsed.assembly_id as string` -> `id`
+     - `(parsed.assembly_key as { item_id?: string }).item_id` -> `assemblyItemId` (same pattern as line 203 in `discoverCharactersFromEvents`)
+     - `(parsed.assembly_key as { tenant?: string }).tenant` -> `tenant` (fallback to function parameter)
+     - `Number(parsed.type_id)` -> `typeId`
+     - `parsed.owner_cap_id as string` -> `ownerCapId`
+     - `Number(parsed.solarsystem)` -> `solarsystem`
+     - `String(parsed.x)`, `String(parsed.y)`, `String(parsed.z)` -> `x`, `y`, `z`
+   - Set `revealedAt` from `new Date(Number(event.timestampMs)).toISOString()`
+   - Set `cachedAt` from `new Date().toISOString()`
    - Use `db.manifestLocations.put()` to upsert (same structure re-revealed = overwrite)
-   - No name resolution phase needed (unlike characters)
-   - Use `TaskContext` for progress reporting
+   - Include cursor migration logic (detect old JSON-RPC format objects, discard and re-sync)
+   - Use `TaskContext` for progress reporting: `setProgress()` and `setItems()`
    - Return count of new/updated locations
 
-5. **Add `import type { ManifestLocation }` to manifest.ts** imports (line 16)
+5. **Add `ManifestLocation` to manifest.ts imports** (line 16, add to the existing `import type { ... } from "@/db/types"` statement)
 
 ### Phase 2: L-Point Resolution
 
 1. **Add `resolveNearestLPoint()` to `apps/periscope/src/lib/lpoints.ts`**:
-   - Signature: `resolveNearestLPoint(x: number, y: number, z: number, planets: Celestial[]): string | null`
-   - For each planet, compute all 5 L-points using existing `computeLPoints()`
-   - Calculate distance from target (x, y, z) to each L-point
-   - Track the closest match
-   - If closest distance is within a threshold (e.g. 20% of the planet's orbital radius), return `P{planetIndex}-L{lNum}`
-   - Otherwise return null
-   - Import `Celestial` type from `@/db/types`
+   - Signature: `export function resolveNearestLPoint(x: number, y: number, z: number, planets: Celestial[]): string | null`
+   - Import `type { Celestial }` from `@/db/types` at top of file
+   - Algorithm:
+     1. For each planet in the array, compute orbital radius: `sqrt(planet.x^2 + planet.y^2 + planet.z^2)`
+     2. Compute all 5 L-points using existing `computeLPoints(planet.x, planet.y, planet.z)`
+     3. For each L-point (L1-L5), compute Euclidean distance from target (x, y, z) to L-point coordinates
+     4. Track the global minimum distance across all planets and L-points
+     5. If the minimum distance is within `L_POINT_MATCH_THRESHOLD * orbitalRadius` (new configurable constant, e.g. 0.20), return `P${planet.index}-L${lNum}` (planet.index is the `celestialIndex` field from Celestial, 1-based)
+     6. Otherwise return null
+   - Add new constant: `export const L_POINT_MATCH_THRESHOLD = 0.20;` (20% of orbital radius)
 
 2. **Add `resolveManifestLocationLPoints()` to `apps/periscope/src/chain/manifest.ts`**:
    - Load all manifest locations with null `lPoint` field
@@ -202,21 +225,33 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 
 ### Phase 4: Manifest UI -- Locations Tab
 
-1. **Add location columns** to `apps/periscope/src/views/Manifest.tsx`:
-   - Define `makeLocationColumns()` function (similar to `makeCharacterColumns()` at line 42)
-   - Columns: Assembly Type (resolve `typeId` via `ASSEMBLY_TYPE_IDS`), Solar System (resolve via `systemNames` map), L-Point, Assembly ID (truncated + Suiscan link), Owner Cap (truncated), Revealed At, Cached At
+1. **Add imports** to `apps/periscope/src/views/Manifest.tsx`:
+   - Import `discoverLocationsFromEvents` from `@/chain/manifest` (add to existing import, line 8)
+   - Import `type { ManifestLocation }` from `@/db/types` (add to existing import, line 26)
+   - Import `ASSEMBLY_TYPE_IDS` from `@/chain/config` (add to existing import, line 6)
+   - Import `MapPin` icon from `lucide-react` (add to existing import, line 16)
 
-2. **Extend the Tab type** from `"characters" | "tribes"` to `"characters" | "tribes" | "locations"` (line 263)
+2. **Add system name resolution** -- create a `systemNames` map from `useLiveQuery(() => db.solarSystems.toArray())` mapping `systemId -> name` (similar to how `tribeMap` works at line 282). This is needed to display system names in the Locations grid.
 
-3. **Add Locations tab button** to the tab bar (after the Tribes button, line 423-435)
+3. **Add location columns** -- define `makeLocationColumns(systemNames: Map<number, string>)` function (similar to `makeCharacterColumns()` at line 42):
+   - Assembly Type: resolve `typeId` via `ASSEMBLY_TYPE_IDS` from config.ts (e.g. 77917 -> "Smart Storage Unit")
+   - Solar System: resolve `solarsystem` via `systemNames` map
+   - L-Point: display `lPoint` or "--" if unresolved
+   - Assembly ID: truncated `id` with Suiscan link (same pattern as character objectId column)
+   - Revealed At: formatted timestamp from `revealedAt`
+   - Cached At: age display using `formatAge()` helper (line 30)
 
-4. **Add location query** via `useLiveQuery(() => db.manifestLocations.toArray())` filtered by tenant
+4. **Extend the Tab type** from `"characters" | "tribes"` to `"characters" | "tribes" | "locations"` (line 263)
 
-5. **Add Discover handler for locations** -- extend `handleDiscover` callback (line 294) to handle the `locations` tab by calling `enqueueTask()` with `discoverLocationsFromEvents()`
+5. **Add location query** -- `useLiveQuery(() => db.manifestLocations.toArray())` filtered by `tenant`, following the same pattern as characters (line 275-276)
 
-6. **Add DataGrid rendering** for the locations tab -- third conditional branch alongside characters and tribes (after line 478)
+6. **Add Locations tab button** to the tab bar (after the Tribes button, around line 423-435). Use `MapPin` icon with location count.
 
-7. **Update header stats** to include location count (line 380)
+7. **Extend `handleDiscover` callback** (line 294) -- add `else if (tab === "locations")` branch that calls `enqueueTask()` with `discoverLocationsFromEvents(client, tenant, worldPkg, 5000, ctx)`. Update the discover button label for the locations tab (e.g. "Discover Locations").
+
+8. **Add DataGrid rendering** for the locations tab -- third conditional branch alongside characters and tribes (after line 478)
+
+9. **Update header stats** (line 380) to include location count: `{locations.length} locations`
 
 ## File Summary
 
