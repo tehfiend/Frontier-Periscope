@@ -163,7 +163,7 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 2. **Add `manifestLocations` table declaration** to `apps/periscope/src/db/index.ts`:
    - Add `ManifestLocation` to the import list (line 25 area)
    - Add class body declaration: `manifestLocations!: EntityTable<ManifestLocation, "id">;` (after line 91)
-   - Add V23 store definition after V22 (after line 483): `this.version(23).stores({ manifestLocations: "id, solarsystem, typeId, tenant, cachedAt" });`
+   - Add V23 store definition after V22, before the constructor closing brace (between lines 483 and 484): `this.version(23).stores({ manifestLocations: "id, solarsystem, typeId, tenant, cachedAt" });`
 
 3. **Add `LocationRevealed` to `getEventTypes()`** in `apps/periscope/src/chain/config.ts` (inside the return object, after the ItemBurned line): `LocationRevealed: \`${pkg}::location::LocationRevealedEvent\``
 
