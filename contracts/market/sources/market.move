@@ -88,6 +88,8 @@ public struct BuyOrder has store, drop {
     type_id: u64,
     price_per_unit: u64,
     quantity: u64,
+    original_quantity: u64,
+    posted_at_ms: u64,
 }
 
 // -- Events ---------------------------------------------------------------------
@@ -105,6 +107,7 @@ public struct SellListingPostedEvent has copy, drop {
     type_id: u64,
     price_per_unit: u64,
     quantity: u64,
+    posted_at_ms: u64,
 }
 
 public struct SellListingUpdatedEvent has copy, drop {
@@ -126,12 +129,16 @@ public struct BuyOrderPostedEvent has copy, drop {
     type_id: u64,
     price_per_unit: u64,
     quantity: u64,
+    posted_at_ms: u64,
 }
 
 public struct BuyOrderFilledEvent has copy, drop {
     market_id: ID,
     order_id: u64,
     seller: address,
+    buyer: address,
+    type_id: u64,
+    price_per_unit: u64,
     quantity: u64,
     total_paid: u64,
 }
@@ -139,6 +146,9 @@ public struct BuyOrderFilledEvent has copy, drop {
 public struct BuyOrderCancelledEvent has copy, drop {
     market_id: ID,
     order_id: u64,
+    buyer: address,
+    type_id: u64,
+    refund_amount: u64,
 }
 
 public struct MintEvent has copy, drop {
@@ -322,6 +332,7 @@ public fun post_sell_listing<T>(
         type_id,
         price_per_unit,
         quantity,
+        posted_at_ms: clock.timestamp_ms(),
     });
 }
 
@@ -379,6 +390,7 @@ public fun post_buy_order<T>(
     type_id: u64,
     price_per_unit: u64,
     quantity: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert!(quantity > 0, EZeroQuantity);
@@ -388,12 +400,16 @@ public fun post_buy_order<T>(
     let order_id = market.next_buy_id;
     market.next_buy_id = order_id + 1;
 
+    let posted_at_ms = clock.timestamp_ms();
+
     let record = BuyOrder {
         order_id,
         buyer: ctx.sender(),
         type_id,
         price_per_unit,
         quantity,
+        original_quantity: quantity,
+        posted_at_ms,
     };
 
     dynamic_field::add(&mut market.id, BuyKey { order_id }, record);
@@ -406,6 +422,7 @@ public fun post_buy_order<T>(
         type_id,
         price_per_unit,
         quantity,
+        posted_at_ms,
     });
 }
 
@@ -418,19 +435,26 @@ public fun cancel_buy_order<T>(
     let key = BuyKey { order_id };
     assert!(dynamic_field::exists_(&market.id, key), EOrderNotFound);
 
+    // Extract fields before removing the dynamic field
     let record = dynamic_field::borrow<BuyKey, BuyOrder>(&market.id, key);
     assert!(record.buyer == ctx.sender(), ENotBuyer);
+    let buyer = record.buyer;
+    let type_id = record.type_id;
 
     dynamic_field::remove<BuyKey, BuyOrder>(&mut market.id, key);
 
     let coins = dynamic_field::remove<BuyCoinKey, Coin<T>>(
         &mut market.id, BuyCoinKey { order_id },
     );
+    let refund_amount = coin::value(&coins);
     transfer::public_transfer(coins, ctx.sender());
 
     event::emit(BuyOrderCancelledEvent {
         market_id: object::id(market),
         order_id,
+        buyer,
+        type_id,
+        refund_amount,
     });
 }
 
@@ -550,6 +574,8 @@ public fun order_buyer(order: &BuyOrder): address { order.buyer }
 public fun order_type_id(order: &BuyOrder): u64 { order.type_id }
 public fun order_price_per_unit(order: &BuyOrder): u64 { order.price_per_unit }
 public fun order_quantity(order: &BuyOrder): u64 { order.quantity }
+public fun order_original_quantity(order: &BuyOrder): u64 { order.original_quantity }
+public fun order_posted_at_ms(order: &BuyOrder): u64 { order.posted_at_ms }
 public fun set_order_quantity(order: &mut BuyOrder, quantity: u64) {
     order.quantity = quantity;
 }
@@ -728,7 +754,8 @@ fun test_buy_order_lifecycle() {
     {
         let mut market = test_scenario::take_shared<Market<MARKET>>(&scenario);
         let coin = test_scenario::take_from_sender<Coin<MARKET>>(&scenario);
-        post_buy_order(&mut market, coin, 42, 100, 10, test_scenario::ctx(&mut scenario));
+        let clock = sui::clock::create_for_testing(test_scenario::ctx(&mut scenario));
+        post_buy_order(&mut market, coin, 42, 100, 10, &clock, test_scenario::ctx(&mut scenario));
 
         assert!(has_buy_order<MARKET>(&market, 0));
         let order = borrow_buy_order<MARKET>(&market, 0);
@@ -736,8 +763,11 @@ fun test_buy_order_lifecycle() {
         assert!(order_type_id(order) == 42);
         assert!(order_price_per_unit(order) == 100);
         assert!(order_quantity(order) == 10);
+        assert!(order_original_quantity(order) == 10);
+        assert!(order_posted_at_ms(order) == 0); // clock starts at 0 in tests
         assert!(next_buy_id(&market) == 1);
 
+        sui::clock::destroy_for_testing(clock);
         test_scenario::return_shared(market);
     };
 

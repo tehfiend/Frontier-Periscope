@@ -45,6 +45,9 @@ const EZeroQuantity: vector<u8> = b"Quantity must be greater than zero";
 #[error(code = 8)]
 const ENotListingSeller: vector<u8> = b"Caller is not the listing seller";
 
+#[error(code = 9)]
+const ETypeMismatch: vector<u8> = b"Item type does not match buy order type";
+
 // -- Structs --------------------------------------------------------------------
 
 /// Typed witness for SSU extension authorization.
@@ -57,6 +60,7 @@ public struct SsuConfig has key {
     owner: address,
     delegates: vector<address>,
     market_id: Option<ID>,
+    is_public: bool,
 }
 
 // -- Events ---------------------------------------------------------------------
@@ -111,7 +115,15 @@ public struct BuyOrderFilledEvent has copy, drop {
     type_id: u64,
     quantity: u64,
     total_paid: u64,
+    price_per_unit: u64,
     seller: address,
+    buyer: address,
+}
+
+public struct VisibilitySetEvent has copy, drop {
+    config_id: ID,
+    ssu_id: ID,
+    is_public: bool,
 }
 
 // -- Authorization helpers ------------------------------------------------------
@@ -140,6 +152,7 @@ public fun create_ssu_config(
         owner: ctx.sender(),
         delegates: vector::empty(),
         market_id: option::none(),
+        is_public: false,
     };
 
     event::emit(SsuConfigCreatedEvent {
@@ -210,12 +223,29 @@ public fun remove_market(
     });
 }
 
+/// Set visibility (public/private). Owner only.
+public fun set_visibility(
+    config: &mut SsuConfig,
+    is_public: bool,
+    ctx: &TxContext,
+) {
+    assert!(ctx.sender() == config.owner, ENotOwner);
+    config.is_public = is_public;
+
+    event::emit(VisibilitySetEvent {
+        config_id: object::id(config),
+        ssu_id: config.ssu_id,
+        is_public,
+    });
+}
+
 // -- SsuConfig read accessors ---------------------------------------------------
 
 public fun config_owner(config: &SsuConfig): address { config.owner }
 public fun config_ssu_id(config: &SsuConfig): ID { config.ssu_id }
 public fun config_market_id(config: &SsuConfig): Option<ID> { config.market_id }
 public fun config_delegates(config: &SsuConfig): vector<address> { config.delegates }
+public fun config_is_public(config: &SsuConfig): bool { config.is_public }
 
 // -- Inventory transfers --------------------------------------------------------
 
@@ -412,7 +442,7 @@ public fun buy_from_listing<T>(
     // Calculate fee
     let fee_bps = market::market_fee_bps(market);
     let fee_recipient = market::market_fee_recipient(market);
-    let fee_amount = total_price / 10000 * fee_bps;
+    let fee_amount = total_price * fee_bps / 10000;
     let seller_amount = total_price - fee_amount;
 
     // Split payment: fee to fee_recipient, net to seller
@@ -463,7 +493,7 @@ public fun player_fill_buy_order<T>(
     let price_per_unit = market::order_price_per_unit(order);
     let available = market::order_quantity(order);
     let buyer = market::order_buyer(order);
-    assert!(type_id == market::order_type_id(order), ESSUMismatch);
+    assert!(type_id == market::order_type_id(order), ETypeMismatch);
     assert!((quantity as u64) <= available, EInsufficientQuantity);
 
     let total_price = price_per_unit * (quantity as u64);
@@ -471,7 +501,7 @@ public fun player_fill_buy_order<T>(
     // Calculate fee
     let fee_bps = market::market_fee_bps(market);
     let fee_recipient = market::market_fee_recipient(market);
-    let fee_amount = total_price / 10000 * fee_bps;
+    let fee_amount = total_price * fee_bps / 10000;
     let seller_amount = total_price - fee_amount;
 
     // Split escrowed payment from market
@@ -507,7 +537,9 @@ public fun player_fill_buy_order<T>(
         type_id,
         quantity: (quantity as u64),
         total_paid: total_price,
+        price_per_unit,
         seller: ctx.sender(),
+        buyer,
     });
 }
 
@@ -536,7 +568,7 @@ public fun fill_buy_order<T>(
     // Calculate fee
     let fee_bps = market::market_fee_bps(market);
     let fee_recipient = market::market_fee_recipient(market);
-    let fee_amount = total_price / 10000 * fee_bps;
+    let fee_amount = total_price * fee_bps / 10000;
     let seller_amount = total_price - fee_amount;
 
     // Split escrowed payment from market
@@ -577,6 +609,8 @@ public fun fill_buy_order<T>(
         type_id,
         quantity: (quantity as u64),
         total_paid: total_price,
+        price_per_unit,
         seller: ctx.sender(),
+        buyer,
     });
 }
