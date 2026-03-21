@@ -278,7 +278,7 @@ Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
    }
    ```
 
-4. **`contracts/market/sources/market.move`** -- Enrich `BuyOrderFilledEvent`:
+4. **`contracts/market/sources/market.move`** -- Enrich `BuyOrderFilledEvent`. Note: this event is defined in market.move but never emitted there (fill logic is in ssu_market). Enriching it for consistency and future use:
    ```move
    public struct BuyOrderFilledEvent has copy, drop {
        market_id: ID,
@@ -689,16 +689,20 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
 
 7. **`apps/periscope/src/chain/config.ts`** -- Update `EXTENSION_TEMPLATES` ssu_market `packageIds` for both tenants.
 
-8. **`apps/ssu-dapp`** -- Add location management to SSU admin settings:
-   - New section in SSU admin UI for "Market Location".
+8. **`apps/ssu-dapp/src/components/LocationSettings.tsx`** (new) -- Location management panel for SSU admin:
+   - Shown in `SsuView.tsx` for SSU owner when `ssuConfig` exists (rendered alongside or within `ExtensionInfo`).
    - Toggle for public/private visibility.
    - Solar system ID input (for public SSUs) or encrypted location display (for private).
    - Calls `buildSetLocation` on save.
+   - Depends on `@tehfrontier/chain-shared` for `buildSetLocation`.
 
-9. **`apps/ssu-dapp`** -- Add invite management:
-   - "Send Invite" button (owner only) -- accepts recipient address, encrypts location key client-side, calls `buildSendInvite`.
-   - "Received Invites" list -- queries `MarketInvite` objects owned by connected wallet, decrypts location key, shows SSU location.
-   - Client-side crypto: Ed25519 public key discovery from recipient's transactions, X25519 conversion, `crypto_box_seal` encryption, key derivation from `signPersonalMessage`.
+9. **`apps/ssu-dapp/src/components/InviteManager.tsx`** (new) -- Invite management panel:
+   - "Send Invite" section (owner only) -- accepts recipient address, discovers their Ed25519 public key from transactions, encrypts location symmetric key client-side via `crypto_box_seal`, calls `buildSendInvite`.
+   - "Received Invites" section -- queries `MarketInvite` objects owned by connected wallet via `queryMarketInvites`, decrypts location key using X25519 private key (derived from `signPersonalMessage("TehFrontier Market Key v1")`), shows SSU location.
+   - Uses `tweetnacl` or `@noble/ed25519` for Ed25519->X25519 conversion and `crypto_box_seal`.
+   - Derived X25519 private key cached in localStorage, re-derivable from wallet signature.
+
+10. **`apps/ssu-dapp/src/views/SsuView.tsx`** -- Render `LocationSettings` and `InviteManager` for SSU owners/authorized users when `ssuConfig` is available. No extra prop threading needed since `ssuConfig` already contains `isPublic` and `locationData`.
 
 ## File Summary
 
@@ -723,7 +727,9 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
 | `apps/ssu-dapp/src/components/MarketContent.tsx` | Modify | `BigInt`-safe price formatting. |
 | `apps/ssu-dapp/src/components/ListingAdminList.tsx` | Modify | `pricePerUnit` now `bigint`, update `Number()` -> direct pass |
 | `apps/ssu-dapp/src/components/SellDialog.tsx` | Modify | `pricePerUnit` now `bigint` |
-| `apps/ssu-dapp/src/views/SsuView.tsx` | Modify | Thread location fields through component tree |
+| `apps/ssu-dapp/src/components/LocationSettings.tsx` | Create | Location management panel for SSU admin (public/private toggle, solar system ID) |
+| `apps/ssu-dapp/src/components/InviteManager.tsx` | Create | Invite management panel (send invites, view received invites, client-side crypto) |
+| `apps/ssu-dapp/src/views/SsuView.tsx` | Modify | Render LocationSettings and InviteManager for SSU owners |
 | `apps/ssu-market-dapp/src/lib/constants.ts` | Modify | Update package IDs |
 | `apps/ssu-market-dapp/src/components/PostBuyOrderForm.tsx` | Modify | Add coin query + merge, decimal formatting |
 | `apps/ssu-market-dapp/src/components/PostSellListingForm.tsx` | Modify | `pricePerUnit: Number()` -> `BigInt()` |
