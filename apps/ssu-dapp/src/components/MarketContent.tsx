@@ -122,12 +122,12 @@ export function MarketContent({
 											Want: {order.name}
 										</p>
 										<p className="text-[10px] text-zinc-500">
-											{order.pricePerUnit.toLocaleString()} per unit --{" "}
+											{order.pricePerUnit.toString()} per unit --{" "}
 											{order.quantity.toLocaleString()} wanted
 										</p>
 										<p className="text-[10px] text-zinc-500">
 											Total escrowed:{" "}
-											{(order.pricePerUnit * order.quantity).toLocaleString()}
+											{(order.pricePerUnit * BigInt(order.quantity)).toString()}
 										</p>
 										<p className="text-[10px] text-zinc-600">
 											Buyer: {formatAddress(order.buyer)}

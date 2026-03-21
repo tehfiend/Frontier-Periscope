@@ -40,8 +40,8 @@ export function SellDialog({
 	}, []);
 
 	const qty = Number(quantity) || 0;
-	const price = Number(pricePerUnit) || 0;
-	const totalValue = qty * price;
+	const priceBase = BigInt(pricePerUnit || 0);
+	const totalValue = priceBase * BigInt(qty);
 	const maxQty = item.quantity;
 
 	async function handleSell() {
@@ -50,7 +50,7 @@ export function SellDialog({
 			setError(`Quantity must be between 1 and ${maxQty}`);
 			return;
 		}
-		if (price <= 0) {
+		if (priceBase <= 0n) {
 			setError("Price per unit must be greater than 0");
 			return;
 		}
@@ -70,12 +70,12 @@ export function SellDialog({
 				ownerCapReceivingId: ownerCap.objectId,
 				typeId: item.typeId,
 				quantity: qty,
-				pricePerUnit: price,
+				pricePerUnit: priceBase,
 				senderAddress: account.address,
 			});
 
 			await signAndExecute(tx);
-			setSuccess(`Listed ${qty}x ${item.name} at ${price.toLocaleString()} per unit`);
+			setSuccess(`Listed ${qty}x ${item.name} at ${priceBase.toString()} per unit`);
 		} catch (err) {
 			setError(decodeErrorMessage(String(err)));
 		}
@@ -172,9 +172,9 @@ export function SellDialog({
 						</div>
 
 						{/* Total preview */}
-						{totalValue > 0 && (
+						{totalValue > 0n && (
 							<div className="rounded border border-zinc-800 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-400">
-								Total value: {totalValue.toLocaleString()}
+								Total value: {totalValue.toString()}
 							</div>
 						)}
 
@@ -182,7 +182,7 @@ export function SellDialog({
 						<button
 							type="button"
 							onClick={handleSell}
-							disabled={isPending || qty <= 0 || price <= 0}
+							disabled={isPending || qty <= 0 || priceBase <= 0n}
 							className="w-full rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
 						>
 							{isPending ? "Creating listing..." : "Create Sell Listing"}

@@ -2,6 +2,7 @@ import { AssemblyActions } from "@/components/AssemblyActions";
 import { ContentTabs } from "@/components/ContentTabs";
 import { ExtensionInfo } from "@/components/ExtensionInfo";
 import { SsuInfoCard } from "@/components/SsuInfoCard";
+import { VisibilitySettings } from "@/components/VisibilitySettings";
 import type { CapRef, TransferContext } from "@/components/TransferDialog";
 import { useAssembly } from "@/hooks/useAssembly";
 import { useBuyOrders } from "@/hooks/useBuyOrders";
@@ -191,6 +192,11 @@ export function SsuView({ objectId }: SsuViewProps) {
 						characterOwnerCapId={charOwnerCapInfo?.objectId}
 					/>
 				</div>
+			)}
+
+			{/* SSU visibility toggle (owner only) */}
+			{isSsuOwner && ssuConfig && (
+				<VisibilitySettings ssuConfig={ssuConfig} />
 			)}
 
 			{/* Assembly status + Extension info (kept at bottom for now) */}

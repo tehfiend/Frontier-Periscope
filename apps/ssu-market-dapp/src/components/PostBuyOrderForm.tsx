@@ -1,6 +1,8 @@
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
-import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { buildPostBuyOrder } from "@tehfrontier/chain-shared";
+import { useCurrentAccount, useCurrentClient } from "@mysten/dapp-kit-react";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import { buildPostBuyOrder, queryOwnedCoins } from "@tehfrontier/chain-shared";
+import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useState } from "react";
 
@@ -20,22 +22,44 @@ export function PostBuyOrderForm({
 	onCancel,
 }: PostBuyOrderFormProps) {
 	const account = useCurrentAccount();
+	const client = useCurrentClient() as SuiGraphQLClient;
 	const { mutateAsync, isPending } = useSignAndExecute();
 
-	const [paymentObjectId, setPaymentObjectId] = useState("");
 	const [typeId, setTypeId] = useState("");
 	const [pricePerUnit, setPricePerUnit] = useState("");
 	const [quantity, setQuantity] = useState("");
 	const [error, setError] = useState<string>();
 
-	const totalCost = Number(pricePerUnit || 0) * Number(quantity || 0);
+	const { data: ownedCoins, isLoading: coinsLoading } = useQuery({
+		queryKey: ["ownedCoins", account?.address, coinType],
+		queryFn: async () => {
+			if (!account?.address || !coinType) return [];
+			return queryOwnedCoins(client, account.address, coinType);
+		},
+		enabled: !!account?.address && !!coinType,
+	});
+
+	const priceBase = BigInt(pricePerUnit || 0);
+	const qtyNum = Number(quantity || 0);
+	const totalBaseUnits = priceBase * BigInt(qtyNum || 0);
+	const totalBalance = ownedCoins?.reduce((sum, c) => sum + c.balance, 0n) ?? 0n;
 
 	async function handleSubmit() {
 		if (!account) return;
 		setError(undefined);
 
-		if (!paymentObjectId.trim() || !typeId || !pricePerUnit || !quantity) {
+		if (!typeId || !pricePerUnit || !quantity) {
 			setError("All fields are required");
+			return;
+		}
+
+		if (!ownedCoins?.length) {
+			setError("No coins available in your wallet");
+			return;
+		}
+
+		if (totalBalance < totalBaseUnits) {
+			setError("Insufficient balance for this buy order");
 			return;
 		}
 
@@ -44,10 +68,11 @@ export function PostBuyOrderForm({
 				packageId,
 				marketId,
 				coinType,
-				paymentObjectId: paymentObjectId.trim(),
+				coinObjectIds: ownedCoins.map((c) => c.objectId),
+				totalAmount: totalBaseUnits,
 				typeId: Number(typeId),
-				pricePerUnit: Number(pricePerUnit),
-				quantity: Number(quantity),
+				pricePerUnit: priceBase,
+				quantity: qtyNum,
 				senderAddress: account.address,
 			});
 			await mutateAsync(tx);
@@ -67,14 +92,19 @@ export function PostBuyOrderForm({
 
 			<div className="space-y-2">
 				<div>
-					<label className="mb-0.5 block text-[10px] text-zinc-500">Payment Coin Object ID</label>
-					<input
-						type="text"
-						value={paymentObjectId}
-						onChange={(e) => setPaymentObjectId(e.target.value)}
-						placeholder="0x... (Coin object with sufficient balance)"
-						className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
-					/>
+					<label className="mb-0.5 block text-[10px] text-zinc-500">Wallet Balance</label>
+					{coinsLoading ? (
+						<p className="py-1 text-[10px] text-zinc-600">Loading balance...</p>
+					) : !ownedCoins?.length ? (
+						<p className="py-1 text-[10px] text-amber-400">No coins found</p>
+					) : (
+						<div className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-300">
+							{totalBalance.toString()} base units
+							{totalBaseUnits > 0n && totalBalance < totalBaseUnits && (
+								<span className="ml-2 text-red-400">(insufficient)</span>
+							)}
+						</div>
+					)}
 				</div>
 				<div className="flex gap-2">
 					<div className="flex-1">
@@ -109,9 +139,9 @@ export function PostBuyOrderForm({
 						className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
 					/>
 				</div>
-				{totalCost > 0 && (
+				{totalBaseUnits > 0n && (
 					<p className="text-[10px] text-zinc-500">
-						Total escrow required: {totalCost.toLocaleString()}
+						Total escrow required: {totalBaseUnits.toString()}
 					</p>
 				)}
 			</div>

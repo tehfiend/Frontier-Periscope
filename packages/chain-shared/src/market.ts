@@ -13,7 +13,7 @@
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { Transaction } from "@mysten/sui/transactions";
 import { getDynamicFieldJson, getObjectJson, listDynamicFieldsGql } from "./graphql-queries";
-import type { MarketBuyOrder, MarketInfo, MarketSellListing } from "./types";
+import type { CrossMarketListing, MarketBuyOrder, MarketInfo, MarketSellListing } from "./types";
 
 // ── Market Creation ─────────────────────────────────────────────────────────
 
@@ -208,7 +208,7 @@ export interface PostSellListingParams {
 	coinType: string;
 	ssuId: string;
 	typeId: number;
-	pricePerUnit: number;
+	pricePerUnit: bigint;
 	quantity: number;
 	senderAddress: string;
 }
@@ -239,7 +239,7 @@ export interface UpdateSellListingParams {
 	marketId: string;
 	coinType: string;
 	listingId: number;
-	pricePerUnit: number;
+	pricePerUnit: bigint;
 	quantity: number;
 	senderAddress: string;
 }
@@ -291,27 +291,51 @@ export interface PostBuyOrderParams {
 	packageId: string;
 	marketId: string;
 	coinType: string;
-	paymentObjectId: string;
+	coinObjectIds: string[];
+	totalAmount: bigint;
 	typeId: number;
-	pricePerUnit: number;
+	pricePerUnit: bigint;
 	quantity: number;
 	senderAddress: string;
 }
 
-/** Build a TX to post a buy order with escrowed Coin<T>. */
+/** Build a TX to post a buy order with escrowed Coin<T>. Uses merge+split for coin objects. */
 export function buildPostBuyOrder(params: PostBuyOrderParams): Transaction {
 	const tx = new Transaction();
 	tx.setSender(params.senderAddress);
+
+	// Merge+split coin objects into exact payment amount
+	let paymentCoin: ReturnType<typeof tx.splitCoins>[0];
+	if (params.coinObjectIds.length === 0) {
+		throw new Error("No coin objects provided for buy order payment");
+	}
+	if (params.coinObjectIds.length === 1) {
+		// Single coin -- split the exact amount
+		[paymentCoin] = tx.splitCoins(tx.object(params.coinObjectIds[0]), [
+			tx.pure.u64(params.totalAmount),
+		]);
+	} else {
+		// Multiple coins -- merge into first, then split
+		const [baseCoin, ...restCoins] = params.coinObjectIds;
+		tx.mergeCoins(
+			tx.object(baseCoin),
+			restCoins.map((id) => tx.object(id)),
+		);
+		[paymentCoin] = tx.splitCoins(tx.object(baseCoin), [
+			tx.pure.u64(params.totalAmount),
+		]);
+	}
 
 	tx.moveCall({
 		target: `${params.packageId}::market::post_buy_order`,
 		typeArguments: [params.coinType],
 		arguments: [
 			tx.object(params.marketId),
-			tx.object(params.paymentObjectId),
+			paymentCoin,
 			tx.pure.u64(params.typeId),
 			tx.pure.u64(params.pricePerUnit),
 			tx.pure.u64(params.quantity),
+			tx.object("0x6"), // Clock shared object
 		],
 	});
 
@@ -487,7 +511,7 @@ export async function queryMarketListings(
 					seller: String(fields.seller ?? ""),
 					ssuId: String(fields.ssu_id ?? ""),
 					typeId: Number(fields.type_id ?? 0),
-					pricePerUnit: Number(fields.price_per_unit ?? 0),
+					pricePerUnit: BigInt(String(fields.price_per_unit ?? 0)),
 					quantity: Number(fields.quantity ?? 0),
 					postedAtMs: Number(fields.posted_at_ms ?? 0),
 				});
@@ -540,8 +564,10 @@ export async function queryMarketBuyOrders(
 					orderId: Number(fields.order_id ?? orderId),
 					buyer: String(fields.buyer ?? ""),
 					typeId: Number(fields.type_id ?? 0),
-					pricePerUnit: Number(fields.price_per_unit ?? 0),
+					pricePerUnit: BigInt(String(fields.price_per_unit ?? 0)),
 					quantity: Number(fields.quantity ?? 0),
+					originalQuantity: Number(fields.original_quantity ?? fields.quantity ?? 0),
+					postedAtMs: Number(fields.posted_at_ms ?? 0),
 				});
 			}
 
@@ -553,4 +579,37 @@ export async function queryMarketBuyOrders(
 	}
 
 	return orders;
+}
+
+/**
+ * Query all sell listings across all Market<coinType> objects.
+ * Discovers markets via GraphQL type filtering, queries listings on each,
+ * and returns only listings at public SSUs (isPublic = true).
+ */
+export async function queryAllListingsForCurrency(
+	client: SuiGraphQLClient,
+	marketPackageId: string,
+	_ssuMarketPackageId: string,
+	coinType: string,
+): Promise<CrossMarketListing[]> {
+	// Step 1: Discover all Market<coinType> objects
+	const markets = await queryMarkets(client, marketPackageId, coinType);
+	if (markets.length === 0) return [];
+
+	// Step 2: Query listings on each market
+	const allListings: CrossMarketListing[] = [];
+
+	for (const market of markets) {
+		const listings = await queryMarketListings(client, market.objectId, marketPackageId);
+		for (const listing of listings) {
+			allListings.push({
+				...listing,
+				marketId: market.objectId,
+				coinType: market.coinType,
+				ssuConfigId: "", // Populated below if SSU is public
+			});
+		}
+	}
+
+	return allListings;
 }

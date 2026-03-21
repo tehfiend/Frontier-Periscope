@@ -4,11 +4,11 @@ export const WORLD_PACKAGE_ID =
 
 /** SSU Market contract package ID */
 export const SSU_MARKET_PACKAGE_ID =
-	"0xc61ced466cc75112c32d62630b2d2df2eea4353dd92bc99bfb48b8b4144bcc69";
+	"0x3339a266b12a7829dc873813608151caff50c46466e13fab020acd6dfe2397a2";
 
 /** Market contract package ID */
 export const MARKET_PACKAGE_ID =
-	"0x1755eaaebe4335fcf5f467dfaab73ba21047bdfbda1d97425e6a2cb961a055f4";
+	"0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a";
 
 /** World API base URLs per tenant */
 export const WORLD_API: Record<string, string> = {

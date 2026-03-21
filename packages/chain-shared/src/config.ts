@@ -32,8 +32,11 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		},
 		exchange: { packageId: "0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d" },
 		ssuMarket: {
-			packageId: "0xc61ced466cc75112c32d62630b2d2df2eea4353dd92bc99bfb48b8b4144bcc69",
-			originalPackageId: "0x40576ea9e07fa8516abc4820a24be12b0ad7678d181afba5710312d2a0ca6e48",
+			packageId: "0x3339a266b12a7829dc873813608151caff50c46466e13fab020acd6dfe2397a2",
+			originalPackageId: "0x3339a266b12a7829dc873813608151caff50c46466e13fab020acd6dfe2397a2",
+			previousOriginalPackageIds: [
+				"0x40576ea9e07fa8516abc4820a24be12b0ad7678d181afba5710312d2a0ca6e48",
+			],
 		},
 		bountyBoard: {
 			packageId: "0xf55f7830828c66d6402add527e9e4ff9190aaae52bbb7ab723d24f455021b4bf",
@@ -54,7 +57,7 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0x3b1cdef2e8ddbd17618357a2ea8101073f881086442507e722cb02aa3ffc3b55",
 		},
 		market: {
-			packageId: "0x1755eaaebe4335fcf5f467dfaab73ba21047bdfbda1d97425e6a2cb961a055f4",
+			packageId: "0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a",
 		},
 	},
 	utopia: {
@@ -82,9 +85,10 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		},
 		exchange: { packageId: "0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d" },
 		ssuMarket: {
-			packageId: "0x6256dcd42f82a3040a076c43e2b55c66613e56a4ad3cedb457b3aef3c52285ae",
-			originalPackageId: "0xf6e9699d86cd58580dd7d4ea73f8d42841c72b4f23d9de71d2988baabc5f25a0",
+			packageId: "0x2796505934119806d4b8b057a00a1c0672769e9a17dbcf7df28df276e4afb74c",
+			originalPackageId: "0x2796505934119806d4b8b057a00a1c0672769e9a17dbcf7df28df276e4afb74c",
 			previousOriginalPackageIds: [
+				"0xf6e9699d86cd58580dd7d4ea73f8d42841c72b4f23d9de71d2988baabc5f25a0",
 				"0x53c2bf5e90d12b8a92594ab959f3d883dc2afdaf6031e9640151f82582a17501",
 			],
 		},
@@ -107,7 +111,7 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0x3b1cdef2e8ddbd17618357a2ea8101073f881086442507e722cb02aa3ffc3b55",
 		},
 		market: {
-			packageId: "0x1755eaaebe4335fcf5f467dfaab73ba21047bdfbda1d97425e6a2cb961a055f4",
+			packageId: "0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a",
 		},
 	},
 };

@@ -25,7 +25,6 @@ export function CreateBuyOrderDialog({
 	const suiClient = useSuiClient();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
 
-	const [paymentObjectId, setPaymentObjectId] = useState("");
 	const [typeId, setTypeId] = useState("");
 	const [itemSearch, setItemSearch] = useState("");
 	const [showItemResults, setShowItemResults] = useState(false);
@@ -69,18 +68,14 @@ export function CreateBuyOrderDialog({
 		return gameItems.find((i) => i.typeId === Number(typeId))?.name ?? "";
 	}, [typeId, gameItems]);
 
-	// Auto-select the first coin if only one exists
-	useEffect(() => {
-		if (ownedCoins?.length === 1 && !paymentObjectId) {
-			setPaymentObjectId(ownedCoins[0].objectId);
-		}
-	}, [ownedCoins, paymentObjectId]);
-
 	useEffect(() => {
 		dialogRef.current?.showModal();
 	}, []);
 
-	const totalCost = Number(pricePerUnit || 0) * Number(quantity || 0);
+	const priceBaseUnits = BigInt(pricePerUnit || 0);
+	const qtyNum = Number(quantity || 0);
+	const totalBaseUnits = priceBaseUnits * BigInt(qtyNum || 0);
+	const totalBalance = ownedCoins?.reduce((sum, c) => sum + c.balance, 0n) ?? 0n;
 
 	function handleSelectItem(id: number, name: string) {
 		setTypeId(String(id));
@@ -93,8 +88,18 @@ export function CreateBuyOrderDialog({
 		setError(null);
 		setSuccess(null);
 
-		if (!paymentObjectId.trim() || !typeId || !pricePerUnit || !quantity) {
+		if (!typeId || !pricePerUnit || !quantity) {
 			setError("All fields are required");
+			return;
+		}
+
+		if (!ownedCoins?.length) {
+			setError("No coins available in your wallet");
+			return;
+		}
+
+		if (totalBalance < totalBaseUnits) {
+			setError("Insufficient balance for this buy order");
 			return;
 		}
 
@@ -103,10 +108,11 @@ export function CreateBuyOrderDialog({
 				packageId,
 				marketId,
 				coinType,
-				paymentObjectId: paymentObjectId.trim(),
+				coinObjectIds: ownedCoins.map((c) => c.objectId),
+				totalAmount: totalBaseUnits,
 				typeId: Number(typeId),
-				pricePerUnit: Number(pricePerUnit),
-				quantity: Number(quantity),
+				pricePerUnit: priceBaseUnits,
+				quantity: qtyNum,
 				senderAddress: account.address,
 			});
 			await signAndExecute(tx);
@@ -158,38 +164,27 @@ export function CreateBuyOrderDialog({
 							receive payment.
 						</p>
 
-						{/* DEBUG */}
-						<div className="rounded bg-zinc-800 p-2 text-[10px] font-mono text-zinc-600">
-							<p>coinType: {coinType || "(empty)"}</p>
-							<p>wallet: {account?.address?.slice(0, 16) || "(not connected)"}</p>
-							<p>coins: {coinsLoading ? "loading..." : coinsError ? `ERROR: ${coinsError}` : `${ownedCoins?.length ?? 0} found`}</p>
-						</div>
-
-						{/* Payment coin selector */}
+						{/* Balance display */}
 						<div>
 							<label className="mb-1 block text-xs text-zinc-500">
-								Payment Coin
+								Wallet Balance
 							</label>
 							{coinsLoading ? (
-								<p className="py-2 text-xs text-zinc-600">Loading coins...</p>
+								<p className="py-2 text-xs text-zinc-600">Loading balance...</p>
 							) : !ownedCoins?.length ? (
 								<p className="py-2 text-xs text-amber-400">
 									No coins found in your wallet.
 									{!coinType && " (Market coin type not detected)"}
 								</p>
 							) : (
-								<select
-									value={paymentObjectId}
-									onChange={(e) => setPaymentObjectId(e.target.value)}
-									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
-								>
-									<option value="">Select coin...</option>
-									{ownedCoins.map((c) => (
-										<option key={c.objectId} value={c.objectId}>
-											{formatBalance(c.balance)} -- {c.objectId.slice(0, 10)}...
-										</option>
-									))}
-								</select>
+								<div className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300">
+									{formatBalance(totalBalance)}
+									{totalBaseUnits > 0n && totalBalance < totalBaseUnits && (
+										<span className="ml-2 text-xs text-red-400">
+											(insufficient)
+										</span>
+									)}
+								</div>
 							)}
 						</div>
 
@@ -272,9 +267,9 @@ export function CreateBuyOrderDialog({
 							</div>
 						</div>
 
-						{totalCost > 0 && (
+						{totalBaseUnits > 0n && (
 							<p className="text-xs text-zinc-500">
-								Total escrow required: {totalCost.toLocaleString()}
+								Total escrow required: {formatBalance(totalBaseUnits)}
 							</p>
 						)}
 

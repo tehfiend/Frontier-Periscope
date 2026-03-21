@@ -15,6 +15,7 @@ export interface SsuConfigResult {
 	/** Coin type from the linked Market<T>, e.g. "0xabc::ISK_TOKEN::ISK_TOKEN" */
 	coinType: string | null;
 	packageId: string;
+	isPublic: boolean;
 }
 
 /**
@@ -67,6 +68,7 @@ export function useSsuConfig(
 				marketId: config.marketId,
 				coinType,
 				packageId: latestPkgId,
+				isPublic: config.isPublic,
 			};
 		},
 		enabled: !!ssuObjectId && hasMarketExtension && !!originalPkgId && !!latestPkgId,

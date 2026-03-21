@@ -47,7 +47,7 @@ export function ListingAdminList({
 				marketId: ssuConfig.marketId,
 				coinType,
 				listingId,
-				pricePerUnit: Number(dialogState.price),
+				pricePerUnit: BigInt(dialogState.price),
 				quantity: Number(dialogState.qty),
 				senderAddress: account.address,
 			});
@@ -176,7 +176,7 @@ function ListingAdminRow({
 						{itemName ?? `Item #${listing.typeId}`}
 					</p>
 					<p className="text-xs text-zinc-500">
-						{listing.pricePerUnit.toLocaleString()} per unit --{" "}
+						{listing.pricePerUnit.toString()} per unit --{" "}
 						{listing.quantity.toLocaleString()} available
 					</p>
 					<p className="text-[10px] text-zinc-600">

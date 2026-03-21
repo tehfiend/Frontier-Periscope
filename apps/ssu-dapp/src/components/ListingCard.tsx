@@ -1,9 +1,14 @@
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { decodeErrorMessage } from "@/lib/errors";
 import { resolveItemName } from "@/lib/items";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { type MarketSellListing, buildBuyFromListing } from "@tehfrontier/chain-shared";
+import {
+	type MarketSellListing,
+	buildBuyFromListing,
+	queryOwnedCoins,
+} from "@tehfrontier/chain-shared";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -29,6 +34,7 @@ export function ListingCard({
 	const [quantity, setQuantity] = useState(1);
 	const [error, setError] = useState<string | null>(null);
 	const account = useCurrentAccount();
+	const suiClient = useSuiClient();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
 
 	const { data: itemName } = useQuery({
@@ -37,7 +43,16 @@ export function ListingCard({
 		staleTime: 5 * 60_000,
 	});
 
-	const totalPrice = listing.pricePerUnit * quantity;
+	const { data: ownedCoins } = useQuery({
+		queryKey: ["ownedCoins", account?.address, coinType],
+		queryFn: async () => {
+			if (!account?.address || !coinType) return [];
+			return queryOwnedCoins(suiClient, account.address, coinType);
+		},
+		enabled: !!account?.address && !!coinType,
+	});
+
+	const totalPrice = listing.pricePerUnit * BigInt(quantity);
 	const maxQty = listing.quantity;
 
 	async function handleBuy() {
@@ -45,6 +60,11 @@ export function ListingCard({
 
 		if (!account?.address || !coinType || !ssuConfig.marketId) {
 			setError("Missing wallet connection, coin type, or market configuration.");
+			return;
+		}
+
+		if (!ownedCoins?.length) {
+			setError("No coins available in your wallet for this currency.");
 			return;
 		}
 
@@ -58,7 +78,7 @@ export function ListingCard({
 				characterObjectId: characterObjectId ?? "",
 				listingId: listing.listingId,
 				quantity,
-				paymentObjectId: "", // Wallet resolves the payment coin
+				coinObjectIds: ownedCoins.map((c) => c.objectId),
 				senderAddress: account.address,
 			});
 
@@ -79,7 +99,7 @@ export function ListingCard({
 				</div>
 				<div className="text-right">
 					<p className="text-sm font-medium text-cyan-400">
-						{listing.pricePerUnit.toLocaleString()}
+						{listing.pricePerUnit.toString()}
 					</p>
 					<p className="text-xs text-zinc-500">per unit</p>
 				</div>
@@ -111,7 +131,7 @@ export function ListingCard({
 					className="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-600 focus:outline-none"
 				/>
 				<span className="text-xs text-zinc-500">
-					= {totalPrice.toLocaleString()} total
+					= {totalPrice.toString()} total
 				</span>
 				<div className="flex-1" />
 				{canBuy && (

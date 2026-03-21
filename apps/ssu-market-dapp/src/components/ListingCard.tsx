@@ -1,9 +1,11 @@
 import type { SellListingWithName } from "@/hooks/useMarketListings";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import { SSU_MARKET_PACKAGE_ID, getCoinType } from "@/lib/constants";
-import { useCurrentAccount } from "@mysten/dapp-kit-react";
+import { useCurrentAccount, useCurrentClient } from "@mysten/dapp-kit-react";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import type { SsuConfigInfo } from "@tehfrontier/chain-shared";
-import { buildBuyFromListing } from "@tehfrontier/chain-shared";
+import { buildBuyFromListing, queryOwnedCoins } from "@tehfrontier/chain-shared";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 interface ListingCardProps {
@@ -17,10 +19,20 @@ export function ListingCard({ listing, config, canBuy, onConnect }: ListingCardP
 	const [quantity, setQuantity] = useState(1);
 	const [error, setError] = useState<string | null>(null);
 	const account = useCurrentAccount();
+	const client = useCurrentClient() as SuiGraphQLClient;
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
 
-	const totalPrice = listing.pricePerUnit * quantity;
+	const totalPrice = listing.pricePerUnit * BigInt(quantity);
 	const coinType = getCoinType();
+
+	const { data: ownedCoins } = useQuery({
+		queryKey: ["ownedCoins", account?.address, coinType],
+		queryFn: async () => {
+			if (!account?.address || !coinType) return [];
+			return queryOwnedCoins(client, account.address, coinType);
+		},
+		enabled: !!account?.address && !!coinType,
+	});
 	const maxQty = listing.quantity;
 
 	async function handleBuy() {
@@ -28,6 +40,11 @@ export function ListingCard({ listing, config, canBuy, onConnect }: ListingCardP
 
 		if (!account?.address || !coinType || !config.marketId) {
 			setError("Missing wallet connection, coin type, or market configuration.");
+			return;
+		}
+
+		if (!ownedCoins?.length) {
+			setError("No coins available in your wallet for this currency.");
 			return;
 		}
 
@@ -41,7 +58,7 @@ export function ListingCard({ listing, config, canBuy, onConnect }: ListingCardP
 				characterObjectId: "", // TODO: resolve from chain via wallet address
 				listingId: listing.listingId,
 				quantity,
-				paymentObjectId: "", // Wallet resolves the payment coin
+				coinObjectIds: ownedCoins.map((c) => c.objectId),
 				senderAddress: account.address,
 			});
 
@@ -60,7 +77,7 @@ export function ListingCard({ listing, config, canBuy, onConnect }: ListingCardP
 				</div>
 				<div className="text-right">
 					<p className="text-sm font-medium text-cyan-400">
-						{listing.pricePerUnit.toLocaleString()}
+						{listing.pricePerUnit.toString()}
 					</p>
 					<p className="text-xs text-zinc-500">per unit</p>
 				</div>
@@ -84,7 +101,7 @@ export function ListingCard({ listing, config, canBuy, onConnect }: ListingCardP
 					className="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-600 focus:outline-none"
 				/>
 				<span className="text-xs text-zinc-500">
-					= {totalPrice.toLocaleString()} total
+					= {totalPrice.toString()} total
 				</span>
 				<div className="flex-1" />
 				{canBuy ? (

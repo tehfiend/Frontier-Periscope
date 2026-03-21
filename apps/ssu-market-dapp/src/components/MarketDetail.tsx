@@ -240,7 +240,7 @@ export function MarketDetail({ packageId, marketId, onBack }: MarketDetailProps)
 												Item #{listing.typeId}
 											</p>
 											<p className="text-[10px] text-zinc-500">
-												{listing.pricePerUnit.toLocaleString()} per unit
+												{listing.pricePerUnit.toString()} per unit
 												-- {listing.quantity.toLocaleString()} available
 											</p>
 											<p className="text-[10px] text-zinc-600">
@@ -313,18 +313,29 @@ export function MarketDetail({ packageId, marketId, onBack }: MarketDetailProps)
 												Want: Item #{order.typeId}
 											</p>
 											<p className="text-[10px] text-zinc-500">
-												{order.pricePerUnit.toLocaleString()} per unit --{" "}
+												{order.pricePerUnit.toString()} per unit --{" "}
 												{order.quantity.toLocaleString()} wanted
+												{order.originalQuantity > 0 &&
+													order.originalQuantity !== order.quantity && (
+														<span className="text-zinc-600">
+															{" "}(of {order.originalQuantity.toLocaleString()})
+														</span>
+													)}
 											</p>
 											<p className="text-[10px] text-zinc-500">
 												Total escrowed:{" "}
 												{(
-													order.pricePerUnit * order.quantity
-												).toLocaleString()}
+													order.pricePerUnit * BigInt(order.quantity)
+												).toString()}
 											</p>
 											<p className="text-[10px] text-zinc-600">
 												Buyer: {order.buyer.slice(0, 10)}...
 											</p>
+											{order.postedAtMs > 0 && (
+												<p className="text-[10px] text-zinc-600">
+													Posted: {new Date(order.postedAtMs).toLocaleString()}
+												</p>
+											)}
 										</div>
 										<div className="flex flex-col gap-1">
 											{account?.address === order.buyer && (

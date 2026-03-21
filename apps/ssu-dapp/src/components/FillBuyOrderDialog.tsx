@@ -40,7 +40,7 @@ export function FillBuyOrderDialog({
 
 	const qty = Number(quantity) || 0;
 	const maxQty = order.quantity;
-	const totalPayment = qty * order.pricePerUnit;
+	const totalPayment = order.pricePerUnit * BigInt(qty);
 
 	async function handleFill() {
 		if (!account?.address || !ssuConfig.marketId) return;
@@ -69,7 +69,7 @@ export function FillBuyOrderDialog({
 			});
 
 			await signAndExecute(tx);
-			setSuccess(`Filled ${qty}x ${order.name} -- received ${totalPayment.toLocaleString()} payment`);
+			setSuccess(`Filled ${qty}x ${order.name} -- received ${totalPayment.toString()} payment`);
 		} catch (err) {
 			setError(decodeErrorMessage(String(err)));
 		}
@@ -123,7 +123,7 @@ export function FillBuyOrderDialog({
 								Item: {order.name}
 							</p>
 							<p className="text-[10px] text-zinc-500">
-								{order.pricePerUnit.toLocaleString()} per unit --{" "}
+								{order.pricePerUnit.toString()} per unit --{" "}
 								{order.quantity.toLocaleString()} wanted
 							</p>
 						</div>
@@ -156,9 +156,9 @@ export function FillBuyOrderDialog({
 						</div>
 
 						{/* Payment preview */}
-						{totalPayment > 0 && (
+						{totalPayment > 0n && (
 							<div className="rounded border border-zinc-800 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-400">
-								You will receive: {totalPayment.toLocaleString()} (minus fees)
+								You will receive: {totalPayment.toString()} (minus fees)
 							</div>
 						)}
 

@@ -44,7 +44,7 @@ export function PostSellListingForm({
 				coinType,
 				ssuId: ssuId.trim(),
 				typeId: Number(typeId),
-				pricePerUnit: Number(pricePerUnit),
+				pricePerUnit: BigInt(pricePerUnit),
 				quantity: Number(quantity),
 				senderAddress: account.address,
 			});

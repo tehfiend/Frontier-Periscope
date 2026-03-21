@@ -237,8 +237,8 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 		assemblyTypes: ["storage_unit", "smart_storage_unit", "protocol_depot"],
 		hasConfig: false,
 		packageIds: {
-			stillness: "0xc61ced466cc75112c32d62630b2d2df2eea4353dd92bc99bfb48b8b4144bcc69",
-			utopia: "0x6256dcd42f82a3040a076c43e2b55c66613e56a4ad3cedb457b3aef3c52285ae",
+			stillness: "0x3339a266b12a7829dc873813608151caff50c46466e13fab020acd6dfe2397a2",
+			utopia: "0x2796505934119806d4b8b057a00a1c0672769e9a17dbcf7df28df276e4afb74c",
 		},
 		configObjectIds: {},
 		witnessType: "ssu_market::MarketAuth",

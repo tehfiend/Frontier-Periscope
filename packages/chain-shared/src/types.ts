@@ -51,7 +51,7 @@ export interface MarketSellListing {
 	seller: string;
 	ssuId: string;
 	typeId: number;
-	pricePerUnit: number;
+	pricePerUnit: bigint;
 	quantity: number;
 	postedAtMs: number;
 }
@@ -60,8 +60,10 @@ export interface MarketBuyOrder {
 	orderId: number;
 	buyer: string;
 	typeId: number;
-	pricePerUnit: number;
+	pricePerUnit: bigint;
 	quantity: number;
+	originalQuantity: number;
+	postedAtMs: number;
 }
 
 // ── SSU Config Types ───────────────────────────────────────────────────────
@@ -72,6 +74,13 @@ export interface SsuConfigInfo {
 	ssuId: string;
 	delegates: string[];
 	marketId: string | null;
+	isPublic: boolean;
+}
+
+export interface CrossMarketListing extends MarketSellListing {
+	marketId: string;
+	coinType: string;
+	ssuConfigId: string;
 }
 
 // ── Toll Types ──────────────────────────────────────────────────────────────

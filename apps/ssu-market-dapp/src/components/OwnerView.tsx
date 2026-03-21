@@ -36,7 +36,7 @@ export function OwnerView({
 				marketId: config.marketId,
 				coinType: "", // TODO: resolve coin type
 				listingId,
-				pricePerUnit: Number(editPrice),
+				pricePerUnit: BigInt(editPrice),
 				quantity: Number(editQty),
 				senderAddress: account.address,
 			});
@@ -94,7 +94,7 @@ export function OwnerView({
 									<div>
 										<p className="text-sm text-zinc-200">{listing.name}</p>
 										<p className="text-xs text-zinc-500">
-											{listing.pricePerUnit.toLocaleString()} per unit --{" "}
+											{listing.pricePerUnit.toString()} per unit --{" "}
 											{listing.quantity.toLocaleString()} available
 										</p>
 									</div>

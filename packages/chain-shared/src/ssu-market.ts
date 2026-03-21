@@ -129,7 +129,7 @@ export interface EscrowAndListParams {
 	ownerCapReceivingId: string;
 	typeId: number;
 	quantity: number;
-	pricePerUnit: number;
+	pricePerUnit: bigint;
 	senderAddress: string;
 }
 
@@ -229,17 +229,34 @@ export interface BuyFromListingParams {
 	characterObjectId: string;
 	listingId: number;
 	quantity: number;
-	paymentObjectId: string;
+	coinObjectIds: string[];
 	senderAddress: string;
 }
 
 /**
  * Build a TX to buy items from a sell listing. Returns change coin.
  * Any buyer can call -- no authorization required (only SSU/market link validated).
+ * Merges all provided coins into one before passing to the contract.
  */
 export function buildBuyFromListing(params: BuyFromListingParams): Transaction {
 	const tx = new Transaction();
 	tx.setSender(params.senderAddress);
+
+	// Merge coins into a single payment object
+	let paymentCoin: ReturnType<typeof tx.object>;
+	if (params.coinObjectIds.length === 0) {
+		throw new Error("No coin objects provided for payment");
+	}
+	if (params.coinObjectIds.length === 1) {
+		paymentCoin = tx.object(params.coinObjectIds[0]);
+	} else {
+		const [baseCoin, ...restCoins] = params.coinObjectIds;
+		tx.mergeCoins(
+			tx.object(baseCoin),
+			restCoins.map((id) => tx.object(id)),
+		);
+		paymentCoin = tx.object(baseCoin);
+	}
 
 	const [change] = tx.moveCall({
 		target: `${params.packageId}::ssu_market::buy_from_listing`,
@@ -251,7 +268,7 @@ export function buildBuyFromListing(params: BuyFromListingParams): Transaction {
 			tx.object(params.characterObjectId),
 			tx.pure.u64(params.listingId),
 			tx.pure.u32(params.quantity),
-			tx.object(params.paymentObjectId),
+			paymentCoin,
 		],
 	});
 
@@ -389,10 +406,33 @@ export async function querySsuConfig(
 			ssuId: String(fields.ssu_id ?? ""),
 			delegates: ((fields.delegates as unknown[]) ?? []).map(String),
 			marketId: fields.market_id ? String(fields.market_id) : null,
+			isPublic: fields.is_public === true,
 		};
 	} catch {
 		return null;
 	}
+}
+
+// ── Visibility Management ──────────────────────────────────────────────────
+
+export interface SetVisibilityParams {
+	packageId: string;
+	ssuConfigId: string;
+	isPublic: boolean;
+	senderAddress: string;
+}
+
+/** Build a TX to set the visibility (public/private) of an SsuConfig. Owner only. */
+export function buildSetVisibility(params: SetVisibilityParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	tx.moveCall({
+		target: `${params.packageId}::ssu_market::set_visibility`,
+		arguments: [tx.object(params.ssuConfigId), tx.pure.bool(params.isPublic)],
+	});
+
+	return tx;
 }
 
 /**
