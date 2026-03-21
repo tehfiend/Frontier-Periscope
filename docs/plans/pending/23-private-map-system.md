@@ -72,7 +72,7 @@ public struct MapLocation has store, drop {
 
 ### Crypto Flow
 
-1. **Key derivation:** `dAppKit.signPersonalMessage({ message: encode("TehFrontier Map Key v1") })` -> SHA-256 hash of the 64-byte Ed25519 signature -> use 32-byte hash as X25519 seed via `x25519.keygen(seed)`. Ed25519 signatures are deterministic, so same wallet = same derived key every time across devices.
+1. **Key derivation:** `dAppKit.signPersonalMessage({ message: encode("TehFrontier Map Key v1") })` returns `{ signature: string }` (base64-encoded). Decode signature from base64 to bytes, then SHA-256 hash -> 32-byte seed -> `x25519.keygen(seed)` to produce X25519 keypair. Ed25519 signatures are deterministic, so same wallet = same derived key every time across devices.
 2. **Map creation:** Generate ephemeral X25519 keypair in memory. Store public key on-chain. Self-invite (seal private key with own wallet-derived X25519 public key). Discard ephemeral private key.
 3. **Inviting members:** Decrypt own invite to recover map private key. Re-encrypt map private key with invitee's X25519 public key. How the inviter obtains the invitee's public key depends on Open Question 1 (registry, out-of-band, or invite link).
 4. **Adding locations:** Read map public key from the on-chain `PrivateMap.public_key` field. Encrypt location data with `crypto_box_seal(plaintext, mapPublicKey)` -- only the map's public key is needed for encryption. Submit TX with encrypted bytes + `&MapInvite` for on-chain membership proof.
@@ -140,7 +140,7 @@ Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_se
 ### Phase 2: Client-Side Crypto (`packages/chain-shared/src/crypto.ts`)
 
 1. Create `packages/chain-shared/src/crypto.ts` with:
-   - `deriveMapKeyFromSignature(signature: Uint8Array): { publicKey: Uint8Array; secretKey: Uint8Array }` -- SHA-256 hash of signature bytes (via `@noble/hashes/sha256`), then `x25519.keygen(hash)` to produce X25519 keypair. The `x25519` export from `@noble/curves/ed25519` accepts an optional 32-byte seed.
+   - `deriveMapKeyFromSignature(signatureBase64: string): { publicKey: Uint8Array; secretKey: Uint8Array }` -- decode signature from base64 to bytes, SHA-256 hash (via `@noble/hashes/sha256`), then `x25519.keygen(hash)` to produce X25519 keypair. The `x25519` export from `@noble/curves/ed25519` accepts an optional 32-byte seed. The base64 input matches the `signPersonalMessage` return format.
    - `generateEphemeralX25519Keypair(): { publicKey: Uint8Array; secretKey: Uint8Array }` -- `x25519.keygen()` (no seed = random). Used for new map creation.
    - `sealForRecipient(plaintext: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array` -- uses `tweetnacl-sealedbox-js` `seal(plaintext, recipientPublicKey)`
    - `unsealWithKey(ciphertext: Uint8Array, recipientPublicKey: Uint8Array, recipientSecretKey: Uint8Array): Uint8Array` -- uses `tweetnacl-sealedbox-js` `open(ciphertext, recipientPublicKey, recipientSecretKey)`
