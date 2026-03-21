@@ -13,9 +13,11 @@ import {
 	queryTransactionsByObject,
 } from "@tehfrontier/chain-shared";
 import { db } from "@/db";
-import type { ManifestCharacter, ManifestTribe } from "@/db/types";
+import type { ManifestCharacter, ManifestLocation, ManifestTribe } from "@/db/types";
 import { type TenantId, TENANTS, moveType } from "./config";
 import type { TaskContext } from "@/lib/taskWorker";
+import { ensureCelestialsLoaded } from "@/lib/celestials";
+import { resolveNearestLPoint } from "@/lib/lpoints";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -438,4 +440,195 @@ export async function cacheCharacterFromLookup(
 		tenant,
 		cachedAt: now,
 	});
+}
+
+// ── Location Cache ──────────────────────────────────────────────────────────
+
+/**
+ * Bulk discover locations from LocationRevealedEvent events.
+ * Follows the same incremental cursor pattern as discoverCharactersFromEvents().
+ *
+ * After event discovery, resolves L-point labels and cross-references with deployables.
+ */
+export async function discoverLocationsFromEvents(
+	client: SuiGraphQLClient,
+	tenant: TenantId,
+	worldPkg: string,
+	limit = 5000,
+	ctx?: TaskContext,
+): Promise<number> {
+	const eventType = `${worldPkg}::location::LocationRevealedEvent`;
+	const cursorKey = `manifestLocCursor:${worldPkg}`;
+	let newCount = 0;
+	let fetched = 0;
+	const discoveredIds: string[] = [];
+
+	// Load saved cursor from last run
+	const savedCursor = await db.settings.get(cursorKey);
+	let cursor: string | null = null;
+	let isIncremental = false;
+
+	// Cursor migration: detect old { txDigest, eventSeq } format and discard
+	if (savedCursor?.value) {
+		if (typeof savedCursor.value === "string") {
+			cursor = savedCursor.value;
+			isIncremental = true;
+		} else if (
+			typeof savedCursor.value === "object" &&
+			"txDigest" in (savedCursor.value as Record<string, unknown>)
+		) {
+			console.warn("[manifest] Discarding old JSON-RPC cursor format for locations, re-syncing...");
+			await db.settings.delete(cursorKey);
+			cursor = null;
+			isIncremental = false;
+		}
+	}
+
+	try {
+		ctx?.setProgress(
+			isIncremental
+				? "Fetching new locations since last sync..."
+				: "Fetching all locations (first run)...",
+		);
+		let latestCursor: string | null = null;
+
+		do {
+			if (ctx?.isCancelled()) return newCount;
+
+			const result = await queryEventsGql(client, eventType, {
+				limit: Math.min(50, limit - fetched),
+				cursor,
+			});
+
+			for (const event of result.data) {
+				const parsed = event.parsedJson;
+				if (!parsed) continue;
+
+				const assemblyId = parsed.assembly_id as string;
+				if (!assemblyId) continue;
+
+				const keyObj = parsed.assembly_key as
+					| { item_id?: string; tenant?: string }
+					| undefined;
+				const revealedAt = new Date(Number(event.timestampMs)).toISOString();
+
+				// On re-reveal, clear lPoint so it gets recomputed
+				const entry: ManifestLocation = {
+					id: assemblyId,
+					assemblyItemId: String(keyObj?.item_id ?? ""),
+					typeId: Number(parsed.type_id ?? 0),
+					ownerCapId: String(parsed.owner_cap_id ?? ""),
+					solarsystem: Number(parsed.solarsystem ?? 0),
+					x: String(parsed.x ?? "0"),
+					y: String(parsed.y ?? "0"),
+					z: String(parsed.z ?? "0"),
+					tenant: String(keyObj?.tenant ?? tenant),
+					revealedAt,
+					cachedAt: new Date().toISOString(),
+				};
+
+				await db.manifestLocations.put(entry);
+				discoveredIds.push(assemblyId);
+				newCount++;
+			}
+
+			fetched += result.data.length;
+			if (result.nextCursor) {
+				latestCursor = result.nextCursor;
+			}
+			ctx?.setItems(newCount);
+			ctx?.setProgress(`Fetched ${fetched} events, ${newCount} locations`);
+			cursor = result.hasNextPage ? result.nextCursor : null;
+		} while (cursor && fetched < limit);
+
+		// Save cursor for next incremental run
+		if (latestCursor) {
+			await db.settings.put({ key: cursorKey, value: latestCursor });
+		}
+
+		// Phase 2: Resolve L-point labels
+		if (!ctx?.isCancelled() && discoveredIds.length > 0) {
+			ctx?.setProgress("Resolving L-point labels...");
+			await resolveManifestLocationLPoints();
+		}
+
+		// Phase 3: Cross-reference with deployables
+		if (!ctx?.isCancelled() && discoveredIds.length > 0) {
+			ctx?.setProgress("Cross-referencing with deployables...");
+			await crossReferenceManifestLocations(discoveredIds);
+		}
+
+		ctx?.setProgress(`Done: ${newCount} locations discovered`);
+	} catch (err) {
+		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return newCount;
+}
+
+/**
+ * Resolve L-point labels for manifest locations that don't have one yet.
+ * Loads celestial data and computes nearest L-point for each unresolved location.
+ */
+export async function resolveManifestLocationLPoints(): Promise<void> {
+	const unresolved = await db.manifestLocations.filter((loc) => !loc.lPoint).toArray();
+	if (unresolved.length === 0) return;
+
+	// Group by solar system
+	const bySystem = new Map<number, ManifestLocation[]>();
+	for (const loc of unresolved) {
+		const group = bySystem.get(loc.solarsystem);
+		if (group) {
+			group.push(loc);
+		} else {
+			bySystem.set(loc.solarsystem, [loc]);
+		}
+	}
+
+	// Ensure celestial data is loaded
+	await ensureCelestialsLoaded();
+
+	for (const [systemId, locations] of bySystem) {
+		const planets = await db.celestials.where("systemId").equals(systemId).toArray();
+		if (planets.length === 0) continue;
+
+		for (const loc of locations) {
+			const lPoint = resolveNearestLPoint(Number(loc.x), Number(loc.y), Number(loc.z), planets);
+			if (lPoint) {
+				await db.manifestLocations.update(loc.id, { lPoint });
+			}
+		}
+	}
+}
+
+/**
+ * Cross-reference manifest locations with deployables and assemblies.
+ * When a manifest location matches a deployable/assembly by object ID,
+ * populate systemId and lPoint on the deployable/assembly.
+ */
+export async function crossReferenceManifestLocations(locationIds: string[]): Promise<void> {
+	for (const locId of locationIds) {
+		const loc = await db.manifestLocations.get(locId);
+		if (!loc) continue;
+
+		// Check deployables
+		const dep = await db.deployables.where("objectId").equals(loc.id).first();
+		if (dep && (!dep.systemId || !dep.lPoint)) {
+			await db.deployables.update(dep.id, {
+				...(dep.systemId ? {} : { systemId: loc.solarsystem }),
+				...(!dep.lPoint && loc.lPoint ? { lPoint: loc.lPoint } : {}),
+				updatedAt: new Date().toISOString(),
+			});
+		}
+
+		// Check assemblies
+		const asm = await db.assemblies.where("objectId").equals(loc.id).first();
+		if (asm && (!asm.systemId || !asm.lPoint)) {
+			await db.assemblies.update(asm.id, {
+				...(asm.systemId ? {} : { systemId: loc.solarsystem }),
+				...(!asm.lPoint && loc.lPoint ? { lPoint: loc.lPoint } : {}),
+				updatedAt: new Date().toISOString(),
+			});
+		}
+	}
 }

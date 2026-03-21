@@ -22,6 +22,7 @@ import type {
 	LogOffset,
 	LogSession,
 	ManifestCharacter,
+	ManifestLocation,
 	ManifestTribe,
 	NoteIntel,
 	OrgTierMember,
@@ -89,6 +90,7 @@ class PeriscopeDB extends Dexie {
 	// Manifest (local chain cache)
 	manifestCharacters!: EntityTable<ManifestCharacter, "id">;
 	manifestTribes!: EntityTable<ManifestTribe, "id">;
+	manifestLocations!: EntityTable<ManifestLocation, "id">;
 
 	// Governance
 	organizations!: EntityTable<OrganizationRecord, "id">;
@@ -480,6 +482,11 @@ class PeriscopeDB extends Dexie {
 		// V22: Market<T> replaces OrgTreasury -- currencies keyed by marketId, orgId removed
 		this.version(22).stores({
 			currencies: "id, symbol, coinType, packageId, marketId",
+		});
+
+		// V23: Manifest locations -- public structure locations from LocationRevealedEvent
+		this.version(23).stores({
+			manifestLocations: "id, solarsystem, typeId, tenant, cachedAt",
 		});
 	}
 }

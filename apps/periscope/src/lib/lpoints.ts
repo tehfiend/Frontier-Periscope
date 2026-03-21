@@ -6,6 +6,8 @@
  * dropdown selectors and labels like "P2-L3"), not precise gravitational calculations.
  */
 
+import type { Celestial } from "@/db/types";
+
 // ── Configurable L-point ratios ─────────────────────────────────────────────
 
 export const L_POINT_RATIOS = {
@@ -102,4 +104,57 @@ function rotateAroundNormal(px: number, py: number, pz: number, angle: number): 
 		py * cosA + kxvY * sinA + ay * kdotv * (1 - cosA),
 		pz * cosA + kxvZ * sinA + az * kdotv * (1 - cosA),
 	];
+}
+
+// ── L-Point Matching ────────────────────────────────────────────────────────
+
+/** Maximum distance from an L-point as a fraction of orbital radius to count as a match. */
+export const L_POINT_MATCH_THRESHOLD = 0.2;
+
+/**
+ * Find the nearest L-point to the given (x, y, z) coordinates among all planets in a system.
+ *
+ * @param x Target X coordinate
+ * @param y Target Y coordinate
+ * @param z Target Z coordinate
+ * @param planets Array of Celestial records for the system (planets only, not suns)
+ * @returns "P{planetIndex}-L{lPointNum}" label, or null if no match within threshold
+ */
+export function resolveNearestLPoint(
+	x: number,
+	y: number,
+	z: number,
+	planets: Celestial[],
+): string | null {
+	let bestDistance = Number.POSITIVE_INFINITY;
+	let bestLabel: string | null = null;
+	let bestThreshold = Number.POSITIVE_INFINITY;
+
+	for (const planet of planets) {
+		const orbitalRadius = Math.sqrt(
+			planet.x * planet.x + planet.y * planet.y + planet.z * planet.z,
+		);
+		if (orbitalRadius === 0) continue;
+
+		const lPoints = computeLPoints(planet.x, planet.y, planet.z);
+		const threshold = L_POINT_MATCH_THRESHOLD * orbitalRadius;
+
+		for (const [key, lp] of Object.entries(lPoints)) {
+			const dx = x - lp[0];
+			const dy = y - lp[1];
+			const dz = z - lp[2];
+			const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+			if (dist < bestDistance) {
+				bestDistance = dist;
+				bestThreshold = threshold;
+				bestLabel = `P${planet.index}-${key}`;
+			}
+		}
+	}
+
+	if (bestLabel && bestDistance <= bestThreshold) {
+		return bestLabel;
+	}
+	return null;
 }
