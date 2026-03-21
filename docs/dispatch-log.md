@@ -1,5 +1,35 @@
 # Dispatch Log
 
+## 2026-03-21 -- private-map-system
+- **Action:** CREATE
+- **File:** docs/plans/pending/23-private-map-system.md
+- **Passes:** 5 (draft + 4 review passes, converged on pass 5 with NO_CHANGES)
+- **Result:** pending -- Encrypted location sharing via on-chain map objects with invite-based key distribution. New contract at `contracts/private_map/` with `PrivateMap` (shared, X25519 public key, dynamic field locations), `MapInvite` (owned, encrypted map secret key), `MapLocation` (encrypted coordinates). Client-side crypto via `tweetnacl` + `tweetnacl-sealedbox-js` + `@noble/curves` x25519. Wallet key derivation via `dAppKit.signPersonalMessage` -> SHA-256 -> x25519 seed (completely stateless, no local key storage). Membership enforced via `&MapInvite` on `add_location`. Soft revocation via `revoked` vector blacklist. 6 phases, 16 files (8 new, 8 modified) across contracts, chain-shared, periscope, ssu-dapp. 1 open question remains: public key distribution mechanism (registry vs out-of-band vs invite link). OQs 2-3 resolved inline (require MapInvite for add, revoked blacklist for removal).
+
+## 2026-03-21 -- market-buy-order-improvements (BuyOrderPool architecture)
+- **Action:** UPDATE (architectural change: buy orders move to shared BuyOrderPool<T>)
+- **File:** docs/plans/active/22-market-buy-order-improvements.md
+- **Passes:** 3
+- **Result:** active -- Major architectural rewrite: buy orders move from per-SSU `Market<T>` objects to a shared `BuyOrderPool<T>` object per currency type. Key changes: (1) **New `buy_order_pool.move` module** in `contracts/market/` package -- `BuyOrderPool<T>` shared object with buy orders as dynamic fields, own fee config, `post_buy_order` with Clock + `original_quantity`, enriched cancel/fill events. (2) **All buy order code removed from `market.move`** -- `BuyOrder` struct, `BuyKey`/`BuyCoinKey`, post/cancel functions, events, accessors all move to pool. `Market<T>` loses `next_buy_id`. Error codes renumbered. (3) **`ssu_market.move` fill functions rewritten** -- `player_fill_buy_order` and `fill_buy_order` take `&mut BuyOrderPool<T>` instead of `&mut Market<T>`. Fee read from pool config. No `assert_market_linked` for fills. New `pool_id` field on `BuyOrderFilledEvent`. (4) **New `buy-order-pool.ts` in chain-shared** -- `buildCreateBuyOrderPool`, `buildPostBuyOrder`, `buildCancelBuyOrder` (all targeting pool), `queryBuyOrderPools` (discovery), `queryBuyOrderPoolOrders`. Buy order functions removed from `market.ts`. (5) **Cross-market buy order queries now trivial** -- one pool per currency, no N+1 aggregation needed. `CrossMarketBuyOrder` type removed (unnecessary). (6) **`useSsuConfig.ts` gains pool discovery** -- `SsuConfigResult` gets `poolId` field. (7) **All dapp components updated** -- `CreateBuyOrderDialog`, `FillBuyOrderDialog`, `MarketContent` (cancel), `MarketDetail` target pool instead of market. Review fixes: (a) MarketContent.tsx cancel handler needs poolId + import change, (b) SsuView.tsx useBuyOrders call uses poolId, (c) error code renumbering for market.move, (d) approach wording clarification (buy_order_pool is a module within market package, not separate). Plan expanded from 25 to 30 files (1 new contract module, 1 new chain-shared file), 26 design decisions (was 19), 7 phases (was 6).
+
+## 2026-03-21 -- market-buy-order-improvements (feature expansion)
+- **Action:** UPDATE (add cross-market currency queries + public/private listings)
+- **File:** docs/plans/active/22-market-buy-order-improvements.md
+- **Passes:** 3
+- **Result:** active -- Two new features added to plan since we're fresh-publishing anyway. (1) **Cross-market currency queries:** New `queryAllListingsForCurrency` and `queryAllBuyOrdersForCurrency` functions in chain-shared that discover all `Market<T>` objects for a given coin type via GraphQL type filtering (using existing `queryMarkets`), then aggregate orders across all markets. No on-chain registry needed. New `CrossMarketListing` and `CrossMarketBuyOrder` types. (2) **Public/private listings with location:** `SellListing` struct gains `is_public: bool` + `solar_system_id: u64`. Seller provides solar system ID when creating public listings (chain locations are Poseidon2 hashes -- not human-readable). `escrow_and_list` and `post_sell_listing` gain new params. `SellListingPostedEvent` enriched with visibility+location. Private listings set `solar_system_id: 0`. Buy orders have no location (offers are location-agnostic). Cross-market browse UI deferred to separate plan. Review fixes: (a) explicit Move parameter ordering for new params (before clock), (b) `BuyOrderWithName.postedAtMs` duplicate field removal, (c) solar system input approach for dApps without stellar data (simple numeric input). Plan expanded from 24 to 25 files, 19 design decisions (was 11).
+
+## 2026-03-21 -- market-buy-order-improvements (review)
+- **Action:** UPDATE (comprehensive review + future-proofing)
+- **File:** docs/plans/active/22-market-buy-order-improvements.md
+- **Passes:** 2
+- **Result:** active -- Major expansion from 5 phases/14 files to 6 phases/24 files. Key findings: (1) Fee calculation truncation bug in all 3 ssu_market trade functions (`total_price / 10000 * fee_bps` truncates to 0 for small amounts -- fix to `total_price * fee_bps / 10000`). (2) `pricePerUnit` as `number` type in chain-shared types causes precision loss for u64 values > 2^53 -- changed to `bigint` across all types, queries, and TX builders. (3) `BuyOrderCancelledEvent` and `BuyOrderFilledEvent` too sparse for indexing -- enriched with buyer, type_id, refund_amount, price_per_unit. (4) `SellListingPostedEvent` missing timestamp. (5) `player_fill_buy_order` uses `ESSUMismatch` for type_id check -- added `ETypeMismatch` error. (6) `original_quantity` field added to `BuyOrder` for partial fill tracking. (7) `token_template` depends on `market` -- confirmed no source changes needed (local dep auto-resolves). (8) ssu-market-dapp components use raw base unit display without decimal formatting. 7 new files added to plan scope (SellDialog, PostSellListingForm, OwnerView, etc).
+
+## 2026-03-21 -- market-buy-order-improvements
+- **Action:** CREATE
+- **File:** docs/plans/active/22-market-buy-order-improvements.md
+- **Passes:** 2 (initial draft rewritten for fresh publish approach)
+- **Result:** active -- Add posted_at_ms to BuyOrder via fresh publish, auto-merge coins for buy orders
+
 ## 2026-03-14 — governance-system review
 - **Action:** UPDATE (execution review)
 - **File:** docs/plans/active/04-governance-system.md
@@ -155,3 +185,9 @@
 - **Action:** UPDATE
 - **Files:** Plans 05 (superseded), 07 (updated), 20+21 (archived), chain-events-reference, dispatch-log
 - **Result:** Plans 20+21 moved to archive/. Plan 05 moved to superseded/. Plan 07 updated for v9 (new contract table, deleted views, new architecture). Chain events reference updated for SsuConfig events.
+
+## 2026-03-21 -- market-buy-order-improvements
+- **Action:** CREATE
+- **File:** docs/plans/pending/22-market-buy-order-improvements.md
+- **Passes:** 2
+- **Result:** pending -- Two improvements: (1) Add `posted_at_ms` timestamp to buy orders via separate `BuyTimestampKey` dynamic field (cannot modify `BuyOrder` struct under compatible upgrade policy), new `post_buy_order_v2` with `&Clock`. (2) Auto-merge coin objects for buy orders and buy-from-listing using `mergeCoins`+`splitCoins` PTB pattern, replacing manual coin selector dropdown with total balance display. 5 phases, 9-12 files (depending on ssu_market upgrade need). Critical finding: Sui Move `compatible` upgrade policy prohibits adding fields to existing structs, requiring the separate dynamic field approach. 2 open questions: (1) confirm separate dynamic field approach vs fresh publish, (2) verify ssu_market compatibility after market upgrade.
