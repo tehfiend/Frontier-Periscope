@@ -74,9 +74,9 @@ public struct MapLocation has store, drop {
 
 1. **Key derivation:** `dAppKit.signPersonalMessage({ message: encode("TehFrontier Map Key v1") })` -> SHA-256 hash of the 64-byte Ed25519 signature -> use 32-byte hash as X25519 seed via `x25519.keygen(seed)`. Ed25519 signatures are deterministic, so same wallet = same derived key every time across devices.
 2. **Map creation:** Generate ephemeral X25519 keypair in memory. Store public key on-chain. Self-invite (seal private key with own wallet-derived X25519 public key). Discard ephemeral private key.
-3. **Inviting members:** Decrypt own invite to recover map private key. Re-encrypt map private key with invitee's X25519 public key (derived from their wallet address -- requires them to publish their X25519 public key first via an on-chain registration step, or the inviter provides the invitee's public key out-of-band).
-4. **Adding locations:** Decrypt own invite to recover map private key, derive map public key. Encrypt location data with `crypto_box_seal` using map's public key. Store as dynamic field.
-5. **Reading locations:** Decrypt own invite to recover map private key. Decrypt each location's `encrypted_data` with `crypto_box_seal_open`.
+3. **Inviting members:** Decrypt own invite to recover map private key. Re-encrypt map private key with invitee's X25519 public key. How the inviter obtains the invitee's public key depends on Open Question 1 (registry, out-of-band, or invite link).
+4. **Adding locations:** Read map public key from the on-chain `PrivateMap.public_key` field. Encrypt location data with `crypto_box_seal(plaintext, mapPublicKey)` -- only the map's public key is needed for encryption. Submit TX with encrypted bytes + `&MapInvite` for on-chain membership proof.
+5. **Reading locations:** Decrypt own MapInvite to recover map secret key (step 1 of any read operation). For each location, call `crypto_box_seal_open(ciphertext, mapPublicKey, mapSecretKey)` to decrypt `encrypted_data`.
 
 ### Client-Side Crypto Library
 
@@ -104,8 +104,9 @@ Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_se
 | Encrypted data format | JSON `{solar_system_id, planet, l_point, description}` serialized then sealed | Flexible schema. Client-side parsing. Can add fields without contract changes. |
 | No member list on-chain | Members discovered via MapInvite objects (query by type + map_id) | Avoids maintaining a vector on the shared object. MapInvite objects serve as both key delivery and membership proof. |
 | Creator-only invite | Only the map creator can send invites | Simplifies trust model. Members can read but not expand the group. Can be relaxed later with an `admins` vector. |
-| No on-chain key registry | Inviter must know invitee's X25519 public key out-of-band | Avoids requiring all users to register public keys. Invite flow provides the public key. See Open Questions. |
+| Public key distribution | Open question -- registry vs out-of-band vs invite link | See Open Question 1. Decision deferred until UX requirements are clearer. All three options are technically feasible. |
 | Contract independence | No dependency on market, ssu_market, or world contracts | Private Map is a pure utility -- location data is opaque bytes. Structure IDs are stored as `Option<ID>` but not validated on-chain. |
+| Single deployment for all tenants | Same package ID in both stillness and utopia config entries | No tenant-specific dependencies. Maps are cross-tenant (a map created on one tenant's data works identically on the other). |
 | Location removal | Creator or the address that added the location can remove it | Allows map housekeeping without concentrating all control on the creator. |
 | Soft revocation via blacklist | `revoke_member` adds address to `revoked` vector on PrivateMap | Cannot delete another user's owned object in Sui. `revoked` list blocks `add_location` calls. Cannot prevent decryption of existing data -- true revocation requires creating a new map. Documented limitation. |
 | Crypto libraries | `tweetnacl` + `tweetnacl-sealedbox-js` + `@noble/hashes` + `@noble/curves` | tweetnacl for NaCl primitives, tweetnacl-sealedbox-js for sealed box extension. Noble for SHA-256 hashing and x25519 key generation. All audited, small footprint. |
