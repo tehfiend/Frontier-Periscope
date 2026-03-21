@@ -161,6 +161,31 @@ export interface SharedAclInfo {
 	allowedCharacters: number[];
 }
 
+// ── Private Map Types ───────────────────────────────────────────────────────
+
+export interface PrivateMapInfo {
+	objectId: string;
+	name: string;
+	creator: string;
+	publicKey: string; // hex-encoded X25519 public key
+	nextLocationId: number;
+}
+
+export interface MapInviteInfo {
+	objectId: string;
+	mapId: string;
+	sender: string;
+	encryptedMapKey: string; // hex-encoded
+}
+
+export interface MapLocationInfo {
+	locationId: number;
+	structureId: string | null;
+	encryptedData: string; // hex-encoded
+	addedBy: string;
+	addedAtMs: number;
+}
+
 // ── Contract Addresses ──────────────────────────────────────────────────────
 
 export interface ContractAddresses {
@@ -182,4 +207,5 @@ export interface ContractAddresses {
 	governance?: { packageId: string; claimsRegistryObjectId: string };
 	aclRegistry?: { packageId: string };
 	market?: { packageId: string };
+	privateMap?: { packageId: string };
 }

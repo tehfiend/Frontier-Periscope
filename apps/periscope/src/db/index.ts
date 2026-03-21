@@ -23,6 +23,8 @@ import type {
 	LogSession,
 	ManifestCharacter,
 	ManifestLocation,
+	ManifestMapLocation,
+	ManifestPrivateMap,
 	ManifestTribe,
 	NoteIntel,
 	OrgTierMember,
@@ -91,6 +93,10 @@ class PeriscopeDB extends Dexie {
 	manifestCharacters!: EntityTable<ManifestCharacter, "id">;
 	manifestTribes!: EntityTable<ManifestTribe, "id">;
 	manifestLocations!: EntityTable<ManifestLocation, "id">;
+
+	// Private Maps (encrypted location sharing cache)
+	manifestPrivateMaps!: EntityTable<ManifestPrivateMap, "id">;
+	manifestMapLocations!: EntityTable<ManifestMapLocation, "id">;
 
 	// Governance
 	organizations!: EntityTable<OrganizationRecord, "id">;
@@ -487,6 +493,13 @@ class PeriscopeDB extends Dexie {
 		// V23: Manifest locations -- public structure locations from LocationRevealedEvent
 		this.version(23).stores({
 			manifestLocations: "id, solarsystem, typeId, tenant, cachedAt",
+		});
+
+		// V24: Private Maps -- encrypted location sharing cache
+		this.version(24).stores({
+			manifestPrivateMaps: "id, name, creator, tenant, cachedAt",
+			manifestMapLocations:
+				"id, mapId, solarSystemId, structureId, tenant, cachedAt, [mapId+locationId]",
 		});
 	}
 }

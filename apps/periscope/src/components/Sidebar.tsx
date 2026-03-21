@@ -1,36 +1,37 @@
-import { Link } from "@tanstack/react-router";
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useAppStore } from "@/stores/appStore";
 import { useSonarStore } from "@/stores/sonarStore";
-import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
-import { CharacterSwitcher } from "./CharacterSwitcher";
-import { WalletConnect } from "./WalletConnect";
+import { Link } from "@tanstack/react-router";
 import {
-	LayoutDashboard,
-	Map,
-	Package,
-	MapPin,
-	Target,
-	Radio,
-	Users,
-	Skull,
-	Wrench,
-	Shield,
-	StickyNote,
-	Settings,
-	PanelLeftClose,
-	PanelLeft,
-	Crosshair,
 	Boxes,
-	Route,
-	Database,
 	Cog,
 	Coins,
+	Crosshair,
+	Database,
 	Flag,
-	Wallet,
-	Puzzle,
-	Navigation,
+	LayoutDashboard,
+	Lock,
 	type LucideIcon,
+	Map,
+	MapPin,
+	Navigation,
+	Package,
+	PanelLeft,
+	PanelLeftClose,
+	Puzzle,
+	Radio,
+	Route,
+	Settings,
+	Shield,
+	Skull,
+	StickyNote,
+	Target,
+	Users,
+	Wallet,
+	Wrench,
 } from "lucide-react";
+import { CharacterSwitcher } from "./CharacterSwitcher";
+import { WalletConnect } from "./WalletConnect";
 
 interface NavItem {
 	to: string;
@@ -73,6 +74,7 @@ const navGroups: NavGroup[] = [
 			{ to: "/players", icon: Users, label: "Players" },
 			{ to: "/killmails", icon: Skull, label: "Killmails" },
 			{ to: "/manifest", icon: Database, label: "Manifest" },
+			{ to: "/private-maps", icon: Lock, label: "Private Maps" },
 		],
 	},
 	{
@@ -94,9 +96,7 @@ const navGroups: NavGroup[] = [
 	},
 	{
 		title: "Network",
-		items: [
-			{ to: "/workers", icon: Cog, label: "Workers" },
-		],
+		items: [{ to: "/workers", icon: Cog, label: "Workers" }],
 	},
 ];
 
@@ -139,8 +139,14 @@ function NavLink({ to, icon: Icon, label, statusDot }: NavItem) {
 					{label}
 					{statusDot && (
 						<>
-							<span className={`inline-block h-1.5 w-1.5 rounded-full ${dots.local}`} title="Local Sonar" />
-							<span className={`inline-block h-1.5 w-1.5 rounded-full ${dots.chain}`} title="Chain Sonar" />
+							<span
+								className={`inline-block h-1.5 w-1.5 rounded-full ${dots.local}`}
+								title="Local Sonar"
+							/>
+							<span
+								className={`inline-block h-1.5 w-1.5 rounded-full ${dots.chain}`}
+								title="Chain Sonar"
+							/>
 						</>
 					)}
 				</span>
@@ -167,7 +173,14 @@ export function Sidebar() {
 		>
 			{/* Logo + Server Indicator */}
 			<div className="flex h-14 items-center gap-3 border-b border-zinc-800 px-4">
-				<img src="/periscope.svg" alt="Periscope" className="h-6 w-6 shrink-0" style={{ filter: "invert(73%) sepia(65%) saturate(500%) hue-rotate(140deg) brightness(95%)" }} />
+				<img
+					src="/periscope.svg"
+					alt="Periscope"
+					className="h-6 w-6 shrink-0"
+					style={{
+						filter: "invert(73%) sepia(65%) saturate(500%) hue-rotate(140deg) brightness(95%)",
+					}}
+				/>
 				{!collapsed && (
 					<div className="flex items-center gap-2">
 						<span className="text-sm font-semibold text-zinc-100">Frontier Periscope</span>

@@ -12,3 +12,5 @@ export * from "./turret-priority";
 export * from "./acl-registry";
 export * from "./market";
 export * from "./claims";
+export * from "./crypto";
+export * from "./private-map";

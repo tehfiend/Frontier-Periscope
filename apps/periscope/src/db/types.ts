@@ -478,6 +478,54 @@ export interface ManifestLocation {
 	cachedAt: string;
 }
 
+// ── Private Map Types ───────────────────────────────────────────────────────
+
+export interface ManifestPrivateMap {
+	/** PrivateMap object ID (primary key) */
+	id: string;
+	/** Map name */
+	name: string;
+	/** Creator address */
+	creator: string;
+	/** Hex-encoded X25519 public key */
+	publicKey: string;
+	/** Hex-encoded decrypted map secret key (from user's MapInvite) */
+	decryptedMapKey: string;
+	/** The user's MapInvite object ID */
+	inviteId: string;
+	/** "stillness" or "utopia" */
+	tenant: string;
+	/** ISO timestamp */
+	cachedAt: string;
+}
+
+export interface ManifestMapLocation {
+	/** Composite key: "{mapId}:{locationId}" */
+	id: string;
+	/** PrivateMap object ID */
+	mapId: string;
+	/** Location ID within the map */
+	locationId: number;
+	/** Optional structure link */
+	structureId: string | null;
+	/** Decrypted solar system ID */
+	solarSystemId: number;
+	/** Decrypted planet number */
+	planet: number;
+	/** Decrypted L-point number */
+	lPoint: number;
+	/** Decrypted description (empty if none) */
+	description: string;
+	/** Address that added this location */
+	addedBy: string;
+	/** Timestamp ms */
+	addedAtMs: number;
+	/** "stillness" or "utopia" */
+	tenant: string;
+	/** ISO timestamp */
+	cachedAt: string;
+}
+
 // ── Governance Types ────────────────────────────────────────────────────────
 
 export type OrgTier = "stakeholder" | "member" | "serf" | "opposition";

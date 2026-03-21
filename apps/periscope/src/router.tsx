@@ -1,43 +1,40 @@
-import { lazy, Suspense } from "react";
-import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { Layout } from "@/components/Layout";
+import { Assets } from "@/views/Assets";
+import { Blueprints } from "@/views/Blueprints";
 import { Dashboard } from "@/views/Dashboard";
 import { Deployables } from "@/views/Deployables";
-import { Locations } from "@/views/Locations";
-import { Targets } from "@/views/Targets";
-import { Intel } from "@/views/Intel";
-import { Players } from "@/views/Players";
-import { Killmails } from "@/views/Killmails";
-import { Blueprints } from "@/views/Blueprints";
-import { OPSEC } from "@/views/OPSEC";
-import { Notes } from "@/views/Notes";
-import { Settings } from "@/views/Settings";
 import { Extensions } from "@/views/Extensions";
-import { Permissions } from "@/views/Permissions";
-import { Setup } from "@/views/Setup";
-import { Assets } from "@/views/Assets";
+import { Intel } from "@/views/Intel";
 import { JumpPlanner } from "@/views/JumpPlanner";
+import { Killmails } from "@/views/Killmails";
+import { Locations } from "@/views/Locations";
+import { Notes } from "@/views/Notes";
+import { OPSEC } from "@/views/OPSEC";
+import { Permissions } from "@/views/Permissions";
+import { Players } from "@/views/Players";
+import { Settings } from "@/views/Settings";
+import { Setup } from "@/views/Setup";
+import { Targets } from "@/views/Targets";
 import { Workers } from "@/views/Workers";
+import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import { Suspense, lazy } from "react";
 
 // Lazy-load heavy views that pull in large deps
 const LazyStarMap = lazy(() => import("@/views/StarMap").then((m) => ({ default: m.StarMap })));
 const LazyLogs = lazy(() => import("@/views/Logs").then((m) => ({ default: m.Logs })));
 const LazySonar = lazy(() => import("@/views/Sonar").then((m) => ({ default: m.Sonar })));
 const LazyBridge = lazy(() => import("@/views/Bridge").then((m) => ({ default: m.Bridge })));
-const LazyManifest = lazy(() =>
-	import("@/views/Manifest").then((m) => ({ default: m.Manifest })),
-);
-const LazyWallet = lazy(() =>
-	import("@/views/Wallet").then((m) => ({ default: m.Wallet })),
-);
+const LazyManifest = lazy(() => import("@/views/Manifest").then((m) => ({ default: m.Manifest })));
+const LazyWallet = lazy(() => import("@/views/Wallet").then((m) => ({ default: m.Wallet })));
 const LazyGovernanceTurrets = lazy(() =>
 	import("@/views/GovernanceTurrets").then((m) => ({ default: m.GovernanceTurrets })),
 );
-const LazyFinance = lazy(() =>
-	import("@/views/Finance").then((m) => ({ default: m.Finance })),
-);
+const LazyFinance = lazy(() => import("@/views/Finance").then((m) => ({ default: m.Finance })));
 const LazyGovernanceClaims = lazy(() =>
 	import("@/views/GovernanceClaims").then((m) => ({ default: m.GovernanceClaims })),
+);
+const LazyPrivateMaps = lazy(() =>
+	import("@/views/PrivateMaps").then((m) => ({ default: m.PrivateMaps })),
 );
 
 function LoadingFallback() {
@@ -116,6 +113,14 @@ function GovernanceClaimsPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
 			<LazyGovernanceClaims />
+		</Suspense>
+	);
+}
+
+function PrivateMapsPage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyPrivateMaps />
 		</Suspense>
 	);
 }
@@ -302,6 +307,12 @@ const jumpPlannerRoute = createRoute({
 	component: JumpPlanner,
 });
 
+const privateMapsRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/private-maps",
+	component: PrivateMapsPage,
+});
+
 const workersRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/workers",
@@ -342,6 +353,7 @@ const routeTree = rootRoute.addChildren([
 	manifestRoute,
 	walletRoute,
 	jumpPlannerRoute,
+	privateMapsRoute,
 
 	workersRoute,
 	settingsRoute,

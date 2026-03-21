@@ -6,18 +6,32 @@
  * so consumers can decide whether to refresh stale data.
  */
 
-import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import {
-	getObjectJson,
-	queryEventsGql,
-	queryTransactionsByObject,
-} from "@tehfrontier/chain-shared";
 import { db } from "@/db";
-import type { ManifestCharacter, ManifestLocation, ManifestTribe } from "@/db/types";
-import { type TenantId, TENANTS, moveType } from "./config";
-import type { TaskContext } from "@/lib/taskWorker";
+import type {
+	ManifestCharacter,
+	ManifestLocation,
+	ManifestMapLocation,
+	ManifestPrivateMap,
+	ManifestTribe,
+} from "@/db/types";
 import { ensureCelestialsLoaded } from "@/lib/celestials";
 import { resolveNearestLPoint } from "@/lib/lpoints";
+import type { TaskContext } from "@/lib/taskWorker";
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import {
+	bytesToHex,
+	decodeLocationData,
+	getContractAddresses,
+	getObjectJson,
+	hexToBytes,
+	queryEventsGql,
+	queryMapInvitesForUser,
+	queryMapLocations,
+	queryPrivateMap,
+	queryTransactionsByObject,
+	unsealWithKey,
+} from "@tehfrontier/chain-shared";
+import { TENANTS, type TenantId, moveType } from "./config";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -61,7 +75,9 @@ export async function fetchAndCacheCharacter(
 				if (txs.data.length > 0) {
 					createdOnChain = new Date(Number(txs.data[0].timestampMs)).toISOString();
 				}
-			} catch { /* non-fatal */ }
+			} catch {
+				/* non-fatal */
+			}
 		}
 
 		const entry: ManifestCharacter = {
@@ -118,11 +134,19 @@ export async function fetchCharacterByAddress(
 /**
  * Look up a character from the local cache by name (partial match).
  */
-export async function searchCachedCharacters(query: string, limit = 20): Promise<ManifestCharacter[]> {
+export async function searchCachedCharacters(
+	query: string,
+	limit = 20,
+): Promise<ManifestCharacter[]> {
 	if (!query || query.length < 2) return [];
 	const q = query.toLowerCase();
 	return db.manifestCharacters
-		.filter((c) => c.name.toLowerCase().includes(q) || c.characterItemId.includes(q) || c.suiAddress.toLowerCase().includes(q))
+		.filter(
+			(c) =>
+				c.name.toLowerCase().includes(q) ||
+				c.characterItemId.includes(q) ||
+				c.suiAddress.toLowerCase().includes(q),
+		)
 		.limit(limit)
 		.toArray();
 }
@@ -171,7 +195,11 @@ export async function discoverCharactersFromEvents(
 	}
 
 	try {
-		ctx?.setProgress(isIncremental ? "Fetching new characters since last sync..." : "Fetching all characters (first run)...");
+		ctx?.setProgress(
+			isIncremental
+				? "Fetching new characters since last sync..."
+				: "Fetching all characters (first run)...",
+		);
 		let latestCursor: string | null = null;
 		let consecutiveExisting = 0;
 
@@ -331,9 +359,7 @@ export async function discoverTribes(tenant: TenantId, ctx?: TaskContext): Promi
 		while (true) {
 			if (ctx?.isCancelled()) return newCount;
 
-			const res = await fetch(
-				`https://${datahubUrl}/v2/tribes?limit=${limit}&offset=${offset}`,
-			);
+			const res = await fetch(`https://${datahubUrl}/v2/tribes?limit=${limit}&offset=${offset}`);
 			if (!res.ok) break;
 
 			const body = await res.json();
@@ -382,10 +408,7 @@ export async function getTribeName(tribeId: number): Promise<string | null> {
  * Get tribe name, fetching from API if not cached.
  * Tries to fetch the specific tribe first, falls back to bulk fetch.
  */
-export async function ensureTribeName(
-	tribeId: number,
-	tenant: TenantId,
-): Promise<string | null> {
+export async function ensureTribeName(tribeId: number, tenant: TenantId): Promise<string | null> {
 	// Check cache first
 	const cached = await db.manifestTribes.get(tribeId);
 	if (cached?.name) return cached.name;
@@ -507,9 +530,7 @@ export async function discoverLocationsFromEvents(
 				const assemblyId = parsed.assembly_id as string;
 				if (!assemblyId) continue;
 
-				const keyObj = parsed.assembly_key as
-					| { item_id?: string; tenant?: string }
-					| undefined;
+				const keyObj = parsed.assembly_key as { item_id?: string; tenant?: string } | undefined;
 				const revealedAt = new Date(Number(event.timestampMs)).toISOString();
 
 				// On re-reveal, clear lPoint so it gets recomputed
@@ -631,4 +652,164 @@ export async function crossReferenceManifestLocations(locationIds: string[]): Pr
 			});
 		}
 	}
+}
+
+// ── Private Map Cache ───────────────────────────────────────────────────────
+
+/**
+ * Sync private maps for a specific user address.
+ * Queries MapInvite objects, fetches PrivateMap details for each,
+ * decrypts the map key using the wallet-derived X25519 keypair,
+ * and caches everything in manifestPrivateMaps.
+ *
+ * Skips maps that were cached less than 1 hour ago.
+ */
+export async function syncPrivateMapsForUser(
+	client: SuiGraphQLClient,
+	tenant: TenantId,
+	userAddress: string,
+	walletKeyPair: { publicKey: Uint8Array; secretKey: Uint8Array },
+	ctx?: TaskContext,
+): Promise<number> {
+	const addresses = getContractAddresses(tenant);
+	const packageId = addresses.privateMap?.packageId;
+	if (!packageId) return 0;
+
+	let newCount = 0;
+	const staleCutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour
+
+	try {
+		ctx?.setProgress("Discovering map invites...");
+		const invites = await queryMapInvitesForUser(client, packageId, userAddress);
+		ctx?.setProgress(`Found ${invites.length} map invites`);
+
+		for (const invite of invites) {
+			if (ctx?.isCancelled()) break;
+
+			// Check if already cached and fresh
+			const existing = await db.manifestPrivateMaps.get(invite.mapId);
+			if (existing && existing.cachedAt > staleCutoff) continue;
+
+			// Fetch map details
+			const mapInfo = await queryPrivateMap(client, invite.mapId);
+			if (!mapInfo) continue;
+
+			// Decrypt the map key from the invite
+			try {
+				const encryptedKeyBytes = hexToBytes(invite.encryptedMapKey);
+				const decryptedKey = unsealWithKey(
+					encryptedKeyBytes,
+					walletKeyPair.publicKey,
+					walletKeyPair.secretKey,
+				);
+
+				const entry: ManifestPrivateMap = {
+					id: invite.mapId,
+					name: mapInfo.name,
+					creator: mapInfo.creator,
+					publicKey: mapInfo.publicKey,
+					decryptedMapKey: bytesToHex(decryptedKey),
+					inviteId: invite.objectId,
+					tenant,
+					cachedAt: new Date().toISOString(),
+				};
+
+				await db.manifestPrivateMaps.put(entry);
+				newCount++;
+			} catch {}
+		}
+
+		ctx?.setProgress(`Synced ${newCount} private maps`);
+	} catch (err) {
+		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return newCount;
+}
+
+/**
+ * Sync all locations for a specific private map.
+ * Fetches MapLocation dynamic fields, decrypts each with the map key,
+ * and caches in manifestMapLocations.
+ */
+export async function syncMapLocations(
+	client: SuiGraphQLClient,
+	mapId: string,
+	decryptedMapKey: string,
+	tenant: TenantId,
+	ctx?: TaskContext,
+): Promise<number> {
+	let newCount = 0;
+
+	try {
+		ctx?.setProgress("Fetching map locations...");
+
+		// Get the map's public key for decryption
+		const mapInfo = await queryPrivateMap(client, mapId);
+		if (!mapInfo) return 0;
+
+		const mapPublicKey = hexToBytes(mapInfo.publicKey);
+		const mapSecretKey = hexToBytes(decryptedMapKey);
+
+		const rawLocations = await queryMapLocations(client, mapId);
+		ctx?.setProgress(`Found ${rawLocations.length} locations, decrypting...`);
+
+		for (const loc of rawLocations) {
+			if (ctx?.isCancelled()) break;
+
+			const compositeId = `${mapId}:${loc.locationId}`;
+
+			// Check if already cached
+			const existing = await db.manifestMapLocations.get(compositeId);
+			if (existing) continue;
+
+			try {
+				const encryptedBytes = hexToBytes(loc.encryptedData);
+				const plaintext = unsealWithKey(encryptedBytes, mapPublicKey, mapSecretKey);
+				const data = decodeLocationData(plaintext);
+
+				const entry: ManifestMapLocation = {
+					id: compositeId,
+					mapId,
+					locationId: loc.locationId,
+					structureId: loc.structureId,
+					solarSystemId: data.solarSystemId,
+					planet: data.planet,
+					lPoint: data.lPoint,
+					description: data.description ?? "",
+					addedBy: loc.addedBy,
+					addedAtMs: loc.addedAtMs,
+					tenant,
+					cachedAt: new Date().toISOString(),
+				};
+
+				await db.manifestMapLocations.put(entry);
+				newCount++;
+			} catch {}
+		}
+
+		ctx?.setProgress(`Decrypted ${newCount} locations`);
+	} catch (err) {
+		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return newCount;
+}
+
+/**
+ * Get all decrypted map locations from the cache, sorted by addedAtMs.
+ */
+export async function getDecryptedMapLocations(mapId: string): Promise<ManifestMapLocation[]> {
+	const locations = await db.manifestMapLocations.where("mapId").equals(mapId).toArray();
+	return locations.sort((a, b) => a.addedAtMs - b.addedAtMs);
+}
+
+/**
+ * Invalidate all cached data for a specific map.
+ * Used after key rotation or map deletion.
+ */
+export async function invalidateMapCache(mapId: string): Promise<void> {
+	await db.manifestPrivateMaps.delete(mapId);
+	const locations = await db.manifestMapLocations.where("mapId").equals(mapId).toArray();
+	await db.manifestMapLocations.bulkDelete(locations.map((l) => l.id));
 }

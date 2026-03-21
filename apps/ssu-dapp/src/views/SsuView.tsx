@@ -1,9 +1,10 @@
 import { AssemblyActions } from "@/components/AssemblyActions";
 import { ContentTabs } from "@/components/ContentTabs";
 import { ExtensionInfo } from "@/components/ExtensionInfo";
+import { PublishToMapDialog } from "@/components/PublishToMapDialog";
 import { SsuInfoCard } from "@/components/SsuInfoCard";
-import { VisibilitySettings } from "@/components/VisibilitySettings";
 import type { CapRef, TransferContext } from "@/components/TransferDialog";
+import { VisibilitySettings } from "@/components/VisibilitySettings";
 import { useAssembly } from "@/hooks/useAssembly";
 import { useBuyOrders } from "@/hooks/useBuyOrders";
 import { useCharacter } from "@/hooks/useCharacter";
@@ -14,7 +15,8 @@ import { useOwnerCharacter } from "@/hooks/useOwnerCharacter";
 import { useSsuConfig } from "@/hooks/useSsuConfig";
 import { getItemId, getTenant, getWorldPackageId } from "@/lib/constants";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { useMemo } from "react";
+import { type TenantId, getContractAddresses } from "@tehfrontier/chain-shared";
+import { useMemo, useState } from "react";
 
 /** Coin type is resolved dynamically from the linked Market<T> via SsuConfig. */
 
@@ -55,6 +57,11 @@ export function SsuView({ objectId }: SsuViewProps) {
 	// Market data -- only when SsuConfig has a linked market
 	const { data: listings, isLoading: listingsLoading } = useMarketListings(ssuConfig?.marketId);
 	const { data: buyOrders, isLoading: buyOrdersLoading } = useBuyOrders(ssuConfig?.marketId);
+
+	// State for Publish to Map dialog
+	const [showMapDialog, setShowMapDialog] = useState(false);
+	const tenant = getTenant();
+	const hasPrivateMapContract = !!getContractAddresses(tenant as TenantId).privateMap?.packageId;
 
 	// Determine if connected wallet is the SSU owner
 	// The owner_cap_id on the SSU matches an OwnerCap held by the player's Character
@@ -195,9 +202,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 			)}
 
 			{/* SSU visibility toggle (owner only) */}
-			{isSsuOwner && ssuConfig && (
-				<VisibilitySettings ssuConfig={ssuConfig} />
-			)}
+			{isSsuOwner && ssuConfig && <VisibilitySettings ssuConfig={ssuConfig} />}
 
 			{/* Assembly status + Extension info (kept at bottom for now) */}
 			{isOwner && character && ownerCapInfo && (
@@ -209,6 +214,31 @@ export function SsuView({ objectId }: SsuViewProps) {
 			)}
 
 			<ExtensionInfo extensionType={assembly.extensionType} isOwner={isOwner} />
+
+			{/* Publish to Map button (visible when wallet connected and contract deployed) */}
+			{walletAddress && hasPrivateMapContract && (
+				<div className="flex justify-end">
+					<button
+						type="button"
+						onClick={() => setShowMapDialog(true)}
+						className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+					>
+						Publish to Map
+					</button>
+				</div>
+			)}
+
+			{/* Publish to Map dialog */}
+			{showMapDialog && walletAddress && (
+				<PublishToMapDialog
+					ssuObjectId={objectId}
+					solarSystemId={0}
+					planet={0}
+					lPoint={0}
+					walletAddress={walletAddress}
+					onClose={() => setShowMapDialog(false)}
+				/>
+			)}
 		</div>
 	);
 }
