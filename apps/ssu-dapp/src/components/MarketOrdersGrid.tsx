@@ -97,12 +97,14 @@ export function MarketOrdersGrid({
 				accessorKey: "quantity",
 				header: "Qty",
 				size: 80,
+				enableColumnFilter: false,
 				cell: ({ row }) => row.original.quantity.toLocaleString(),
 			},
 			{
 				id: "price",
 				accessorFn: (row) => row.pricePerUnit,
 				header: "Price",
+				enableColumnFilter: false,
 				sortingFn: (a, b) => {
 					const av = a.original.pricePerUnit;
 					const bv = b.original.pricePerUnit;
@@ -143,6 +145,7 @@ export function MarketOrdersGrid({
 				accessorKey: "timestamp",
 				header: "Time",
 				size: 140,
+				enableColumnFilter: false,
 				cell: ({ row }) => {
 					const d = row.original.timestamp;
 					return (
