@@ -1,6 +1,7 @@
 # Plan: Manifest Public Locations
-**Status:** Active
+**Status:** Complete
 **Created:** 2026-03-21
+**Completed:** 2026-03-22
 **Module:** periscope
 
 ## Overview
@@ -156,7 +157,7 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 
 ## Implementation Phases
 
-### Phase 1: Data Model + Event Discovery
+### Phase 1: Data Model + Event Discovery -- COMPLETE
 
 1. **Add missing assembly type IDs** to `ASSEMBLY_TYPE_IDS` in `apps/periscope/src/chain/config.ts`: add Gate types (88086 "Mini Gate", 84955 "Heavy Gate") and Turret types (92279 "Mini Turret", 92401 "Turret", 92404 "Heavy Turret"). Also add a fallback in the Locations tab renderer (Phase 4) to display the raw `typeId` number when no name is found in the map, so unknown types are still visible rather than blank.
 
@@ -192,7 +193,7 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 
 6. **Add `ManifestLocation` to manifest.ts imports** (line 16, add to the existing `import type { ... } from "@/db/types"` statement)
 
-### Phase 2: L-Point Resolution
+### Phase 2: L-Point Resolution -- COMPLETE
 
 1. **Add `resolveNearestLPoint()` to `apps/periscope/src/lib/lpoints.ts`**:
    - Signature: `export function resolveNearestLPoint(x: number, y: number, z: number, planets: Celestial[]): string | null`
@@ -220,7 +221,7 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
    - After the event pagination loop, call `resolveManifestLocationLPoints()` for newly discovered locations
    - This makes a single discovery task handle both fetching and resolution
 
-### Phase 3: Deployable Auto-Population
+### Phase 3: Deployable Auto-Population -- COMPLETE
 
 1. **Add `crossReferenceManifestLocations()` to `apps/periscope/src/chain/manifest.ts`**:
    - Signature: `export async function crossReferenceManifestLocations(locationIds: string[]): Promise<number>` -- accepts the list of newly discovered/updated location IDs from the current discovery pass
@@ -232,7 +233,7 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 
 2. **Call `crossReferenceManifestLocations(newLocationIds)` at the end of `discoverLocationsFromEvents()`** (after L-point resolution), passing the list of location IDs that were discovered or updated in this pass
 
-### Phase 4: Manifest UI -- Locations Tab
+### Phase 4: Manifest UI -- Locations Tab -- COMPLETE
 
 1. **Add imports** to `apps/periscope/src/views/Manifest.tsx`:
    - Import `discoverLocationsFromEvents` from `@/chain/manifest` (add to existing import, line 8)

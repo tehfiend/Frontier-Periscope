@@ -8,9 +8,11 @@ interface InventoryTabsProps {
 	inventories: SsuInventories;
 	isLoading?: boolean;
 	transferContext?: TransferContext | null;
-	/** Callback when user clicks Sell on an item (bubbles up to ContentTabs) */
+	/** Callback when user clicks Sell on an owner inventory item */
 	onSell?: (item: InventoryItem) => void;
-	/** Whether the Sell button should be shown (owner + market + connected) */
+	/** Callback when user clicks Sell on a player inventory item */
+	onPlayerSell?: (item: InventoryItem) => void;
+	/** Whether any Sell button should be shown */
 	canSell?: boolean;
 }
 
@@ -69,6 +71,7 @@ export function InventoryTabs({
 	isLoading,
 	transferContext,
 	onSell,
+	onPlayerSell,
 	canSell,
 }: InventoryTabsProps) {
 	const [activeIdx, setActiveIdx] = useState(0);
@@ -314,8 +317,8 @@ export function InventoryTabs({
 					isLoading={isLoading}
 					canTransfer={canTransferFromActive}
 					onTransfer={handleTransfer}
-					canSell={canSell && currentSlot.slotType === "owner"}
-					onSell={onSell}
+					canSell={canSell && (currentSlot.slotType === "owner" ? !!onSell : currentSlot.slotType === "player" ? !!onPlayerSell : false)}
+					onSell={currentSlot.slotType === "owner" ? onSell : currentSlot.slotType === "player" ? onPlayerSell : undefined}
 				/>
 			</div>
 

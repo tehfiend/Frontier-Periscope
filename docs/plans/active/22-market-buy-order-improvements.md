@@ -1,7 +1,7 @@
 # Plan: Market Buy Order Improvements
 **Status:** Active
 **Created:** 2026-03-21
-**Updated:** 2026-03-21 (slimmed -- private location/invite moved to Plan 23)
+**Updated:** 2026-03-22 (pre-execution review -- Phases 1-4 complete, Phase 5 nearly complete, Phase 6 mostly complete)
 **Module:** contracts, chain-shared, ssu-dapp, ssu-market-dapp, periscope
 
 ## Overview
@@ -28,79 +28,67 @@ The market system has several UX gaps and correctness issues that this plan addr
 
 **Approach:** Fresh-publish `market` package, both `ssu_market` variants, and `token_template` (which depends on `market`). Existing test markets/currencies become orphaned -- new ones are created after publish.
 
-## Current State
+## Current State (updated 2026-03-22)
 
-### Contract Layer
+Phases 1-4 are fully implemented and deployed. Phases 5-6 are nearly complete with minor gaps.
 
-**`contracts/market/sources/market.move`** -- `BuyOrder` struct (lines 85-91):
-```move
-public struct BuyOrder has store, drop {
-    order_id: u64,
-    buyer: address,
-    type_id: u64,
-    price_per_unit: u64,
-    quantity: u64,
-}
-```
-No `posted_at_ms` or `original_quantity` fields. Compare with `SellListing` (lines 74-82) which has `posted_at_ms: u64`.
+### Contract Layer -- IMPLEMENTED
 
-**`post_buy_order`** (lines 376-410) does not take `&Clock`. No `original_quantity` stored.
+All contract changes from Phases 1-2 are live on testnet:
 
-**`BuyOrderPostedEvent`** (lines 122-129) lacks `posted_at_ms`.
+- **`contracts/market/sources/market.move`** -- `BuyOrder` has `original_quantity` and `posted_at_ms` fields. `post_buy_order` takes `&Clock`. All events enriched. Read accessors added. Tests updated and passing.
+- **`contracts/ssu_market/` + `contracts/ssu_market_utopia/`** -- `SsuConfig` has `is_public: bool`. `set_visibility` function and `VisibilitySetEvent` added. `ETypeMismatch` error code = 9 added and used. Fee calculation fixed to `total_price * fee_bps / 10000`. `BuyOrderFilledEvent` enriched with `buyer` and `price_per_unit`.
+- **All three contracts published** -- market, ssu_market (stillness v2), ssu_market_utopia (v2). Package IDs updated in `Published.toml` and chain-shared config.
 
-**`BuyOrderCancelledEvent`** (lines 139-142) has only `market_id` + `order_id` -- no buyer, type_id, or refund_amount.
+### Chain-Shared Layer -- IMPLEMENTED
 
-**`BuyOrderFilledEvent`** (lines 131-137) is missing `buyer`, `type_id`, and `price_per_unit`.
+All Phase 4 changes are implemented:
 
-**`SellListingPostedEvent`** (lines 100-108) is missing `posted_at_ms`.
+- `MarketBuyOrder.pricePerUnit` is `bigint`, gains `originalQuantity` and `postedAtMs`.
+- `MarketSellListing.pricePerUnit` is `bigint`.
+- `SsuConfigInfo` has `isPublic: boolean`.
+- `CrossMarketListing` type exists.
+- `queryMarketBuyOrders` and `queryMarketListings` use `BigInt()`.
+- `queryAllListingsForCurrency` implemented.
+- `buildPostBuyOrder` uses merge+split pattern + Clock.
+- `buildBuyFromListing` uses `coinObjectIds` merge.
+- `buildSetVisibility` TX builder exists.
+- `querySsuConfig` returns `isPublic`.
+- Package IDs updated for both tenants with `previousOriginalPackageIds`.
 
-**Fee calculation bug** in `ssu_market` (lines 415, 474, 539): `total_price / 10000 * fee_bps` -- integer division truncates first, then multiplies. For `total_price < 10000`, fee is always 0 regardless of `fee_bps`.
+### Dapp Layer -- ssu-dapp -- NEARLY COMPLETE
 
-**`player_fill_buy_order`** (line 466): `assert!(type_id == market::order_type_id(order), ESSUMismatch)` -- wrong error constant; should have a `ETypeMismatch` error.
+Phase 5 steps 1-9 are implemented:
 
-**`SsuConfig` struct** in `ssu_market.move` (lines 54-60):
-```move
-public struct SsuConfig has key {
-    id: UID,
-    ssu_id: ID,
-    owner: address,
-    delegates: vector<address>,
-    market_id: Option<ID>,
-}
-```
-No visibility field.
+- `useBuyOrders.ts` reads directly from query (no event workaround).
+- `useSsuConfig.ts` returns `isPublic`.
+- `CreateBuyOrderDialog.tsx` uses balance display + merged coin TX + bigint.
+- `ListingCard.tsx` uses coin merge + BigInt arithmetic.
+- `FillBuyOrderDialog.tsx` uses BigInt arithmetic.
+- `MarketContent.tsx` uses BigInt-safe formatting.
+- `ListingAdminList.tsx` uses `parseDisplayPrice` (returns bigint).
+- `SellDialog.tsx` uses bigint via `parseDisplayPrice`.
+- `VisibilitySettings.tsx` exists as a complete component.
 
-**`contracts/token_template/sources/token.move`** -- depends on `market` package via `market = { local = "../market" }` in Move.toml. Republishing `market` means `token_template` also needs a Move.toml update (local dep still works, but `published-at` address in market changes).
+**Remaining gap:** `VisibilitySettings` is created but never imported or rendered in `SsuView.tsx` (Phase 5.10 incomplete).
 
-### Location Data -- World Contracts
+### Dapp Layer -- ssu-market-dapp -- MOSTLY COMPLETE
 
-**`world::location`** stores locations as Poseidon2 cryptographic hashes (`Location { location_hash: vector<u8> }`). These are NOT human-readable. The `LocationRegistry` maps assembly IDs to `Coordinates { solarsystem: u64, x: String, y: String, z: String }`, but is only populated by the game server via `reveal_location()` (called when the player uses in-game "Publish Location").
+Phase 6 steps 2-9 are implemented:
 
-**Implication for cross-market queries:** Public SSU locations can be resolved from the game's `LocationRegistry` by assembly ID. Our contract only needs `is_public: bool` to indicate discoverability -- no location data stored on `SsuConfig`.
+- `PostBuyOrderForm.tsx` uses coin merge + BigInt + decimal formatting.
+- `PostSellListingForm.tsx` uses `parseDisplayPrice` (bigint).
+- `ListingCard.tsx` uses coin merge, `BigInt(quantity)`, `formatBaseUnits`.
+- `OwnerView.tsx` uses `parseDisplayPrice` and `formatBaseUnits`.
+- `MarketDetail.tsx` uses `formatBaseUnits`, BigInt arithmetic, shows `originalQuantity` and `postedAtMs`.
+- `useCoinMetadata.ts` already existed (not new).
+- All components import `formatBaseUnits`/`parseDisplayPrice` from `@tehfrontier/chain-shared` directly (plan suggested local copy, implementation used the better approach).
 
-### Chain-Shared Layer
+**Note on `SSU_MARKET_PACKAGE_ID`:** `ssu-market-dapp/src/lib/constants.ts` has `SSU_MARKET_PACKAGE_ID = "0x3339..."` (original package ID). This is used in `ListingCard.tsx` and `OwnerView.tsx` for move call targets. On Sui, move calls to the original package ID are automatically routed to the latest version, so this works correctly. However, updating to the latest published-at ID (`0xe442...`) would be more explicit and avoid unnecessary version resolution overhead.
 
-**`packages/chain-shared/src/types.ts`** -- `MarketBuyOrder` (lines 59-65): no `postedAtMs` or `originalQuantity` fields. `pricePerUnit` is `number` type (precision loss for values > 2^53).
+### Periscope -- NO CHANGES NEEDED
 
-**`packages/chain-shared/src/market.ts`** -- `buildPostBuyOrder` (lines 302-319) takes `paymentObjectId: string` -- a single coin object, no merging. `queryMarketBuyOrders` (line 543) reads `pricePerUnit` as `Number()`.
-
-**`packages/chain-shared/src/market.ts`** -- `queryMarkets` (lines 350-421) already supports discovering all `Market<T>` objects for a given coin type via GraphQL type filtering. This is the foundation for cross-market sell listing queries.
-
-**`packages/chain-shared/src/ssu-market.ts`** -- `buildBuyFromListing` takes `paymentObjectId: string` -- a single coin object. `buildEscrowAndList` (line 140) does not accept any location params. `SsuConfigInfo` type has no visibility field.
-
-### Dapp Layer
-
-**`apps/ssu-dapp/src/hooks/useBuyOrders.ts`** -- Event-based timestamp workaround queries `BuyOrderPostedEvent`, limited to 50 events, joins by `order_id`.
-
-**`apps/ssu-dapp/src/components/CreateBuyOrderDialog.tsx`** -- Manual coin selector showing individual coin objects. Cannot combine fragmented coins for a larger buy order.
-
-**`apps/ssu-dapp/src/components/FillBuyOrderDialog.tsx`** -- `totalPaymentBase = order.pricePerUnit * qty` uses `number * number`, potential precision issues.
-
-**`apps/ssu-dapp/src/hooks/useSsuConfig.ts`** -- `SsuConfigResult` has no visibility field.
-
-**`apps/ssu-market-dapp/src/components/PostBuyOrderForm.tsx`** -- Manual coin object ID text input (not even a dropdown), uses raw `Number(pricePerUnit)` without decimal conversion.
-
-**`apps/ssu-market-dapp/src/components/MarketDetail.tsx`** -- Displays `order.pricePerUnit.toLocaleString()` (raw base units, no decimal formatting).
+`EXTENSION_TEMPLATES` ssu_market `packageIds` use original package IDs (`0x3339...` stillness, `0x2796...` utopia) for extension type matching. These are correct -- extension types are identified by the original package ID in their type representation. No update needed.
 
 ## Target State
 
@@ -222,7 +210,7 @@ Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
 
 ## Implementation Phases
 
-### Phase 1: Contract Changes -- market.move (buy order improvements)
+### Phase 1: Contract Changes -- market.move (buy order improvements) -- COMPLETE
 
 1. **`contracts/market/sources/market.move`** -- Add fields to `BuyOrder` struct:
    ```move
@@ -315,7 +303,7 @@ Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
 
 9. Build: `cd contracts/market && sui move build && sui move test`.
 
-### Phase 2: Contract Changes -- ssu_market.move (visibility + bug fixes + event enrichment)
+### Phase 2: Contract Changes -- ssu_market.move (visibility + bug fixes + event enrichment) -- COMPLETE
 
 For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_market_utopia/sources/ssu_market.move`:
 
@@ -421,7 +409,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
 
 10. Build both: `cd contracts/ssu_market && sui move build` and `cd contracts/ssu_market_utopia && sui move build`.
 
-### Phase 3: Publish Contracts
+### Phase 3: Publish Contracts -- COMPLETE
 
 **Note:** This phase is executed manually by the developer, not by a worktree agent. The implementation agent handles Phases 1-2, 4-6.
 
@@ -437,7 +425,7 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
 
 Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `token_template = "0x0"` -- no changes needed since templates are always published fresh with `0x0` addresses.
 
-### Phase 4: Chain-Shared Updates
+### Phase 4: Chain-Shared Updates -- COMPLETE
 
 **Type updates:**
 
@@ -553,7 +541,7 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
 
 14. **`packages/chain-shared/src/index.ts`** -- Export new types and functions.
 
-### Phase 5: Dapp Updates -- ssu-dapp
+### Phase 5: Dapp Updates -- ssu-dapp -- NEARLY COMPLETE (1 step remaining)
 
 1. **`apps/ssu-dapp/src/hooks/useBuyOrders.ts`** -- Major rewrite:
    - Remove event-based timestamp workaround (remove `queryEventsGql` import, `timestampMap` logic, try/catch block).
@@ -600,11 +588,11 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
    - Calls `buildSetVisibility` on save with `{ isPublic }`.
    - Depends on `@tehfrontier/chain-shared` for `buildSetVisibility`.
 
-10. **`apps/ssu-dapp/src/views/SsuView.tsx`** -- Render `VisibilitySettings` for SSU owners when `ssuConfig` is available.
+10. **`apps/ssu-dapp/src/views/SsuView.tsx`** -- Render `VisibilitySettings` for SSU owners when `ssuConfig` is available. **INCOMPLETE:** Component exists at `VisibilitySettings.tsx` but is never imported or rendered. Add it to `SsuView.tsx` (or `ContentTabs.tsx`) for SSU owners when `isSsuOwner && ssuConfig` is true. Suggested location: inside the Market tab content or as a standalone section in SsuView after the ContentTabs card.
 
-### Phase 6: Dapp Updates -- ssu-market-dapp + periscope
+### Phase 6: Dapp Updates -- ssu-market-dapp + periscope -- MOSTLY COMPLETE (see notes)
 
-1. **`apps/ssu-market-dapp/src/lib/constants.ts`** -- Update `SSU_MARKET_PACKAGE_ID` and `MARKET_PACKAGE_ID` to new values.
+1. **`apps/ssu-market-dapp/src/lib/constants.ts`** -- **OPTIONAL:** Update `SSU_MARKET_PACKAGE_ID` from `0x3339...` (original) to `0xe442...` (latest published-at for stillness). `MARKET_PACKAGE_ID` is already correct (`0xf9c4...`). Sui auto-routes original package IDs to the latest version, so the current value works. Updating is a clarity improvement, not a bug fix.
 
 2. **`apps/ssu-market-dapp/src/components/PostBuyOrderForm.tsx`** -- Major update:
    - Add coin query (import `queryOwnedCoins`).
@@ -615,36 +603,35 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
 
 3. **`apps/ssu-market-dapp/src/components/PostSellListingForm.tsx`** -- Change `pricePerUnit: Number(pricePerUnit)` to `pricePerUnit: BigInt(pricePerUnit)`.
 
-4. **Shared utilities for ssu-market-dapp:**
-   - **`apps/ssu-market-dapp/src/lib/coin-format.ts`** (new) -- Copy `formatBaseUnits` and `parseDisplayPrice` from `apps/ssu-dapp/src/lib/coin-format.ts`. These utilities are needed for decimal-aware price display in the ssu-market-dapp components below.
-   - **`apps/ssu-market-dapp/src/hooks/useCoinMetadata.ts`** (new) -- Copy from `apps/ssu-dapp/src/hooks/useCoinMetadata.ts`, replacing `useSuiClient()` with `useCurrentClient() as SuiGraphQLClient` (pattern used in ssu-market-dapp's existing components). Uses `getCoinMetadata` from `@tehfrontier/chain-shared`.
+4. **Shared utilities for ssu-market-dapp:** **COMPLETE (deviated from plan)**
+   - ~~**`apps/ssu-market-dapp/src/lib/coin-format.ts`** (new)~~ -- Not created. Components import `formatBaseUnits` and `parseDisplayPrice` directly from `@tehfrontier/chain-shared` (which exports `coin-format`). This is a better approach than copying.
+   - ~~**`apps/ssu-market-dapp/src/hooks/useCoinMetadata.ts`** (new)~~ -- Already existed. Uses `useCurrentClient() as SuiGraphQLClient` and `getCoinMetadata` from `@tehfrontier/chain-shared`.
 
-5. **`apps/ssu-market-dapp/src/components/ListingCard.tsx`** -- Update:
-   - Add `coinDecimals: number` and `coinSymbol: string` props to `ListingCardProps`.
-   - Add coin merge pattern for buy flow (replace `paymentObjectId: ""`): import `queryOwnedCoins`, add `useQuery` for owned coins, pass `coinObjectIds: ownedCoins.map(c => c.objectId)` to `buildBuyFromListing`.
-   - `totalPrice` arithmetic: `listing.pricePerUnit * quantity` -> `listing.pricePerUnit * BigInt(quantity)`.
-   - Display prices using `formatBaseUnits(listing.pricePerUnit, coinDecimals)` instead of `.toLocaleString()`.
+5. **`apps/ssu-market-dapp/src/components/ListingCard.tsx`** -- **COMPLETE (deviated from plan)**:
+   - ~~Add `coinDecimals`/`coinSymbol` props~~ -- Component queries its own coin metadata via `useCoinMetadata` hook.
+   - Coin merge pattern implemented: imports `queryOwnedCoins`, uses `useQuery`, passes `coinObjectIds`.
+   - `totalPrice` arithmetic uses `listing.pricePerUnit * BigInt(quantity)`.
+   - Prices displayed with `formatBaseUnits(listing.pricePerUnit, decimals)`.
 
-6. **`apps/ssu-market-dapp/src/components/OwnerView.tsx`** -- Updates:
-   - Add `coinDecimals: number` and `coinSymbol: string` props to `OwnerViewProps`.
-   - Change `pricePerUnit: Number(editPrice)` to `pricePerUnit: BigInt(editPrice)`.
-   - Replace `listing.pricePerUnit.toLocaleString()` with `formatBaseUnits(listing.pricePerUnit, coinDecimals)` -- `BigInt.toLocaleString()` does not support the same formatting options as `Number.toLocaleString()`.
-   - Import `formatBaseUnits` from `@/lib/coin-format`.
+6. **`apps/ssu-market-dapp/src/components/OwnerView.tsx`** -- **COMPLETE (deviated from plan)**:
+   - ~~Add `coinDecimals`/`coinSymbol` props~~ -- Component queries its own coin metadata via `useCoinMetadata` hook.
+   - Uses `parseDisplayPrice(editPrice, decimals)` for bigint conversion.
+   - Uses `formatBaseUnits(listing.pricePerUnit, decimals)` for display.
+   - Imports from `@tehfrontier/chain-shared` (not local `coin-format`).
 
-7. **`apps/ssu-market-dapp/src/components/MarketDetail.tsx`** -- Display improvements:
-   - Add coin metadata query: use `useCoinMetadata` hook (or inline GraphQL query on `market.coinType`) to get `decimals` and `symbol` for the market currency. Pass `coinDecimals` and `coinSymbol` down to inline listing/order renders.
-   - `listing.pricePerUnit.toLocaleString()` -> `formatBaseUnits(listing.pricePerUnit, coinDecimals)`.
-   - `order.pricePerUnit.toLocaleString()` -> `formatBaseUnits(order.pricePerUnit, coinDecimals)`.
-   - `order.pricePerUnit * order.quantity` arithmetic: add `BigInt(order.quantity)` multiplier.
-   - Show `originalQuantity` and `postedAtMs` for buy orders.
+7. **`apps/ssu-market-dapp/src/components/MarketDetail.tsx`** -- **COMPLETE**:
+   - Uses `useCoinMetadata(market?.coinType)` for decimals.
+   - Uses `formatBaseUnits` for all price display.
+   - BigInt arithmetic: `order.pricePerUnit * BigInt(order.quantity)`.
+   - Shows `originalQuantity` and `postedAtMs` for buy orders.
 
-8. **`apps/ssu-market-dapp/src/components/MarketView.tsx`** -- Pass coin metadata to child components:
-   - Query coin metadata for the market's coin type (from `config.marketId` -> `MarketInfo.coinType`).
-   - Pass `coinDecimals` and `coinSymbol` to `OwnerView` and through `BuyerView` -> `ListingCard`.
+8. **`apps/ssu-market-dapp/src/components/MarketView.tsx`** -- **COMPLETE (deviated from plan)**:
+   - ~~Pass coin metadata to child components~~ -- Child components (`OwnerView`, `ListingCard`) each query their own coin metadata. No prop drilling needed.
 
-9. **`apps/ssu-market-dapp/src/components/BuyerView.tsx`** -- Add `coinDecimals: number` and `coinSymbol: string` props, pass them to `ListingCard`.
+9. **`apps/ssu-market-dapp/src/components/BuyerView.tsx`** -- **COMPLETE (deviated from plan)**:
+   - ~~Add `coinDecimals`/`coinSymbol` props~~ -- `ListingCard` queries its own metadata. No prop changes needed.
 
-10. **`apps/periscope/src/chain/config.ts`** -- Update `EXTENSION_TEMPLATES` ssu_market `packageIds` for both tenants.
+10. **`apps/periscope/src/chain/config.ts`** -- ~~Update `EXTENSION_TEMPLATES` ssu_market `packageIds` for both tenants.~~ **NO CHANGE NEEDED:** The `packageIds` in `EXTENSION_TEMPLATES` use original package IDs for extension type matching, which is correct. The current values (`0x3339...` stillness, `0x2796...` utopia) match the `originalPackageId` values and are used for type detection, not for move call targets.
 
 ## File Summary
 
@@ -673,8 +660,8 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
 | `apps/ssu-dapp/src/components/VisibilitySettings.tsx` | Create | Simple public/private toggle for SSU admin, optional LocationRegistry coordinate display |
 | `apps/ssu-dapp/src/views/SsuView.tsx` | Modify | Render VisibilitySettings for SSU owners |
 | `apps/ssu-market-dapp/src/lib/constants.ts` | Modify | Update package IDs |
-| `apps/ssu-market-dapp/src/lib/coin-format.ts` | Create | Copy `formatBaseUnits` + `parseDisplayPrice` from ssu-dapp for decimal-aware price display |
-| `apps/ssu-market-dapp/src/hooks/useCoinMetadata.ts` | Create | Copy from ssu-dapp, adapt to use `useCurrentClient()` for coin metadata queries |
+| `apps/ssu-market-dapp/src/lib/coin-format.ts` | ~~Create~~ Not needed | Components import `formatBaseUnits`/`parseDisplayPrice` from `@tehfrontier/chain-shared` directly |
+| `apps/ssu-market-dapp/src/hooks/useCoinMetadata.ts` | ~~Create~~ Already existed | Hook was already present, uses `useCurrentClient()` as SuiGraphQLClient |
 | `apps/ssu-market-dapp/src/components/PostBuyOrderForm.tsx` | Modify | Add coin query + merge, decimal formatting |
 | `apps/ssu-market-dapp/src/components/PostSellListingForm.tsx` | Modify | `pricePerUnit: Number()` -> `BigInt()` |
 | `apps/ssu-market-dapp/src/components/ListingCard.tsx` | Modify | Coin merge for buy, decimal formatting, add `coinDecimals`/`coinSymbol` props |
@@ -682,7 +669,17 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
 | `apps/ssu-market-dapp/src/components/MarketDetail.tsx` | Modify | Add coin metadata query, decimal-aware price display, BigInt arithmetic, show `originalQuantity` + `postedAtMs` for buy orders |
 | `apps/ssu-market-dapp/src/components/MarketView.tsx` | Modify | Query coin metadata for market currency, pass `coinDecimals`/`coinSymbol` to child components |
 | `apps/ssu-market-dapp/src/components/BuyerView.tsx` | Modify | Add `coinDecimals`/`coinSymbol` props, pass to ListingCard |
-| `apps/periscope/src/chain/config.ts` | Modify | Update EXTENSION_TEMPLATES ssu_market packageIds |
+| `apps/periscope/src/chain/config.ts` | ~~Modify~~ No change | EXTENSION_TEMPLATES packageIds are original IDs (correct for type matching) |
+
+## Remaining Work
+
+Three items to complete this plan (one required, two optional):
+
+1. **Phase 5.10:** Import and render `VisibilitySettings` in `SsuView.tsx` for SSU owners when `ssuConfig` is available. The component is fully implemented at `apps/ssu-dapp/src/components/VisibilitySettings.tsx` -- just needs to be wired in.
+
+2. **Phase 6.1 (optional):** Update `SSU_MARKET_PACKAGE_ID` in `apps/ssu-market-dapp/src/lib/constants.ts` from `0x3339a266...` (original) to `0xe4421093...` (latest published-at for stillness). Sui auto-routes original IDs to latest version so this is not a bug, but using the latest ID is more explicit. Low priority.
+
+3. **Phase 4.7 (deviation):** `queryAllListingsForCurrency` does not filter by `isPublic` as specified in the plan. It returns ALL listings and populates `ssuConfigId`, leaving visibility filtering to the caller. The plan says "Returns only listings at public SSUs." Either add `isPublic` filtering (requires querying each SsuConfig's `isPublic` field via `querySsuConfig`) or document that filtering is caller's responsibility. This is a design choice, not a bug -- the current implementation is more flexible.
 
 ## Open Questions
 

@@ -186,6 +186,8 @@ export function SsuView({ objectId }: SsuViewProps) {
 						ssuObjectId={objectId}
 						characterObjectId={character?.characterObjectId}
 						ownerCap={ownerCapInfo ?? undefined}
+						charOwnerCap={charOwnerCapInfo ?? undefined}
+						charOwnerCapId={character?.characterOwnerCapId ?? undefined}
 						isOwner={isOwner}
 						isAuthorized={isAuthorized}
 						isConnected={!!account}

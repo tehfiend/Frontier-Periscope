@@ -19,6 +19,9 @@ interface ContentTabsProps {
 	ssuObjectId: string;
 	characterObjectId?: string;
 	ownerCap?: OwnerCapInfo;
+	/** Player's Character OwnerCap (for player sell) */
+	charOwnerCap?: OwnerCapInfo;
+	charOwnerCapId?: string;
 	isOwner: boolean;
 	isAuthorized: boolean;
 	isConnected: boolean;
@@ -40,6 +43,8 @@ export function ContentTabs({
 	ssuObjectId,
 	characterObjectId,
 	ownerCap,
+	charOwnerCap,
+	charOwnerCapId,
 	isOwner,
 	isAuthorized,
 	isConnected,
@@ -52,16 +57,21 @@ export function ContentTabs({
 	characterOwnerCapId,
 }: ContentTabsProps) {
 	const [activeTab, setActiveTab] = useState<TabId>("inventory");
-	const [sellDialogItem, setSellDialogItem] = useState<InventoryItem | null>(null);
+	const [sellDialogItem, setSellDialogItem] = useState<{
+		item: InventoryItem;
+		isPlayerSell: boolean;
+	} | null>(null);
 
 	const hasMarket = !!ssuConfig?.marketId;
 
-	// Sell button visible: isOwner + market linked + owner slot + connected
-	const canSell = isOwner && hasMarket && isConnected;
+	// Owner sell: isOwner + market linked + connected
+	const canOwnerSell = isOwner && hasMarket && isConnected;
 
+	// Player sell: not owner + market linked + connected + has character cap
+	const canPlayerSell = !isOwner && hasMarket && isConnected && !!charOwnerCap;
 
-	function handleSell(item: InventoryItem) {
-		setSellDialogItem(item);
+	function handleSell(item: InventoryItem, isPlayerSell: boolean) {
+		setSellDialogItem({ item, isPlayerSell });
 	}
 
 	return (
@@ -100,8 +110,9 @@ export function ContentTabs({
 					inventories={inventories}
 					isLoading={inventoryLoading}
 					transferContext={transferContext}
-					onSell={canSell ? handleSell : undefined}
-					canSell={canSell}
+					onSell={canOwnerSell ? (item) => handleSell(item, false) : undefined}
+					onPlayerSell={canPlayerSell ? (item) => handleSell(item, true) : undefined}
+					canSell={canOwnerSell || canPlayerSell}
 				/>
 			)}
 
@@ -122,15 +133,18 @@ export function ContentTabs({
 				/>
 			)}
 
-			{/* Sell dialog */}
-			{sellDialogItem && ssuConfig?.marketId && characterObjectId && ownerCap && (
+			{/* Sell dialog -- owner or player */}
+			{sellDialogItem && ssuConfig?.marketId && characterObjectId && (
 				<SellDialog
-					item={sellDialogItem}
+					item={sellDialogItem.item}
 					ssuObjectId={ssuObjectId}
 					characterObjectId={characterObjectId}
-					ownerCap={ownerCap}
+					ownerCap={sellDialogItem.isPlayerSell ? undefined : ownerCap}
+					charOwnerCap={sellDialogItem.isPlayerSell ? charOwnerCap : undefined}
+					charOwnerCapId={sellDialogItem.isPlayerSell ? charOwnerCapId : undefined}
 					ssuConfig={ssuConfig}
 					coinType={coinType}
+					isPlayerSell={sellDialogItem.isPlayerSell}
 					onClose={() => setSellDialogItem(null)}
 				/>
 			)}

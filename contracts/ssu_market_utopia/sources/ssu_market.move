@@ -414,6 +414,61 @@ public fun cancel_listing<T>(
     });
 }
 
+/// Any player escrows items from their player storage and posts a sell listing.
+/// No authorization required -- the player provides their own Item.
+/// On cancel via player_cancel_listing, items return to the seller's player inventory.
+public fun player_escrow_and_list<T>(
+    config: &SsuConfig, market: &mut Market<T>,
+    ssu: &mut StorageUnit, character: &Character,
+    item: Item, price_per_unit: u64, clock: &Clock, ctx: &mut TxContext,
+) {
+    assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
+    assert_market_linked(config, object::id(market));
+
+    let type_id = item.type_id();
+    let qty = (item.quantity() as u64);
+
+    // Escrow: move items into SSU open inventory
+    storage_unit::deposit_to_open_inventory<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
+
+    // Post listing on the Market (seller = ctx.sender())
+    market::post_sell_listing<T>(market, config.ssu_id, type_id, price_per_unit, qty, clock, ctx);
+}
+
+/// Any player cancels their own sell listing. Items return to the seller's
+/// player inventory (not owner inventory). No authorization required.
+public fun player_cancel_listing<T>(
+    config: &SsuConfig, market: &mut Market<T>,
+    ssu: &mut StorageUnit, character: &Character,
+    listing_id: u64, ctx: &mut TxContext,
+) {
+    assert!(object::id(ssu) == config.ssu_id, ESSUMismatch);
+    assert_market_linked(config, object::id(market));
+
+    // Verify caller is the listing seller
+    let listing = market::borrow_sell_listing(market, listing_id);
+    assert!(market::listing_seller(listing) == ctx.sender(), ENotListingSeller);
+    let type_id = market::listing_type_id(listing);
+    let quantity = market::listing_quantity(listing);
+
+    // Remove listing from market
+    market::remove_sell_listing<T>(market, listing_id);
+
+    // Withdraw from escrow (open inventory) and return to seller's player inventory
+    let item = storage_unit::withdraw_from_open_inventory<MarketAuth>(
+        ssu, character, MarketAuth {}, type_id, (quantity as u32), ctx,
+    );
+    storage_unit::deposit_to_owned<MarketAuth>(ssu, character, item, MarketAuth {}, ctx);
+
+    event::emit(SellListingCancelledEvent {
+        config_id: object::id(config),
+        ssu_id: config.ssu_id,
+        listing_id,
+        type_id,
+        quantity,
+    });
+}
+
 /// Buyer purchases items from a sell listing. Atomic: payment -> seller,
 /// items -> buyer. Any buyer can call (no assert_authorized).
 /// Returns change coin.

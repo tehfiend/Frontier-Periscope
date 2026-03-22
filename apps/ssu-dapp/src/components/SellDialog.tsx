@@ -5,7 +5,12 @@ import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { getTenant, getWorldPackageId } from "@/lib/constants";
 import { decodeErrorMessage } from "@/lib/errors";
-import { buildEscrowAndList, formatBaseUnits, parseDisplayPrice } from "@tehfrontier/chain-shared";
+import {
+	buildEscrowAndList,
+	buildPlayerEscrowAndList,
+	formatBaseUnits,
+	parseDisplayPrice,
+} from "@tehfrontier/chain-shared";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -13,9 +18,14 @@ interface SellDialogProps {
 	item: InventoryItem;
 	ssuObjectId: string;
 	characterObjectId: string;
-	ownerCap: OwnerCapInfo;
+	/** SSU OwnerCap (for owner sell) */
+	ownerCap?: OwnerCapInfo;
+	/** Character OwnerCap (for player sell) */
+	charOwnerCap?: OwnerCapInfo;
+	charOwnerCapId?: string;
 	ssuConfig: SsuConfigResult;
 	coinType: string;
+	isPlayerSell?: boolean;
 	onClose: () => void;
 }
 
@@ -24,8 +34,11 @@ export function SellDialog({
 	ssuObjectId,
 	characterObjectId,
 	ownerCap,
+	charOwnerCap,
+	charOwnerCapId,
 	ssuConfig,
 	coinType,
+	isPlayerSell,
 	onClose,
 }: SellDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -33,6 +46,7 @@ export function SellDialog({
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
 	const { data: coinMeta } = useCoinMetadata(coinType);
 	const decimals = coinMeta?.decimals ?? 9;
+	const symbol = coinMeta?.symbol ?? "";
 	const [quantity, setQuantity] = useState("1");
 	const [pricePerUnit, setPricePerUnit] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -61,24 +75,50 @@ export function SellDialog({
 		setError(null);
 		setSuccess(null);
 
+		const worldPkg = getWorldPackageId(getTenant());
+
 		try {
-			const tx = buildEscrowAndList({
-				packageId: ssuConfig.packageId,
-				ssuConfigId: ssuConfig.ssuConfigId,
-				marketId: ssuConfig.marketId,
-				coinType,
-				worldPackageId: getWorldPackageId(getTenant()),
-				ssuObjectId,
-				characterObjectId,
-				ownerCapReceivingId: ownerCap.objectId,
-				typeId: item.typeId,
-				quantity: qty,
-				pricePerUnit: priceBase,
-				senderAddress: account.address,
-			});
+			let tx;
+			if (isPlayerSell && charOwnerCap && charOwnerCapId) {
+				tx = buildPlayerEscrowAndList({
+					packageId: ssuConfig.packageId,
+					ssuConfigId: ssuConfig.ssuConfigId,
+					marketId: ssuConfig.marketId,
+					coinType,
+					worldPackageId: worldPkg,
+					ssuObjectId,
+					characterObjectId,
+					ownerCapReceivingId: charOwnerCapId,
+					ownerCapVersion: String(charOwnerCap.version),
+					ownerCapDigest: charOwnerCap.digest,
+					ownerCapTypeArg: `${worldPkg}::character::Character`,
+					typeId: item.typeId,
+					quantity: qty,
+					pricePerUnit: priceBase,
+					senderAddress: account.address,
+				});
+			} else if (ownerCap) {
+				tx = buildEscrowAndList({
+					packageId: ssuConfig.packageId,
+					ssuConfigId: ssuConfig.ssuConfigId,
+					marketId: ssuConfig.marketId,
+					coinType,
+					worldPackageId: worldPkg,
+					ssuObjectId,
+					characterObjectId,
+					ownerCapReceivingId: ownerCap.objectId,
+					typeId: item.typeId,
+					quantity: qty,
+					pricePerUnit: priceBase,
+					senderAddress: account.address,
+				});
+			} else {
+				setError("Missing required capabilities");
+				return;
+			}
 
 			await signAndExecute(tx);
-			setSuccess(`Listed ${qty}x ${item.name} at ${formatBaseUnits(priceBase, decimals)} per unit`);
+			setSuccess(`Listed ${qty}x ${item.name} at ${formatBaseUnits(priceBase, decimals)} ${symbol} per unit`);
 		} catch (err) {
 			setError(decodeErrorMessage(String(err)));
 		}
@@ -92,7 +132,9 @@ export function SellDialog({
 		>
 			<div className="p-4">
 				<div className="mb-4 flex items-center justify-between">
-					<h3 className="text-sm font-medium text-zinc-200">Sell Item</h3>
+					<h3 className="text-sm font-medium text-zinc-200">
+						{isPlayerSell ? "Sell from Storage" : "Sell Item"}
+					</h3>
 					<button
 						type="button"
 						onClick={() => {
@@ -121,6 +163,12 @@ export function SellDialog({
 					</div>
 				) : (
 					<div className="space-y-3">
+						{isPlayerSell && (
+							<p className="text-[10px] text-zinc-600">
+								Items will be escrowed until sold or canceled.
+							</p>
+						)}
+
 						{/* Item info */}
 						<div>
 							<label className="mb-1 block text-xs text-zinc-500">Item</label>
@@ -159,7 +207,7 @@ export function SellDialog({
 						{/* Price per unit */}
 						<div>
 							<label className="mb-1 block text-xs text-zinc-500">
-								Price per unit
+								Price per unit{symbol ? ` (${symbol})` : ""}
 							</label>
 							<input
 								type="number"
@@ -177,7 +225,7 @@ export function SellDialog({
 						{/* Total preview */}
 						{totalValue > 0n && (
 							<div className="rounded border border-zinc-800 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-400">
-								Total value: {formatBaseUnits(totalValue, decimals)}
+								Total value: {formatBaseUnits(totalValue, decimals)} {symbol}
 							</div>
 						)}
 

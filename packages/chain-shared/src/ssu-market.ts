@@ -12,9 +12,16 @@
  */
 
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import { Transaction } from "@mysten/sui/transactions";
+import { Inputs, Transaction } from "@mysten/sui/transactions";
 import { getObjectJson } from "./graphql-queries";
 import type { SsuConfigInfo } from "./types";
+
+/** Immutable shared Clock object ref (0x6, genesis version 1). */
+const CLOCK_REF = Inputs.SharedObjectRef({
+	objectId: "0x0000000000000000000000000000000000000000000000000000000000000006",
+	initialSharedVersion: 1,
+	mutable: false,
+});
 
 // ── SsuConfig Management ───────────────────────────────────────────────────
 
@@ -207,6 +214,110 @@ export function buildCancelListing(params: CancelListingParams): Transaction {
 
 	tx.moveCall({
 		target: `${params.packageId}::ssu_market::cancel_listing`,
+		typeArguments: [params.coinType],
+		arguments: [
+			tx.object(params.ssuConfigId),
+			tx.object(params.marketId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			tx.pure.u64(params.listingId),
+		],
+	});
+
+	return tx;
+}
+
+// ── Player Trade Builders (no authorization required) ──────────────────────
+
+export interface PlayerEscrowAndListParams {
+	packageId: string;
+	ssuConfigId: string;
+	marketId: string;
+	coinType: string;
+	worldPackageId: string;
+	ssuObjectId: string;
+	characterObjectId: string;
+	/** OwnerCap receiving ref for the player's Character */
+	ownerCapReceivingId: string;
+	ownerCapVersion: string;
+	ownerCapDigest: string;
+	ownerCapTypeArg: string;
+	typeId: number;
+	quantity: number;
+	pricePerUnit: bigint;
+	senderAddress: string;
+}
+
+/**
+ * Build a PTB for a player to escrow items from their storage and create a sell listing.
+ * Flow: borrow_owner_cap -> withdraw_by_owner -> player_escrow_and_list -> return_owner_cap
+ */
+export function buildPlayerEscrowAndList(params: PlayerEscrowAndListParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	// Step 1: Borrow player's OwnerCap from Character
+	const [ownerCap, receipt] = tx.moveCall({
+		target: `${params.worldPackageId}::character::borrow_owner_cap`,
+		typeArguments: [params.ownerCapTypeArg],
+		arguments: [
+			tx.object(params.characterObjectId),
+			tx.receivingRef({
+				objectId: params.ownerCapReceivingId,
+				version: params.ownerCapVersion,
+				digest: params.ownerCapDigest,
+			}),
+		],
+	});
+
+	// Step 2: Withdraw items from player's inventory
+	const [item] = tx.moveCall({
+		target: `${params.worldPackageId}::storage_unit::withdraw_by_owner`,
+		typeArguments: [params.ownerCapTypeArg],
+		arguments: [
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			ownerCap,
+			tx.pure.u64(params.typeId),
+			tx.pure.u32(params.quantity),
+		],
+	});
+
+	// Step 3: Return OwnerCap
+	tx.moveCall({
+		target: `${params.worldPackageId}::character::return_owner_cap`,
+		typeArguments: [params.ownerCapTypeArg],
+		arguments: [tx.object(params.characterObjectId), ownerCap, receipt],
+	});
+
+	// Step 4: Escrow and list on Market (no auth required)
+	tx.moveCall({
+		target: `${params.packageId}::ssu_market::player_escrow_and_list`,
+		typeArguments: [params.coinType],
+		arguments: [
+			tx.object(params.ssuConfigId),
+			tx.object(params.marketId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			item,
+			tx.pure.u64(params.pricePerUnit),
+			tx.object(CLOCK_REF),
+		],
+	});
+
+	return tx;
+}
+
+/**
+ * Build a TX for a player to cancel their own sell listing.
+ * Items return to the seller's player inventory (not owner inventory).
+ */
+export function buildPlayerCancelListing(params: CancelListingParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	tx.moveCall({
+		target: `${params.packageId}::ssu_market::player_cancel_listing`,
 		typeArguments: [params.coinType],
 		arguments: [
 			tx.object(params.ssuConfigId),

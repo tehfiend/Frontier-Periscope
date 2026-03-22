@@ -1,6 +1,7 @@
 # Plan: Private Map System
-**Status:** Active
+**Status:** Complete
 **Created:** 2026-03-21
+**Completed:** 2026-03-22
 **Module:** contracts, chain-shared, periscope, ssu-dapp
 
 ## Overview
@@ -13,7 +14,19 @@ The primary use cases are alliance intel maps (shared SSU/gate locations), trade
 
 ## Current State
 
-**No private map functionality exists.** Location sharing is limited to:
+**All phases complete.** The Private Map system is fully implemented and deployed.
+
+### Implementation Notes (deviations from original plan)
+
+- **Phase 2:** `queryTransactionSignature` was implemented directly in `crypto.ts` as an inline GraphQL query (`QUERY_TX_SIGNATURES`) + `getPublicKeyForAddress`, rather than as a separate function in `graphql-queries.ts`. Same functionality, different file organization.
+- **Phase 5:** `ManifestPrivateMap.decryptedMapKey` is optional (populated on-demand), and includes an additional `encryptedMapKey` field for deferred decryption. `ManifestCharacter` gained `mapKeyPublicHex` and `mapKeySecretHex` fields for persistent key caching.
+- **Phase 6:** The view is `PrivateMaps.tsx` (not `Maps.tsx`). The `useMapKey` hook was inlined as `useStoredMapKey` directly in `PrivateMaps.tsx` with persistent key storage in settings (keyed by wallet address), rather than a separate hook file. No separate `usePrivateMaps` hook was created -- the view reads directly from the manifest cache via `useLiveQuery`.
+- **Phase 7:** ssu-dapp uses a separate `useMapKey` hook file at `apps/ssu-dapp/src/hooks/useMapKey.ts` (as originally planned). The `PublishToMapDialog` includes a solar system search with autocomplete from `stellar_labels.json`.
+- **Contract deployed** to testnet at `0x2be1058fa8b002b81d4f91fd33065f17e2a3bbd9799ea0d934b74aaff8160a17` (same package ID for both tenants as planned).
+
+### Original State (pre-implementation)
+
+Location sharing was limited to:
 
 1. **Public SSU locations** come from the game's `LocationRegistry` via the in-game "Publish Location" button, which calls `storage_unit::reveal_location()` (AdminACL, game server handles it). These are visible to all players.
 
@@ -116,7 +129,7 @@ Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_se
 
 ## Implementation Phases
 
-### Phase 1: Move Contract (`contracts/private_map/`)
+### Phase 1: Move Contract (`contracts/private_map/`) -- DONE
 
 1. Create `contracts/private_map/Move.toml` with Sui framework dependency (same pattern as `contracts/market/Move.toml`), `edition = "2024"`, `private_map = "0x0"` placeholder address.
 2. Create `contracts/private_map/sources/private_map.move` with:
@@ -139,7 +152,7 @@ Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_se
    - Member revocation (add to `revoked` list, verify `add_location` fails with `EMemberRevoked`)
    - Event emission verification for all operations
 
-### Phase 2: Client-Side Crypto (`packages/chain-shared/src/crypto.ts`)
+### Phase 2: Client-Side Crypto (`packages/chain-shared/src/crypto.ts`) -- DONE
 
 1. Create `packages/chain-shared/src/crypto.ts` with:
    - `deriveMapKeyFromSignature(signatureBase64: string): { publicKey: Uint8Array; secretKey: Uint8Array }` -- decode signature from base64 to bytes, SHA-256 hash (via `@noble/hashes/sha2.js`), then `x25519.keygen(hash)` to produce X25519 keypair. The `x25519` export from `@noble/curves/ed25519.js` accepts an optional 32-byte seed. The base64 input matches the `signPersonalMessage` return format.
@@ -155,7 +168,7 @@ Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_se
 4. Export from `packages/chain-shared/src/index.ts`.
 5. Write unit tests for crypto round-trip (seal -> unseal), key derivation determinism, and location data encoding.
 
-### Phase 3: Chain-Shared TX Builders + Queries (`packages/chain-shared/src/private-map.ts`)
+### Phase 3: Chain-Shared TX Builders + Queries (`packages/chain-shared/src/private-map.ts`) -- DONE
 
 1. Create `packages/chain-shared/src/private-map.ts` with:
    - **Types:** `PrivateMapInfo`, `MapInviteInfo`, `MapLocationInfo` (matching on-chain structs)
@@ -200,13 +213,13 @@ Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_se
    ```
 4. Export from `packages/chain-shared/src/index.ts`.
 
-### Phase 4: Contract Deployment + Config
+### Phase 4: Contract Deployment + Config -- DONE
 
 1. Publish `contracts/private_map` to Sui testnet.
 2. Update `contracts/private_map/Move.toml` with published-at address.
 3. Update `packages/chain-shared/src/config.ts` -- add `privateMap.packageId` to both tenant entries in `CONTRACT_ADDRESSES`.
 
-### Phase 5: Manifest Caching (IndexedDB)
+### Phase 5: Manifest Caching (IndexedDB) -- DONE
 
 Cache decrypted private map data in the Periscope manifest (same pattern as Characters and Tribes). This avoids re-fetching and re-decrypting on every page load.
 
@@ -254,7 +267,7 @@ Cache decrypted private map data in the Periscope manifest (same pattern as Char
    - `getDecryptedMapLocations(mapId)` -- read from cache, return sorted by `addedAtMs`.
    - `invalidateMapCache(mapId)` -- delete all cached locations for a map (used after key rotation / map deletion).
 
-### Phase 6: Periscope Integration (maps management UI)
+### Phase 6: Periscope Integration (maps management UI) -- DONE
 
 1. Create `apps/periscope/src/views/Maps.tsx` -- main view for managing private maps:
    - List all maps the user is invited to (reads from `manifestPrivateMaps` cache)
@@ -269,7 +282,7 @@ Cache decrypted private map data in the Periscope manifest (same pattern as Char
 4. Add route `/private-maps` to `apps/periscope/src/router.tsx`.
 5. Add navigation entry in sidebar.
 
-### Phase 7: ssu-dapp Integration (publish SSU to map)
+### Phase 7: ssu-dapp Integration (publish SSU to map) -- DONE
 
 1. Add "Publish to Map" button in `apps/ssu-dapp/src/views/SsuView.tsx` header area (visible when wallet is connected and user has map invites).
 2. Create `apps/ssu-dapp/src/components/PublishToMapDialog.tsx` -- dialog that lists user's maps, encrypts the SSU's location data, and calls `buildAddLocation`.

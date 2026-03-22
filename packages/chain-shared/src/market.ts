@@ -432,6 +432,11 @@ export async function queryMarkets(
 			const match = typeRepr.match(/^(.+?)::market::Market<(.+)>$/);
 			const resolvedCoinType = match ? match[2] : (coinType ?? "");
 
+			// Extract total supply from treasury_cap.total_supply.value
+			const treasuryCap = json.treasury_cap as Record<string, unknown> | undefined;
+			const supplyObj = treasuryCap?.total_supply as Record<string, unknown> | undefined;
+			const totalSupply = supplyObj?.value != null ? Number(supplyObj.value) : undefined;
+
 			markets.push({
 				objectId: node.address,
 				packageId: match ? match[1] : "",
@@ -442,6 +447,7 @@ export async function queryMarkets(
 				nextSellId: Number(json.next_sell_id ?? 0),
 				nextBuyId: Number(json.next_buy_id ?? 0),
 				coinType: resolvedCoinType,
+				totalSupply,
 			});
 		}
 
@@ -468,6 +474,11 @@ export async function queryMarketDetails(
 		// Extract package ID and coin type from "PKG::market::Market<COIN_TYPE>"
 		const match = typeRepr.match(/^(.+?)::market::Market<(.+)>$/);
 
+		// Extract total supply from treasury_cap.total_supply.value
+		const treasuryCap = fields.treasury_cap as Record<string, unknown> | undefined;
+		const supplyObj = treasuryCap?.total_supply as Record<string, unknown> | undefined;
+		const totalSupply = supplyObj?.value != null ? Number(supplyObj.value) : undefined;
+
 		return {
 			objectId: marketId,
 			packageId: match ? match[1] : "",
@@ -478,6 +489,7 @@ export async function queryMarketDetails(
 			nextSellId: Number(fields.next_sell_id ?? 0),
 			nextBuyId: Number(fields.next_buy_id ?? 0),
 			coinType: match ? match[2] : "",
+			totalSupply,
 		};
 	} catch {
 		return null;

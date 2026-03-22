@@ -32,10 +32,11 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		},
 		exchange: { packageId: "0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d" },
 		ssuMarket: {
-			packageId: "0x3339a266b12a7829dc873813608151caff50c46466e13fab020acd6dfe2397a2",
+			packageId: "0xe4421093140ace1a828b49c4b5d570f9705ea94f968e16a59faf89b185acfd25",
 			originalPackageId: "0x3339a266b12a7829dc873813608151caff50c46466e13fab020acd6dfe2397a2",
 			previousOriginalPackageIds: [
 				"0x40576ea9e07fa8516abc4820a24be12b0ad7678d181afba5710312d2a0ca6e48",
+				"0x3339a266b12a7829dc873813608151caff50c46466e13fab020acd6dfe2397a2",
 			],
 		},
 		bountyBoard: {
@@ -88,11 +89,12 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		},
 		exchange: { packageId: "0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d" },
 		ssuMarket: {
-			packageId: "0x2796505934119806d4b8b057a00a1c0672769e9a17dbcf7df28df276e4afb74c",
+			packageId: "0xcc4ea24f7be2f0456008e72dbf6bd787ad60fafa388383fbe913c3734dcfec84",
 			originalPackageId: "0x2796505934119806d4b8b057a00a1c0672769e9a17dbcf7df28df276e4afb74c",
 			previousOriginalPackageIds: [
 				"0xf6e9699d86cd58580dd7d4ea73f8d42841c72b4f23d9de71d2988baabc5f25a0",
 				"0x53c2bf5e90d12b8a92594ab959f3d883dc2afdaf6031e9640151f82582a17501",
+				"0x2796505934119806d4b8b057a00a1c0672769e9a17dbcf7df28df276e4afb74c",
 			],
 		},
 		bountyBoard: {

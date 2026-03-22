@@ -33,7 +33,6 @@ import {
 	buildSetMarket,
 	queryMarkets,
 	queryMarketDetails,
-	queryTokenSupply,
 	queryOwnedCoins,
 	queryTreasuryCap,
 	buildPublishToken,
@@ -586,13 +585,9 @@ function CurrencyCard({
 			);
 			setMarketInfo(info);
 
-			// Also load supply
-			if (currency.coinType) {
-				const supply = await queryTokenSupply(
-					suiClient,
-					currency.coinType,
-				);
-				setTotalSupply(supply.totalSupply);
+			// Supply is embedded in Market's treasury_cap
+			if (info?.totalSupply != null) {
+				setTotalSupply(BigInt(info.totalSupply));
 			}
 		} catch {
 			setMarketInfo(null);
