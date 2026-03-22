@@ -295,17 +295,15 @@ function PingsTab() {
 
 	const filteredData = useMemo(() => {
 		if (!events) return [];
-		if (pingEventTypes.length === 0) return [];
-		const typeSet = new Set<string>(pingEventTypes);
-		return events.filter((e) => typeSet.has(e.eventType));
+		if (pingEventTypes.size === 0) return [];
+		return events.filter((e) => pingEventTypes.has(e.eventType));
 	}, [events, pingEventTypes]);
 
 	function toggleEventType(type: SonarEventType) {
-		if (pingEventTypes.includes(type)) {
-			setPingEventTypes(pingEventTypes.filter((t) => t !== type));
-		} else {
-			setPingEventTypes([...pingEventTypes, type]);
-		}
+		const next = new Set(pingEventTypes);
+		if (next.has(type)) next.delete(type);
+		else next.add(type);
+		setPingEventTypes(next);
 	}
 
 	async function handleNotifyToggle() {
@@ -384,7 +382,7 @@ function PingsTab() {
 								>
 									<input
 										type="checkbox"
-										checked={pingEventTypes.includes(type)}
+										checked={pingEventTypes.has(type)}
 										onChange={() => toggleEventType(type)}
 										className="accent-teal-500"
 									/>

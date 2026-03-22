@@ -126,7 +126,7 @@ export interface CharacterLookupResult {
 // biome-ignore lint/suspicious/noExplicitAny: GraphQL response shape is dynamic
 type GqlJson = Record<string, any>;
 
-type EventQueryResult = {
+type GqlEventQueryResult = {
 	events: {
 		nodes: Array<{ contents?: { json: GqlJson } }>;
 		pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -190,9 +190,9 @@ async function searchCharacterEvents(
 			}
 		}`;
 
-		let result: { data?: EventQueryResult | null };
+		let result: { data?: GqlEventQueryResult | null };
 		try {
-			result = await c.query<EventQueryResult>({
+			result = await c.query<GqlEventQueryResult>({
 				query: gqlQuery,
 				variables: {},
 			});

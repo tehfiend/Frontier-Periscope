@@ -47,7 +47,7 @@ export function useSonarAlerts() {
 	useEffect(() => {
 		if (!latestEvents || latestEvents.length === 0) return;
 		if (hwmRef.current === null) return; // Not initialized yet
-		if (pingEventTypes.length === 0) return;
+		if (pingEventTypes.size === 0) return;
 		if (!pingAudioEnabled && !pingNotifyEnabled) return;
 
 		const typeSet = new Set<string>(pingEventTypes);
