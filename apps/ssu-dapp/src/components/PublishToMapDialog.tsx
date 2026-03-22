@@ -1,6 +1,7 @@
 import { useDAppKit } from "@mysten/dapp-kit-react";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
+import { CopyAddress } from "./CopyAddress";
 
 import { useMapKey } from "@/hooks/useMapKey";
 import { useSuiClient } from "@/hooks/useSuiClient";
@@ -78,7 +79,7 @@ export function PublishToMapDialog({
 	}, [systemSearch, systemEntries]);
 
 	const selectedSystemName = systemId
-		? systemLabels?.[String(systemId)] ?? `System ${systemId}`
+		? (systemLabels?.[String(systemId)] ?? `System ${systemId}`)
 		: "";
 
 	// Fetch user's map invites + resolve map names
@@ -217,7 +218,7 @@ export function PublishToMapDialog({
 					<label className="mb-1 block text-xs text-zinc-400">Solar System</label>
 					<input
 						type="text"
-						value={systemId ? (systemSearch || selectedSystemName) : systemSearch}
+						value={systemId ? systemSearch || selectedSystemName : systemSearch}
 						onChange={(e) => {
 							setSystemSearch(e.target.value);
 							setSystemId(null);
@@ -229,9 +230,7 @@ export function PublishToMapDialog({
 						className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 					/>
 					{systemId && (
-						<span className="absolute right-2 top-7 text-[10px] text-zinc-600">
-							#{systemId}
-						</span>
+						<span className="absolute right-2 top-7 text-[10px] text-zinc-600">#{systemId}</span>
 					)}
 					{showSystemResults && filteredSystems.length > 0 && (
 						<div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-800 shadow-lg">
@@ -317,9 +316,12 @@ export function PublishToMapDialog({
 								}`}
 							>
 								{rm.map.name}
-								<span className="ml-2 font-mono text-xs text-zinc-600">
-									{rm.map.objectId.slice(0, 10)}...
-								</span>
+								<CopyAddress
+									address={rm.map.objectId}
+									sliceStart={10}
+									sliceEnd={4}
+									className="ml-2 text-xs text-zinc-600"
+								/>
 							</button>
 						))}
 					</div>

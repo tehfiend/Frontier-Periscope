@@ -1,9 +1,6 @@
-import {
-	useCurrentAccount,
-	useDAppKit,
-	useWallets,
-} from "@mysten/dapp-kit-react";
+import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
 import { useState } from "react";
+import { CopyAddress } from "./CopyAddress";
 
 const EVE_VAULT_NAME = "Eve Vault";
 
@@ -55,9 +52,12 @@ export function WalletConnect() {
 		return (
 			<div className="flex items-center gap-2">
 				<span className="h-2 w-2 rounded-full bg-emerald-500" />
-				<span className="font-mono text-xs text-zinc-400">
-					{account.address.slice(0, 6)}...{account.address.slice(-4)}
-				</span>
+				<CopyAddress
+					address={account.address}
+					sliceStart={6}
+					sliceEnd={4}
+					className="text-xs text-zinc-400"
+				/>
 				<button
 					type="button"
 					onClick={handleDisconnect}

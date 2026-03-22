@@ -1,18 +1,19 @@
 import { useCoinMetadata } from "@/hooks/useCoinMetadata";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
-import { useSuiClient } from "@/hooks/useSuiClient";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { decodeErrorMessage } from "@/lib/errors";
 import { resolveItemName } from "@/lib/items";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
+import { useQuery } from "@tanstack/react-query";
 import {
 	type MarketSellListing,
 	buildBuyFromListing,
 	formatBaseUnits,
 	queryOwnedCoins,
 } from "@tehfrontier/chain-shared";
-import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { CopyAddress } from "./CopyAddress";
 
 interface ListingCardProps {
 	listing: MarketSellListing;
@@ -109,18 +110,21 @@ export function ListingCard({
 				</div>
 			</div>
 
-			<p className="mt-1 text-xs text-zinc-500">
-				{maxQty.toLocaleString()} available
-			</p>
+			<p className="mt-1 text-xs text-zinc-500">{maxQty.toLocaleString()} available</p>
 			<p className="text-[10px] text-zinc-600">
-				Seller: {nameMap?.get(listing.seller) ?? `${listing.seller.slice(0, 10)}...`}
+				Seller:{" "}
+				{nameMap?.get(listing.seller) ?? (
+					<CopyAddress
+						address={listing.seller}
+						sliceStart={10}
+						sliceEnd={4}
+						className="text-zinc-600"
+					/>
+				)}
 			</p>
 
 			<div className="mt-3 flex items-center gap-2">
-				<label
-					className="text-xs text-zinc-500"
-					htmlFor={`qty-${listing.listingId}`}
-				>
+				<label className="text-xs text-zinc-500" htmlFor={`qty-${listing.listingId}`}>
 					Qty:
 				</label>
 				<input
@@ -129,9 +133,7 @@ export function ListingCard({
 					min={1}
 					max={maxQty}
 					value={quantity}
-					onChange={(e) =>
-						setQuantity(Math.max(1, Math.min(maxQty, Number(e.target.value))))
-					}
+					onChange={(e) => setQuantity(Math.max(1, Math.min(maxQty, Number(e.target.value))))}
 					className="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-600 focus:outline-none"
 				/>
 				<span className="text-xs text-zinc-500">

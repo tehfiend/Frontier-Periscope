@@ -4,6 +4,7 @@ import { ExtensionInfo } from "@/components/ExtensionInfo";
 import { PublishToMapDialog } from "@/components/PublishToMapDialog";
 import { SsuInfoCard } from "@/components/SsuInfoCard";
 import type { CapRef, TransferContext } from "@/components/TransferDialog";
+import { VisibilitySettings } from "@/components/VisibilitySettings";
 import { useAssembly } from "@/hooks/useAssembly";
 import { useBuyOrders } from "@/hooks/useBuyOrders";
 import { useCharacter } from "@/hooks/useCharacter";
@@ -174,6 +175,9 @@ export function SsuView({ objectId }: SsuViewProps) {
 				ownerCap={ownerCapInfo ?? undefined}
 				ssuObjectId={objectId}
 			/>
+
+			{/* Visibility toggle -- SSU config owner only */}
+			{isSsuOwner && ssuConfig && <VisibilitySettings ssuConfig={ssuConfig} />}
 
 			{/* Card 2: Content Tabs (Inventory + Market) */}
 			{inventories && (

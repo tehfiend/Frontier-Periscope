@@ -1,6 +1,7 @@
 import type { AssemblyData } from "@/hooks/useAssembly";
 import { resolveItemName } from "@/lib/items";
 import { useQuery } from "@tanstack/react-query";
+import { CopyAddress } from "./CopyAddress";
 
 interface AssemblyHeaderProps {
 	assembly: AssemblyData;
@@ -61,9 +62,12 @@ export function AssemblyHeader({
 							</svg>
 						</button>
 					)}
-					<p className="font-mono text-xs text-zinc-600" title={assembly.objectId}>
-						{assembly.objectId.slice(0, 10)}...{assembly.objectId.slice(-6)}
-					</p>
+					<CopyAddress
+						address={assembly.objectId}
+						sliceStart={10}
+						sliceEnd={6}
+						className="text-xs text-zinc-600"
+					/>
 				</div>
 			</div>
 
@@ -74,23 +78,26 @@ export function AssemblyHeader({
 					{ownerCharacterName ? (
 						<span className="font-medium text-zinc-300">{ownerCharacterName}</span>
 					) : (
-						<span className="font-mono text-zinc-600">
-							{assembly.ownerCapId.slice(0, 10)}...{assembly.ownerCapId.slice(-4)}
-						</span>
+						<CopyAddress
+							address={assembly.ownerCapId}
+							sliceStart={10}
+							sliceEnd={4}
+							className="text-zinc-600"
+						/>
 					)}
 				</p>
 				{connectedWalletAddress && (
 					<p className="text-xs text-zinc-500">
 						Connected as:{" "}
 						{connectedCharacterName ? (
-							<span className="font-medium text-cyan-400">
-								{connectedCharacterName}
-							</span>
+							<span className="font-medium text-cyan-400">{connectedCharacterName}</span>
 						) : (
-							<span className="font-mono text-zinc-600">
-								{connectedWalletAddress.slice(0, 10)}...
-								{connectedWalletAddress.slice(-4)}
-							</span>
+							<CopyAddress
+								address={connectedWalletAddress}
+								sliceStart={10}
+								sliceEnd={4}
+								className="text-zinc-600"
+							/>
 						)}
 					</p>
 				)}
@@ -133,9 +140,7 @@ function StatusBadge({ status, isOnline }: { status: string; isOnline: boolean }
 				isOnline ? "bg-emerald-900/50 text-emerald-400" : "bg-zinc-800 text-zinc-500"
 			}`}
 		>
-			<span
-				className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-emerald-400" : "bg-zinc-600"}`}
-			/>
+			<span className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-emerald-400" : "bg-zinc-600"}`} />
 			{status}
 		</span>
 	);

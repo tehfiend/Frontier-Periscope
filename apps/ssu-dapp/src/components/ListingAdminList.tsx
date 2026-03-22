@@ -4,6 +4,7 @@ import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { decodeErrorMessage } from "@/lib/errors";
 import { resolveItemName } from "@/lib/items";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
+import { useQuery } from "@tanstack/react-query";
 import {
 	type MarketSellListing,
 	buildCancelListing,
@@ -11,8 +12,8 @@ import {
 	formatBaseUnits,
 	parseDisplayPrice,
 } from "@tehfrontier/chain-shared";
-import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { CopyAddress } from "./CopyAddress";
 
 interface ListingAdminListProps {
 	listings: MarketSellListing[];
@@ -37,9 +38,7 @@ export function ListingAdminList({
 	const decimals = coinMeta?.decimals ?? 9;
 
 	const [dialogState, setDialogState] = useState<
-		| null
-		| { type: "edit"; id: number; price: string; qty: string }
-		| { type: "cancel"; id: number }
+		null | { type: "edit"; id: number; price: string; qty: string } | { type: "cancel"; id: number }
 	>(null);
 	const [error, setError] = useState<string | null>(null);
 
@@ -102,8 +101,16 @@ export function ListingAdminList({
 					nameMap={nameMap}
 					isEditing={dialogState?.type === "edit" && dialogState.id === listing.listingId}
 					isCancelling={dialogState?.type === "cancel" && dialogState.id === listing.listingId}
-					editPrice={dialogState?.type === "edit" && dialogState.id === listing.listingId ? dialogState.price : ""}
-					editQty={dialogState?.type === "edit" && dialogState.id === listing.listingId ? dialogState.qty : ""}
+					editPrice={
+						dialogState?.type === "edit" && dialogState.id === listing.listingId
+							? dialogState.price
+							: ""
+					}
+					editQty={
+						dialogState?.type === "edit" && dialogState.id === listing.listingId
+							? dialogState.qty
+							: ""
+					}
 					isPending={isPending}
 					onEditStart={() => {
 						setDialogState({
@@ -115,14 +122,10 @@ export function ListingAdminList({
 					}}
 					onEditCancel={() => setDialogState(null)}
 					onEditPriceChange={(v) =>
-						setDialogState((prev) =>
-							prev?.type === "edit" ? { ...prev, price: v } : prev,
-						)
+						setDialogState((prev) => (prev?.type === "edit" ? { ...prev, price: v } : prev))
 					}
 					onEditQtyChange={(v) =>
-						setDialogState((prev) =>
-							prev?.type === "edit" ? { ...prev, qty: v } : prev,
-						)
+						setDialogState((prev) => (prev?.type === "edit" ? { ...prev, qty: v } : prev))
 					}
 					onUpdate={() => handleUpdate(listing.listingId)}
 					onCancelStart={() => setDialogState({ type: "cancel", id: listing.listingId })}
@@ -180,15 +183,21 @@ function ListingAdminRow({
 		<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
 			<div className="flex items-center justify-between">
 				<div>
-					<p className="text-sm text-zinc-200">
-						{itemName ?? `Item #${listing.typeId}`}
-					</p>
+					<p className="text-sm text-zinc-200">{itemName ?? `Item #${listing.typeId}`}</p>
 					<p className="text-xs text-zinc-500">
 						{formatBaseUnits(listing.pricePerUnit, decimals)} per unit --{" "}
 						{listing.quantity.toLocaleString()} available
 					</p>
 					<p className="text-[10px] text-zinc-600">
-						Seller: {nameMap?.get(listing.seller) ?? `${listing.seller.slice(0, 10)}...`}
+						Seller:{" "}
+						{nameMap?.get(listing.seller) ?? (
+							<CopyAddress
+								address={listing.seller}
+								sliceStart={10}
+								sliceEnd={4}
+								className="text-zinc-600"
+							/>
+						)}
 					</p>
 				</div>
 				<div className="flex items-center gap-2">

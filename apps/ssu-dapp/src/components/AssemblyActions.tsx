@@ -1,9 +1,8 @@
-import { useState } from "react";
-import { Transaction } from "@mysten/sui/transactions";
-import { useSignAndExecute } from "@/hooks/useSignAndExecute";
-import { getWorldPackageId, getTenant } from "@/lib/constants";
 import type { AssemblyData } from "@/hooks/useAssembly";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
+import { useSignAndExecute } from "@/hooks/useSignAndExecute";
+import { useState } from "react";
+import { CopyAddress } from "./CopyAddress";
 
 interface AssemblyActionsProps {
 	assembly: AssemblyData;
@@ -20,11 +19,7 @@ interface AssemblyActionsProps {
  * available from the client. This component shows the current status and
  * provides the toggle as a best-effort operation.
  */
-export function AssemblyActions({
-	assembly,
-	characterObjectId,
-	ownerCap,
-}: AssemblyActionsProps) {
+export function AssemblyActions({ assembly, characterObjectId, ownerCap }: AssemblyActionsProps) {
 	const { isPending } = useSignAndExecute();
 	const [error, setError] = useState<string | null>(null);
 
@@ -41,22 +36,21 @@ export function AssemblyActions({
 							assembly.isOnline ? "bg-emerald-500" : "bg-zinc-600"
 						}`}
 					/>
-					<span className="text-sm text-zinc-300">
-						{assembly.isOnline ? "Online" : "Offline"}
-					</span>
+					<span className="text-sm text-zinc-300">{assembly.isOnline ? "Online" : "Offline"}</span>
 				</div>
 
-				<p className="text-xs text-zinc-600">
-					Status managed by game server
-				</p>
+				<p className="text-xs text-zinc-600">Status managed by game server</p>
 			</div>
 
 			{assembly.energySourceId && (
 				<p className="mt-2 text-xs text-zinc-500">
 					Energy source:{" "}
-					<span className="font-mono text-zinc-400">
-						{assembly.energySourceId.slice(0, 10)}...
-					</span>
+					<CopyAddress
+						address={assembly.energySourceId}
+						sliceStart={10}
+						sliceEnd={4}
+						className="text-zinc-400"
+					/>
 				</p>
 			)}
 

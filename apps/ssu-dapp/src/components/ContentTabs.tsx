@@ -1,8 +1,8 @@
+import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
 import type { InventoryItem, SsuInventories } from "@/hooks/useInventory";
+import type { SellListingWithName } from "@/hooks/useMarketListings";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
-import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
-import type { MarketSellListing } from "@tehfrontier/chain-shared";
 import { useState } from "react";
 import { InventoryTabs } from "./InventoryTabs";
 import { MarketContent } from "./MarketContent";
@@ -26,7 +26,7 @@ interface ContentTabsProps {
 	isAuthorized: boolean;
 	isConnected: boolean;
 	coinType: string;
-	listings: MarketSellListing[];
+	listings: SellListingWithName[];
 	buyOrders: BuyOrderWithName[];
 	listingsLoading?: boolean;
 	buyOrdersLoading?: boolean;

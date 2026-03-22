@@ -172,9 +172,18 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.67.2
         version: 5.90.21(react@19.2.4)
+      '@tanstack/react-table':
+        specifier: ^8.21.2
+        version: 8.21.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@tanstack/react-virtual':
+        specifier: ^3.13.22
+        version: 3.13.22(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tehfrontier/chain-shared':
         specifier: workspace:*
         version: link:../../packages/chain-shared
+      lucide-react:
+        specifier: ^0.475.0
+        version: 0.475.0(react@19.2.4)
       react:
         specifier: ^19.0.0
         version: 19.2.4
