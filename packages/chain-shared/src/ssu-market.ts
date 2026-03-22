@@ -400,17 +400,44 @@ export async function querySsuConfig(
 		if (!obj.json) return null;
 
 		const fields = obj.json;
+		const marketId = parseOptionId(fields.market_id);
 		return {
 			objectId: ssuConfigId,
 			owner: String(fields.owner ?? ""),
 			ssuId: String(fields.ssu_id ?? ""),
 			delegates: ((fields.delegates as unknown[]) ?? []).map(String),
-			marketId: fields.market_id ? String(fields.market_id) : null,
+			marketId,
 			isPublic: fields.is_public === true,
 		};
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Parse an Option<ID> field from Sui GraphQL contents.json.
+ * Option<T> in Move is `{ vec: vector<T> }`, serialized as:
+ * - Unwrapped: "0xABC" (Some) or null (None)
+ * - Array form: ["0xABC"] (Some) or [] (None)
+ * - Object form: { vec: ["0xABC"] } or { Some: "0xABC" } (Some)
+ *                { vec: [] } or {} (None)
+ */
+function parseOptionId(raw: unknown): string | null {
+	if (!raw) return null;
+	if (typeof raw === "string") return raw || null;
+	if (Array.isArray(raw)) return raw.length > 0 ? String(raw[0]) : null;
+	if (typeof raw === "object" && raw !== null) {
+		const obj = raw as Record<string, unknown>;
+		// { Some: value } wrapper
+		const some = obj.Some ?? obj.some;
+		if (some) return typeof some === "string" ? some : String(some);
+		// { vec: [value] } Move internal
+		if ("vec" in obj) {
+			const vec = obj.vec;
+			if (Array.isArray(vec)) return vec.length > 0 ? String(vec[0]) : null;
+		}
+	}
+	return String(raw) || null;
 }
 
 // ── Visibility Management ──────────────────────────────────────────────────

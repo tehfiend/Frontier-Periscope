@@ -113,14 +113,16 @@ export function CharacterSwitcher() {
 		[allCharacters, tenant],
 	);
 
-	// Reset selection when active character doesn't belong to this server
+	// Reset selection only if the character was deleted (not found in any tenant).
+	// Don't reset based on tenant filtering -- tenant setting may still be loading.
 	useEffect(() => {
 		if (activeCharacterId === "all") return;
-		const stillValid = filteredCharacters.some((c) => c.id === activeCharacterId);
-		if (!stillValid) {
+		if (allCharacters.length === 0) return;
+		const exists = allCharacters.some((c) => c.id === activeCharacterId);
+		if (!exists) {
 			setActiveCharacterId("all");
 		}
-	}, [activeCharacterId, filteredCharacters, setActiveCharacterId]);
+	}, [activeCharacterId, allCharacters, setActiveCharacterId]);
 
 	// Close dropdown on outside click
 	useEffect(() => {

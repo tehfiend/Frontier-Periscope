@@ -2,18 +2,18 @@
 
 **Status:** Active
 **Created:** 2026-03-15
-**Updated:** 2026-03-19 (v9: Plans 20+21 executed -- unified Market<T>, SsuConfig, dApp consolidation, code review fixes. 12 days remaining)
+**Updated:** 2026-03-21 (v10: Plan status fixes, Plans 22-24 added. 10 days remaining)
 **Module:** multi
 
 ## Overview
 
 The EVE Frontier x Sui Hackathon ("A Toolkit for Civilization") runs March 11-31, 2026, with an $80K prize pool. Community voting follows April 1-15, judging April 15-22, and winners announced April 24. With 12 days remaining (March 19 to March 31), this plan maps what has been built, what remains, and the critical path to a compelling hackathon submission.
 
-The project has made substantial progress: 16 Move packages (13 project contracts + 2 CCP world packages + token_template, all project contracts published to Sui testnet), a 110-file Periscope SPA with 27 views, a standalone SSU dApp (with two-card layout, inventory transfers, and Market tab) and SSU Market dApp, governance.move still deployed on-chain (org claims still work via deployed package), and a full chain-shared package with TX builders for every contract. The monorepo infrastructure is solid (Turborepo, pnpm, Biome, 4 shared packages). Since v8: Plans 20 (Consolidate dApps) and 21 (Market Architecture Simplification) fully executed -- 3 contracts deleted (governance_ext, currency_market, governance sources), 1 new contract published (market), ssu_market republished with SsuConfig architecture, chain-shared rewritten for unified Market<T>, Periscope views consolidated (~2600 LOC removed), ssu-dapp Market tab added, full code review with fixes. All feature implementation is done.
+The project has made substantial progress: 16 Move packages (13 project contracts + 2 CCP world packages + token_template, all project contracts published to Sui testnet), a 112-file Periscope SPA with 27 views, a standalone SSU dApp (with two-card layout, inventory transfers, and Market tab) and SSU Market dApp, governance.move still deployed on-chain (org claims still work via deployed package), and a full chain-shared package with TX builders for every contract. The monorepo infrastructure is solid (Turborepo, pnpm, Biome, 4 shared packages). Since v8: Plans 20 (Consolidate dApps) and 21 (Market Architecture Simplification) fully executed -- 3 contracts deleted (governance_ext, currency_market, governance sources), 1 new contract published (market), ssu_market republished with SsuConfig architecture, chain-shared rewritten for unified Market<T>, Periscope views consolidated (~2600 LOC removed), ssu-dapp Market tab added, full code review with fixes. All feature implementation is done.
 
 **Standalone-first approach:** Periscope is a fully client-side SPA -- no backend server required. Currency creation uses in-browser WASM bytecode patching (`buildPublishToken` via `@mysten/move-bytecode-template`), all governance TX builders run in-browser, and the user's wallet (EVE Vault) handles signing and gas. The gas station is an **optional enhancement** for custom turret package compilation only -- it is not on the critical path.
 
-The hackathon theme is "A Toolkit for Civilization." The strongest submission angle is the unified Market<T> economy system (Plan 21) combined with the Periscope intel tool, the standalone SSU dApps (with SsuConfig-linked Market tab and full inter-slot transfers), and the shared ACL registry (Plan 16). All 21 feature plans are either complete/archived or deferred. The critical path is now: **test standalone E2E flows -> polish UI -> record demo -> submit.**
+The hackathon theme is "A Toolkit for Civilization." The strongest submission angle is the unified Market<T> economy system (Plan 21) combined with the Periscope intel tool, the standalone SSU dApps (with SsuConfig-linked Market tab and full inter-slot transfers), and the shared ACL registry (Plan 16). All 24 feature plans are either complete/archived, ready for execution, or deferred. The critical path is now: **test standalone E2E flows -> polish UI -> record demo -> submit.**
 
 ## Current State -- Module Audit
 
@@ -44,9 +44,9 @@ All contracts are located in `contracts/` with one `sources/` directory each.
 **Key gaps:**
 - `exchange` lacks `match_orders()` (deferred, not critical for hackathon)
 
-### apps/periscope/ -- Frontier Periscope Intel Tool (110 source files)
+### apps/periscope/ -- Frontier Periscope Intel Tool (112 source files)
 
-The primary deliverable. 27 views across 30 routes (including redirects), IndexedDB with 19 schema versions, dark theme SPA. **Fully standalone -- no backend required.**
+The primary deliverable. 27 views across 31 routes (including redirects), IndexedDB with 19 schema versions, dark theme SPA. **Fully standalone -- no backend required.**
 
 **Views -- Fully Functional (have real logic, DB queries, UI):**
 | View | Lines | Key Features |
@@ -95,7 +95,7 @@ The primary deliverable. 27 views across 30 routes (including redirects), Indexe
 - 7 new transfer functions added to both contracts: `admin_to_escrow`, `admin_from_escrow`, `admin_to_player`, `admin_escrow_to_player`, `admin_escrow_to_self`, `player_to_escrow`, `player_to_owner`
 - `contracts/world_stillness/` created as local World dependency for Stillness contract builds
 - ssu-dapp TransferDialog fully wired: market-routed transfers, admin PTBs (no cap borrow), player PTBs (cap borrow + market deposit)
-- New ssu-dapp hooks: `useMarketConfig.ts`, `useCharacterSearch.ts`
+- New ssu-dapp hooks: `useSsuConfig.ts`, `useCharacterSearch.ts`
 - Updated `packages/chain-shared/src/config.ts` with new `ssuMarket.packageId` values for both tenants
 
 **Changes from v6 -> v7:**
@@ -123,7 +123,7 @@ The primary deliverable. 27 views across 30 routes (including redirects), Indexe
 
 ### apps/ssu-market-dapp/ -- SSU Market Trading dApp
 
-Standalone Vite + React dApp for SSU marketplace interactions. Deployed at port 3200. Uses `@mysten/dapp-kit-react` with EVE Vault. Components: `MarketView`, `OwnerView`, `BuyerView`, `ListingCard`, `ListingForm`. Has hooks for market config, listings, inventory, and sign+execute. **Updated (plan 16):** Now includes `CurrencyMarketView`, `MarketBrowser`, `PostSellListing`, `PostBuyOrder` components for browsing and interacting with currency markets. Routes between SSU market mode (`?configId=`) and currency market mode (`?marketId=`).
+Standalone Vite + React dApp for SSU marketplace interactions. Deployed at port 3200. Uses `@mysten/dapp-kit-react` with EVE Vault. Components: `MarketView`, `OwnerView`, `BuyerView`, `ListingCard`, `ListingForm`. Has hooks for market config, listings, inventory, and sign+execute. **Updated (plan 16):** Now includes `MarketBrowser`, `MarketDetail`, `PostSellListing`, `PostBuyOrder` components for browsing and interacting with currency markets. Routes between SSU market mode (`?configId=`) and currency market mode (`?marketId=`).
 
 ### apps/ssu-dapp/ -- Default SSU Viewer -- COMPLETE
 
@@ -154,7 +154,7 @@ Functional standalone ACL editor with EVE Vault config. **Updated (plan 16 phase
 | 02 -- Phases 0-5 | `superseded/` | Superseded | ~40% | Superseded by Plans 03, 04, 06 |
 | 03 -- Turret Config + Sponsored TX | `archive/` | Complete | 100% | None |
 | 04 -- Governance System | `archive/` | Complete | ~95% | Cleanup only (low priority) |
-| 05 -- Governance Phase 2 | `pending/` | Draft | 0% | Post-hackathon |
+| 05 -- Governance Phase 2 | `superseded/` | Draft | 0% | Post-hackathon |
 | 06 -- Market & Currency System | `archive/` | Complete | 100% | None |
 | **07 -- Hackathon Remaining Work** | `active/` | **This plan** | -- | -- |
 | 08 -- Trade Page Improvements | `archive/` | Complete | 100% | None |
@@ -166,11 +166,14 @@ Functional standalone ACL editor with EVE Vault config. **Updated (plan 16 phase
 | 14 -- Structure Locations | `archive/` | Complete | 100% | None |
 | 15 -- Sonar Restructure | `archive/` | Complete | 100% | None |
 | 16 -- ACL Market Standardization | `archive/` | Complete | 100% | Contracts published, dApp UIs done |
-| 17 -- App Deployment | `pending/` | Partially superseded | ~20% | Cloudflare Pages approach chosen; server app phases moot |
+| 17 -- App Deployment | `pending/` | Partially Superseded | ~20% | Cloudflare Pages approach chosen; server app phases moot |
 | 18 -- Solar System Data | `archive/` | Complete | 100% | None |
 | **19 -- SSU Inventory Transfers** | `archive/` | Complete | 100% | None |
 | 20 -- Consolidate dApps | `archive/` | Complete | 100% | None |
 | 21 -- Market Architecture | `archive/` | Complete | 100% | None |
+| 22 -- Market Buy Order Improvements | `active/` | Ready | ~0% | Adds buy order timestamps, original_quantity, fee fix, bigint pricing, is_public on SsuConfig |
+| 23 -- Private Map System | `active/` | Ready | ~0% | Encrypted location sharing via on-chain maps with invite-based key distribution |
+| 24 -- Manifest Public Locations | `active/` | Ready | ~0% | Cache LocationRevealedEvent data in Periscope manifest |
 
 ## Remaining Work
 
@@ -182,7 +185,7 @@ These items are required for a functional standalone demo.
 
 2. ~~**Publish `governance_ext` to testnet**~~ **DONE** -- Published at `0x670b84...bec349`.
 
-3. ~~**UI polish: ServerSwitcher + Wallet + lazy-load + cleanup**~~ **DONE** -- ServerSwitcher moved to Manifest, Wallet view created, 12 views lazy-loaded, TenantSwitcher deleted.
+3. ~~**UI polish: ServerSwitcher + Wallet + lazy-load + cleanup**~~ **DONE** -- ServerSwitcher moved to Manifest, Wallet view created, 9 views lazy-loaded, TenantSwitcher deleted.
 
 4. ~~**Fix pre-existing TS errors**~~ **DONE** -- GovernanceFinance `signAndExecute` API fixed, GovernanceTurrets/TurretConfig owner type fixed.
 
@@ -319,7 +322,7 @@ All tracked feature plans have been implemented:
 |------|--------|-------------|
 | `packages/chain-shared/src/config.ts` | ~~MODIFY~~ DONE | `governanceExt.packageId` filled for stillness + utopia |
 | `apps/periscope/src/components/TenantSwitcher.tsx` | ~~DELETE~~ DONE | Dead code removed |
-| `apps/periscope/src/router.tsx` | ~~MODIFY~~ DONE | 12 views lazy-loaded, Sonar/Bridge/Killmails routes added, Radar removed |
+| `apps/periscope/src/router.tsx` | ~~MODIFY~~ DONE | 9 views lazy-loaded, Sonar/Bridge/Killmails routes added, Radar removed |
 | `apps/periscope/src/views/Finance.tsx` | ~~FIX~~ DONE | Replaces GovernanceFinance.tsx. signAndExecute API fixed (waitForTransaction pattern) |
 | `apps/periscope/src/views/GovernanceTurrets.tsx` | ~~FIX~~ DONE | owner type assertion fixed |
 | `apps/periscope/src/views/TurretConfig.tsx` | ~~FIX~~ DONE | owner type assertion fixed |
@@ -353,7 +356,7 @@ All tracked feature plans have been implemented:
 | `contracts/ssu_market/sources/ssu_market.move` | DONE | 7 transfer functions + assert_admin + TransferEvent (plan 19) |
 | `contracts/ssu_market_utopia/sources/ssu_market.move` | DONE | Same transfer functions (utopia copy, plan 19) |
 | `contracts/world_stillness/` | DONE | Local World package dependency for Stillness builds (plan 19) |
-| `apps/ssu-dapp/src/hooks/useMarketConfig.ts` | DONE | Discover + query MarketConfig for SSU (plan 19) |
+| `apps/ssu-dapp/src/hooks/useSsuConfig.ts` | DONE | Discover + query MarketConfig for SSU (plan 19) |
 | `apps/ssu-dapp/src/hooks/useCharacterSearch.ts` | DONE | Character name search for admin transfers (plan 19) |
 | `apps/ssu-dapp/src/components/TransferDialog.tsx` | DONE | Role-aware market PTB builders + character search UI (plan 19) |
 | `apps/ssu-dapp/src/views/SsuView.tsx` | DONE | Integrated useMarketConfig, passes market info to TransferContext (plan 19) |
@@ -384,5 +387,5 @@ All tracked feature plans have been implemented:
 - **Exchange order matching** -- DEX without matching is limited. Stretch goal.
 - **Gate integration with governance tiers** -- Requires CCP clarification. Plan 05.
 - **Turret shared ACL** -- SharedAcl struct supports turrets conceptually, but turret priority uses a fundamentally different execution model (devInspect + OnlineReceipt). Separate follow-up plan needed.
-- **Periscope integration of shared ACL/currency market** -- Contracts are now published. Could add governance views in Periscope for managing shared ACLs and currency market activity. Low priority -- standalone dApps already cover these flows.
+- **Periscope integration of shared ACL** -- Contracts are now published. Could add governance views in Periscope for managing shared ACLs. Low priority -- standalone dApps already cover these flows.
 - **P2P sync** -- Removed from Periscope (commit `0061f5d`). Plan 05 Phase 2d Step 3 referencing P2P sync is stale.

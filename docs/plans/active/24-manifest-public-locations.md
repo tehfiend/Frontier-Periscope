@@ -28,7 +28,7 @@ By caching these events locally, Periscope gains a persistent map of all publicl
 ### LocationRevealedEvent
 
 - **Move Type:** `{worldPkg}::location::LocationRevealedEvent`
-- **Module:** `world::location` (documented in `docs/chain-events-reference.md` lines 456-473 and `docs/world-contracts-reference.md` lines 856-859)
+- **Module:** `world::location` (documented in `docs/chain-events-reference.md` lines 456-474 and `docs/world-contracts-reference.md` lines 890-900)
 - **Fields:** `assembly_id` (ID), `assembly_key` (TenantItemId), `type_id` (u64), `owner_cap_id` (ID), `location_hash` (vector<u8>), `solarsystem` (u64), `x` (String), `y` (String), `z` (String)
 - **Note:** The x, y, z coordinates are strings that support negative values (e.g. "-123456789")
 - **Emission:** When admin/game server publishes coordinates on-chain (v0.0.18 feature)
@@ -37,7 +37,7 @@ By caching these events locally, Periscope gains a persistent map of all publicl
 
 - **Struct:** `LocationRegistry has key { id: UID, locations: Table<ID, Coordinates> }`
 - **Coordinates:** `{ solarsystem: u64, x: String, y: String, z: String }`
-- **Read access:** `get_location(registry, assembly_id): Option<Coordinates>` (documented in `docs/world-contracts-reference.md` line 871)
+- **Read access:** `get_location(registry, assembly_id): Option<Coordinates>` (documented in `docs/world-contracts-reference.md` line 942)
 
 ### L-Point Computation
 
@@ -51,7 +51,7 @@ By caching these events locally, Periscope gains a persistent map of all publicl
 
 - **Plan 22** (`docs/plans/active/22-market-buy-order-improvements.md`) -- Adds `is_public: bool` to `SsuConfig`. Cross-market queries for public SSU listings will need location data, which this manifest cache provides.
 
-- **Plan 23** (`docs/plans/pending/23-private-map-system.md`) -- Encrypted private location sharing. Complementary to this plan's public location cache.
+- **Plan 23** (`docs/plans/active/23-private-map-system.md`) -- Encrypted private location sharing. Complementary to this plan's public location cache.
 
 ## Target State
 
@@ -96,7 +96,7 @@ export interface ManifestLocation {
 - `x`, `y`, `z` (String) -> `x`, `y`, `z` (string, kept as-is)
 - Event timestamp -> `revealedAt`
 
-The `assembly_key` field is a `TenantItemId` struct (`{ item_id: u64, tenant: String }` -- see `docs/world-contracts-reference.md` line 776). It will be parsed as a JSON object in the event's `parsedJson`, following the same pattern used in `discoverCharactersFromEvents()` (line 203 of `manifest.ts`).
+The `assembly_key` field is a `TenantItemId` struct (`{ item_id: u64, tenant: String }` -- see `docs/world-contracts-reference.md` line 782). It will be parsed as a JSON object in the event's `parsedJson`, following the same pattern used in `discoverCharactersFromEvents()` (line 203 of `manifest.ts`).
 
 ### Dexie Table
 
@@ -158,16 +158,18 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 
 ### Phase 1: Data Model + Event Discovery
 
-1. **Add `ManifestLocation` interface** to `apps/periscope/src/db/types.ts` after the `ManifestTribe` interface (after line 452). Include all fields as specified in the Target State section above.
+1. **Add missing assembly type IDs** to `ASSEMBLY_TYPE_IDS` in `apps/periscope/src/chain/config.ts`: add Gate types (88086 "Mini Gate", 84955 "Heavy Gate") and Turret types (92279 "Mini Turret", 92401 "Turret", 92404 "Heavy Turret"). Also add a fallback in the Locations tab renderer (Phase 4) to display the raw `typeId` number when no name is found in the map, so unknown types are still visible rather than blank.
 
-2. **Add `manifestLocations` table declaration** to `apps/periscope/src/db/index.ts`:
+2. **Add `ManifestLocation` interface** to `apps/periscope/src/db/types.ts` after the `ManifestTribe` interface (after line 452). Include all fields as specified in the Target State section above.
+
+3. **Add `manifestLocations` table declaration** to `apps/periscope/src/db/index.ts`:
    - Add `ManifestLocation` to the import list (line 25 area)
    - Add class body declaration: `manifestLocations!: EntityTable<ManifestLocation, "id">;` (after line 91)
    - Add V23 store definition after V22, before the constructor closing brace (between lines 483 and 484): `this.version(23).stores({ manifestLocations: "id, solarsystem, typeId, tenant, cachedAt" });`
 
-3. **Add `LocationRevealed` to `getEventTypes()`** in `apps/periscope/src/chain/config.ts` (inside the return object, after the ItemBurned line): `LocationRevealed: \`${pkg}::location::LocationRevealedEvent\``
+4. **Add `LocationRevealed` to `getEventTypes()`** in `apps/periscope/src/chain/config.ts` (inside the return object, after the ItemBurned line): `LocationRevealed: \`${pkg}::location::LocationRevealedEvent\``
 
-4. **Create `discoverLocationsFromEvents()`** in `apps/periscope/src/chain/manifest.ts`:
+5. **Create `discoverLocationsFromEvents()`** in `apps/periscope/src/chain/manifest.ts`:
    - Signature: `export async function discoverLocationsFromEvents(client: SuiGraphQLClient, tenant: TenantId, worldPkg: string, limit?: number, ctx?: TaskContext): Promise<number>`
    - Follow the `discoverCharactersFromEvents()` pattern (lines 137-283) but simpler (no Phase 2 name resolution needed)
    - Event type: `${worldPkg}::location::LocationRevealedEvent`
@@ -183,11 +185,12 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
    - Set `revealedAt` from `new Date(Number(event.timestampMs)).toISOString()`
    - Set `cachedAt` from `new Date().toISOString()`
    - Use `db.manifestLocations.put()` to upsert (same structure re-revealed = overwrite)
-   - Include cursor migration logic (detect old JSON-RPC format objects, discard and re-sync)
+   - When updating an existing manifest location (re-reveal with changed coordinates), clear the `lPoint` field (`lPoint: undefined`) so the L-point resolution pass will recompute it
+   - Since `manifestLocCursor` is a brand-new cursor key, old-format migration is unnecessary. Skip the cursor format detection -- use GraphQL cursor format directly.
    - Use `TaskContext` for progress reporting: `setProgress()` and `setItems()`
    - Return count of new/updated locations
 
-5. **Add `ManifestLocation` to manifest.ts imports** (line 16, add to the existing `import type { ... } from "@/db/types"` statement)
+6. **Add `ManifestLocation` to manifest.ts imports** (line 16, add to the existing `import type { ... } from "@/db/types"` statement)
 
 ### Phase 2: L-Point Resolution
 
@@ -220,13 +223,14 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 ### Phase 3: Deployable Auto-Population
 
 1. **Add `crossReferenceManifestLocations()` to `apps/periscope/src/chain/manifest.ts`**:
-   - Query all manifest locations via `db.manifestLocations.toArray()`
+   - Signature: `export async function crossReferenceManifestLocations(locationIds: string[]): Promise<number>` -- accepts the list of newly discovered/updated location IDs from the current discovery pass
+   - Query only the specified manifest locations via `db.manifestLocations.bulkGet(locationIds)` instead of scanning the entire table. This avoids O(N*M) scanning on each sync.
    - For each location, check if a deployable exists with matching `objectId` (via `db.deployables.where("objectId").equals(loc.id).first()` -- the manifest location `id` is the assembly's Sui object ID, which matches the deployable's `objectId` field)
    - Also check assemblies via `db.assemblies.where("objectId").equals(loc.id).first()`
    - If found and the deployable/assembly lacks `systemId` or `lPoint`, update it: `db.deployables.update(dep.id, { systemId: loc.solarsystem, lPoint: loc.lPoint, updatedAt: new Date().toISOString() })`
    - This bridges the manifest cache to the user's structure inventory
 
-2. **Call `crossReferenceManifestLocations()` at the end of `discoverLocationsFromEvents()`** (after L-point resolution)
+2. **Call `crossReferenceManifestLocations(newLocationIds)` at the end of `discoverLocationsFromEvents()`** (after L-point resolution), passing the list of location IDs that were discovered or updated in this pass
 
 ### Phase 4: Manifest UI -- Locations Tab
 
@@ -264,7 +268,7 @@ The `Manifest.tsx` view gains a third "Locations" tab showing:
 |------|--------|-------------|
 | `apps/periscope/src/db/types.ts` | Modify | Add `ManifestLocation` interface after `ManifestTribe` |
 | `apps/periscope/src/db/index.ts` | Modify | Import `ManifestLocation`, add class declaration, add V23 store |
-| `apps/periscope/src/chain/config.ts` | Modify | Add `LocationRevealed` to `getEventTypes()` return object |
+| `apps/periscope/src/chain/config.ts` | Modify | Add Gate (88086, 84955) and Turret (92279, 92401, 92404) type IDs to `ASSEMBLY_TYPE_IDS`; add `LocationRevealed` to `getEventTypes()` return object |
 | `apps/periscope/src/chain/manifest.ts` | Modify | Add `discoverLocationsFromEvents()`, `resolveManifestLocationLPoints()`, `crossReferenceManifestLocations()`, import ManifestLocation |
 | `apps/periscope/src/lib/lpoints.ts` | Modify | Add `resolveNearestLPoint()` function and Celestial import |
 | `apps/periscope/src/views/Manifest.tsx` | Modify | Add Locations tab, location columns, location discovery handler, location DataGrid |

@@ -1,3 +1,4 @@
+import { useCoinMetadata } from "@/hooks/useCoinMetadata";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
@@ -7,6 +8,7 @@ import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import {
 	type MarketSellListing,
 	buildBuyFromListing,
+	formatBaseUnits,
 	queryOwnedCoins,
 } from "@tehfrontier/chain-shared";
 import { useQuery } from "@tanstack/react-query";
@@ -36,6 +38,8 @@ export function ListingCard({
 	const account = useCurrentAccount();
 	const suiClient = useSuiClient();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
+	const { data: coinMeta } = useCoinMetadata(coinType);
+	const decimals = coinMeta?.decimals ?? 9;
 
 	const { data: itemName } = useQuery({
 		queryKey: ["typeName", listing.typeId],
@@ -99,7 +103,7 @@ export function ListingCard({
 				</div>
 				<div className="text-right">
 					<p className="text-sm font-medium text-cyan-400">
-						{listing.pricePerUnit.toString()}
+						{formatBaseUnits(listing.pricePerUnit, decimals)}
 					</p>
 					<p className="text-xs text-zinc-500">per unit</p>
 				</div>
@@ -131,7 +135,7 @@ export function ListingCard({
 					className="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-600 focus:outline-none"
 				/>
 				<span className="text-xs text-zinc-500">
-					= {totalPrice.toString()} total
+					= {formatBaseUnits(totalPrice, decimals)} total
 				</span>
 				<div className="flex-1" />
 				{canBuy && (

@@ -14,6 +14,7 @@ export interface SsuConfigResult {
 	marketId: string | null;
 	/** Coin type from the linked Market<T>, e.g. "0xabc::ISK_TOKEN::ISK_TOKEN" */
 	coinType: string | null;
+	/** SSU Market package ID (latest version for ssu_market calls). */
 	packageId: string;
 	isPublic: boolean;
 }

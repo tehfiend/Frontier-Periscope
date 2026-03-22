@@ -1,7 +1,8 @@
+import { useCoinMetadata } from "@/hooks/useCoinMetadata";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import { useCurrentAccount, useCurrentClient } from "@mysten/dapp-kit-react";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import { buildPostBuyOrder, queryOwnedCoins } from "@tehfrontier/chain-shared";
+import { buildPostBuyOrder, formatBaseUnits, parseDisplayPrice, queryOwnedCoins } from "@tehfrontier/chain-shared";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -25,6 +26,9 @@ export function PostBuyOrderForm({
 	const client = useCurrentClient() as SuiGraphQLClient;
 	const { mutateAsync, isPending } = useSignAndExecute();
 
+	const { data: coinMeta } = useCoinMetadata(coinType);
+	const decimals = coinMeta?.decimals ?? 9;
+
 	const [typeId, setTypeId] = useState("");
 	const [pricePerUnit, setPricePerUnit] = useState("");
 	const [quantity, setQuantity] = useState("");
@@ -39,7 +43,7 @@ export function PostBuyOrderForm({
 		enabled: !!account?.address && !!coinType,
 	});
 
-	const priceBase = BigInt(pricePerUnit || 0);
+	const priceBase = parseDisplayPrice(pricePerUnit || "0", decimals);
 	const qtyNum = Number(quantity || 0);
 	const totalBaseUnits = priceBase * BigInt(qtyNum || 0);
 	const totalBalance = ownedCoins?.reduce((sum, c) => sum + c.balance, 0n) ?? 0n;
@@ -99,7 +103,7 @@ export function PostBuyOrderForm({
 						<p className="py-1 text-[10px] text-amber-400">No coins found</p>
 					) : (
 						<div className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-300">
-							{totalBalance.toString()} base units
+							{formatBaseUnits(totalBalance, decimals)}
 							{totalBaseUnits > 0n && totalBalance < totalBaseUnits && (
 								<span className="ml-2 text-red-400">(insufficient)</span>
 							)}
@@ -141,7 +145,7 @@ export function PostBuyOrderForm({
 				</div>
 				{totalBaseUnits > 0n && (
 					<p className="text-[10px] text-zinc-500">
-						Total escrow required: {totalBaseUnits.toString()}
+						Total escrow required: {formatBaseUnits(totalBaseUnits, decimals)}
 					</p>
 				)}
 			</div>

@@ -261,6 +261,18 @@ importers:
       '@mysten/sui':
         specifier: ^2.7.0
         version: 2.8.0(typescript@5.9.3)
+      '@noble/curves':
+        specifier: ^1.8.0
+        version: 1.9.7
+      '@noble/hashes':
+        specifier: ^1.7.2
+        version: 1.8.0
+      tweetnacl:
+        specifier: ^1.0.3
+        version: 1.0.3
+      tweetnacl-sealedbox-js:
+        specifier: ^1.2.0
+        version: 1.2.0
     devDependencies:
       '@tehfrontier/tsconfig':
         specifier: workspace:*
@@ -1329,6 +1341,10 @@ packages:
       nanostores: ^1.2.0
       react: '>=18.0.0'
 
+  '@noble/curves@1.9.7':
+    resolution: {integrity: sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==}
+    engines: {node: ^14.21.3 || >=16}
+
   '@noble/curves@2.0.1':
     resolution: {integrity: sha512-vs1Az2OOTBiP4q0pwjW5aF0xp9n4MxVrmkFBxc6EKZc6ddYx5gaZiAsZoq0uRRXWbi3AT/sBqn05eRPtn1JCPw==}
     engines: {node: '>= 20.19.0'}
@@ -1903,6 +1919,9 @@ packages:
 
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
+
+  blakejs@1.2.1:
+    resolution: {integrity: sha512-QXUSXI3QVc/gJME0dBpXrag1kbzOqCjCX8/b54ntNyW6sjtoqxqRk3LTmXzaJoh71zMsDCjM+47jS7XiwN/+fQ==}
 
   brace-expansion@2.0.2:
     resolution: {integrity: sha512-Jt0vHyM+jmUBqojB7E1NIYadt0vI0Qxjxd2TErW94wDz+E2LAm5vKMXXwg6ZZBTHPuUlDgQHKXvjGBdfcF1ZDQ==}
@@ -2958,6 +2977,12 @@ packages:
   turbo@2.8.16:
     resolution: {integrity: sha512-u6e9e3cTTpE2adQ1DYm3A3r8y3LAONEx1jYvJx6eIgSY4bMLxIxs0riWzI0Z/IK903ikiUzRPZ2c1Ph5lVLkhA==}
     hasBin: true
+
+  tweetnacl-sealedbox-js@1.2.0:
+    resolution: {integrity: sha512-QoCr8K2hwri+ky7SUa22oSre8g88XaWi0hwwWd16pJMuDyn5gL/UyE0PyR2EOFEMJ70T2trJ9+Sv+Qa18olEmQ==}
+
+  tweetnacl@1.0.3:
+    resolution: {integrity: sha512-6rt+RN7aOi1nGMyC4Xa5DdYiukl2UWCbcJft7YhxReBGQD7OAM8Pbxw6YMo4r2diNEA8FEmu32YOn9rhaiE5yw==}
 
   type-fest@0.16.0:
     resolution: {integrity: sha512-eaBzG6MxNzEn9kiwvtre90cXaNLkmadMWa1zQMs3XORCXNbsH/OewwbxC5ia9dCxIxnTAsSxXJaa/p5y8DlvJg==}
@@ -4267,6 +4292,10 @@ snapshots:
       nanostores: 1.2.0
       react: 19.2.4
 
+  '@noble/curves@1.9.7':
+    dependencies:
+      '@noble/hashes': 1.8.0
+
   '@noble/curves@2.0.1':
     dependencies:
       '@noble/hashes': 2.0.1
@@ -4822,6 +4851,8 @@ snapshots:
   bidi-js@1.0.3:
     dependencies:
       require-from-string: 2.0.2
+
+  blakejs@1.2.1: {}
 
   brace-expansion@2.0.2:
     dependencies:
@@ -5992,6 +6023,13 @@ snapshots:
       turbo-linux-arm64: 2.8.16
       turbo-windows-64: 2.8.16
       turbo-windows-arm64: 2.8.16
+
+  tweetnacl-sealedbox-js@1.2.0:
+    dependencies:
+      blakejs: 1.2.1
+      tweetnacl: 1.0.3
+
+  tweetnacl@1.0.3: {}
 
   type-fest@0.16.0: {}
 

@@ -475,11 +475,7 @@ export function Deployables() {
 					senderAddress: account.address,
 				});
 
-				if (sponsorAvailable) {
-					await executeSponsored(tx);
-				} else {
-					await signAndExecute({ transaction: tx });
-				}
+				await signAndExecute({ transaction: tx });
 
 				// Update local DB on success
 				await db.deployables.update(row.id, {

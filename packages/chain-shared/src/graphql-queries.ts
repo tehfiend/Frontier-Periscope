@@ -152,6 +152,12 @@ export async function listDynamicFieldsGql(
 
 // ── Coin List Query ─────────────────────────────────────────────────────────
 
+/** Normalize a short Sui address to the full 64-hex-char canonical form. */
+function normalizeAddress(addr: string): string {
+	const hex = addr.startsWith("0x") ? addr.slice(2) : addr;
+	return `0x${hex.padStart(64, "0")}`;
+}
+
 const LIST_COINS = `
 	query($owner: SuiAddress!, $coinObjectType: String!, $first: Int, $after: String) {
 		address(address: $owner) {
@@ -180,8 +186,8 @@ interface GqlCoinsResponse {
 
 /**
  * List coins owned by an address via objects query.
- * The Sui GraphQL API no longer has a dedicated `coins` field --
- * coins are queried as objects of type `0x2::coin::Coin<T>`.
+ * The type filter requires the full canonical address form (64 hex chars)
+ * for the 0x2::coin::Coin wrapper, so we normalize it.
  */
 export async function listCoinsGql(
 	client: SuiGraphQLClient,
@@ -193,7 +199,11 @@ export async function listCoinsGql(
 	hasNextPage: boolean;
 	cursor: string | null;
 }> {
-	const coinObjectType = `0x2::coin::Coin<${coinType}>`;
+	// Normalize all addresses in the type string to canonical form.
+	// The coinType from type.repr already uses canonical addresses,
+	// but the 0x2 Coin wrapper needs normalization too.
+	const normalizedCoinType = coinType.replace(/0x[0-9a-fA-F]+(?=::)/g, (m) => normalizeAddress(m));
+	const coinObjectType = `${normalizeAddress("0x2")}::coin::Coin<${normalizedCoinType}>`;
 
 	const result = await client.query<
 		GqlCoinsResponse,
@@ -379,6 +389,106 @@ export async function getDynamicFieldJson(
 	}
 
 	return null;
+}
+
+// ── Wallet Transaction Queries ──────────────────────────────────────────────
+
+const QUERY_WALLET_TRANSACTIONS = `
+	query($addr: SuiAddress!, $last: Int, $before: String) {
+		transactions(last: $last, before: $before, filter: { affectedAddress: $addr }) {
+			nodes {
+				digest
+				effects {
+					timestamp
+					balanceChanges {
+						nodes {
+							owner { address }
+							coinType { repr }
+							amount
+						}
+					}
+				}
+			}
+			pageInfo { hasPreviousPage startCursor }
+		}
+	}
+`;
+
+interface GqlBalanceChangeNode {
+	owner: { address: string } | null;
+	coinType: { repr: string };
+	amount: string;
+}
+
+interface GqlWalletTxResponse {
+	transactions: {
+		nodes: Array<{
+			digest: string;
+			effects: {
+				timestamp: string;
+				balanceChanges: { nodes: GqlBalanceChangeNode[] };
+			};
+		}>;
+		pageInfo: { hasPreviousPage: boolean; startCursor: string | null };
+	};
+}
+
+export interface WalletBalanceChange {
+	coinType: string;
+	amount: string;
+}
+
+export interface WalletTransaction {
+	digest: string;
+	timestampMs: number;
+	balanceChanges: WalletBalanceChange[];
+}
+
+/**
+ * Query a wallet's recent transactions with per-transaction balance changes.
+ * Uses the top-level transactions query with affectedAddress filter.
+ * Filters balance changes to only include those affecting the queried address.
+ */
+export async function queryWalletTransactions(
+	client: SuiGraphQLClient,
+	address: string,
+	opts?: { cursor?: string | null; limit?: number },
+): Promise<{
+	data: WalletTransaction[];
+	hasMore: boolean;
+	nextCursor: string | null;
+}> {
+	const result = await client.query<
+		GqlWalletTxResponse,
+		{ addr: string; last: number; before: string | null }
+	>({
+		query: QUERY_WALLET_TRANSACTIONS,
+		variables: {
+			addr: address,
+			last: opts?.limit ?? 50,
+			before: opts?.cursor ?? null,
+		},
+	});
+
+	const txs = result.data?.transactions;
+	if (!txs) {
+		return { data: [], hasMore: false, nextCursor: null };
+	}
+
+	return {
+		data: txs.nodes.map((node) => ({
+			digest: node.digest,
+			timestampMs: new Date(node.effects.timestamp).getTime(),
+			balanceChanges: node.effects.balanceChanges.nodes
+				.filter((bc) => bc.owner?.address)
+				.map((bc) => ({
+					coinType: bc.coinType.repr,
+					amount: bc.amount,
+				})),
+		})),
+		hasMore: txs.pageInfo.hasPreviousPage,
+		nextCursor: txs.pageInfo.startCursor ?? null,
+	};
 }
 
 // ── Transaction Queries ─────────────────────────────────────────────────────
@@ -568,4 +678,49 @@ export async function getCoinSupply(
 
 	const supply = result.data?.coinMetadata?.supply;
 	return { value: supply ?? "0" };
+}
+
+// ── Coin Metadata Query ─────────────────────────────────────────────────────
+
+const GET_COIN_METADATA = `
+	query($coinType: String!) {
+		coinMetadata(coinType: $coinType) {
+			decimals
+			symbol
+			name
+		}
+	}
+`;
+
+interface GqlCoinMetadataResponse {
+	coinMetadata: { decimals: number; symbol: string; name: string } | null;
+}
+
+export interface CoinMetadata {
+	decimals: number;
+	symbol: string;
+	name: string;
+}
+
+/**
+ * Query coin metadata (decimals, symbol, name) for a coin type.
+ * Returns null if no metadata is found.
+ */
+export async function getCoinMetadata(
+	client: SuiGraphQLClient,
+	coinType: string,
+): Promise<CoinMetadata | null> {
+	const result = await client.query<GqlCoinMetadataResponse, { coinType: string }>({
+		query: GET_COIN_METADATA,
+		variables: { coinType },
+	});
+
+	const meta = result.data?.coinMetadata;
+	if (!meta) return null;
+
+	return {
+		decimals: meta.decimals,
+		symbol: meta.symbol,
+		name: meta.name,
+	};
 }

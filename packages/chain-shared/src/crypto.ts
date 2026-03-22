@@ -16,6 +16,7 @@ import { parseSerializedSignature } from "@mysten/sui/cryptography";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
+// @ts-ignore -- consumers can't resolve src/types/tweetnacl-sealedbox-js.d.ts
 import { open, seal } from "tweetnacl-sealedbox-js";
 
 // ── Key Derivation ──────────────────────────────────────────────────────────
@@ -38,6 +39,9 @@ export function deriveMapKeyFromSignature(signatureBase64: string): {
 } {
 	// Parse the Sui serialized signature to get the raw signature bytes
 	const parsed = parseSerializedSignature(signatureBase64);
+	if (!parsed.signature) {
+		throw new Error("No signature bytes found in serialized signature");
+	}
 	const hash = sha256(parsed.signature);
 	// Use first 32 bytes as seed for X25519 keypair
 	const seed = hash.slice(0, 32);

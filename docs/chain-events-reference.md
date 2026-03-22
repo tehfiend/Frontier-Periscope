@@ -456,21 +456,22 @@ These fire when assembly owners configure extensions on their structures.
 ### LocationRevealedEvent
 - **Module:** `world::location`
 - **Move Type:** `{worldPkg}::location::LocationRevealedEvent`
-- **Emitted When:** Admin publishes coordinates on-chain (temporary feature in v0.0.18)
-- **Sonar Use:** Map structure locations, spatial awareness
-- **Note:** This is a new v0.0.18 feature -- coordinates are now published on-chain
+- **Emitted When:** Game server publishes structure coordinates on-chain after player clicks "Publish Location" in-game
+- **Sonar Use:** Map structure locations, spatial awareness, manifest location cache
+- **Trigger:** Player clicks "Publish Location" in game client -> game server calls `{assembly_type}::reveal_location()` -> verifies `AdminACL` -> stores `Coordinates` in `LocationRegistry` -> emits event
+- **Note:** Available on all assembly types: Assembly, Gate, StorageUnit, Turret, NetworkNode. Admin-only (game server) operation. Coordinates stored permanently in `LocationRegistry` (shared object, `Table<ID, Coordinates>` keyed by assembly object ID). Can be queried via `location::get_location(registry, assembly_id)`.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `assembly_id` | `ID` | Assembly object ID |
 | `assembly_key` | `TenantItemId` | Tenant+item_id |
-| `type_id` | `u64` | Assembly type |
-| `owner_cap_id` | `ID` | Owner cap for this assembly |
-| `location_hash` | `vector<u8>` | Poseidon2 hash |
+| `type_id` | `u64` | Assembly type (77917=SSU, 88086/84955=Gate, etc.) |
+| `owner_cap_id` | `ID` | OwnerCap for this assembly |
+| `location_hash` | `vector<u8>` | Poseidon2 hash of the location |
 | `solarsystem` | `u64` | Solar system ID |
-| `x` | `String` | X coordinate |
-| `y` | `String` | Y coordinate |
-| `z` | `String` | Z coordinate |
+| `x` | `String` | X coordinate (high-precision decimal string) |
+| `y` | `String` | Y coordinate (high-precision decimal string) |
+| `z` | `String` | Z coordinate (high-precision decimal string) |
 
 ---
 

@@ -288,7 +288,7 @@ Both variants (`ssu_market` and `ssu_market_utopia`) get these changes:
        refund_amount: u64,
    }
    ```
-   Update `cancel_buy_order` to read buyer/type_id before removing, compute `refund_amount` from coin value, and emit enriched event.
+   Update `cancel_buy_order`: extract `buyer`, `type_id`, `price_per_unit`, and `quantity` from the order record into local variables BEFORE the `dynamic_field::remove` call, then use those locals in the enriched event emission. Compute `refund_amount` from coin value.
 
 6. **`contracts/market/sources/market.move`** -- Enrich `SellListingPostedEvent` with `posted_at_ms`:
    ```move
@@ -423,6 +423,8 @@ For both `contracts/ssu_market/sources/ssu_market.move` and `contracts/ssu_marke
 
 ### Phase 3: Publish Contracts
 
+**Note:** This phase is executed manually by the developer, not by a worktree agent. The implementation agent handles Phases 1-2, 4-6.
+
 1. **Prepare `contracts/market/Move.toml` for fresh publish** -- Remove `published-at` line and set `market = "0x0"`.
 2. **Publish `market`** -- `sui client publish contracts/market` (fresh publish, not upgrade).
 3. **Update `contracts/market/Move.toml`** -- Set new `published-at` and `market` address from publish output.
@@ -505,7 +507,7 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
        coinType: string,
    ): Promise<CrossMarketListing[]>
    ```
-   Discovers all `Market<coinType>` objects via `queryMarkets`, then queries listings on each. For each listing, discovers the SsuConfig for the listing's `ssuId` to check `isPublic`. Returns only listings at public SSUs, enriched with `marketId`, `coinType`, and `ssuConfigId`.
+   Discovers all `Market<coinType>` objects via `queryMarkets`, then queries listings on each. For each listing, discovers the SsuConfig for the listing's `ssuId` to check `isPublic`. Returns only listings at public SSUs, enriched with `marketId`, `coinType`, and `ssuConfigId`. Deduplicate SsuConfig lookups by `ssuId` -- cache results in a Map to avoid N+1 queries when multiple listings reference the same SSU.
 
 **TX builder updates:**
 
@@ -515,11 +517,24 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
    - Add `tx.object("0x6")` (Clock) as final argument.
    - Change `pricePerUnit` to `bigint`.
 
+   Merge+split pattern for all coin-consuming TX builders:
+   ```typescript
+   // Merge all coins into the first
+   if (params.coinObjectIds.length > 1) {
+       tx.mergeCoins(
+           tx.object(params.coinObjectIds[0]),
+           params.coinObjectIds.slice(1).map(id => tx.object(id)),
+       );
+   }
+   // Split exact payment amount
+   const [payment] = tx.splitCoins(tx.object(params.coinObjectIds[0]), [totalAmount]);
+   ```
+
 9. **`packages/chain-shared/src/market.ts`** -- Update `PostSellListingParams.pricePerUnit` to `bigint`, `UpdateSellListingParams.pricePerUnit` to `bigint`.
 
 10. **`packages/chain-shared/src/ssu-market.ts`** -- Update `buildBuyFromListing`:
     - Change `paymentObjectId: string` to `coinObjectIds: string[]`.
-    - Implement merge pattern: merge all coins into base coin, pass base coin directly.
+    - Implement merge+split pattern (same as `buildPostBuyOrder` above): merge all coins into the first, split exact payment amount, pass the split coin to the move call.
     - Change `pricePerUnit` to `bigint` in `EscrowAndListParams`.
 
 11. **`packages/chain-shared/src/ssu-market.ts`** -- Add visibility TX builder:
@@ -534,6 +549,7 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
     - `ssuMarket.packageId` to new ssu_market package.
     - `ssuMarket.originalPackageId` to new ssu_market package (fresh publish = new original).
     - Add old `originalPackageId` values to `previousOriginalPackageIds`.
+    - Note: Stillness ssu_market config does not currently have `previousOriginalPackageIds` -- add it with the current `originalPackageId` value before updating to the new package ID.
 
 14. **`packages/chain-shared/src/index.ts`** -- Export new types and functions.
 
@@ -554,6 +570,7 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
    - Display "Balance: X SYMBOL" (read-only) instead of dropdown.
    - Warn if `totalBalance < totalBaseUnits` (insufficient balance).
    - Fix line 119: change `pricePerUnit: Number(priceBaseUnits)` to `pricePerUnit: priceBaseUnits` (now bigint).
+   - Replace the `paymentObjectId` validation check with a balance sufficiency check: disable submit when `totalBalance < totalBaseUnits` or when `ownedCoins` is empty.
    - Call `buildPostBuyOrder` with `coinObjectIds: ownedCoins.map(c => c.objectId)` and `totalAmount: totalBaseUnits`.
 
 4. **`apps/ssu-dapp/src/components/ListingCard.tsx`** -- Use merged coin builder + BigInt fixes:
@@ -598,18 +615,36 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
 
 3. **`apps/ssu-market-dapp/src/components/PostSellListingForm.tsx`** -- Change `pricePerUnit: Number(pricePerUnit)` to `pricePerUnit: BigInt(pricePerUnit)`.
 
-4. **`apps/ssu-market-dapp/src/components/ListingCard.tsx`** -- Update:
-   - Add coin merge pattern for buy flow (replace `paymentObjectId: ""`).
-   - Display prices using `formatBaseUnits`.
+4. **Shared utilities for ssu-market-dapp:**
+   - **`apps/ssu-market-dapp/src/lib/coin-format.ts`** (new) -- Copy `formatBaseUnits` and `parseDisplayPrice` from `apps/ssu-dapp/src/lib/coin-format.ts`. These utilities are needed for decimal-aware price display in the ssu-market-dapp components below.
+   - **`apps/ssu-market-dapp/src/hooks/useCoinMetadata.ts`** (new) -- Copy from `apps/ssu-dapp/src/hooks/useCoinMetadata.ts`, replacing `useSuiClient()` with `useCurrentClient() as SuiGraphQLClient` (pattern used in ssu-market-dapp's existing components). Uses `getCoinMetadata` from `@tehfrontier/chain-shared`.
 
-5. **`apps/ssu-market-dapp/src/components/OwnerView.tsx`** -- Change `pricePerUnit: Number(editPrice)` to `pricePerUnit: BigInt(editPrice)`.
+5. **`apps/ssu-market-dapp/src/components/ListingCard.tsx`** -- Update:
+   - Add `coinDecimals: number` and `coinSymbol: string` props to `ListingCardProps`.
+   - Add coin merge pattern for buy flow (replace `paymentObjectId: ""`): import `queryOwnedCoins`, add `useQuery` for owned coins, pass `coinObjectIds: ownedCoins.map(c => c.objectId)` to `buildBuyFromListing`.
+   - `totalPrice` arithmetic: `listing.pricePerUnit * quantity` -> `listing.pricePerUnit * BigInt(quantity)`.
+   - Display prices using `formatBaseUnits(listing.pricePerUnit, coinDecimals)` instead of `.toLocaleString()`.
 
-6. **`apps/ssu-market-dapp/src/components/MarketDetail.tsx`** -- Display improvements:
-   - `listing.pricePerUnit.toLocaleString()` -> proper `formatBaseUnits` call.
-   - `order.pricePerUnit.toLocaleString()` -> proper `formatBaseUnits` call.
+6. **`apps/ssu-market-dapp/src/components/OwnerView.tsx`** -- Updates:
+   - Add `coinDecimals: number` and `coinSymbol: string` props to `OwnerViewProps`.
+   - Change `pricePerUnit: Number(editPrice)` to `pricePerUnit: BigInt(editPrice)`.
+   - Replace `listing.pricePerUnit.toLocaleString()` with `formatBaseUnits(listing.pricePerUnit, coinDecimals)` -- `BigInt.toLocaleString()` does not support the same formatting options as `Number.toLocaleString()`.
+   - Import `formatBaseUnits` from `@/lib/coin-format`.
+
+7. **`apps/ssu-market-dapp/src/components/MarketDetail.tsx`** -- Display improvements:
+   - Add coin metadata query: use `useCoinMetadata` hook (or inline GraphQL query on `market.coinType`) to get `decimals` and `symbol` for the market currency. Pass `coinDecimals` and `coinSymbol` down to inline listing/order renders.
+   - `listing.pricePerUnit.toLocaleString()` -> `formatBaseUnits(listing.pricePerUnit, coinDecimals)`.
+   - `order.pricePerUnit.toLocaleString()` -> `formatBaseUnits(order.pricePerUnit, coinDecimals)`.
+   - `order.pricePerUnit * order.quantity` arithmetic: add `BigInt(order.quantity)` multiplier.
    - Show `originalQuantity` and `postedAtMs` for buy orders.
 
-7. **`apps/periscope/src/chain/config.ts`** -- Update `EXTENSION_TEMPLATES` ssu_market `packageIds` for both tenants.
+8. **`apps/ssu-market-dapp/src/components/MarketView.tsx`** -- Pass coin metadata to child components:
+   - Query coin metadata for the market's coin type (from `config.marketId` -> `MarketInfo.coinType`).
+   - Pass `coinDecimals` and `coinSymbol` to `OwnerView` and through `BuyerView` -> `ListingCard`.
+
+9. **`apps/ssu-market-dapp/src/components/BuyerView.tsx`** -- Add `coinDecimals: number` and `coinSymbol: string` props, pass them to `ListingCard`.
+
+10. **`apps/periscope/src/chain/config.ts`** -- Update `EXTENSION_TEMPLATES` ssu_market `packageIds` for both tenants.
 
 ## File Summary
 
@@ -632,16 +667,21 @@ Note: `token_template/Move.toml` uses `market = { local = "../market" }` and `to
 | `apps/ssu-dapp/src/components/ListingCard.tsx` | Modify | Use merged coin builder, `BigInt` arithmetic |
 | `apps/ssu-dapp/src/components/FillBuyOrderDialog.tsx` | Modify | `BigInt` arithmetic for payment calculation. |
 | `apps/ssu-dapp/src/components/MarketContent.tsx` | Modify | `BigInt`-safe price formatting. |
+| `apps/ssu-dapp/src/components/ListingBuyerList.tsx` | Verify | Verify no changes needed -- delegates to ListingCard which handles bigint |
 | `apps/ssu-dapp/src/components/ListingAdminList.tsx` | Modify | `pricePerUnit` now `bigint`, update `Number()` -> direct pass |
 | `apps/ssu-dapp/src/components/SellDialog.tsx` | Modify | `pricePerUnit` now `bigint` |
 | `apps/ssu-dapp/src/components/VisibilitySettings.tsx` | Create | Simple public/private toggle for SSU admin, optional LocationRegistry coordinate display |
 | `apps/ssu-dapp/src/views/SsuView.tsx` | Modify | Render VisibilitySettings for SSU owners |
 | `apps/ssu-market-dapp/src/lib/constants.ts` | Modify | Update package IDs |
+| `apps/ssu-market-dapp/src/lib/coin-format.ts` | Create | Copy `formatBaseUnits` + `parseDisplayPrice` from ssu-dapp for decimal-aware price display |
+| `apps/ssu-market-dapp/src/hooks/useCoinMetadata.ts` | Create | Copy from ssu-dapp, adapt to use `useCurrentClient()` for coin metadata queries |
 | `apps/ssu-market-dapp/src/components/PostBuyOrderForm.tsx` | Modify | Add coin query + merge, decimal formatting |
 | `apps/ssu-market-dapp/src/components/PostSellListingForm.tsx` | Modify | `pricePerUnit: Number()` -> `BigInt()` |
-| `apps/ssu-market-dapp/src/components/ListingCard.tsx` | Modify | Coin merge for buy, decimal formatting |
-| `apps/ssu-market-dapp/src/components/OwnerView.tsx` | Modify | `pricePerUnit: Number()` -> `BigInt()` |
-| `apps/ssu-market-dapp/src/components/MarketDetail.tsx` | Modify | Decimal-aware price display, show `originalQuantity` + `postedAtMs` for buy orders |
+| `apps/ssu-market-dapp/src/components/ListingCard.tsx` | Modify | Coin merge for buy, decimal formatting, add `coinDecimals`/`coinSymbol` props |
+| `apps/ssu-market-dapp/src/components/OwnerView.tsx` | Modify | `pricePerUnit: Number()` -> `BigInt()`, decimal formatting, add `coinDecimals`/`coinSymbol` props |
+| `apps/ssu-market-dapp/src/components/MarketDetail.tsx` | Modify | Add coin metadata query, decimal-aware price display, BigInt arithmetic, show `originalQuantity` + `postedAtMs` for buy orders |
+| `apps/ssu-market-dapp/src/components/MarketView.tsx` | Modify | Query coin metadata for market currency, pass `coinDecimals`/`coinSymbol` to child components |
+| `apps/ssu-market-dapp/src/components/BuyerView.tsx` | Modify | Add `coinDecimals`/`coinSymbol` props, pass to ListingCard |
 | `apps/periscope/src/chain/config.ts` | Modify | Update EXTENSION_TEMPLATES ssu_market packageIds |
 
 ## Open Questions

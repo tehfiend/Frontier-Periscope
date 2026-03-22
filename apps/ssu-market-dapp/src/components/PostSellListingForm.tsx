@@ -1,6 +1,7 @@
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { buildPostSellListing } from "@tehfrontier/chain-shared";
+import { useCoinMetadata } from "@/hooks/useCoinMetadata";
+import { buildPostSellListing, parseDisplayPrice } from "@tehfrontier/chain-shared";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useState } from "react";
 
@@ -21,6 +22,8 @@ export function PostSellListingForm({
 }: PostSellListingFormProps) {
 	const account = useCurrentAccount();
 	const { mutateAsync, isPending } = useSignAndExecute();
+	const { data: coinMeta } = useCoinMetadata(coinType);
+	const decimals = coinMeta?.decimals ?? 9;
 
 	const [ssuId, setSsuId] = useState("");
 	const [typeId, setTypeId] = useState("");
@@ -44,7 +47,7 @@ export function PostSellListingForm({
 				coinType,
 				ssuId: ssuId.trim(),
 				typeId: Number(typeId),
-				pricePerUnit: BigInt(pricePerUnit),
+				pricePerUnit: parseDisplayPrice(pricePerUnit, decimals),
 				quantity: Number(quantity),
 				senderAddress: account.address,
 			});

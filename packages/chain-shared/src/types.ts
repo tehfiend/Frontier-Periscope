@@ -36,6 +36,8 @@ export interface OrderInfo {
 
 export interface MarketInfo {
 	objectId: string;
+	/** Package ID that defined this Market<T> (from type repr, always the original). */
+	packageId: string;
 	creator: string;
 	authorized: string[];
 	feeBps: number;

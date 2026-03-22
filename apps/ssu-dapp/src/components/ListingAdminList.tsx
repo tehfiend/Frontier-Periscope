@@ -1,3 +1,4 @@
+import { useCoinMetadata } from "@/hooks/useCoinMetadata";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { decodeErrorMessage } from "@/lib/errors";
@@ -7,6 +8,8 @@ import {
 	type MarketSellListing,
 	buildCancelListing,
 	buildUpdateSellListing,
+	formatBaseUnits,
+	parseDisplayPrice,
 } from "@tehfrontier/chain-shared";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -30,6 +33,8 @@ export function ListingAdminList({
 }: ListingAdminListProps) {
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
+	const { data: coinMeta } = useCoinMetadata(coinType);
+	const decimals = coinMeta?.decimals ?? 9;
 
 	const [dialogState, setDialogState] = useState<
 		| null
@@ -47,7 +52,7 @@ export function ListingAdminList({
 				marketId: ssuConfig.marketId,
 				coinType,
 				listingId,
-				pricePerUnit: BigInt(dialogState.price),
+				pricePerUnit: parseDisplayPrice(dialogState.price, decimals),
 				quantity: Number(dialogState.qty),
 				senderAddress: account.address,
 			});
@@ -93,6 +98,7 @@ export function ListingAdminList({
 				<ListingAdminRow
 					key={listing.listingId}
 					listing={listing}
+					decimals={decimals}
 					nameMap={nameMap}
 					isEditing={dialogState?.type === "edit" && dialogState.id === listing.listingId}
 					isCancelling={dialogState?.type === "cancel" && dialogState.id === listing.listingId}
@@ -131,6 +137,7 @@ export function ListingAdminList({
 
 function ListingAdminRow({
 	listing,
+	decimals,
 	nameMap,
 	isEditing,
 	isCancelling,
@@ -147,6 +154,7 @@ function ListingAdminRow({
 	onCancelConfirm,
 }: {
 	listing: MarketSellListing;
+	decimals: number;
 	nameMap?: Map<string, string>;
 	isEditing: boolean;
 	isCancelling: boolean;
@@ -176,7 +184,7 @@ function ListingAdminRow({
 						{itemName ?? `Item #${listing.typeId}`}
 					</p>
 					<p className="text-xs text-zinc-500">
-						{listing.pricePerUnit.toString()} per unit --{" "}
+						{formatBaseUnits(listing.pricePerUnit, decimals)} per unit --{" "}
 						{listing.quantity.toLocaleString()} available
 					</p>
 					<p className="text-[10px] text-zinc-600">

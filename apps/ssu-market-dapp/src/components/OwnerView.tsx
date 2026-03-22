@@ -1,9 +1,15 @@
+import { useCoinMetadata } from "@/hooks/useCoinMetadata";
 import type { SellListingWithName } from "@/hooks/useMarketListings";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
-import { getMarketPackageId, SSU_MARKET_PACKAGE_ID } from "@/lib/constants";
+import { getCoinType, getMarketPackageId, SSU_MARKET_PACKAGE_ID } from "@/lib/constants";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import type { SsuConfigInfo } from "@tehfrontier/chain-shared";
-import { buildCancelListing, buildUpdateSellListing } from "@tehfrontier/chain-shared";
+import {
+	buildCancelListing,
+	buildUpdateSellListing,
+	formatBaseUnits,
+	parseDisplayPrice,
+} from "@tehfrontier/chain-shared";
 import { useState } from "react";
 
 interface OwnerViewProps {
@@ -19,6 +25,10 @@ export function OwnerView({
 	listingsLoading,
 	characterObjectId,
 }: OwnerViewProps) {
+	const coinType = getCoinType();
+	const { data: coinMeta } = useCoinMetadata(coinType);
+	const decimals = coinMeta?.decimals ?? 9;
+
 	const [editingId, setEditingId] = useState<number | null>(null);
 	const [editPrice, setEditPrice] = useState("");
 	const [editQty, setEditQty] = useState("");
@@ -36,7 +46,7 @@ export function OwnerView({
 				marketId: config.marketId,
 				coinType: "", // TODO: resolve coin type
 				listingId,
-				pricePerUnit: BigInt(editPrice),
+				pricePerUnit: parseDisplayPrice(editPrice, decimals),
 				quantity: Number(editQty),
 				senderAddress: account.address,
 			});
@@ -94,7 +104,7 @@ export function OwnerView({
 									<div>
 										<p className="text-sm text-zinc-200">{listing.name}</p>
 										<p className="text-xs text-zinc-500">
-											{listing.pricePerUnit.toString()} per unit --{" "}
+											{formatBaseUnits(listing.pricePerUnit, decimals)} per unit --{" "}
 											{listing.quantity.toLocaleString()} available
 										</p>
 									</div>

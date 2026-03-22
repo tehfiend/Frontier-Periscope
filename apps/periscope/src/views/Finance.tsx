@@ -29,13 +29,18 @@ import {
 	buildAddAuthorized,
 	buildRemoveAuthorized,
 	buildUpdateFee,
+	buildCreateMarket,
+	buildSetMarket,
 	queryMarkets,
 	queryMarketDetails,
 	queryTokenSupply,
 	queryOwnedCoins,
+	queryTreasuryCap,
 	buildPublishToken,
 	parsePublishResult,
 	getContractAddresses,
+	getCoinMetadata,
+	discoverSsuConfig,
 } from "@tehfrontier/chain-shared";
 import type { MarketInfo } from "@tehfrontier/chain-shared";
 
@@ -82,15 +87,20 @@ export function Finance() {
 
 		try {
 			const markets = await queryMarkets(suiClient, marketPkg);
+			const validMarketIds = new Set<string>();
 
 			for (const market of markets) {
 				// Only import markets where the current user is creator or authorized
+				const walletAddr = account?.address;
 				if (
 					market.creator !== suiAddress &&
-					!market.authorized.includes(suiAddress)
+					!market.authorized.includes(suiAddress) &&
+					(!walletAddr || (market.creator !== walletAddr && !market.authorized.includes(walletAddr)))
 				) {
 					continue;
 				}
+
+				validMarketIds.add(market.objectId);
 
 				const existing = await db.currencies
 					.where("coinType")
@@ -112,6 +122,15 @@ export function Finance() {
 				const structName = parts.length >= 3 ? parts[2] : moduleName;
 				const sym = structName.replace(/_TOKEN$/, "");
 
+				// Query actual decimals from on-chain metadata
+				let coinDecimals = 9;
+				try {
+					const meta = await getCoinMetadata(suiClient, market.coinType);
+					if (meta) coinDecimals = meta.decimals;
+				} catch {
+					// Fall back to 9 if metadata unavailable
+				}
+
 				const now = new Date().toISOString();
 				await db.currencies.add({
 					id: crypto.randomUUID(),
@@ -122,15 +141,23 @@ export function Finance() {
 					coinType: market.coinType,
 					packageId,
 					marketId: market.objectId,
-					decimals: 9,
+					decimals: coinDecimals,
 					createdAt: now,
 					updatedAt: now,
 				});
 			}
+
+			// Remove currencies whose Market is on an old/incompatible package
+			const allCurrencies = await db.currencies.filter(notDeleted).toArray();
+			for (const c of allCurrencies) {
+				if (c.marketId && !validMarketIds.has(c.marketId)) {
+					await db.currencies.delete(c.id);
+				}
+			}
 		} catch {
 			// Silent -- sync is best-effort
 		}
-	}, [suiAddress, suiClient, tenant]);
+	}, [suiAddress, suiClient, tenant, account?.address]);
 
 	useEffect(() => {
 		syncMarkets();
@@ -293,6 +320,7 @@ export function Finance() {
 								setBuildStatus(s);
 								setBuildError(e ?? "");
 							}}
+							onMarketCreated={syncMarkets}
 						/>
 					))}
 				</div>
@@ -497,11 +525,13 @@ function CurrencyCard({
 	tenant,
 	suiAddress,
 	onStatusChange,
+	onMarketCreated,
 }: {
 	currency: CurrencyRecord;
 	tenant: TenantId;
 	suiAddress: string;
 	onStatusChange: (status: BuildStatus, error?: string) => void;
+	onMarketCreated: () => void;
 }) {
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
@@ -729,6 +759,127 @@ function CurrencyCard({
 			);
 		}
 	}
+
+	// Trade nodes for "Link to SSU" action
+	const tradeNodes = useLiveQuery(() => db.tradeNodes.toArray()) ?? [];
+
+	// All SSUs from the local deployables database
+	const allSsus = useLiveQuery(
+		() => db.deployables.where("assemblyType").equals("Smart Storage Unit").toArray(),
+	) ?? [];
+
+	async function handleDiscoverMarket() {
+		if (!currency.coinType || !marketPkg) return;
+
+		onStatusChange("building");
+		try {
+			// Search for Market<CoinType> on-chain
+			const markets = await queryMarkets(suiClient, marketPkg, currency.coinType);
+
+			if (markets.length === 0) {
+				// No Market found -- try creating one from TreasuryCap
+				const treasuryCapId = await queryTreasuryCap(suiClient, currency.coinType, suiAddress);
+				if (!treasuryCapId) {
+					onStatusChange("error", "No Market found on-chain and no TreasuryCap in your wallet. The Market may have been created with a different market package version.");
+					return;
+				}
+
+				const tx = buildCreateMarket({
+					packageId: marketPkg,
+					coinType: currency.coinType,
+					treasuryCapId,
+					senderAddress: suiAddress,
+				});
+
+				const result = await signAndExecute({ transaction: tx });
+
+				const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
+				const fullResult = await suiClient.waitForTransaction({
+					digest,
+					include: { effects: true, objectTypes: true },
+				});
+				const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
+				const changedObjects = fullTx?.effects?.changedObjects ?? [];
+				const objectTypesMap = fullTx?.objectTypes ?? {};
+
+				let marketId: string | undefined;
+				for (const change of changedObjects) {
+					const objType = objectTypesMap[change.objectId] ?? "";
+					if (objType.includes("::market::Market<")) {
+						marketId = change.objectId;
+						break;
+					}
+				}
+
+				if (marketId) {
+					await db.currencies.update(currency.id, { marketId, updatedAt: new Date().toISOString() });
+				}
+
+				onStatusChange("done");
+				onMarketCreated();
+				return;
+			}
+
+			// Market found -- update local DB
+			const market = markets[0];
+			await db.currencies.update(currency.id, {
+				marketId: market.objectId,
+				updatedAt: new Date().toISOString(),
+			});
+
+			onStatusChange("done");
+			onMarketCreated();
+		} catch (err) {
+			onStatusChange("error", err instanceof Error ? err.message : String(err));
+		}
+	}
+
+	async function handleLinkToSsu(ssuObjectId: string) {
+		if (!currency.marketId || !currency.coinType) return;
+
+		const ssuMarketAddresses = getContractAddresses(tenant).ssuMarket;
+		const ssuMarketPkg = ssuMarketAddresses?.packageId;
+		const originalPkg = ssuMarketAddresses?.originalPackageId ?? ssuMarketPkg;
+		const previousPkgs = ssuMarketAddresses?.previousOriginalPackageIds;
+		if (!ssuMarketPkg || !originalPkg) return;
+
+		onStatusChange("building");
+		try {
+			// Discover the CURRENT SsuConfig (may differ from stale local record)
+			const currentConfigId = await discoverSsuConfig(
+				suiClient,
+				originalPkg,
+				ssuObjectId,
+				previousPkgs,
+			);
+			if (!currentConfigId) {
+				onStatusChange("error", "No SsuConfig found on-chain for this SSU. Deploy the extension first.");
+				return;
+			}
+
+			const tx = buildSetMarket({
+				packageId: ssuMarketPkg,
+				ssuConfigId: currentConfigId,
+				marketId: currency.marketId,
+				senderAddress: suiAddress,
+			});
+
+			await signAndExecute({ transaction: tx });
+
+			// Update local trade node with current SsuConfig
+			const tn = tradeNodes.find((t) => t.id === ssuObjectId);
+			if (tn) {
+				await db.tradeNodes.update(tn.id, { marketConfigId: currentConfigId });
+			}
+
+			onStatusChange("done");
+			onMarketCreated();
+		} catch (err) {
+			onStatusChange("error", err instanceof Error ? err.message : String(err));
+		}
+	}
+
+	const [linkSsuId, setLinkSsuId] = useState("");
 
 	return (
 		<div className="rounded-lg border border-zinc-800 bg-zinc-900/50">
@@ -1249,6 +1400,62 @@ function CurrencyCard({
 									</div>
 								</div>
 							)}
+						</div>
+					)}
+
+					{/* Create Market (when currency has no Market yet) */}
+					{isPublished && !hasMarket && (
+						<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
+							<h4 className="mb-2 text-xs font-medium text-amber-400">No Market Linked</h4>
+							<p className="mb-3 text-xs text-zinc-500">
+								Search for the existing Market on-chain, or create one if none exists.
+							</p>
+							{account ? (
+								<button
+									type="button"
+									onClick={handleDiscoverMarket}
+									className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500"
+								>
+									Find / Create Market
+								</button>
+							) : (
+								<span className="text-xs text-zinc-500">Connect wallet</span>
+							)}
+						</div>
+					)}
+
+					{/* Link Market to SSU */}
+					{hasMarket && account && (
+						<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
+							<h4 className="mb-2 text-xs font-medium text-zinc-400">Link Market to SSU</h4>
+							<p className="mb-2 text-[10px] text-zinc-600">
+								Link this currency's Market to an SSU so items can be sold for this currency.
+							</p>
+							<div className="flex items-center gap-2">
+								<select
+									value={linkSsuId}
+									onChange={(e) => setLinkSsuId(e.target.value)}
+									className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-200 focus:border-cyan-500 focus:outline-none"
+								>
+									<option value="">Select an SSU...</option>
+									{allSsus.map((ssu) => (
+										<option key={ssu.objectId} value={ssu.objectId}>
+											{ssu.label || ssu.objectId.slice(0, 14) + "..."}
+											{ssu.systemId ? ` (System ${ssu.systemId})` : ""}
+										</option>
+									))}
+								</select>
+								<button
+									type="button"
+									onClick={() => {
+										if (linkSsuId) handleLinkToSsu(linkSsuId);
+									}}
+									disabled={!linkSsuId}
+									className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
+								>
+									Link
+								</button>
+							</div>
 						</div>
 					)}
 

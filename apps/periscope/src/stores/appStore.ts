@@ -31,11 +31,23 @@ interface AppState {
 	toggleSidebar: () => void;
 }
 
+// Read persisted value synchronously from localStorage as a fast cache,
+// so the store initializes with the correct value before first render.
+function getPersistedCharacterId(): string | "all" {
+	try {
+		const cached = localStorage.getItem("periscope:activeCharacterId");
+		if (cached) return cached;
+	} catch {
+		// localStorage unavailable
+	}
+	return "all";
+}
+
 export const useAppStore = create<AppState>((set) => ({
 	staticDataReady: false,
 	profileConfigured: false,
 	instanceId: null,
-	activeCharacterId: "all",
+	activeCharacterId: getPersistedCharacterId(),
 	selectedSystemId: null,
 	hoveredSystemId: null,
 	searchQuery: "",
@@ -46,6 +58,7 @@ export const useAppStore = create<AppState>((set) => ({
 	setInstanceId: (id) => set({ instanceId: id }),
 	setActiveCharacterId: (id) => {
 		set({ activeCharacterId: id });
+		localStorage.setItem("periscope:activeCharacterId", id);
 		db.settings.put({ key: "activeCharacterId", value: id });
 	},
 	selectSystem: (id) => set({ selectedSystemId: id }),
@@ -54,9 +67,14 @@ export const useAppStore = create<AppState>((set) => ({
 	toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 }));
 
-// Restore persisted activeCharacterId on load
+// Also hydrate from IndexedDB (authoritative) once it's ready,
+// in case localStorage was cleared but IndexedDB wasn't.
 db.settings.get("activeCharacterId").then((setting) => {
 	if (setting?.value) {
-		useAppStore.getState().setActiveCharacterId(setting.value as string);
+		const current = useAppStore.getState().activeCharacterId;
+		if (current !== setting.value) {
+			useAppStore.setState({ activeCharacterId: setting.value as string });
+			localStorage.setItem("periscope:activeCharacterId", setting.value as string);
+		}
 	}
 });

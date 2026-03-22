@@ -10,10 +10,48 @@
  * is responsible for adding gas config and executing.
  */
 
+import { fromBase64 } from "@mysten/bcs";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { Transaction } from "@mysten/sui/transactions";
+import { bytesToHex } from "./crypto";
 import { getObjectJson, listDynamicFieldsGql } from "./graphql-queries";
 import type { MapInviteInfo, MapLocationInfo, PrivateMapInfo } from "./types";
+
+/**
+ * Decode a vector<u8> field from Sui GraphQL JSON content.
+ * Handles all known serialization formats:
+ * - Base64 string (standard Sui GraphQL JSON)
+ * - JSON array of numbers (some API versions)
+ * - Hex string with 0x prefix
+ * Returns hex-encoded string for consistent storage.
+ */
+function decodeVectorU8(raw: unknown): string {
+	if (!raw) return "";
+
+	// Array of numbers: [1, 2, 3, ...]
+	if (Array.isArray(raw)) {
+		return bytesToHex(new Uint8Array(raw));
+	}
+
+	const str = String(raw);
+
+	// Hex string with 0x prefix
+	if (str.startsWith("0x") && /^0x[0-9a-fA-F]*$/.test(str)) {
+		return str.slice(2);
+	}
+
+	// Hex string without prefix (even-length, all hex chars)
+	if (str.length > 0 && str.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(str)) {
+		return str;
+	}
+
+	// Base64 string (default Sui GraphQL format)
+	try {
+		return bytesToHex(fromBase64(str));
+	} catch {
+		return str;
+	}
+}
 
 // ── TX Builders ─────────────────────────────────────────────────────────────
 
@@ -181,7 +219,7 @@ export async function queryPrivateMap(
 			objectId: mapId,
 			name: String(fields.name ?? ""),
 			creator: String(fields.creator ?? ""),
-			publicKey: String(fields.public_key ?? ""),
+			publicKey: decodeVectorU8(fields.public_key),
 			nextLocationId: Number(fields.next_location_id ?? 0),
 		};
 	} catch {
@@ -223,6 +261,7 @@ export async function queryMapInvitesForUser(
 	}
 
 	const inviteType = `${packageId}::private_map::MapInvite`;
+	console.log("[queryMapInvites] type:", inviteType, "owner:", userAddress);
 	const invites: MapInviteInfo[] = [];
 	let cursor: string | null = null;
 	let hasMore = true;
@@ -235,6 +274,7 @@ export async function queryMapInvitesForUser(
 			});
 
 			const objects = result.data?.objects;
+			console.log("[queryMapInvites] response:", JSON.stringify(result.data, null, 2)?.slice(0, 500));
 			if (!objects) break;
 
 			for (const node of objects.nodes) {
@@ -245,7 +285,7 @@ export async function queryMapInvitesForUser(
 					objectId: node.address,
 					mapId: String(json.map_id ?? ""),
 					sender: String(json.sender ?? ""),
-					encryptedMapKey: String(json.encrypted_map_key ?? ""),
+					encryptedMapKey: decodeVectorU8(json.encrypted_map_key),
 				});
 			}
 
@@ -291,7 +331,7 @@ export async function queryMapLocations(
 				locations.push({
 					locationId: Number(fields.location_id ?? locationId),
 					structureId: fields.structure_id ? String(fields.structure_id) : null,
-					encryptedData: String(fields.encrypted_data ?? ""),
+					encryptedData: decodeVectorU8(fields.encrypted_data),
 					addedBy: String(fields.added_by ?? ""),
 					addedAtMs: Number(fields.added_at_ms ?? 0),
 				});

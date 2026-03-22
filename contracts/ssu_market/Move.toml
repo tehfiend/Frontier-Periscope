@@ -1,7 +1,6 @@
 [package]
 name = "ssu_market"
 edition = "2024"
-published-at = "0xc61ced466cc75112c32d62630b2d2df2eea4353dd92bc99bfb48b8b4144bcc69"
 
 [dependencies]
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "testnet-v1.66.2" }
@@ -9,4 +8,4 @@ world = { local = "../world_stillness" }
 market = { local = "../market" }
 
 [addresses]
-ssu_market = "0x40576ea9e07fa8516abc4820a24be12b0ad7678d181afba5710312d2a0ca6e48"
+ssu_market = "0x3339a266b12a7829dc873813608151caff50c46466e13fab020acd6dfe2397a2"

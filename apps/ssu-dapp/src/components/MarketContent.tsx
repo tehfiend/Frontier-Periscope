@@ -1,8 +1,9 @@
-import type { SsuConfigResult } from "@/hooks/useSsuConfig";
-import { getMarketPackageId } from "@/lib/constants";
-import type { MarketSellListing } from "@tehfrontier/chain-shared";
 import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
 import { useCharacterNames } from "@/hooks/useCharacterNames";
+import { useCoinMetadata } from "@/hooks/useCoinMetadata";
+import type { SsuConfigResult } from "@/hooks/useSsuConfig";
+import { getMarketPackageId } from "@/lib/constants";
+import { type MarketSellListing, formatBaseUnits } from "@tehfrontier/chain-shared";
 import { useMemo, useState } from "react";
 import { CreateBuyOrderDialog } from "./CreateBuyOrderDialog";
 import { FillBuyOrderDialog } from "./FillBuyOrderDialog";
@@ -40,7 +41,11 @@ export function MarketContent({
 }: MarketContentProps) {
 	const [showBuyOrderDialog, setShowBuyOrderDialog] = useState(false);
 	const [fillOrder, setFillOrder] = useState<BuyOrderWithName | null>(null);
+	// Use config's current market package for all market:: function calls.
+	// The Market object must have been created by this package (or its upgrade chain).
 	const marketPkg = getMarketPackageId();
+	const { data: coinMeta } = useCoinMetadata(coinType);
+	const decimals = coinMeta?.decimals ?? 9;
 
 	// Collect all addresses that need name resolution
 	const allAddresses = useMemo(() => {
@@ -122,12 +127,12 @@ export function MarketContent({
 											Want: {order.name}
 										</p>
 										<p className="text-[10px] text-zinc-500">
-											{order.pricePerUnit.toString()} per unit --{" "}
+											{formatBaseUnits(order.pricePerUnit, decimals)} per unit --{" "}
 											{order.quantity.toLocaleString()} wanted
 										</p>
 										<p className="text-[10px] text-zinc-500">
 											Total escrowed:{" "}
-											{(order.pricePerUnit * BigInt(order.quantity)).toString()}
+											{formatBaseUnits(order.pricePerUnit * BigInt(order.quantity), decimals)}
 										</p>
 										<p className="text-[10px] text-zinc-600">
 											Buyer: {formatAddress(order.buyer)}

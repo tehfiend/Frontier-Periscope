@@ -11,7 +11,14 @@
  */
 
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import { Transaction } from "@mysten/sui/transactions";
+import { Inputs, Transaction } from "@mysten/sui/transactions";
+
+/** Immutable shared Clock object ref (0x6, genesis version 1). */
+const CLOCK_REF = Inputs.SharedObjectRef({
+	objectId: "0x0000000000000000000000000000000000000000000000000000000000000006",
+	initialSharedVersion: 1,
+	mutable: false,
+});
 import { getDynamicFieldJson, getObjectJson, listDynamicFieldsGql } from "./graphql-queries";
 import type { CrossMarketListing, MarketBuyOrder, MarketInfo, MarketSellListing } from "./types";
 
@@ -227,7 +234,7 @@ export function buildPostSellListing(params: PostSellListingParams): Transaction
 			tx.pure.u64(params.typeId),
 			tx.pure.u64(params.pricePerUnit),
 			tx.pure.u64(params.quantity),
-			tx.object("0x6"), // Clock shared object
+			tx.object(CLOCK_REF), // Clock (immutable shared)
 		],
 	});
 
@@ -335,7 +342,7 @@ export function buildPostBuyOrder(params: PostBuyOrderParams): Transaction {
 			tx.pure.u64(params.typeId),
 			tx.pure.u64(params.pricePerUnit),
 			tx.pure.u64(params.quantity),
-			tx.object("0x6"), // Clock shared object
+			tx.object(CLOCK_REF), // Clock (immutable shared)
 		],
 	});
 
@@ -421,12 +428,13 @@ export async function queryMarkets(
 			const typeRepr = node.asMoveObject?.contents?.type?.repr ?? "";
 			if (!json) continue;
 
-			// Extract coin type from Market<CoinType> repr
-			const match = typeRepr.match(/Market<(.+)>$/);
-			const resolvedCoinType = match ? match[1] : (coinType ?? "");
+			// Extract package ID and coin type from "PKG::market::Market<COIN_TYPE>"
+			const match = typeRepr.match(/^(.+?)::market::Market<(.+)>$/);
+			const resolvedCoinType = match ? match[2] : (coinType ?? "");
 
 			markets.push({
 				objectId: node.address,
+				packageId: match ? match[1] : "",
 				creator: String(json.creator ?? ""),
 				authorized: ((json.authorized as unknown[]) ?? []).map(String),
 				feeBps: Number(json.fee_bps ?? 0),
@@ -457,17 +465,19 @@ export async function queryMarketDetails(
 
 		const fields = obj.json;
 		const typeRepr = obj.type ?? "";
-		const match = typeRepr.match(/Market<(.+)>$/);
+		// Extract package ID and coin type from "PKG::market::Market<COIN_TYPE>"
+		const match = typeRepr.match(/^(.+?)::market::Market<(.+)>$/);
 
 		return {
 			objectId: marketId,
+			packageId: match ? match[1] : "",
 			creator: String(fields.creator ?? ""),
 			authorized: ((fields.authorized as unknown[]) ?? []).map(String),
 			feeBps: Number(fields.fee_bps ?? 0),
 			feeRecipient: String(fields.fee_recipient ?? ""),
 			nextSellId: Number(fields.next_sell_id ?? 0),
 			nextBuyId: Number(fields.next_buy_id ?? 0),
-			coinType: match ? match[1] : "",
+			coinType: match ? match[2] : "",
 		};
 	} catch {
 		return null;
@@ -589,8 +599,9 @@ export async function queryMarketBuyOrders(
 export async function queryAllListingsForCurrency(
 	client: SuiGraphQLClient,
 	marketPackageId: string,
-	_ssuMarketPackageId: string,
+	ssuMarketPackageId: string,
 	coinType: string,
+	previousSsuMarketPackageIds?: string[],
 ): Promise<CrossMarketListing[]> {
 	// Step 1: Discover all Market<coinType> objects
 	const markets = await queryMarkets(client, marketPackageId, coinType);
@@ -606,9 +617,31 @@ export async function queryAllListingsForCurrency(
 				...listing,
 				marketId: market.objectId,
 				coinType: market.coinType,
-				ssuConfigId: "", // Populated below if SSU is public
+				ssuConfigId: "",
 			});
 		}
+	}
+
+	// Step 3: Resolve SsuConfig for each unique SSU
+	const { discoverSsuConfig } = await import("./ssu-market");
+	const ssuIds = [...new Set(allListings.map((l) => l.ssuId))];
+	const ssuConfigMap = new Map<string, string>();
+
+	for (const ssuId of ssuIds) {
+		const configId = await discoverSsuConfig(
+			client,
+			ssuMarketPackageId,
+			ssuId,
+			previousSsuMarketPackageIds,
+		);
+		if (configId) {
+			ssuConfigMap.set(ssuId, configId);
+		}
+	}
+
+	// Populate ssuConfigId on each listing
+	for (const listing of allListings) {
+		listing.ssuConfigId = ssuConfigMap.get(listing.ssuId) ?? "";
 	}
 
 	return allListings;

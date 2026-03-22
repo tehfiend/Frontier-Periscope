@@ -1,3 +1,5 @@
+import { useCoinMetadata } from "@/hooks/useCoinMetadata";
+import { formatBaseUnits, parseDisplayPrice } from "@/lib/coin-format";
 import { useGameItems } from "@/hooks/useGameItems";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import { useSuiClient } from "@/hooks/useSuiClient";
@@ -33,7 +35,12 @@ export function CreateBuyOrderDialog({
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
 
+	const { data: coinMeta } = useCoinMetadata(coinType);
+	const decimals = coinMeta?.decimals ?? 9;
+	const symbol = coinMeta?.symbol ?? "";
+
 	// Auto-load user's coins of the market currency
+	const queryEnabled = !!account?.address && !!coinType;
 	const {
 		data: ownedCoins,
 		isLoading: coinsLoading,
@@ -42,12 +49,9 @@ export function CreateBuyOrderDialog({
 		queryKey: ["ownedCoins", account?.address, coinType],
 		queryFn: async () => {
 			if (!account?.address || !coinType) return [];
-			console.log("[coins] querying", { owner: account.address, coinType });
-			const result = await queryOwnedCoins(suiClient, account.address, coinType);
-			console.log("[coins] result:", result);
-			return result;
+			return queryOwnedCoins(suiClient, account.address, coinType);
 		},
-		enabled: !!account?.address && !!coinType,
+		enabled: queryEnabled,
 	});
 
 	// Load all game items for autocomplete
@@ -72,7 +76,7 @@ export function CreateBuyOrderDialog({
 		dialogRef.current?.showModal();
 	}, []);
 
-	const priceBaseUnits = BigInt(pricePerUnit || 0);
+	const priceBaseUnits = parseDisplayPrice(pricePerUnit || "0", decimals);
 	const qtyNum = Number(quantity || 0);
 	const totalBaseUnits = priceBaseUnits * BigInt(qtyNum || 0);
 	const totalBalance = ownedCoins?.reduce((sum, c) => sum + c.balance, 0n) ?? 0n;
@@ -167,18 +171,33 @@ export function CreateBuyOrderDialog({
 						{/* Balance display */}
 						<div>
 							<label className="mb-1 block text-xs text-zinc-500">
-								Wallet Balance
+								Wallet Balance{symbol ? ` (${symbol})` : ""}
 							</label>
-							{coinsLoading ? (
+							{!queryEnabled ? (
+								<p className="py-2 text-xs text-amber-400">
+									{!account?.address
+										? "Connect wallet to see balance"
+										: "Market coin type not detected"}
+								</p>
+							) : coinsLoading ? (
 								<p className="py-2 text-xs text-zinc-600">Loading balance...</p>
+							) : coinsError ? (
+								<p className="py-2 text-xs text-red-400">
+									Error loading coins:{" "}
+									{coinsError instanceof Error
+										? coinsError.message
+										: String(coinsError)}
+								</p>
 							) : !ownedCoins?.length ? (
 								<p className="py-2 text-xs text-amber-400">
-									No coins found in your wallet.
-									{!coinType && " (Market coin type not detected)"}
+									No {symbol || "coins"} in wallet
+									<span className="block mt-1 text-[10px] text-zinc-600">
+										{coinType.split("::").pop()}
+									</span>
 								</p>
 							) : (
 								<div className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300">
-									{formatBalance(totalBalance)}
+									{formatBaseUnits(totalBalance, decimals)} {symbol}
 									{totalBaseUnits > 0n && totalBalance < totalBaseUnits && (
 										<span className="ml-2 text-xs text-red-400">
 											(insufficient)
@@ -255,7 +274,7 @@ export function CreateBuyOrderDialog({
 							</div>
 							<div className="flex-1">
 								<label className="mb-1 block text-xs text-zinc-500">
-									Price per unit
+									Price per unit{symbol ? ` (${symbol})` : ""}
 								</label>
 								<input
 									type="number"
@@ -269,7 +288,7 @@ export function CreateBuyOrderDialog({
 
 						{totalBaseUnits > 0n && (
 							<p className="text-xs text-zinc-500">
-								Total escrow required: {formatBalance(totalBaseUnits)}
+								Total escrow: {formatBaseUnits(totalBaseUnits, decimals)} {symbol}
 							</p>
 						)}
 
@@ -288,14 +307,4 @@ export function CreateBuyOrderDialog({
 			</div>
 		</dialog>
 	);
-}
-
-function formatBalance(raw: bigint): string {
-	const decimals = 9;
-	const divisor = 10n ** BigInt(decimals);
-	const whole = raw / divisor;
-	const frac = raw % divisor;
-	if (frac === 0n) return whole.toString();
-	const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
-	return `${whole}.${fracStr}`;
 }

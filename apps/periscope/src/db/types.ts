@@ -431,6 +431,10 @@ export interface ManifestCharacter {
 	ownerCapId?: string;
 	/** When this character was created on-chain (from tx timestamp) */
 	createdOnChain?: string;
+	/** X25519 public key derived from wallet, hex-encoded. Used for private map encryption. */
+	mapKeyPublicHex?: string;
+	/** X25519 secret key derived from wallet, hex-encoded. Used for private map decryption. */
+	mapKeySecretHex?: string;
 	/** When this entry was last fetched from chain */
 	cachedAt: string;
 }
@@ -489,8 +493,10 @@ export interface ManifestPrivateMap {
 	creator: string;
 	/** Hex-encoded X25519 public key */
 	publicKey: string;
-	/** Hex-encoded decrypted map secret key (from user's MapInvite) */
-	decryptedMapKey: string;
+	/** Hex-encoded decrypted map secret key (populated on-demand when key is available) */
+	decryptedMapKey?: string;
+	/** Hex-encoded encrypted map key from the MapInvite (for later decryption) */
+	encryptedMapKey?: string;
 	/** The user's MapInvite object ID */
 	inviteId: string;
 	/** "stillness" or "utopia" */

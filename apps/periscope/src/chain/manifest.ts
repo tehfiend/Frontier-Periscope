@@ -21,6 +21,7 @@ import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import {
 	bytesToHex,
 	decodeLocationData,
+	deriveMapKeyFromSignature,
 	getContractAddresses,
 	getObjectJson,
 	hexToBytes,
@@ -31,6 +32,8 @@ import {
 	queryTransactionsByObject,
 	unsealWithKey,
 } from "@tehfrontier/chain-shared";
+import { parseSerializedSignature } from "@mysten/sui/cryptography";
+import { ed25519 } from "@noble/curves/ed25519.js";
 import { TENANTS, type TenantId, moveType } from "./config";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -97,6 +100,96 @@ export async function fetchAndCacheCharacter(
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Ensure the map key is populated on a manifest character.
+ *
+ * Strategy:
+ * 1. If already stored, return it immediately.
+ * 2. If a wallet signPersonalMessage function is provided, sign the
+ *    deterministic message and derive the key. Store permanently.
+ * 3. Otherwise, extract the Ed25519 public key from any on-chain
+ *    transaction and convert to X25519. This gives us the PUBLIC key
+ *    only (enough for encrypting TO this address, but not for decryption).
+ *
+ * Returns the keypair (public always, secret only if wallet signed).
+ */
+export async function ensureMapKeyForCharacter(
+	client: SuiGraphQLClient,
+	characterId: string,
+	signPersonalMessage?: (msg: Uint8Array) => Promise<{ signature: string }>,
+): Promise<{ publicKey: Uint8Array; secretKey: Uint8Array } | null> {
+	const character = await db.manifestCharacters.get(characterId);
+	if (!character) return null;
+
+	// Already stored
+	if (character.mapKeyPublicHex && character.mapKeySecretHex) {
+		return {
+			publicKey: hexToBytes(character.mapKeyPublicHex),
+			secretKey: hexToBytes(character.mapKeySecretHex),
+		};
+	}
+
+	// Try wallet signing to derive full keypair
+	if (signPersonalMessage) {
+		try {
+			const MAP_KEY_MESSAGE = "TehFrontier Map Key v1";
+			const { signature } = await signPersonalMessage(
+				new TextEncoder().encode(MAP_KEY_MESSAGE),
+			);
+			const derived = deriveMapKeyFromSignature(signature);
+
+			await db.manifestCharacters.update(characterId, {
+				mapKeyPublicHex: bytesToHex(derived.publicKey),
+				mapKeySecretHex: bytesToHex(derived.secretKey),
+			});
+
+			return derived;
+		} catch {
+			// User rejected or signing failed
+		}
+	}
+
+	// Fallback: extract public key from on-chain transactions (no secret key)
+	if (character.suiAddress && !character.mapKeyPublicHex) {
+		try {
+			const QUERY_TX_SIGS = `
+				query($addr: SuiAddress!, $first: Int) {
+					address(address: $addr) {
+						transactionBlocks(first: $first) {
+							nodes { signatures }
+						}
+					}
+				}
+			`;
+			const result = await client.query<
+				{ address: { transactionBlocks: { nodes: Array<{ signatures: string[] }> } } | null },
+				{ addr: string; first: number }
+			>({
+				query: QUERY_TX_SIGS,
+				variables: { addr: character.suiAddress, first: 5 },
+			});
+
+			const txBlocks = result.data?.address?.transactionBlocks?.nodes ?? [];
+			for (const tx of txBlocks) {
+				for (const sigBase64 of tx.signatures ?? []) {
+					try {
+						const parsed = parseSerializedSignature(sigBase64);
+						if (parsed.signatureScheme === "ED25519") {
+							const x25519PubKey = ed25519.utils.toMontgomery(parsed.publicKey);
+							await db.manifestCharacters.update(characterId, {
+								mapKeyPublicHex: bytesToHex(x25519PubKey),
+							});
+							return { publicKey: x25519PubKey, secretKey: new Uint8Array(0) };
+						}
+					} catch {}
+				}
+			}
+		} catch {}
+	}
+
+	return null;
 }
 
 /**
@@ -664,67 +757,103 @@ export async function crossReferenceManifestLocations(locationIds: string[]): Pr
  *
  * Skips maps that were cached less than 1 hour ago.
  */
+/**
+ * Discover and cache private maps for a user. No decryption key needed --
+ * just finds MapInvite objects and fetches map metadata.
+ * Call decryptMapKeys() separately when the wallet key is available.
+ */
 export async function syncPrivateMapsForUser(
 	client: SuiGraphQLClient,
 	tenant: TenantId,
 	userAddress: string,
-	walletKeyPair: { publicKey: Uint8Array; secretKey: Uint8Array },
 	ctx?: TaskContext,
 ): Promise<number> {
 	const addresses = getContractAddresses(tenant);
 	const packageId = addresses.privateMap?.packageId;
+	console.log("[syncPrivateMaps] tenant:", tenant, "packageId:", packageId, "user:", userAddress);
 	if (!packageId) return 0;
 
 	let newCount = 0;
-	const staleCutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour
 
 	try {
 		ctx?.setProgress("Discovering map invites...");
 		const invites = await queryMapInvitesForUser(client, packageId, userAddress);
-		ctx?.setProgress(`Found ${invites.length} map invites`);
+		console.log("[syncPrivateMaps] found", invites.length, "invites:", invites);
 
 		for (const invite of invites) {
 			if (ctx?.isCancelled()) break;
 
-			// Check if already cached and fresh
 			const existing = await db.manifestPrivateMaps.get(invite.mapId);
-			if (existing && existing.cachedAt > staleCutoff) continue;
 
 			// Fetch map details
 			const mapInfo = await queryPrivateMap(client, invite.mapId);
+			console.log("[syncPrivateMaps] map info for", invite.mapId, ":", mapInfo);
 			if (!mapInfo) continue;
 
-			// Decrypt the map key from the invite
-			try {
-				const encryptedKeyBytes = hexToBytes(invite.encryptedMapKey);
-				const decryptedKey = unsealWithKey(
-					encryptedKeyBytes,
-					walletKeyPair.publicKey,
-					walletKeyPair.secretKey,
-				);
+			const entry: ManifestPrivateMap = {
+				id: invite.mapId,
+				name: mapInfo.name,
+				creator: mapInfo.creator,
+				publicKey: mapInfo.publicKey,
+				encryptedMapKey: invite.encryptedMapKey,
+				decryptedMapKey: existing?.decryptedMapKey, // preserve if already decrypted
+				inviteId: invite.objectId,
+				tenant,
+				cachedAt: new Date().toISOString(),
+			};
 
-				const entry: ManifestPrivateMap = {
-					id: invite.mapId,
-					name: mapInfo.name,
-					creator: mapInfo.creator,
-					publicKey: mapInfo.publicKey,
-					decryptedMapKey: bytesToHex(decryptedKey),
-					inviteId: invite.objectId,
-					tenant,
-					cachedAt: new Date().toISOString(),
-				};
-
-				await db.manifestPrivateMaps.put(entry);
-				newCount++;
-			} catch {}
+			await db.manifestPrivateMaps.put(entry);
+			newCount++;
+			console.log("[syncPrivateMaps] cached map:", entry.name, entry.id, "tenant:", tenant);
 		}
 
-		ctx?.setProgress(`Synced ${newCount} private maps`);
+		console.log("[syncPrivateMaps] synced", newCount, "maps");
 	} catch (err) {
+		console.error("[syncPrivateMaps] error:", err);
 		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
 	}
 
 	return newCount;
+}
+
+/**
+ * Decrypt map keys for all cached maps that don't have a decryptedMapKey yet.
+ * Requires the wallet's X25519 keypair.
+ */
+export async function decryptMapKeys(
+	walletKeyPair: { publicKey: Uint8Array; secretKey: Uint8Array },
+	tenant: TenantId,
+): Promise<number> {
+	let count = 0;
+	const maps = await db.manifestPrivateMaps
+		.where("tenant")
+		.equals(tenant)
+		.toArray();
+
+	for (const map of maps) {
+		console.log("[decryptMapKeys]", map.name, "hasDecrypted:", !!map.decryptedMapKey, "hasEncrypted:", !!map.encryptedMapKey);
+		if (map.decryptedMapKey || !map.encryptedMapKey) continue;
+
+		try {
+			const encryptedKeyBytes = hexToBytes(map.encryptedMapKey);
+			console.log("[decryptMapKeys] decrypting", map.name, "encryptedLen:", encryptedKeyBytes.length);
+			const decryptedKey = unsealWithKey(
+				encryptedKeyBytes,
+				walletKeyPair.publicKey,
+				walletKeyPair.secretKey,
+			);
+			console.log("[decryptMapKeys] success:", map.name);
+
+			await db.manifestPrivateMaps.update(map.id, {
+				decryptedMapKey: bytesToHex(decryptedKey),
+			});
+			count++;
+		} catch (err) {
+			console.error("[decryptMapKeys] failed for", map.name, err);
+		}
+	}
+
+	return count;
 }
 
 /**
@@ -750,9 +879,10 @@ export async function syncMapLocations(
 
 		const mapPublicKey = hexToBytes(mapInfo.publicKey);
 		const mapSecretKey = hexToBytes(decryptedMapKey);
+		console.log("[syncMapLocations] mapId:", mapId, "pubKeyLen:", mapPublicKey.length, "secKeyLen:", mapSecretKey.length);
 
 		const rawLocations = await queryMapLocations(client, mapId);
-		ctx?.setProgress(`Found ${rawLocations.length} locations, decrypting...`);
+		console.log("[syncMapLocations] found", rawLocations.length, "raw locations");
 
 		for (const loc of rawLocations) {
 			if (ctx?.isCancelled()) break;
@@ -765,8 +895,10 @@ export async function syncMapLocations(
 
 			try {
 				const encryptedBytes = hexToBytes(loc.encryptedData);
+				console.log("[syncMapLocations] decrypting loc", loc.locationId, "encryptedLen:", encryptedBytes.length, "encryptedData:", loc.encryptedData.slice(0, 40));
 				const plaintext = unsealWithKey(encryptedBytes, mapPublicKey, mapSecretKey);
 				const data = decodeLocationData(plaintext);
+				console.log("[syncMapLocations] decrypted:", data);
 
 				const entry: ManifestMapLocation = {
 					id: compositeId,
@@ -785,7 +917,9 @@ export async function syncMapLocations(
 
 				await db.manifestMapLocations.put(entry);
 				newCount++;
-			} catch {}
+			} catch (err) {
+				console.error("[syncMapLocations] decrypt failed for loc", loc.locationId, err);
+			}
 		}
 
 		ctx?.setProgress(`Decrypted ${newCount} locations`);

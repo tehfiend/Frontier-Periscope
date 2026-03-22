@@ -1,7 +1,19 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSuiClient } from "@/hooks/useSuiClient";
-import { Wallet as WalletIcon, Loader2, RefreshCw, ExternalLink, Info, AlertCircle } from "lucide-react";
+import {
+	Wallet as WalletIcon,
+	Loader2,
+	RefreshCw,
+	ExternalLink,
+	Info,
+	ArrowUpRight,
+	ArrowDownLeft,
+} from "lucide-react";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import {
+	type WalletTransaction,
+	queryWalletTransactions,
+} from "@tehfrontier/chain-shared";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -16,11 +28,20 @@ interface CoinMeta {
 	name: string;
 }
 
+interface FlatTx {
+	digest: string;
+	timestampMs: number;
+	coinType: string;
+	amount: bigint;
+}
+
+type SortField = "time" | "amount" | "currency";
+type SortDir = "asc" | "desc";
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Convert raw balance to human-readable with given decimals. */
-function formatBalance(raw: string, decimals: number): string {
-	const value = BigInt(raw);
+function formatBalance(raw: string | bigint, decimals: number): string {
+	const value = typeof raw === "bigint" ? raw : BigInt(raw);
 	const divisor = 10n ** BigInt(decimals);
 	const whole = value / divisor;
 	const frac = value % divisor;
@@ -29,8 +50,6 @@ function formatBalance(raw: string, decimals: number): string {
 	return `${whole.toLocaleString()}.${fracStr}`;
 }
 
-/** Extract a human-readable token name from a coin type string.
- *  e.g. "0xabc::gold_token::GOLD_TOKEN" -> "GOLD_TOKEN" */
 function extractTokenName(coinType: string): string {
 	const parts = coinType.split("::");
 	if (parts.length >= 3) return parts[parts.length - 1];
@@ -38,7 +57,6 @@ function extractTokenName(coinType: string): string {
 	return coinType;
 }
 
-/** Check if a coin type is the native SUI coin (handles both short and full address forms). */
 function isSuiCoin(coinType: string): boolean {
 	return /^0x0*2::sui::SUI$/.test(coinType);
 }
@@ -57,20 +75,28 @@ export function Wallet() {
 	const [fetching, setFetching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	// Transaction state
+	const [rawTxs, setRawTxs] = useState<WalletTransaction[]>([]);
+	const [txLoading, setTxLoading] = useState(false);
+	const [txError, setTxError] = useState<string | null>(null);
+	const [filterCoin, setFilterCoin] = useState("all");
+	const [filterDir, setFilterDir] = useState("all");
+	const [search, setSearch] = useState("");
+	const [sortField, setSortField] = useState<SortField>("time");
+	const [sortDir, setSortDir] = useState<SortDir>("desc");
+
 	const fetchBalances = useCallback(async () => {
 		if (!suiAddress) return;
 		setFetching(true);
 		setError(null);
 		try {
 			const result = await client.listBalances({ owner: suiAddress });
-			// Map v2 response shape to our CoinBalance type
 			const mapped: CoinBalance[] = result.balances.map((b) => ({
 				coinType: b.coinType,
 				totalBalance: String(b.balance),
 			}));
 			setBalances(mapped);
 
-			// Fetch metadata for each coin type (decimals, symbol, name)
 			const metaMap: Record<string, CoinMeta> = {};
 			for (const b of mapped) {
 				if (metaMap[b.coinType]) continue;
@@ -97,15 +123,123 @@ export function Wallet() {
 		}
 	}, [suiAddress, client]);
 
+	const fetchTransactions = useCallback(async () => {
+		if (!suiAddress) return;
+		setTxLoading(true);
+		setTxError(null);
+		try {
+			const result = await queryWalletTransactions(client, suiAddress, { limit: 50 });
+			setRawTxs(result.data);
+
+			// Resolve metadata for any coin types seen in transactions
+			const seenTypes = new Set<string>();
+			for (const tx of result.data) {
+				for (const bc of tx.balanceChanges) {
+					seenTypes.add(bc.coinType);
+				}
+			}
+			const newMeta: Record<string, CoinMeta> = {};
+			for (const ct of seenTypes) {
+				try {
+					const metaResult = await client.getCoinMetadata({ coinType: ct });
+					const meta = metaResult.coinMetadata;
+					if (meta) {
+						newMeta[ct] = { decimals: meta.decimals, symbol: meta.symbol, name: meta.name };
+					}
+				} catch {
+					// skip
+				}
+			}
+			if (Object.keys(newMeta).length > 0) {
+				setCoinMeta((prev) => ({ ...prev, ...newMeta }));
+			}
+		} catch (err) {
+			setTxError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setTxLoading(false);
+		}
+	}, [suiAddress, client]);
+
 	useEffect(() => {
 		if (suiAddress) {
 			setLoading(true);
 			fetchBalances();
+			fetchTransactions();
 		} else {
 			setBalances([]);
+			setRawTxs([]);
 			setLoading(false);
 		}
-	}, [suiAddress, fetchBalances]);
+	}, [suiAddress, fetchBalances, fetchTransactions]);
+
+	// ── Flatten transactions ─────────────────────────────────────────────────
+
+	const { flatTxs, txCoinTypes } = useMemo(() => {
+		const flat: FlatTx[] = [];
+		const types = new Set<string>();
+		for (const tx of rawTxs) {
+			for (const bc of tx.balanceChanges) {
+				types.add(bc.coinType);
+				flat.push({
+					digest: tx.digest,
+					timestampMs: tx.timestampMs,
+					coinType: bc.coinType,
+					amount: BigInt(bc.amount),
+				});
+			}
+		}
+		return { flatTxs: flat, txCoinTypes: Array.from(types).sort() };
+	}, [rawTxs]);
+
+	// ── Filter + sort ────────────────────────────────────────────────────────
+
+	const filtered = useMemo(() => {
+		let rows = flatTxs;
+
+		if (filterCoin !== "all") {
+			rows = rows.filter((r) => r.coinType === filterCoin);
+		}
+		if (filterDir === "in") {
+			rows = rows.filter((r) => r.amount > 0n);
+		} else if (filterDir === "out") {
+			rows = rows.filter((r) => r.amount < 0n);
+		}
+		if (search.trim()) {
+			const q = search.toLowerCase();
+			rows = rows.filter((r) => r.digest.toLowerCase().includes(q));
+		}
+
+		const dir = sortDir === "asc" ? 1 : -1;
+		return [...rows].sort((a, b) => {
+			switch (sortField) {
+				case "time":
+					return (a.timestampMs - b.timestampMs) * dir;
+				case "amount":
+					return Number(a.amount - b.amount) * dir;
+				case "currency": {
+					const sa = coinMeta[a.coinType]?.symbol ?? extractTokenName(a.coinType);
+					const sb = coinMeta[b.coinType]?.symbol ?? extractTokenName(b.coinType);
+					return sa.localeCompare(sb) * dir;
+				}
+				default:
+					return 0;
+			}
+		});
+	}, [flatTxs, filterCoin, filterDir, search, sortField, sortDir, coinMeta]);
+
+	function handleSort(field: SortField) {
+		if (sortField === field) {
+			setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+		} else {
+			setSortField(field);
+			setSortDir(field === "time" ? "desc" : "asc");
+		}
+	}
+
+	function sortIcon(field: SortField): string {
+		if (sortField !== field) return "";
+		return sortDir === "asc" ? " \u25B2" : " \u25BC";
+	}
 
 	// ── No character selected ───────────────────────────────────────────────
 
@@ -159,11 +293,14 @@ export function Wallet() {
 				</div>
 				<button
 					type="button"
-					onClick={fetchBalances}
-					disabled={fetching}
+					onClick={() => {
+						fetchBalances();
+						fetchTransactions();
+					}}
+					disabled={fetching || txLoading}
 					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
 				>
-					{fetching ? (
+					{fetching || txLoading ? (
 						<Loader2 size={14} className="animate-spin" />
 					) : (
 						<RefreshCw size={14} />
@@ -189,7 +326,6 @@ export function Wallet() {
 				<>
 					{/* Summary Cards */}
 					<div className="mb-6 grid grid-cols-2 gap-4">
-						{/* SUI Balance Card */}
 						<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
 							<p className="text-xs text-zinc-500">SUI Balance</p>
 							<p className="mt-1 text-2xl font-bold text-zinc-100">
@@ -200,7 +336,6 @@ export function Wallet() {
 							</p>
 						</div>
 
-						{/* Faucet Card */}
 						<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
 							<p className="text-xs text-zinc-500">Need testnet SUI?</p>
 							<p className="mt-1 text-sm text-zinc-400">
@@ -243,7 +378,7 @@ export function Wallet() {
 										const name = meta?.symbol || extractTokenName(b.coinType);
 										const decimals = meta?.decimals ?? 9;
 										const isSui = isSuiCoin(b.coinType);
-										const displayBalance = `${formatBalance(b.totalBalance, decimals)} ${isSui ? "SUI" : name}`;
+										const displayBal = `${formatBalance(b.totalBalance, decimals)} ${isSui ? "SUI" : name}`;
 
 										return (
 											<tr
@@ -271,13 +406,145 @@ export function Wallet() {
 													)}
 												</td>
 												<td className="px-4 py-3 font-mono text-sm text-zinc-200">
-													{displayBalance}
+													{displayBal}
 												</td>
 											</tr>
 										);
 									})}
 								</tbody>
 							</table>
+						)}
+					</div>
+
+					{/* ── Currency Transactions ─────────────────────────────── */}
+					<div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/50">
+						<div className="border-b border-zinc-800 px-4 py-3">
+							<h2 className="text-sm font-medium text-zinc-400">
+								Currency Transactions
+							</h2>
+						</div>
+
+						{/* Filters */}
+						<div className="flex flex-wrap items-center gap-2 border-b border-zinc-800/50 px-4 py-2">
+							<select
+								value={filterCoin}
+								onChange={(e) => setFilterCoin(e.target.value)}
+								className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-500 focus:outline-none"
+							>
+								<option value="all">All Currencies</option>
+								{txCoinTypes.map((ct) => (
+									<option key={ct} value={ct}>
+										{coinMeta[ct]?.symbol ?? extractTokenName(ct)}
+									</option>
+								))}
+							</select>
+
+							<select
+								value={filterDir}
+								onChange={(e) => setFilterDir(e.target.value)}
+								className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-500 focus:outline-none"
+							>
+								<option value="all">All Directions</option>
+								<option value="in">Received</option>
+								<option value="out">Sent</option>
+							</select>
+
+							<input
+								type="text"
+								value={search}
+								onChange={(e) => setSearch(e.target.value)}
+								placeholder="Search by tx digest..."
+								className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+							/>
+
+							<span className="text-[10px] text-zinc-600">
+								{filtered.length} of {flatTxs.length}
+							</span>
+						</div>
+
+						{/* Grid */}
+						{txLoading ? (
+							<div className="flex items-center justify-center py-8">
+								<Loader2 size={16} className="animate-spin text-cyan-500" />
+								<span className="ml-2 text-xs text-zinc-500">Loading transactions...</span>
+							</div>
+						) : txError ? (
+							<div className="px-4 py-6 text-center text-xs text-red-400">{txError}</div>
+						) : filtered.length === 0 ? (
+							<div className="px-4 py-8 text-center text-xs text-zinc-600">
+								{flatTxs.length === 0
+									? "No currency transactions found."
+									: "No transactions match the current filters."}
+							</div>
+						) : (
+							<div className="overflow-x-auto">
+								<table className="w-full text-left text-xs">
+									<thead>
+										<tr className="border-b border-zinc-800 text-[10px] text-zinc-500 uppercase">
+											<ThSort onClick={() => handleSort("time")}>
+												Time{sortIcon("time")}
+											</ThSort>
+											<ThSort onClick={() => handleSort("currency")}>
+												Currency{sortIcon("currency")}
+											</ThSort>
+											<ThSort onClick={() => handleSort("amount")} align="right">
+												Amount{sortIcon("amount")}
+											</ThSort>
+											<th className="px-4 py-2 font-medium">Tx Digest</th>
+										</tr>
+									</thead>
+									<tbody>
+										{filtered.map((tx, i) => {
+											const meta = coinMeta[tx.coinType];
+											const symbol = meta?.symbol ?? extractTokenName(tx.coinType);
+											const decimals = meta?.decimals ?? 0;
+											const isPositive = tx.amount > 0n;
+											const absAmount = tx.amount < 0n ? -tx.amount : tx.amount;
+											const displayAmt = decimals > 0
+												? formatBalance(absAmount, decimals)
+												: absAmount.toLocaleString();
+											const date = new Date(tx.timestampMs);
+											const timeStr = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+											const shortDigest = `${tx.digest.slice(0, 8)}...${tx.digest.slice(-6)}`;
+
+											return (
+												<tr
+													key={`${tx.digest}-${tx.coinType}-${i}`}
+													className="border-b border-zinc-800/30 hover:bg-zinc-800/20"
+												>
+													<td className="whitespace-nowrap px-4 py-2.5 text-zinc-400">
+														{timeStr}
+													</td>
+													<td className="px-4 py-2.5 text-zinc-300">
+														{symbol}
+													</td>
+													<td className="whitespace-nowrap px-4 py-2.5 text-right font-mono">
+														<span className={`inline-flex items-center gap-1 ${isPositive ? "text-emerald-400" : "text-red-400"}`}>
+															{isPositive ? (
+																<ArrowDownLeft size={12} />
+															) : (
+																<ArrowUpRight size={12} />
+															)}
+															{isPositive ? "+" : "-"}{displayAmt}
+														</span>
+													</td>
+													<td className="px-4 py-2.5">
+														<a
+															href={`https://testnet.suivision.xyz/txblock/${tx.digest}`}
+															target="_blank"
+															rel="noopener noreferrer"
+															className="inline-flex items-center gap-1 font-mono text-zinc-600 hover:text-cyan-400"
+														>
+															{shortDigest}
+															<ExternalLink size={10} />
+														</a>
+													</td>
+												</tr>
+											);
+										})}
+									</tbody>
+								</table>
+							</div>
 						)}
 					</div>
 
@@ -297,5 +564,22 @@ export function Wallet() {
 				</>
 			)}
 		</div>
+	);
+}
+
+function ThSort({
+	children,
+	onClick,
+	align,
+}: { children: React.ReactNode; onClick: () => void; align?: "right" }) {
+	return (
+		<th
+			className={`cursor-pointer select-none px-4 py-2 font-medium hover:text-zinc-300 ${
+				align === "right" ? "text-right" : ""
+			}`}
+			onClick={onClick}
+		>
+			{children}
+		</th>
 	);
 }

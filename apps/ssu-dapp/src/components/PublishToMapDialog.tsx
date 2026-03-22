@@ -1,6 +1,6 @@
 import { useDAppKit } from "@mysten/dapp-kit-react";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useMapKey } from "@/hooks/useMapKey";
 import { useSuiClient } from "@/hooks/useSuiClient";
@@ -20,9 +20,6 @@ import {
 
 interface PublishToMapDialogProps {
 	ssuObjectId: string;
-	solarSystemId: number;
-	planet: number;
-	lPoint: number;
 	walletAddress: string;
 	onClose: () => void;
 }
@@ -34,9 +31,6 @@ interface ResolvedMap {
 
 export function PublishToMapDialog({
 	ssuObjectId,
-	solarSystemId,
-	planet,
-	lPoint,
 	walletAddress,
 	onClose,
 }: PublishToMapDialogProps) {
@@ -48,9 +42,44 @@ export function PublishToMapDialog({
 
 	const { keyPair, deriveKey, isDerivingKey } = useMapKey();
 	const [selectedMapId, setSelectedMapId] = useState<string | null>(null);
+	const [systemId, setSystemId] = useState<number | null>(null);
+	const [systemSearch, setSystemSearch] = useState("");
+	const [showSystemResults, setShowSystemResults] = useState(false);
+	const [planet, setPlanet] = useState("1");
+	const [lPoint, setLPoint] = useState("1");
 	const [description, setDescription] = useState("");
 	const [isPending, setIsPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+
+	// Lazy-load system labels for search
+	const { data: systemLabels } = useQuery({
+		queryKey: ["stellarLabels"],
+		queryFn: async () => {
+			const resp = await fetch("/data/stellar_labels.json");
+			return (await resp.json()) as Record<string, string>;
+		},
+		staleTime: Number.POSITIVE_INFINITY,
+	});
+
+	// Build searchable entries once
+	const systemEntries = useMemo(() => {
+		if (!systemLabels) return [];
+		return Object.entries(systemLabels).map(([id, name]) => ({
+			id: Number(id),
+			name: name as string,
+		}));
+	}, [systemLabels]);
+
+	// Filter by search query
+	const filteredSystems = useMemo(() => {
+		if (!systemSearch.trim() || !systemEntries.length) return [];
+		const q = systemSearch.toLowerCase();
+		return systemEntries.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 20);
+	}, [systemSearch, systemEntries]);
+
+	const selectedSystemName = systemId
+		? systemLabels?.[String(systemId)] ?? `System ${systemId}`
+		: "";
 
 	// Fetch user's map invites + resolve map names
 	const { data: resolvedMaps, isLoading: mapsLoading } = useQuery({
@@ -71,8 +100,16 @@ export function PublishToMapDialog({
 		staleTime: 60_000,
 	});
 
+	const solarSystemId = systemId ?? 0;
+	const planetNum = Number(planet) || 0;
+	const lPointNum = Number(lPoint) || 0;
+
 	const handlePublish = useCallback(async () => {
 		if (!keyPair || !selectedMapId || !packageId) return;
+		if (!systemId || solarSystemId <= 0) {
+			setError("Select a solar system");
+			return;
+		}
 		setIsPending(true);
 		setError(null);
 
@@ -83,8 +120,8 @@ export function PublishToMapDialog({
 			// Encrypt location data with map's public key
 			const plaintext = encodeLocationData({
 				solarSystemId,
-				planet,
-				lPoint,
+				planet: planetNum,
+				lPoint: lPointNum,
 				description: description.trim() || undefined,
 			});
 
@@ -113,8 +150,8 @@ export function PublishToMapDialog({
 		packageId,
 		resolvedMaps,
 		solarSystemId,
-		planet,
-		lPoint,
+		planetNum,
+		lPointNum,
 		description,
 		ssuObjectId,
 		walletAddress,
@@ -174,9 +211,88 @@ export function PublishToMapDialog({
 		<DialogOverlay onClose={onClose}>
 			<h2 className="mb-4 text-lg font-semibold text-zinc-100">Publish to Map</h2>
 
-			<div className="mb-3 rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-400">
-				<span className="text-zinc-500">Location: </span>
-				System {solarSystemId} -- P{planet}-L{lPoint}
+			{/* Location inputs */}
+			<div className="mb-4 space-y-2">
+				<div className="relative">
+					<label className="mb-1 block text-xs text-zinc-400">Solar System</label>
+					<input
+						type="text"
+						value={systemId ? (systemSearch || selectedSystemName) : systemSearch}
+						onChange={(e) => {
+							setSystemSearch(e.target.value);
+							setSystemId(null);
+							setShowSystemResults(true);
+						}}
+						onFocus={() => systemSearch && setShowSystemResults(true)}
+						onBlur={() => setTimeout(() => setShowSystemResults(false), 200)}
+						placeholder="Type to search systems..."
+						className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+					/>
+					{systemId && (
+						<span className="absolute right-2 top-7 text-[10px] text-zinc-600">
+							#{systemId}
+						</span>
+					)}
+					{showSystemResults && filteredSystems.length > 0 && (
+						<div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-800 shadow-lg">
+							{filteredSystems.map((sys) => (
+								<button
+									key={sys.id}
+									type="button"
+									onMouseDown={() => {
+										setSystemId(sys.id);
+										setSystemSearch(sys.name);
+										setShowSystemResults(false);
+									}}
+									className="w-full px-3 py-1.5 text-left text-sm text-zinc-300 hover:bg-zinc-700"
+								>
+									{sys.name}
+									<span className="ml-2 text-[10px] text-zinc-600">#{sys.id}</span>
+								</button>
+							))}
+						</div>
+					)}
+					{showSystemResults &&
+						systemSearch.length >= 2 &&
+						filteredSystems.length === 0 &&
+						systemLabels && (
+							<div className="absolute z-10 mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 p-2 text-xs text-zinc-500">
+								No systems found
+							</div>
+						)}
+				</div>
+				<div className="flex gap-2">
+					<div className="flex-1">
+						<label className="mb-1 block text-xs text-zinc-400">Planet</label>
+						<input
+							type="number"
+							min={1}
+							max={13}
+							value={planet}
+							onChange={(e) => setPlanet(e.target.value)}
+							className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none"
+						/>
+					</div>
+					<div className="flex-1">
+						<label className="mb-1 block text-xs text-zinc-400">L-Point</label>
+						<select
+							value={lPoint}
+							onChange={(e) => setLPoint(e.target.value)}
+							className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none"
+						>
+							<option value="1">L1</option>
+							<option value="2">L2</option>
+							<option value="3">L3</option>
+							<option value="4">L4</option>
+							<option value="5">L5</option>
+						</select>
+					</div>
+				</div>
+				{systemId && (
+					<p className="text-xs text-zinc-500">
+						Location: {selectedSystemName} -- P{planetNum}-L{lPointNum}
+					</p>
+				)}
 			</div>
 
 			{mapsLoading ? (

@@ -156,6 +156,9 @@ public fun anchor(registry, network_node, character, admin_acl, item_id, type_id
 public fun share_assembly(assembly, admin_acl, ctx)
 public fun unanchor(assembly, network_node, energy_config, admin_acl, ctx)
 public fun update_energy_source(assembly, network_node, admin_acl, ctx)
+
+// Reveal location (Admin — temporary until offchain service)
+public fun reveal_location(assembly, registry, admin_acl, solarsystem, x, y, z, ctx)
 ```
 
 ---
@@ -354,6 +357,9 @@ public fun offline(su, mut offline_assemblies, network_node, energy_config): Off
 public fun update_metadata_name(su, owner_cap, name)
 public fun update_metadata_description(su, owner_cap, description)
 public fun update_metadata_url(su, owner_cap, url)
+
+// Reveal location (Admin — temporary until offchain service)
+public fun reveal_location(su, registry, admin_acl, solarsystem, x, y, z, ctx)
 
 // View
 public fun status(su): &AssemblyStatus
@@ -834,10 +840,35 @@ public fun quantity(item): u32
 
 ```move
 public struct Location has store { location_hash: vector<u8> }
-public struct LocationRegistry has key { id: UID, locations: Table<ID, Coordinates> }
-public struct Coordinates has copy, drop, store { solarsystem: u64, x: String, y: String, z: String }
-public struct LocationProofMessage has drop { server_address, player_address, source_structure_id, source_location_hash, target_structure_id, target_location_hash, distance, data, deadline_ms }
-public struct LocationProof has drop { message: LocationProofMessage, signature: vector<u8> }
+
+public struct LocationRegistry has key {
+    id: UID,
+    locations: Table<ID, Coordinates>,  // keyed by assembly object ID
+}
+
+public struct Coordinates has copy, drop, store {
+    solarsystem: u64,  // solar system ID
+    x: String,         // x coordinate (string because high-precision decimal)
+    y: String,         // y coordinate
+    z: String,         // z coordinate
+}
+
+public struct LocationProofMessage has drop {
+    server_address: address,
+    player_address: address,
+    source_structure_id: ID,
+    source_location_hash: vector<u8>,
+    target_structure_id: ID,
+    target_location_hash: vector<u8>,
+    distance: u64,
+    data: vector<u8>,
+    deadline_ms: u64,
+}
+
+public struct LocationProof has drop {
+    message: LocationProofMessage,
+    signature: vector<u8>,
+}
 ```
 
 ### Errors
@@ -856,17 +887,57 @@ public struct LocationProof has drop { message: LocationProofMessage, signature:
 ### Events
 
 ```move
-LocationRevealedEvent { assembly_id, assembly_key, type_id, owner_cap_id, location_hash, solarsystem, x, y, z }
+public struct LocationRevealedEvent has copy, drop {
+    assembly_id: ID,        // assembly object ID
+    assembly_key: TenantItemId,  // tenant + in-game item_id
+    type_id: u64,           // assembly type (77917=SSU, 88086=Gate, etc.)
+    owner_cap_id: ID,       // OwnerCap for this assembly
+    location_hash: vector<u8>,  // Poseidon2 hash
+    solarsystem: u64,       // solar system ID
+    x: String,              // x coordinate
+    y: String,              // y coordinate
+    z: String,              // z coordinate
+}
 ```
+
+### Location Reveal Flow
+
+The `reveal_location` function is available on all assembly types (Assembly, Gate, StorageUnit, Turret, NetworkNode). It is an **admin-only** operation -- the game server calls it when a player clicks "Publish Location" in-game. The flow:
+
+1. Player clicks "Publish Location" button in the game client
+2. Game server calls `{assembly_type}::reveal_location()` with the structure's coordinates
+3. The assembly-level function verifies `AdminACL` via `admin_acl.verify_sponsor(ctx)`
+4. Delegates to `location::reveal_location()` which stores `Coordinates` in the `LocationRegistry` (keyed by assembly object ID) and emits `LocationRevealedEvent`
+
+**Coordinate format:** x/y/z are `String` because they are high-precision decimal values from the game server. The `solarsystem` field is a `u64` system ID.
+
+**LocationRegistry** is a shared object containing a `Table<ID, Coordinates>`. Once published, coordinates can be queried via `get_location(registry, assembly_id)` which returns `Option<Coordinates>`.
 
 ### Key Functions
 
 ```move
+// Location reveal (package-internal, called by assembly-level reveal_location)
+public(package) fun reveal_location(
+    registry: &mut LocationRegistry,
+    assembly_id: ID,
+    assembly_key: TenantItemId,
+    type_id: u64,
+    owner_cap_id: ID,
+    location_hash: vector<u8>,
+    solarsystem: u64,
+    x: String,
+    y: String,
+    z: String,
+)
+
+// Proximity proofs
 public fun create_location_proof(server_address, player_address, source_id, source_hash, target_id, target_hash, distance, data, deadline_ms, signature): LocationProof
 public fun verify_proximity(location, proof, server_registry, clock, ctx)
 public fun verify_proximity_proof_from_bytes(server_registry, location, proof_bytes, clock, ctx)
 public fun verify_distance(location, server_registry, proof_bytes, max_distance, ctx)
 public fun verify_same_location(location_a_hash, location_b_hash)
+
+// Accessors
 public fun hash(location): vector<u8>
 public fun get_location(registry, assembly_id): Option<Coordinates>
 public fun solarsystem(coords): u64

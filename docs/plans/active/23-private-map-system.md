@@ -7,7 +7,7 @@
 
 The Private Map system enables encrypted location sharing among trusted players in EVE Frontier. A map is a shared on-chain object containing an X25519 public key. Members are invited by receiving a `MapInvite` object -- which contains the map's private key encrypted with the invitee's wallet-derived public key. Locations (structures or custom POIs) are encrypted with the map's public key and stored as dynamic fields on the map object. Only members who can decrypt their invite can read locations.
 
-This system is completely stateless on the client side -- no keys are stored locally. All key material lives on-chain in encrypted form. Users derive their X25519 key deterministically from their wallet via `signPersonalMessage`, and all map access flows through this single derivation. This makes the system work seamlessly across devices.
+This system is mostly stateless on the client side -- decrypted map keys are cached in the browser's per-origin IndexedDB for performance (same security model as wallet storage). All key material originates on-chain in encrypted form. Users derive their X25519 key deterministically from their wallet via `signPersonalMessage`, and all map access flows through this single derivation. This makes the system work seamlessly across devices.
 
 The primary use cases are alliance intel maps (shared SSU/gate locations), trade route maps (market locations + waypoints), and personal maps (structures shared with alts or trusted friends). The system is standalone -- it does not depend on any existing custom contracts, only the Sui framework.
 
@@ -74,7 +74,7 @@ public struct MapLocation has store, drop {
 
 1. **Key derivation:** `dAppKit.signPersonalMessage({ message: encode("TehFrontier Map Key v1") })` returns `{ signature: string }` (base64-encoded). Decode signature from base64 to bytes, then SHA-256 hash -> 32-byte seed -> `x25519.keygen(seed)` to produce X25519 keypair. Ed25519 signatures are deterministic, so same wallet = same derived key every time across devices.
 2. **Map creation:** Generate ephemeral X25519 keypair in memory. Store public key on-chain. Self-invite (seal private key with own wallet-derived X25519 public key). Discard ephemeral private key.
-3. **Inviting members:** Decrypt own invite to recover map private key. Look up invitee's Ed25519 public key from any of their on-chain transaction signatures, convert to X25519. Re-encrypt map private key with invitee's X25519 public key.
+3. **Inviting members:** Decrypt own invite to recover map private key. Look up invitee's Ed25519 public key from any of their on-chain transaction signatures (via `queryTransactionSignature` + `parseSerializedSignature`), convert to X25519 via `ed25519.utils.toMontgomery()`. Re-encrypt map private key with invitee's X25519 public key.
 4. **Adding locations:** Read map public key from the on-chain `PrivateMap.public_key` field. Encrypt location data with `crypto_box_seal(plaintext, mapPublicKey)` -- only the map's public key is needed for encryption. Submit TX with encrypted bytes + `&MapInvite` for on-chain membership proof.
 5. **Reading locations:** Decrypt own MapInvite to recover map secret key (step 1 of any read operation). For each location, call `crypto_box_seal_open(ciphertext, mapPublicKey, mapSecretKey)` to decrypt `encrypted_data`.
 
@@ -104,9 +104,11 @@ Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_se
 | Encrypted data format | JSON `{solar_system_id, planet, l_point, description}` serialized then sealed | Flexible schema. Client-side parsing. Can add fields without contract changes. |
 | No member list on-chain | Members discovered via MapInvite objects (query by type + map_id) | Avoids maintaining a vector on the shared object. MapInvite objects serve as both key delivery and membership proof. |
 | Creator-only invite | Only the map creator can send invites | Simplifies trust model. Members can read but not expand the group. Can be relaxed later with an `admins` vector. |
-| Public key distribution | Extract Ed25519 public key from invitee's transaction signatures, convert to X25519 | Every Sui transaction signature includes the signer's Ed25519 public key. Any active player has at least one transaction (character creation). Query any transaction by the invitee's address, extract the public key, convert Ed25519 -> X25519 via `@noble/curves`. No registry or out-of-band exchange needed -- the blockchain itself is the registry. |
+| Public key distribution | Extract Ed25519 public key from invitee's transaction signatures, convert to X25519 | Every Sui transaction signature includes the signer's Ed25519 public key. Any active player has at least one transaction (character creation). Query any transaction by the invitee's address, extract the public key via `parseSerializedSignature`, convert Ed25519 -> X25519 via `ed25519.utils.toMontgomery()` from `@noble/curves/ed25519.js`. No registry or out-of-band exchange needed -- the blockchain itself is the registry. |
 | Contract independence | No dependency on market, ssu_market, or world contracts | Private Map is a pure utility -- location data is opaque bytes. Structure IDs are stored as `Option<ID>` but not validated on-chain. |
 | Single deployment for all tenants | Same package ID in both stillness and utopia config entries | No tenant-specific dependencies. Maps are cross-tenant (a map created on one tenant's data works identically on the other). |
+| Wallet key type | Ed25519 only | Sui supports Ed25519/Secp256k1/Secp256r1 but only Ed25519 keys can be converted to X25519 for encryption. EVE Vault uses Ed25519. |
+| Manifest key caching | Decrypted map keys cached in IndexedDB | Caching avoids re-fetching and re-decrypting on every page load. Trade-off: keys stored in plaintext per-origin storage (same security model as wallet key storage). Re-deriving on each session is an alternative but adds latency. |
 | Location removal | Creator or the address that added the location can remove it | Allows map housekeeping without concentrating all control on the creator. |
 | Soft revocation via blacklist | `revoke_member` adds address to `revoked` vector on PrivateMap | Cannot delete another user's owned object in Sui. `revoked` list blocks `add_location` calls. Cannot prevent decryption of existing data -- true revocation requires creating a new map. Documented limitation. |
 | Crypto libraries | `tweetnacl` + `tweetnacl-sealedbox-js` + `@noble/hashes` + `@noble/curves` | tweetnacl for NaCl primitives, tweetnacl-sealedbox-js for sealed box extension. Noble for SHA-256 hashing and x25519 key generation. All audited, small footprint. |
@@ -118,9 +120,9 @@ Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_se
 
 1. Create `contracts/private_map/Move.toml` with Sui framework dependency (same pattern as `contracts/market/Move.toml`), `edition = "2024"`, `private_map = "0x0"` placeholder address.
 2. Create `contracts/private_map/sources/private_map.move` with:
-   - Error codes: `ENotCreator`, `ELocationNotFound`, `ENotLocationOwner`, `EInviteNotForThisMap`, `EMemberRevoked`, `EAlreadyRevoked`
+   - Error codes: `ENotCreator`, `ELocationNotFound`, `ENotLocationOwner`, `EInviteNotForThisMap`, `EMemberRevoked`, `EAlreadyRevoked`, `EInvalidPublicKeyLength`
    - Structs: `PrivateMap`, `MapInvite`, `LocationKey`, `MapLocation` (as specified in Target State)
-   - `create_map(name: String, public_key: vector<u8>, self_invite_encrypted_key: vector<u8>, ctx: &mut TxContext)` -- `#[allow(lint(share_owned))]` attribute (same as market.move). Creates shared `PrivateMap` with `revoked: vector[]`, transfers self-`MapInvite` to sender
+   - `create_map(name: String, public_key: vector<u8>, self_invite_encrypted_key: vector<u8>, ctx: &mut TxContext)` -- `#[allow(lint(share_owned))]` attribute (same as market.move). Assert `public_key.length() == 32` with error `EInvalidPublicKeyLength`. Creates shared `PrivateMap` with `revoked: vector[]`, transfers self-`MapInvite` to sender
    - `invite_member(map: &PrivateMap, recipient: address, encrypted_map_key: vector<u8>, ctx: &mut TxContext)` -- creator only. Creates `MapInvite` owned by `recipient`.
    - `add_location(map: &mut PrivateMap, invite: &MapInvite, structure_id: Option<ID>, encrypted_data: vector<u8>, clock: &Clock, ctx: &mut TxContext)` -- requires `&MapInvite` with matching `map_id` (prevents spam from non-members). Asserts `invite.map_id == object::id(map)`. Also asserts sender is not in `revoked` list. Increments `next_location_id`, adds `MapLocation` as dynamic field.
    - `remove_location(map: &mut PrivateMap, location_id: u64, ctx: &TxContext)` -- creator or `added_by` address can remove.
@@ -140,16 +142,18 @@ Use `tweetnacl` + `tweetnacl-sealedbox-js` for NaCl sealed boxes (`crypto_box_se
 ### Phase 2: Client-Side Crypto (`packages/chain-shared/src/crypto.ts`)
 
 1. Create `packages/chain-shared/src/crypto.ts` with:
-   - `deriveMapKeyFromSignature(signatureBase64: string): { publicKey: Uint8Array; secretKey: Uint8Array }` -- decode signature from base64 to bytes, SHA-256 hash (via `@noble/hashes/sha256`), then `x25519.keygen(hash)` to produce X25519 keypair. The `x25519` export from `@noble/curves/ed25519` accepts an optional 32-byte seed. The base64 input matches the `signPersonalMessage` return format.
+   - `deriveMapKeyFromSignature(signatureBase64: string): { publicKey: Uint8Array; secretKey: Uint8Array }` -- decode signature from base64 to bytes, SHA-256 hash (via `@noble/hashes/sha2.js`), then `x25519.keygen(hash)` to produce X25519 keypair. The `x25519` export from `@noble/curves/ed25519.js` accepts an optional 32-byte seed. The base64 input matches the `signPersonalMessage` return format.
    - `generateEphemeralX25519Keypair(): { publicKey: Uint8Array; secretKey: Uint8Array }` -- `x25519.keygen()` (no seed = random). Used for new map creation.
    - `sealForRecipient(plaintext: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array` -- uses `tweetnacl-sealedbox-js` `seal(plaintext, recipientPublicKey)`
    - `unsealWithKey(ciphertext: Uint8Array, recipientPublicKey: Uint8Array, recipientSecretKey: Uint8Array): Uint8Array` -- uses `tweetnacl-sealedbox-js` `open(ciphertext, recipientPublicKey, recipientSecretKey)`
-   - `getPublicKeyForAddress(client, address: string): Promise<Uint8Array>` -- query a recent transaction by the address, extract Ed25519 public key from the signature, convert to X25519 via `@noble/curves` `edwardsToMontgomeryPub`. Throws if no transactions found.
+   - `getPublicKeyForAddress(client, address: string): Promise<Uint8Array>` -- query a recent transaction by the address using `queryTransactionSignature(client, address)` (see below), extract Ed25519 public key via `parseSerializedSignature` from `@mysten/sui/cryptography`. After parsing the signature, check `signatureScheme === 'ED25519'`. If the wallet uses Secp256k1 or Secp256r1, throw an error: `'Private maps require an Ed25519 wallet (e.g., EVE Vault)'`. Document this limitation in the UI with a clear error message. Convert the Ed25519 public key to X25519 via `ed25519.utils.toMontgomery(ed25519PubKey)` from `@noble/curves/ed25519.js`. Throws if no transactions found.
+   - Requires a new GraphQL query helper to fetch transaction signatures for an address. Add `queryTransactionSignature(client, address)` to `packages/chain-shared/src/graphql-queries.ts` that queries a single recent transaction with the `signatures` field included. Use `parseSerializedSignature` from `@mysten/sui/cryptography` to extract the Ed25519 public key.
    - `encodeLocationData(data: { solarSystemId: number; planet: number; lPoint: number; description?: string }): Uint8Array` -- JSON serialize + UTF-8 encode
    - `decodeLocationData(plaintext: Uint8Array): { solarSystemId: number; planet: number; lPoint: number; description?: string }` -- UTF-8 decode + JSON parse
-2. Add `tweetnacl`, `tweetnacl-sealedbox-js`, and `@noble/curves` as dependencies of `packages/chain-shared`. `@noble/hashes` is already a transitive dependency but should be added explicitly.
-3. Export from `packages/chain-shared/src/index.ts`.
-4. Write unit tests for crypto round-trip (seal -> unseal), key derivation determinism, and location data encoding.
+2. Create `packages/chain-shared/src/types/tweetnacl-sealedbox-js.d.ts` with `declare module 'tweetnacl-sealedbox-js'` type declarations for `seal(message: Uint8Array, recipientPk: Uint8Array): Uint8Array` and `open(ciphertext: Uint8Array, recipientPk: Uint8Array, recipientSk: Uint8Array): Uint8Array | null` since the package ships no TypeScript types. Note: the function is `open`, not `sealOpen` -- this matches the npm package's actual export names (`seal`, `open`, `overheadLength`).
+3. Add `tweetnacl`, `tweetnacl-sealedbox-js`, and `@noble/curves` as dependencies of `packages/chain-shared`. `@noble/hashes` is already a transitive dependency but should be added explicitly.
+4. Export from `packages/chain-shared/src/index.ts`.
+5. Write unit tests for crypto round-trip (seal -> unseal), key derivation determinism, and location data encoding.
 
 ### Phase 3: Chain-Shared TX Builders + Queries (`packages/chain-shared/src/private-map.ts`)
 
@@ -235,10 +239,10 @@ Cache decrypted private map data in the Periscope manifest (same pattern as Char
    }
    ```
 
-2. **`apps/periscope/src/db/index.ts`** -- Add V23 (or next available version) with new tables:
+2. **`apps/periscope/src/db/index.ts`** -- Add V24 (V23 is reserved for Plan 24 manifest public locations) with new tables:
    ```typescript
-   // V23: Private Maps -- encrypted location sharing cache
-   this.version(23).stores({
+   // V24: Private Maps -- encrypted location sharing cache
+   this.version(24).stores({
        manifestPrivateMaps: "id, name, creator, tenant, cachedAt",
        manifestMapLocations: "id, mapId, solarSystemId, structureId, tenant, cachedAt, [mapId+locationId]",
    });
@@ -262,7 +266,7 @@ Cache decrypted private map data in the Periscope manifest (same pattern as Char
    - Key derivation via `dAppKit.signPersonalMessage({ message })` using `useDAppKit()` from dapp-kit-react
 2. Add `useMapKey` hook (`apps/periscope/src/hooks/useMapKey.ts`) -- derives X25519 keypair from wallet, caches in React state (not persisted). Uses `signPersonalMessage` + `deriveMapKeyFromSignature`.
 3. Add `usePrivateMaps` hook (`apps/periscope/src/hooks/usePrivateMaps.ts`) -- reads from manifest cache, triggers `syncPrivateMaps` on mount if stale.
-4. Add route `/maps` to `apps/periscope/src/router.tsx`.
+4. Add route `/private-maps` to `apps/periscope/src/router.tsx`.
 5. Add navigation entry in sidebar.
 
 ### Phase 7: ssu-dapp Integration (publish SSU to map)
@@ -278,18 +282,20 @@ Cache decrypted private map data in the Periscope manifest (same pattern as Char
 | `contracts/private_map/Move.toml` | Create | Package manifest with Sui framework dependency |
 | `contracts/private_map/sources/private_map.move` | Create | Core contract: PrivateMap, MapInvite, MapLocation, CRUD functions |
 | `packages/chain-shared/src/crypto.ts` | Create | Wallet key derivation, X25519, seal/unseal helpers |
+| `packages/chain-shared/src/graphql-queries.ts` | Create/Modify | Add queryTransactionSignature helper for fetching tx signatures by address |
+| `packages/chain-shared/src/types/tweetnacl-sealedbox-js.d.ts` | Create | Type declarations for tweetnacl-sealedbox-js (no types shipped) |
 | `packages/chain-shared/src/private-map.ts` | Create | TX builders + GraphQL queries for private maps |
 | `packages/chain-shared/src/types.ts` | Modify | Add PrivateMapInfo, MapInviteInfo, MapLocationInfo, ContractAddresses.privateMap |
 | `packages/chain-shared/src/index.ts` | Modify | Add exports for crypto.ts and private-map.ts |
 | `packages/chain-shared/src/config.ts` | Modify | Add privateMap packageId to both tenant entries (after deploy) |
 | `packages/chain-shared/package.json` | Modify | Add tweetnacl, tweetnacl-sealedbox-js, @noble/curves, @noble/hashes dependencies |
 | `apps/periscope/src/db/types.ts` | Modify | Add ManifestPrivateMap and ManifestMapLocation interfaces |
-| `apps/periscope/src/db/index.ts` | Modify | Add V23 schema with manifestPrivateMaps + manifestMapLocations tables |
+| `apps/periscope/src/db/index.ts` | Modify | Add V24 schema with manifestPrivateMaps + manifestMapLocations tables |
 | `apps/periscope/src/chain/manifest.ts` | Modify | Add syncPrivateMaps, syncMapLocations, getDecryptedMapLocations, invalidateMapCache |
 | `apps/periscope/src/views/Maps.tsx` | Create | Private maps management UI (reads from manifest cache) |
 | `apps/periscope/src/hooks/useMapKey.ts` | Create | Wallet-derived X25519 key hook |
 | `apps/periscope/src/hooks/usePrivateMaps.ts` | Create | Reads from manifest cache, triggers sync when stale |
-| `apps/periscope/src/router.tsx` | Modify | Add /maps route |
+| `apps/periscope/src/router.tsx` | Modify | Add /private-maps route |
 | `apps/periscope/src/components/Sidebar.tsx` | Modify | Add Maps nav entry |
 | `apps/ssu-dapp/src/views/SsuView.tsx` | Modify | Add "Publish to Map" button |
 | `apps/ssu-dapp/src/components/PublishToMapDialog.tsx` | Create | Dialog for publishing SSU location to a map |

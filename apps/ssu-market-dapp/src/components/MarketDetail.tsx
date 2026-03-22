@@ -1,3 +1,4 @@
+import { useCoinMetadata } from "@/hooks/useCoinMetadata";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import { useCurrentAccount, useCurrentClient } from "@mysten/dapp-kit-react";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
@@ -7,6 +8,7 @@ import {
 	type MarketSellListing,
 	buildCancelBuyOrder,
 	buildCancelSellListing,
+	formatBaseUnits,
 	queryMarketBuyOrders,
 	queryMarketDetails,
 	queryMarketListings,
@@ -37,6 +39,9 @@ export function MarketDetail({ packageId, marketId, onBack }: MarketDetailProps)
 	const [activeTab, setActiveTab] = useState<TabId>("listings");
 	const [showPostListing, setShowPostListing] = useState(false);
 	const [showPostOrder, setShowPostOrder] = useState(false);
+
+	const { data: coinMeta } = useCoinMetadata(market?.coinType);
+	const decimals = coinMeta?.decimals ?? 9;
 
 	const loadMarketData = useCallback(async () => {
 		setLoading(true);
@@ -240,7 +245,7 @@ export function MarketDetail({ packageId, marketId, onBack }: MarketDetailProps)
 												Item #{listing.typeId}
 											</p>
 											<p className="text-[10px] text-zinc-500">
-												{listing.pricePerUnit.toString()} per unit
+												{formatBaseUnits(listing.pricePerUnit, decimals)} per unit
 												-- {listing.quantity.toLocaleString()} available
 											</p>
 											<p className="text-[10px] text-zinc-600">
@@ -313,7 +318,7 @@ export function MarketDetail({ packageId, marketId, onBack }: MarketDetailProps)
 												Want: Item #{order.typeId}
 											</p>
 											<p className="text-[10px] text-zinc-500">
-												{order.pricePerUnit.toString()} per unit --{" "}
+												{formatBaseUnits(order.pricePerUnit, decimals)} per unit --{" "}
 												{order.quantity.toLocaleString()} wanted
 												{order.originalQuantity > 0 &&
 													order.originalQuantity !== order.quantity && (
@@ -324,9 +329,10 @@ export function MarketDetail({ packageId, marketId, onBack }: MarketDetailProps)
 											</p>
 											<p className="text-[10px] text-zinc-500">
 												Total escrowed:{" "}
-												{(
-													order.pricePerUnit * BigInt(order.quantity)
-												).toString()}
+												{formatBaseUnits(
+													order.pricePerUnit * BigInt(order.quantity),
+													decimals,
+												)}
 											</p>
 											<p className="text-[10px] text-zinc-600">
 												Buyer: {order.buyer.slice(0, 10)}...

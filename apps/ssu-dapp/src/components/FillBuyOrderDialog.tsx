@@ -1,11 +1,12 @@
 import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
+import { useCoinMetadata } from "@/hooks/useCoinMetadata";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { getTenant, getWorldPackageId } from "@/lib/constants";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { buildPlayerFillBuyOrder } from "@tehfrontier/chain-shared";
+import { buildPlayerFillBuyOrder, formatBaseUnits } from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
 interface FillBuyOrderDialogProps {
@@ -30,6 +31,8 @@ export function FillBuyOrderDialog({
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
+	const { data: coinMeta } = useCoinMetadata(coinType);
+	const decimals = coinMeta?.decimals ?? 9;
 	const [quantity, setQuantity] = useState(String(order.quantity));
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
@@ -69,7 +72,7 @@ export function FillBuyOrderDialog({
 			});
 
 			await signAndExecute(tx);
-			setSuccess(`Filled ${qty}x ${order.name} -- received ${totalPayment.toString()} payment`);
+			setSuccess(`Filled ${qty}x ${order.name} -- received ${formatBaseUnits(totalPayment, decimals)} payment`);
 		} catch (err) {
 			setError(decodeErrorMessage(String(err)));
 		}
@@ -123,7 +126,7 @@ export function FillBuyOrderDialog({
 								Item: {order.name}
 							</p>
 							<p className="text-[10px] text-zinc-500">
-								{order.pricePerUnit.toString()} per unit --{" "}
+								{formatBaseUnits(order.pricePerUnit, decimals)} per unit --{" "}
 								{order.quantity.toLocaleString()} wanted
 							</p>
 						</div>
@@ -158,7 +161,7 @@ export function FillBuyOrderDialog({
 						{/* Payment preview */}
 						{totalPayment > 0n && (
 							<div className="rounded border border-zinc-800 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-400">
-								You will receive: {totalPayment.toString()} (minus fees)
+								You will receive: {formatBaseUnits(totalPayment, decimals)} (minus fees)
 							</div>
 						)}
 

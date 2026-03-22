@@ -4,7 +4,6 @@ import { ExtensionInfo } from "@/components/ExtensionInfo";
 import { PublishToMapDialog } from "@/components/PublishToMapDialog";
 import { SsuInfoCard } from "@/components/SsuInfoCard";
 import type { CapRef, TransferContext } from "@/components/TransferDialog";
-import { VisibilitySettings } from "@/components/VisibilitySettings";
 import { useAssembly } from "@/hooks/useAssembly";
 import { useBuyOrders } from "@/hooks/useBuyOrders";
 import { useCharacter } from "@/hooks/useCharacter";
@@ -201,9 +200,6 @@ export function SsuView({ objectId }: SsuViewProps) {
 				</div>
 			)}
 
-			{/* SSU visibility toggle (owner only) */}
-			{isSsuOwner && ssuConfig && <VisibilitySettings ssuConfig={ssuConfig} />}
-
 			{/* Assembly status + Extension info (kept at bottom for now) */}
 			{isOwner && character && ownerCapInfo && (
 				<AssemblyActions
@@ -232,9 +228,6 @@ export function SsuView({ objectId }: SsuViewProps) {
 			{showMapDialog && walletAddress && (
 				<PublishToMapDialog
 					ssuObjectId={objectId}
-					solarSystemId={0}
-					planet={0}
-					lPoint={0}
 					walletAddress={walletAddress}
 					onClose={() => setShowMapDialog(false)}
 				/>

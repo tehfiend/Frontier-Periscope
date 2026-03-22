@@ -1,10 +1,11 @@
+import { useCoinMetadata } from "@/hooks/useCoinMetadata";
 import type { InventoryItem } from "@/hooks/useInventory";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { getTenant, getWorldPackageId } from "@/lib/constants";
 import { decodeErrorMessage } from "@/lib/errors";
-import { buildEscrowAndList } from "@tehfrontier/chain-shared";
+import { buildEscrowAndList, formatBaseUnits, parseDisplayPrice } from "@tehfrontier/chain-shared";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -30,6 +31,8 @@ export function SellDialog({
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
+	const { data: coinMeta } = useCoinMetadata(coinType);
+	const decimals = coinMeta?.decimals ?? 9;
 	const [quantity, setQuantity] = useState("1");
 	const [pricePerUnit, setPricePerUnit] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -40,7 +43,7 @@ export function SellDialog({
 	}, []);
 
 	const qty = Number(quantity) || 0;
-	const priceBase = BigInt(pricePerUnit || 0);
+	const priceBase = parseDisplayPrice(pricePerUnit || "0", decimals);
 	const totalValue = priceBase * BigInt(qty);
 	const maxQty = item.quantity;
 
@@ -75,7 +78,7 @@ export function SellDialog({
 			});
 
 			await signAndExecute(tx);
-			setSuccess(`Listed ${qty}x ${item.name} at ${priceBase.toString()} per unit`);
+			setSuccess(`Listed ${qty}x ${item.name} at ${formatBaseUnits(priceBase, decimals)} per unit`);
 		} catch (err) {
 			setError(decodeErrorMessage(String(err)));
 		}
@@ -174,7 +177,7 @@ export function SellDialog({
 						{/* Total preview */}
 						{totalValue > 0n && (
 							<div className="rounded border border-zinc-800 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-400">
-								Total value: {totalValue.toString()}
+								Total value: {formatBaseUnits(totalValue, decimals)}
 							</div>
 						)}
 
