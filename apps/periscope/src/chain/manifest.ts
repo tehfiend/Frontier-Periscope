@@ -17,7 +17,9 @@ import type {
 import { ensureCelestialsLoaded } from "@/lib/celestials";
 import { resolveNearestLPoint } from "@/lib/lpoints";
 import type { TaskContext } from "@/lib/taskWorker";
+import { parseSerializedSignature } from "@mysten/sui/cryptography";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import { ed25519 } from "@noble/curves/ed25519.js";
 import {
 	bytesToHex,
 	decodeLocationData,
@@ -32,8 +34,6 @@ import {
 	queryTransactionsByObject,
 	unsealWithKey,
 } from "@tehfrontier/chain-shared";
-import { parseSerializedSignature } from "@mysten/sui/cryptography";
-import { ed25519 } from "@noble/curves/ed25519.js";
 import { TENANTS, type TenantId, moveType } from "./config";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -135,9 +135,7 @@ export async function ensureMapKeyForCharacter(
 	if (signPersonalMessage) {
 		try {
 			const MAP_KEY_MESSAGE = "TehFrontier Map Key v1";
-			const { signature } = await signPersonalMessage(
-				new TextEncoder().encode(MAP_KEY_MESSAGE),
-			);
+			const { signature } = await signPersonalMessage(new TextEncoder().encode(MAP_KEY_MESSAGE));
 			const derived = deriveMapKeyFromSignature(signature);
 
 			await db.manifestCharacters.update(characterId, {
@@ -747,6 +745,44 @@ export async function crossReferenceManifestLocations(locationIds: string[]): Pr
 	}
 }
 
+/**
+ * Cross-reference private map locations with deployables and assemblies.
+ * When a manifestMapLocation has a non-null structureId that matches a
+ * deployable/assembly objectId, populate systemId and lPoint if missing.
+ * Complements crossReferenceManifestLocations() which handles public locations.
+ */
+export async function crossReferencePrivateMapLocations(): Promise<void> {
+	const mapLocations = await db.manifestMapLocations
+		.filter((loc) => loc.structureId != null)
+		.toArray();
+
+	for (const loc of mapLocations) {
+		if (!loc.structureId) continue;
+
+		const lPointStr = `P${loc.planet}-L${loc.lPoint}`;
+
+		// Check deployables
+		const dep = await db.deployables.where("objectId").equals(loc.structureId).first();
+		if (dep && (!dep.systemId || !dep.lPoint)) {
+			await db.deployables.update(dep.id, {
+				...(dep.systemId ? {} : { systemId: loc.solarSystemId }),
+				...(!dep.lPoint ? { lPoint: lPointStr } : {}),
+				updatedAt: new Date().toISOString(),
+			});
+		}
+
+		// Check assemblies
+		const asm = await db.assemblies.where("objectId").equals(loc.structureId).first();
+		if (asm && (!asm.systemId || !asm.lPoint)) {
+			await db.assemblies.update(asm.id, {
+				...(asm.systemId ? {} : { systemId: loc.solarSystemId }),
+				...(!asm.lPoint ? { lPoint: lPointStr } : {}),
+				updatedAt: new Date().toISOString(),
+			});
+		}
+	}
+}
+
 // ── Private Map Cache ───────────────────────────────────────────────────────
 
 /**
@@ -825,18 +861,27 @@ export async function decryptMapKeys(
 	tenant: TenantId,
 ): Promise<number> {
 	let count = 0;
-	const maps = await db.manifestPrivateMaps
-		.where("tenant")
-		.equals(tenant)
-		.toArray();
+	const maps = await db.manifestPrivateMaps.where("tenant").equals(tenant).toArray();
 
 	for (const map of maps) {
-		console.log("[decryptMapKeys]", map.name, "hasDecrypted:", !!map.decryptedMapKey, "hasEncrypted:", !!map.encryptedMapKey);
+		console.log(
+			"[decryptMapKeys]",
+			map.name,
+			"hasDecrypted:",
+			!!map.decryptedMapKey,
+			"hasEncrypted:",
+			!!map.encryptedMapKey,
+		);
 		if (map.decryptedMapKey || !map.encryptedMapKey) continue;
 
 		try {
 			const encryptedKeyBytes = hexToBytes(map.encryptedMapKey);
-			console.log("[decryptMapKeys] decrypting", map.name, "encryptedLen:", encryptedKeyBytes.length);
+			console.log(
+				"[decryptMapKeys] decrypting",
+				map.name,
+				"encryptedLen:",
+				encryptedKeyBytes.length,
+			);
 			const decryptedKey = unsealWithKey(
 				encryptedKeyBytes,
 				walletKeyPair.publicKey,
@@ -879,7 +924,14 @@ export async function syncMapLocations(
 
 		const mapPublicKey = hexToBytes(mapInfo.publicKey);
 		const mapSecretKey = hexToBytes(decryptedMapKey);
-		console.log("[syncMapLocations] mapId:", mapId, "pubKeyLen:", mapPublicKey.length, "secKeyLen:", mapSecretKey.length);
+		console.log(
+			"[syncMapLocations] mapId:",
+			mapId,
+			"pubKeyLen:",
+			mapPublicKey.length,
+			"secKeyLen:",
+			mapSecretKey.length,
+		);
 
 		const rawLocations = await queryMapLocations(client, mapId);
 		console.log("[syncMapLocations] found", rawLocations.length, "raw locations");
@@ -895,7 +947,14 @@ export async function syncMapLocations(
 
 			try {
 				const encryptedBytes = hexToBytes(loc.encryptedData);
-				console.log("[syncMapLocations] decrypting loc", loc.locationId, "encryptedLen:", encryptedBytes.length, "encryptedData:", loc.encryptedData.slice(0, 40));
+				console.log(
+					"[syncMapLocations] decrypting loc",
+					loc.locationId,
+					"encryptedLen:",
+					encryptedBytes.length,
+					"encryptedData:",
+					loc.encryptedData.slice(0, 40),
+				);
 				const plaintext = unsealWithKey(encryptedBytes, mapPublicKey, mapSecretKey);
 				const data = decodeLocationData(plaintext);
 				console.log("[syncMapLocations] decrypted:", data);
@@ -923,6 +982,11 @@ export async function syncMapLocations(
 		}
 
 		ctx?.setProgress(`Decrypted ${newCount} locations`);
+
+		// Cross-reference any newly decrypted locations with structures
+		if (newCount > 0) {
+			await crossReferencePrivateMapLocations();
+		}
 	} catch (err) {
 		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
 	}

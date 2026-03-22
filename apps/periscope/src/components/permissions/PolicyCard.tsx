@@ -1,8 +1,9 @@
-import { Crosshair, DoorOpen, Box, Wifi, WifiOff, Loader2, ExternalLink, Package, Database } from "lucide-react";
-import { SyncBadge } from "./SyncBadge";
-import { GroupSelector } from "./GroupSelector";
-import type { AssemblyPolicy, PermissionGroup, PolicyMode } from "@/db/types";
 import type { OwnedAssembly } from "@/chain/queries";
+import { CopyAddress } from "@/components/CopyAddress";
+import type { AssemblyPolicy, PermissionGroup, PolicyMode } from "@/db/types";
+import { Box, Crosshair, Database, DoorOpen, Loader2, Package, Wifi, WifiOff } from "lucide-react";
+import { GroupSelector } from "./GroupSelector";
+import { SyncBadge } from "./SyncBadge";
 
 const assemblyIcons = {
 	turret: Crosshair,
@@ -28,7 +29,9 @@ interface PolicyCardProps {
 	groups: PermissionGroup[];
 	hasExtension: boolean;
 	isSyncing: boolean;
-	onUpdatePolicy: (data: Partial<Pick<AssemblyPolicy, "mode" | "groupIds" | "permitDurationMs">>) => void;
+	onUpdatePolicy: (
+		data: Partial<Pick<AssemblyPolicy, "mode" | "groupIds" | "permitDurationMs">>,
+	) => void;
 	onSync: () => void;
 	onGoToExtensions: () => void;
 }
@@ -57,9 +60,12 @@ export function PolicyCard({
 					</div>
 					<div>
 						<p className="text-sm font-medium text-zinc-200">{label}</p>
-						<p className="font-mono text-xs text-zinc-600">
-							{policy.assemblyId.slice(0, 10)}...{policy.assemblyId.slice(-6)}
-						</p>
+						<CopyAddress
+							address={policy.assemblyId}
+							sliceStart={10}
+							sliceEnd={6}
+							className="text-xs text-zinc-600"
+						/>
 					</div>
 				</div>
 				<div className="flex items-center gap-2">
@@ -119,9 +125,7 @@ export function PolicyCard({
 					<input
 						type="number"
 						value={Math.round((policy.permitDurationMs ?? 600_000) / 60_000)}
-						onChange={(e) =>
-							onUpdatePolicy({ permitDurationMs: Number(e.target.value) * 60_000 })
-						}
+						onChange={(e) => onUpdatePolicy({ permitDurationMs: Number(e.target.value) * 60_000 })}
 						min={1}
 						className="w-24 rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-100 focus:border-cyan-500 focus:outline-none"
 					/>
@@ -154,23 +158,26 @@ export function PolicyCard({
 
 				<div className="flex items-center gap-2">
 					<SyncBadge status={policy.syncStatus} lastSyncedAt={policy.lastSyncedAt} />
-					{hasExtension && (policy.syncStatus === "dirty" || policy.syncStatus === "draft" || policy.syncStatus === "error") && (
-						<button
-							type="button"
-							onClick={onSync}
-							disabled={isSyncing}
-							className="rounded bg-cyan-600/20 px-3 py-1 text-xs font-medium text-cyan-400 transition-colors hover:bg-cyan-600/30 disabled:cursor-not-allowed disabled:opacity-50"
-						>
-							{isSyncing ? (
-								<span className="flex items-center gap-1">
-									<Loader2 size={12} className="animate-spin" />
-									Syncing
-								</span>
-							) : (
-								"Sync Now"
-							)}
-						</button>
-					)}
+					{hasExtension &&
+						(policy.syncStatus === "dirty" ||
+							policy.syncStatus === "draft" ||
+							policy.syncStatus === "error") && (
+							<button
+								type="button"
+								onClick={onSync}
+								disabled={isSyncing}
+								className="rounded bg-cyan-600/20 px-3 py-1 text-xs font-medium text-cyan-400 transition-colors hover:bg-cyan-600/30 disabled:cursor-not-allowed disabled:opacity-50"
+							>
+								{isSyncing ? (
+									<span className="flex items-center gap-1">
+										<Loader2 size={12} className="animate-spin" />
+										Syncing
+									</span>
+								) : (
+									"Sync Now"
+								)}
+							</button>
+						)}
 					{policy.syncStatus === "synced" && (
 						<button
 							type="button"
@@ -185,20 +192,19 @@ export function PolicyCard({
 			</div>
 
 			{/* Sync error */}
-			{policy.syncError && (
-				<p className="mt-2 text-xs text-red-400">{policy.syncError}</p>
-			)}
+			{policy.syncError && <p className="mt-2 text-xs text-red-400">{policy.syncError}</p>}
 
 			{/* Tx link */}
 			{policy.syncTxDigest && (
-				<a
-					href={`https://suiscan.xyz/testnet/tx/${policy.syncTxDigest}`}
-					target="_blank"
-					rel="noopener noreferrer"
-					className="mt-1 flex items-center gap-1 text-xs text-zinc-600 hover:text-cyan-400"
-				>
-					{policy.syncTxDigest.slice(0, 12)}... <ExternalLink size={10} />
-				</a>
+				<div className="mt-1">
+					<CopyAddress
+						address={policy.syncTxDigest}
+						sliceStart={12}
+						sliceEnd={0}
+						explorerUrl={`https://suiscan.xyz/testnet/tx/${policy.syncTxDigest}`}
+						className="text-xs text-zinc-600"
+					/>
+				</div>
 			)}
 		</div>
 	);

@@ -1,55 +1,50 @@
-import { useState, useEffect, useCallback } from "react";
-import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
-	Coins,
-	Plus,
-	Loader2,
 	AlertCircle,
-	Package,
-	Send,
-	Flame,
 	ChevronDown,
 	ChevronUp,
+	Coins,
+	Flame,
+	Loader2,
+	Package,
+	Plus,
 	RefreshCw,
-	UserPlus,
-	UserMinus,
+	Send,
 	Settings,
+	UserMinus,
+	UserPlus,
 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { TenantId } from "@/chain/config";
-import { useActiveCharacter } from "@/hooks/useActiveCharacter";
-import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
+import { CopyAddress } from "@/components/CopyAddress";
 import { db, notDeleted } from "@/db";
 import type { CurrencyRecord } from "@/db/types";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import {
-	buildMint,
-	buildBurn,
 	buildAddAuthorized,
-	buildRemoveAuthorized,
-	buildUpdateFee,
+	buildBurn,
 	buildCreateMarket,
+	buildMint,
+	buildPublishToken,
+	buildRemoveAuthorized,
 	buildSetMarket,
-	queryMarkets,
+	buildUpdateFee,
+	discoverSsuConfig,
+	getCoinMetadata,
+	getContractAddresses,
+	parsePublishResult,
 	queryMarketDetails,
+	queryMarkets,
 	queryOwnedCoins,
 	queryTreasuryCap,
-	buildPublishToken,
-	parsePublishResult,
-	getContractAddresses,
-	getCoinMetadata,
-	discoverSsuConfig,
 } from "@tehfrontier/chain-shared";
 import type { MarketInfo } from "@tehfrontier/chain-shared";
 
-type BuildStatus =
-	| "idle"
-	| "building"
-	| "minting"
-	| "burning"
-	| "done"
-	| "error";
+type BuildStatus = "idle" | "building" | "minting" | "burning" | "done" | "error";
 
 export function Finance() {
 	const account = useCurrentAccount();
@@ -57,9 +52,7 @@ export function Finance() {
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
-	const currencies = useLiveQuery(
-		() => db.currencies.filter(notDeleted).toArray(),
-	);
+	const currencies = useLiveQuery(() => db.currencies.filter(notDeleted).toArray());
 
 	const [creating, setCreating] = useState(false);
 	const [symbol, setSymbol] = useState("");
@@ -72,9 +65,7 @@ export function Finance() {
 	const suiClient = useSuiClient();
 
 	const isProcessing =
-		buildStatus === "building" ||
-		buildStatus === "minting" ||
-		buildStatus === "burning";
+		buildStatus === "building" || buildStatus === "minting" || buildStatus === "burning";
 
 	// Sync currencies from chain -- discovers tokens via Market<T> objects
 	const syncMarkets = useCallback(async () => {
@@ -94,17 +85,15 @@ export function Finance() {
 				if (
 					market.creator !== suiAddress &&
 					!market.authorized.includes(suiAddress) &&
-					(!walletAddr || (market.creator !== walletAddr && !market.authorized.includes(walletAddr)))
+					(!walletAddr ||
+						(market.creator !== walletAddr && !market.authorized.includes(walletAddr)))
 				) {
 					continue;
 				}
 
 				validMarketIds.add(market.objectId);
 
-				const existing = await db.currencies
-					.where("coinType")
-					.equals(market.coinType)
-					.first();
+				const existing = await db.currencies.where("coinType").equals(market.coinType).first();
 				if (existing) {
 					// Update marketId if missing
 					if (!existing.marketId) {
@@ -167,9 +156,7 @@ export function Finance() {
 			<div className="flex h-full items-center justify-center">
 				<div className="text-center">
 					<Coins size={48} className="mx-auto mb-4 text-zinc-700" />
-					<p className="text-sm text-zinc-500">
-						Select a character to manage finance
-					</p>
+					<p className="text-sm text-zinc-500">Select a character to manage finance</p>
 					<a
 						href="/manifest"
 						className="mt-2 inline-block text-xs text-cyan-400 hover:text-cyan-300"
@@ -202,16 +189,12 @@ export function Finance() {
 			});
 
 			// Parse the published package details from effects
-			const digest =
-				result.Transaction?.digest ??
-				result.FailedTransaction?.digest ??
-				"";
+			const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
 			const fullResult = await suiClient.waitForTransaction({
 				digest,
 				include: { effects: true, objectTypes: true },
 			});
-			const fullTx =
-				fullResult.Transaction ?? fullResult.FailedTransaction;
+			const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
 			const changedObjects = fullTx?.effects?.changedObjects ?? [];
 			const objectTypesMap = fullTx?.objectTypes ?? {};
 
@@ -223,17 +206,11 @@ export function Finance() {
 				objectId?: string;
 				modules?: string[];
 			}> = changedObjects.map((change) => {
-				if (
-					change.outputState === "PackageWrite" &&
-					change.idOperation === "Created"
-				) {
+				if (change.outputState === "PackageWrite" && change.idOperation === "Created") {
 					return { type: "published", packageId: change.objectId };
 				}
 				return {
-					type:
-						change.idOperation === "Created"
-							? "created"
-							: "mutated",
+					type: change.idOperation === "Created" ? "created" : "mutated",
 					objectId: change.objectId,
 					objectType: objectTypesMap[change.objectId],
 				};
@@ -290,9 +267,7 @@ export function Finance() {
 
 			{buildStatus === "done" && (
 				<div className="mb-6 rounded-lg border border-green-900/50 bg-green-950/20 p-4">
-					<p className="text-sm text-green-400">
-						Operation completed successfully.
-					</p>
+					<p className="text-sm text-green-400">Operation completed successfully.</p>
 					<button
 						type="button"
 						onClick={() => setBuildStatus("idle")}
@@ -306,9 +281,7 @@ export function Finance() {
 			{/* Currency List */}
 			{(currencies ?? []).length > 0 && (
 				<div className="mb-6 space-y-3">
-					<h2 className="text-sm font-medium text-zinc-400">
-						Currencies ({currencies?.length})
-					</h2>
+					<h2 className="text-sm font-medium text-zinc-400">Currencies ({currencies?.length})</h2>
 					{currencies?.map((c) => (
 						<CurrencyCard
 							key={c.id}
@@ -328,14 +301,10 @@ export function Finance() {
 			{/* Create Currency */}
 			{creating ? (
 				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
-					<h2 className="mb-4 text-lg font-medium text-zinc-100">
-						Create Currency
-					</h2>
+					<h2 className="mb-4 text-lg font-medium text-zinc-100">Create Currency</h2>
 					<div className="space-y-4">
 						<div>
-							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-								Symbol
-							</label>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">Symbol</label>
 							<input
 								type="text"
 								value={symbol}
@@ -346,9 +315,7 @@ export function Finance() {
 							/>
 						</div>
 						<div>
-							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-								Name
-							</label>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">Name</label>
 							<input
 								type="text"
 								value={tokenName}
@@ -359,14 +326,10 @@ export function Finance() {
 							/>
 						</div>
 						<div>
-							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-								Description
-							</label>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">Description</label>
 							<textarea
 								value={description}
-								onChange={(e) =>
-									setDescription(e.target.value)
-								}
+								onChange={(e) => setDescription(e.target.value)}
 								placeholder="e.g., Official currency of our organization"
 								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 								maxLength={500}
@@ -374,15 +337,11 @@ export function Finance() {
 							/>
 						</div>
 						<div>
-							<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-								Decimals
-							</label>
+							<label className="mb-1.5 block text-xs font-medium text-zinc-400">Decimals</label>
 							<input
 								type="number"
 								value={decimals}
-								onChange={(e) =>
-									setDecimals(Number(e.target.value))
-								}
+								onChange={(e) => setDecimals(Number(e.target.value))}
 								min={0}
 								max={18}
 								className="w-32 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
@@ -393,20 +352,12 @@ export function Finance() {
 								<button
 									type="button"
 									onClick={handleCreateCurrency}
-									disabled={
-										!symbol.trim() ||
-										!tokenName.trim() ||
-										isProcessing
-									}
+									disabled={!symbol.trim() || !tokenName.trim() || isProcessing}
 									className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									{isProcessing ? (
 										<span className="flex items-center gap-2">
-											<Loader2
-												size={14}
-												className="animate-spin"
-											/>{" "}
-											Publishing...
+											<Loader2 size={14} className="animate-spin" /> Publishing...
 										</span>
 									) : (
 										"Create Currency"
@@ -427,9 +378,8 @@ export function Finance() {
 						</div>
 						{isProcessing && (
 							<p className="text-xs text-zinc-500">
-								Your wallet will prompt you to sign. The token
-								and Market will be published directly to Sui
-								testnet.
+								Your wallet will prompt you to sign. The token and Market will be published directly
+								to Sui testnet.
 							</p>
 						)}
 					</div>
@@ -456,9 +406,7 @@ function Header() {
 					<Coins size={24} className="text-cyan-500" />
 					Finance
 				</h1>
-				<p className="mt-1 text-sm text-zinc-500">
-					Create and manage currencies via Market
-				</p>
+				<p className="mt-1 text-sm text-zinc-500">Create and manage currencies via Market</p>
 			</div>
 		</div>
 	);
@@ -485,23 +433,16 @@ function StatusBanner({
 	return (
 		<div
 			className={`mb-6 rounded-lg border p-4 ${
-				isError
-					? "border-red-900/50 bg-red-950/20"
-					: "border-cyan-900/50 bg-cyan-950/20"
+				isError ? "border-red-900/50 bg-red-950/20" : "border-cyan-900/50 bg-cyan-950/20"
 			}`}
 		>
 			<div className="flex items-center gap-2">
 				{isError ? (
 					<AlertCircle size={16} className="text-red-400" />
 				) : (
-					<Loader2
-						size={16}
-						className="animate-spin text-cyan-400"
-					/>
+					<Loader2 size={16} className="animate-spin text-cyan-400" />
 				)}
-				<span
-					className={`text-sm ${isError ? "text-red-300" : "text-cyan-300"}`}
-				>
+				<span className={`text-sm ${isError ? "text-red-300" : "text-cyan-300"}`}>
 					{messages[status] ?? "Processing..."}
 				</span>
 			</div>
@@ -549,9 +490,7 @@ function CurrencyCard({
 	// Burn state
 	const [showBurn, setShowBurn] = useState(false);
 	const [burnCoinId, setBurnCoinId] = useState("");
-	const [ownedCoins, setOwnedCoins] = useState<
-		Array<{ objectId: string; balance: bigint }>
-	>([]);
+	const [ownedCoins, setOwnedCoins] = useState<Array<{ objectId: string; balance: bigint }>>([]);
 	const [loadingCoins, setLoadingCoins] = useState(false);
 
 	// Authorization state
@@ -579,10 +518,7 @@ function CurrencyCard({
 		if (!currency.marketId) return;
 		setLoadingMarket(true);
 		try {
-			const info = await queryMarketDetails(
-				suiClient,
-				currency.marketId,
-			);
+			const info = await queryMarketDetails(suiClient, currency.marketId);
 			setMarketInfo(info);
 
 			// Supply is embedded in Market's treasury_cap
@@ -600,11 +536,7 @@ function CurrencyCard({
 		if (!currency.coinType) return;
 		setLoadingCoins(true);
 		try {
-			const coins = await queryOwnedCoins(
-				suiClient,
-				suiAddress,
-				currency.coinType,
-			);
+			const coins = await queryOwnedCoins(suiClient, suiAddress, currency.coinType);
 			setOwnedCoins(coins);
 		} catch {
 			setOwnedCoins([]);
@@ -614,16 +546,11 @@ function CurrencyCard({
 	}
 
 	async function handleMint() {
-		if (!mintAmount || !currency.marketId || !currency.coinType || !marketPkg)
-			return;
+		if (!mintAmount || !currency.marketId || !currency.coinType || !marketPkg) return;
 
 		onStatusChange("minting");
 		try {
-			const amount = BigInt(
-				Math.floor(
-					Number(mintAmount) * 10 ** currency.decimals,
-				),
-			);
+			const amount = BigInt(Math.floor(Number(mintAmount) * 10 ** currency.decimals));
 			const recipient = mintRecipient.trim() || suiAddress;
 			const tx = buildMint({
 				packageId: marketPkg,
@@ -643,16 +570,12 @@ function CurrencyCard({
 			// Refresh after chain consistency delay
 			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
-			onStatusChange(
-				"error",
-				err instanceof Error ? err.message : String(err),
-			);
+			onStatusChange("error", err instanceof Error ? err.message : String(err));
 		}
 	}
 
 	async function handleBurn() {
-		if (!burnCoinId || !currency.marketId || !currency.coinType || !marketPkg)
-			return;
+		if (!burnCoinId || !currency.marketId || !currency.coinType || !marketPkg) return;
 
 		onStatusChange("burning");
 		try {
@@ -672,16 +595,12 @@ function CurrencyCard({
 			// Refresh after chain consistency delay
 			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
-			onStatusChange(
-				"error",
-				err instanceof Error ? err.message : String(err),
-			);
+			onStatusChange("error", err instanceof Error ? err.message : String(err));
 		}
 	}
 
 	async function handleAddAuthorized() {
-		if (!authAddress.trim() || !currency.marketId || !currency.coinType || !marketPkg)
-			return;
+		if (!authAddress.trim() || !currency.marketId || !currency.coinType || !marketPkg) return;
 
 		onStatusChange("building");
 		try {
@@ -698,10 +617,7 @@ function CurrencyCard({
 			onStatusChange("done");
 			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
-			onStatusChange(
-				"error",
-				err instanceof Error ? err.message : String(err),
-			);
+			onStatusChange("error", err instanceof Error ? err.message : String(err));
 		}
 	}
 
@@ -722,10 +638,7 @@ function CurrencyCard({
 			onStatusChange("done");
 			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
-			onStatusChange(
-				"error",
-				err instanceof Error ? err.message : String(err),
-			);
+			onStatusChange("error", err instanceof Error ? err.message : String(err));
 		}
 	}
 
@@ -748,10 +661,7 @@ function CurrencyCard({
 			onStatusChange("done");
 			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
-			onStatusChange(
-				"error",
-				err instanceof Error ? err.message : String(err),
-			);
+			onStatusChange("error", err instanceof Error ? err.message : String(err));
 		}
 	}
 
@@ -759,9 +669,10 @@ function CurrencyCard({
 	const tradeNodes = useLiveQuery(() => db.tradeNodes.toArray()) ?? [];
 
 	// All SSUs from the local deployables database
-	const allSsus = useLiveQuery(
-		() => db.deployables.where("assemblyType").equals("Smart Storage Unit").toArray(),
-	) ?? [];
+	const allSsus =
+		useLiveQuery(() =>
+			db.deployables.where("assemblyType").equals("Smart Storage Unit").toArray(),
+		) ?? [];
 
 	async function handleDiscoverMarket() {
 		if (!currency.coinType || !marketPkg) return;
@@ -775,7 +686,10 @@ function CurrencyCard({
 				// No Market found -- try creating one from TreasuryCap
 				const treasuryCapId = await queryTreasuryCap(suiClient, currency.coinType, suiAddress);
 				if (!treasuryCapId) {
-					onStatusChange("error", "No Market found on-chain and no TreasuryCap in your wallet. The Market may have been created with a different market package version.");
+					onStatusChange(
+						"error",
+						"No Market found on-chain and no TreasuryCap in your wallet. The Market may have been created with a different market package version.",
+					);
 					return;
 				}
 
@@ -807,7 +721,10 @@ function CurrencyCard({
 				}
 
 				if (marketId) {
-					await db.currencies.update(currency.id, { marketId, updatedAt: new Date().toISOString() });
+					await db.currencies.update(currency.id, {
+						marketId,
+						updatedAt: new Date().toISOString(),
+					});
 				}
 
 				onStatusChange("done");
@@ -848,7 +765,10 @@ function CurrencyCard({
 				previousPkgs,
 			);
 			if (!currentConfigId) {
-				onStatusChange("error", "No SsuConfig found on-chain for this SSU. Deploy the extension first.");
+				onStatusChange(
+					"error",
+					"No SsuConfig found on-chain for this SSU. Deploy the extension first.",
+				);
 				return;
 			}
 
@@ -890,12 +810,8 @@ function CurrencyCard({
 					</div>
 					<div className="text-left">
 						<div className="flex items-center gap-2">
-							<span className="text-sm font-medium text-zinc-200">
-								{currency.symbol}
-							</span>
-							<span className="text-xs text-zinc-500">
-								{currency.name}
-							</span>
+							<span className="text-sm font-medium text-zinc-200">{currency.symbol}</span>
+							<span className="text-xs text-zinc-500">{currency.name}</span>
 							{hasMarket && (
 								<span className="rounded bg-green-500/10 px-1.5 py-0.5 text-xs text-green-400">
 									Market
@@ -903,21 +819,19 @@ function CurrencyCard({
 							)}
 						</div>
 						{isPublished ? (
-							<p className="font-mono text-xs text-zinc-600">
-								{currency.packageId.slice(0, 10)}...
-								{currency.packageId.slice(-6)}
-							</p>
+							<CopyAddress
+								address={currency.packageId}
+								sliceStart={10}
+								sliceEnd={6}
+								className="text-xs text-zinc-600"
+							/>
 						) : (
-							<p className="text-xs text-amber-500">
-								Not published yet
-							</p>
+							<p className="text-xs text-amber-500">Not published yet</p>
 						)}
 					</div>
 				</div>
 				<div className="flex items-center gap-2">
-					<span className="text-xs text-zinc-600">
-						{currency.decimals} decimals
-					</span>
+					<span className="text-xs text-zinc-600">{currency.decimals} decimals</span>
 					{expanded ? (
 						<ChevronUp size={14} className="text-zinc-500" />
 					) : (
@@ -935,9 +849,7 @@ function CurrencyCard({
 							{/* Market info */}
 							<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
 								<div className="mb-2 flex items-center justify-between">
-									<h4 className="text-xs font-medium text-zinc-400">
-										Market Overview
-									</h4>
+									<h4 className="text-xs font-medium text-zinc-400">Market Overview</h4>
 									<button
 										type="button"
 										onClick={loadMarketInfo}
@@ -949,19 +861,14 @@ function CurrencyCard({
 								</div>
 								{loadingMarket ? (
 									<div className="flex items-center gap-2 text-xs text-zinc-500">
-										<Loader2
-											size={12}
-											className="animate-spin"
-										/>
+										<Loader2 size={12} className="animate-spin" />
 										Loading...
 									</div>
 								) : marketInfo ? (
 									<div className="space-y-2">
 										<div className="grid grid-cols-2 gap-3">
 											<div>
-												<p className="text-xs text-zinc-500">
-													Total Supply
-												</p>
+												<p className="text-xs text-zinc-500">Total Supply</p>
 												<p className="text-sm font-medium text-zinc-200">
 													{totalSupply != null
 														? `${formatTokenAmount(totalSupply, currency.decimals)} ${currency.symbol}`
@@ -969,41 +876,23 @@ function CurrencyCard({
 												</p>
 											</div>
 											<div>
-												<p className="text-xs text-zinc-500">
-													Fee
-												</p>
-												<p className="text-sm font-medium text-zinc-200">
-													{marketInfo.feeBps} bps
-												</p>
+												<p className="text-xs text-zinc-500">Fee</p>
+												<p className="text-sm font-medium text-zinc-200">{marketInfo.feeBps} bps</p>
 											</div>
 										</div>
 										<div>
-											<p className="text-xs text-zinc-500">
-												Creator
-											</p>
+											<p className="text-xs text-zinc-500">Creator</p>
 											<p className="font-mono text-xs text-zinc-400">
-												{marketInfo.creator.slice(
-													0,
-													10,
-												)}
+												{marketInfo.creator.slice(0, 10)}
 												...
 												{marketInfo.creator.slice(-6)}
-												{isCreator && (
-													<span className="ml-2 text-cyan-400">
-														(you)
-													</span>
-												)}
+												{isCreator && <span className="ml-2 text-cyan-400">(you)</span>}
 											</p>
 										</div>
 										<div>
-											<p className="text-xs text-zinc-500">
-												Market ID
-											</p>
+											<p className="text-xs text-zinc-500">Market ID</p>
 											<p className="font-mono text-xs text-zinc-400">
-												{currency.marketId?.slice(
-													0,
-													10,
-												)}
+												{currency.marketId?.slice(0, 10)}
 												...
 												{currency.marketId?.slice(-6)}
 											</p>
@@ -1011,79 +900,47 @@ function CurrencyCard({
 										{marketInfo.authorized.length > 0 && (
 											<div>
 												<p className="text-xs text-zinc-500">
-													Authorized (
-													{marketInfo.authorized.length}
-													)
+													Authorized ({marketInfo.authorized.length})
 												</p>
 												<div className="mt-1 space-y-0.5">
-													{marketInfo.authorized.map(
-														(addr) => (
-															<div
-																key={addr}
-																className="flex items-center justify-between"
-															>
-																<span className="font-mono text-xs text-zinc-400">
-																	{addr.slice(
-																		0,
-																		10,
-																	)}
-																	...
-																	{addr.slice(
-																		-6,
-																	)}
-																	{addr ===
-																		suiAddress && (
-																		<span className="ml-1 text-cyan-400">
-																			(you)
-																		</span>
-																	)}
-																</span>
-																{isCreator && (
-																	<button
-																		type="button"
-																		onClick={() =>
-																			handleRemoveAuthorized(
-																				addr,
-																			)
-																		}
-																		className="text-zinc-600 transition-colors hover:text-red-400"
-																		title="Remove"
-																	>
-																		<UserMinus
-																			size={
-																				12
-																			}
-																		/>
-																	</button>
+													{marketInfo.authorized.map((addr) => (
+														<div key={addr} className="flex items-center justify-between">
+															<span className="font-mono text-xs text-zinc-400">
+																{addr.slice(0, 10)}
+																...
+																{addr.slice(-6)}
+																{addr === suiAddress && (
+																	<span className="ml-1 text-cyan-400">(you)</span>
 																)}
-															</div>
-														),
-													)}
+															</span>
+															{isCreator && (
+																<button
+																	type="button"
+																	onClick={() => handleRemoveAuthorized(addr)}
+																	className="text-zinc-600 transition-colors hover:text-red-400"
+																	title="Remove"
+																>
+																	<UserMinus size={12} />
+																</button>
+															)}
+														</div>
+													))}
 												</div>
 											</div>
 										)}
 										{marketInfo.feeRecipient && (
 											<div>
-												<p className="text-xs text-zinc-500">
-													Fee Recipient
-												</p>
+												<p className="text-xs text-zinc-500">Fee Recipient</p>
 												<p className="font-mono text-xs text-zinc-400">
-													{marketInfo.feeRecipient.slice(
-														0,
-														10,
-													)}
+													{marketInfo.feeRecipient.slice(0, 10)}
 													...
-													{marketInfo.feeRecipient.slice(
-														-6,
-													)}
+													{marketInfo.feeRecipient.slice(-6)}
 												</p>
 											</div>
 										)}
 									</div>
 								) : (
-									<p className="text-xs text-zinc-600">
-										Click refresh to load market data
-									</p>
+									<p className="text-xs text-zinc-600">Click refresh to load market data</p>
 								)}
 							</div>
 
@@ -1151,14 +1008,8 @@ function CurrencyCard({
 												setShowBurn(false);
 												setShowAuth(false);
 												if (marketInfo) {
-													setFeeBps(
-														String(
-															marketInfo.feeBps,
-														),
-													);
-													setFeeRecipient(
-														marketInfo.feeRecipient,
-													);
+													setFeeBps(String(marketInfo.feeBps));
+													setFeeRecipient(marketInfo.feeRecipient);
 												}
 											}}
 											className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
@@ -1177,22 +1028,14 @@ function CurrencyCard({
 							{/* Mint Form */}
 							{showMint && (
 								<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
-									<h4 className="mb-3 text-xs font-medium text-zinc-400">
-										Mint {currency.symbol}
-									</h4>
+									<h4 className="mb-3 text-xs font-medium text-zinc-400">Mint {currency.symbol}</h4>
 									<div className="space-y-3">
 										<div>
-											<label className="mb-1 block text-xs text-zinc-500">
-												Amount
-											</label>
+											<label className="mb-1 block text-xs text-zinc-500">Amount</label>
 											<input
 												type="number"
 												value={mintAmount}
-												onChange={(e) =>
-													setMintAmount(
-														e.target.value,
-													)
-												}
+												onChange={(e) => setMintAmount(e.target.value)}
 												placeholder="e.g., 1000"
 												min={0}
 												step="any"
@@ -1206,15 +1049,8 @@ function CurrencyCard({
 											<input
 												type="text"
 												value={mintRecipient}
-												onChange={(e) =>
-													setMintRecipient(
-														e.target.value,
-													)
-												}
-												placeholder={suiAddress.slice(
-													0,
-													16,
-												)}
+												onChange={(e) => setMintRecipient(e.target.value)}
+												placeholder={suiAddress.slice(0, 16)}
 												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 											/>
 										</div>
@@ -1228,9 +1064,7 @@ function CurrencyCard({
 												Mint {currency.symbol}
 											</button>
 										) : (
-											<span className="text-xs text-zinc-500">
-												EVE Vault not connected
-											</span>
+											<span className="text-xs text-zinc-500">EVE Vault not connected</span>
 										)}
 									</div>
 								</div>
@@ -1239,21 +1073,15 @@ function CurrencyCard({
 							{/* Burn Form */}
 							{showBurn && (
 								<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
-									<h4 className="mb-3 text-xs font-medium text-zinc-400">
-										Burn {currency.symbol}
-									</h4>
+									<h4 className="mb-3 text-xs font-medium text-zinc-400">Burn {currency.symbol}</h4>
 									{loadingCoins ? (
 										<div className="flex items-center gap-2 text-xs text-zinc-500">
-											<Loader2
-												size={12}
-												className="animate-spin"
-											/>
+											<Loader2 size={12} className="animate-spin" />
 											Loading your coins...
 										</div>
 									) : ownedCoins.length === 0 ? (
 										<p className="text-xs text-zinc-600">
-											No {currency.symbol} coins in your
-											wallet.
+											No {currency.symbol} coins in your wallet.
 										</p>
 									) : (
 										<div className="space-y-2">
@@ -1262,30 +1090,14 @@ function CurrencyCard({
 											</label>
 											<select
 												value={burnCoinId}
-												onChange={(e) =>
-													setBurnCoinId(
-														e.target.value,
-													)
-												}
+												onChange={(e) => setBurnCoinId(e.target.value)}
 												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
 											>
-												<option value="">
-													Choose a coin...
-												</option>
+												<option value="">Choose a coin...</option>
 												{ownedCoins.map((c) => (
-													<option
-														key={c.objectId}
-														value={c.objectId}
-													>
-														{formatTokenAmount(
-															c.balance,
-															currency.decimals,
-														)}{" "}
-														{currency.symbol} (
-														{c.objectId.slice(
-															0,
-															10,
-														)}
+													<option key={c.objectId} value={c.objectId}>
+														{formatTokenAmount(c.balance, currency.decimals)} {currency.symbol} (
+														{c.objectId.slice(0, 10)}
 														...)
 													</option>
 												))}
@@ -1300,9 +1112,7 @@ function CurrencyCard({
 													Burn Selected Coin
 												</button>
 											) : (
-												<span className="text-xs text-zinc-500">
-													EVE Vault not connected
-												</span>
+												<span className="text-xs text-zinc-500">EVE Vault not connected</span>
 											)}
 										</div>
 									)}
@@ -1312,22 +1122,14 @@ function CurrencyCard({
 							{/* Authorization Form (creator only) */}
 							{showAuth && isCreator && (
 								<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
-									<h4 className="mb-3 text-xs font-medium text-zinc-400">
-										Add Authorized Minter
-									</h4>
+									<h4 className="mb-3 text-xs font-medium text-zinc-400">Add Authorized Minter</h4>
 									<div className="space-y-3">
 										<div>
-											<label className="mb-1 block text-xs text-zinc-500">
-												Sui Address
-											</label>
+											<label className="mb-1 block text-xs text-zinc-500">Sui Address</label>
 											<input
 												type="text"
 												value={authAddress}
-												onChange={(e) =>
-													setAuthAddress(
-														e.target.value,
-													)
-												}
+												onChange={(e) => setAuthAddress(e.target.value)}
 												placeholder="0x..."
 												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 											/>
@@ -1359,9 +1161,7 @@ function CurrencyCard({
 											<input
 												type="number"
 												value={feeBps}
-												onChange={(e) =>
-													setFeeBps(e.target.value)
-												}
+												onChange={(e) => setFeeBps(e.target.value)}
 												placeholder="e.g., 250"
 												min={0}
 												max={10000}
@@ -1369,17 +1169,11 @@ function CurrencyCard({
 											/>
 										</div>
 										<div>
-											<label className="mb-1 block text-xs text-zinc-500">
-												Fee Recipient
-											</label>
+											<label className="mb-1 block text-xs text-zinc-500">Fee Recipient</label>
 											<input
 												type="text"
 												value={feeRecipient}
-												onChange={(e) =>
-													setFeeRecipient(
-														e.target.value,
-													)
-												}
+												onChange={(e) => setFeeRecipient(e.target.value)}
 												placeholder="0x..."
 												className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 											/>
@@ -1458,21 +1252,13 @@ function CurrencyCard({
 					{isPublished && currency.coinType && (
 						<div className="mt-3 space-y-1 border-t border-zinc-800 pt-3 text-xs text-zinc-600">
 							<p>
-								<span className="text-zinc-500">
-									Coin Type:
-								</span>{" "}
-								<span className="font-mono">
-									{currency.coinType}
-								</span>
+								<span className="text-zinc-500">Coin Type:</span>{" "}
+								<span className="font-mono">{currency.coinType}</span>
 							</p>
 							{currency.moduleName && (
 								<p>
-									<span className="text-zinc-500">
-										Module:
-									</span>{" "}
-									<span className="font-mono">
-										{currency.moduleName}
-									</span>
+									<span className="text-zinc-500">Module:</span>{" "}
+									<span className="font-mono">{currency.moduleName}</span>
 								</p>
 							)}
 						</div>
@@ -1489,9 +1275,6 @@ function formatTokenAmount(raw: bigint, decimals: number): string {
 	const whole = raw / divisor;
 	const frac = raw % divisor;
 	if (frac === 0n) return whole.toString();
-	const fracStr = frac
-		.toString()
-		.padStart(decimals, "0")
-		.replace(/0+$/, "");
+	const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
 	return `${whole}.${fracStr}`;
 }

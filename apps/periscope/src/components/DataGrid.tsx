@@ -30,6 +30,10 @@ interface DataGridProps<T> {
 	actions?: ReactNode;
 	/** Enable global search. Default true. */
 	enableSearch?: boolean;
+	/** Currently selected row ID (optional). */
+	selectedRowId?: string;
+	/** Callback when a row is clicked (optional). */
+	onRowClick?: (rowId: string) => void;
 }
 
 export function DataGrid<T>({
@@ -40,6 +44,8 @@ export function DataGrid<T>({
 	emptyMessage = "No data",
 	actions,
 	enableSearch = true,
+	selectedRowId,
+	onRowClick,
 }: DataGridProps<T>) {
 	const [sorting, setSorting] = useState<SortingState>([]);
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -156,10 +162,15 @@ export function DataGrid<T>({
 								</td>
 							</tr>
 						) : (
-							table.getRowModel().rows.map((row) => (
+							table.getRowModel().rows.map((row) => {
+							const isSelected = selectedRowId != null && row.id === selectedRowId;
+							return (
 								<tr
 									key={row.id}
-									className="border-b border-zinc-800/30 transition-colors hover:bg-zinc-800/30"
+									onClick={onRowClick ? () => onRowClick(row.id) : undefined}
+									className={`border-b border-zinc-800/30 transition-colors hover:bg-zinc-800/30 ${
+										onRowClick ? "cursor-pointer" : ""
+									} ${isSelected ? "bg-cyan-900/20 border-l-2 border-l-cyan-500" : ""}`}
 								>
 									{row.getVisibleCells().map((cell) => (
 										<td key={cell.id} className="px-3 py-2 text-zinc-300">
@@ -167,7 +178,7 @@ export function DataGrid<T>({
 										</td>
 									))}
 								</tr>
-							))
+							); })
 						)}
 					</tbody>
 				</table>

@@ -1,3 +1,6 @@
+import { CopyAddress } from "@/components/CopyAddress";
+import { useSignAndExecuteTransaction } from "@/hooks/useSignAndExecuteTransaction";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import {
 	type SharedAclInfo,
@@ -23,8 +26,6 @@ import {
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useSuiClient } from "@/hooks/useSuiClient";
-import { useSignAndExecuteTransaction } from "@/hooks/useSignAndExecuteTransaction";
 
 interface SharedAclEditorProps {
 	packageId: string;
@@ -33,12 +34,7 @@ interface SharedAclEditorProps {
 	onRefresh: () => void;
 }
 
-export function SharedAclEditor({
-	packageId,
-	aclId,
-	onBack,
-	onRefresh,
-}: SharedAclEditorProps) {
+export function SharedAclEditor({ packageId, aclId, onBack, onRefresh }: SharedAclEditorProps) {
 	const account = useCurrentAccount();
 	const client = useSuiClient();
 	const { mutateAsync, isPending } = useSignAndExecuteTransaction();
@@ -95,10 +91,7 @@ export function SharedAclEditor({
 				characters: characterIds,
 				senderAddress: account.address,
 			});
-			const result = (await mutateAsync({ transaction: tx })) as Record<
-				string,
-				unknown
-			>;
+			const result = (await mutateAsync({ transaction: tx })) as Record<string, unknown>;
 			const txResult = result?.Transaction as Record<string, unknown> | undefined;
 			setTxDigest((txResult?.digest as string) ?? "");
 			setEditMode(false);
@@ -249,11 +242,7 @@ export function SharedAclEditor({
 		return (
 			<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
 				<div className="mb-4 flex items-center gap-2">
-					<button
-						type="button"
-						onClick={onBack}
-						className="text-zinc-500 hover:text-zinc-300"
-					>
+					<button type="button" onClick={onBack} className="text-zinc-500 hover:text-zinc-300">
 						<ArrowLeft size={16} />
 					</button>
 					<span className="text-sm text-zinc-500">ACL not found</span>
@@ -267,16 +256,10 @@ export function SharedAclEditor({
 			{/* Header */}
 			<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
 				<div className="mb-3 flex items-center gap-2">
-					<button
-						type="button"
-						onClick={onBack}
-						className="text-zinc-500 hover:text-zinc-300"
-					>
+					<button type="button" onClick={onBack} className="text-zinc-500 hover:text-zinc-300">
 						<ArrowLeft size={16} />
 					</button>
-					<h2 className="text-sm font-medium text-zinc-200">
-						{acl.name || "(unnamed)"}
-					</h2>
+					<h2 className="text-sm font-medium text-zinc-200">{acl.name || "(unnamed)"}</h2>
 					{isCreator && (
 						<span className="flex items-center gap-0.5 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400">
 							<Crown size={10} />
@@ -285,9 +268,7 @@ export function SharedAclEditor({
 					)}
 					<span
 						className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-							acl.isAllowlist
-								? "bg-emerald-500/10 text-emerald-400"
-								: "bg-red-500/10 text-red-400"
+							acl.isAllowlist ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
 						}`}
 					>
 						{acl.isAllowlist ? "Allowlist" : "Denylist"}
@@ -300,15 +281,17 @@ export function SharedAclEditor({
 						onClick={copyObjectId}
 						className="text-zinc-600 hover:text-zinc-400"
 					>
-						{copied ? (
-							<CheckCircle2 size={12} className="text-green-400" />
-						) : (
-							<Copy size={12} />
-						)}
+						{copied ? <CheckCircle2 size={12} className="text-green-400" /> : <Copy size={12} />}
 					</button>
 				</div>
 				<p className="mt-1 text-[10px] text-zinc-600">
-					Creator: {acl.creator.slice(0, 12)}...{acl.creator.slice(-6)}
+					Creator:{" "}
+					<CopyAddress
+						address={acl.creator}
+						sliceStart={12}
+						sliceEnd={6}
+						className="text-zinc-600"
+					/>
 				</p>
 			</div>
 
@@ -356,9 +339,7 @@ export function SharedAclEditor({
 									type="button"
 									onClick={() => setIsAllowlist(true)}
 									className={`rounded px-3 py-1.5 text-xs font-medium ${
-										isAllowlist
-											? "bg-cyan-500/20 text-cyan-400"
-											: "bg-zinc-800 text-zinc-500"
+										isAllowlist ? "bg-cyan-500/20 text-cyan-400" : "bg-zinc-800 text-zinc-500"
 									}`}
 								>
 									Allowlist
@@ -367,9 +348,7 @@ export function SharedAclEditor({
 									type="button"
 									onClick={() => setIsAllowlist(false)}
 									className={`rounded px-3 py-1.5 text-xs font-medium ${
-										!isAllowlist
-											? "bg-cyan-500/20 text-cyan-400"
-											: "bg-zinc-800 text-zinc-500"
+										!isAllowlist ? "bg-cyan-500/20 text-cyan-400" : "bg-zinc-800 text-zinc-500"
 									}`}
 								>
 									Denylist
@@ -390,9 +369,7 @@ export function SharedAclEditor({
 										#{id}
 										<button
 											type="button"
-											onClick={() =>
-												setTribeIds(tribeIds.filter((t) => t !== id))
-											}
+											onClick={() => setTribeIds(tribeIds.filter((t) => t !== id))}
 											className="text-zinc-500 hover:text-red-400"
 										>
 											<X size={12} />
@@ -433,11 +410,7 @@ export function SharedAclEditor({
 										#{id}
 										<button
 											type="button"
-											onClick={() =>
-												setCharacterIds(
-													characterIds.filter((c) => c !== id),
-												)
-											}
+											onClick={() => setCharacterIds(characterIds.filter((c) => c !== id))}
 											className="text-zinc-500 hover:text-red-400"
 										>
 											<X size={12} />
@@ -515,9 +488,7 @@ export function SharedAclEditor({
 										{isAdmin && (
 											<button
 												type="button"
-												onClick={() =>
-													handleIncrementalRemoveTribe(id)
-												}
+												onClick={() => handleIncrementalRemoveTribe(id)}
 												disabled={isPending}
 												className="text-zinc-500 hover:text-red-400 disabled:opacity-50"
 											>
@@ -577,9 +548,7 @@ export function SharedAclEditor({
 										{isAdmin && (
 											<button
 												type="button"
-												onClick={() =>
-													handleIncrementalRemoveCharacter(id)
-												}
+												onClick={() => handleIncrementalRemoveCharacter(id)}
 												disabled={isPending}
 												className="text-zinc-500 hover:text-red-400 disabled:opacity-50"
 											>
@@ -602,9 +571,7 @@ export function SharedAclEditor({
 										className="w-28 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100 focus:border-cyan-500 focus:outline-none"
 										onKeyDown={(e) => {
 											if (e.key === "Enter" && newCharId) {
-												handleIncrementalAddCharacter(
-													Number(newCharId),
-												);
+												handleIncrementalAddCharacter(Number(newCharId));
 												setNewCharId("");
 											}
 										}}
@@ -613,9 +580,7 @@ export function SharedAclEditor({
 										type="button"
 										onClick={() => {
 											if (newCharId) {
-												handleIncrementalAddCharacter(
-													Number(newCharId),
-												);
+												handleIncrementalAddCharacter(Number(newCharId));
 												setNewCharId("");
 											}
 										}}
@@ -648,9 +613,12 @@ export function SharedAclEditor({
 								key={admin}
 								className="mb-1 flex items-center justify-between rounded border border-zinc-800 bg-zinc-900/30 px-3 py-1.5"
 							>
-								<span className="font-mono text-xs text-zinc-300">
-									{admin.slice(0, 12)}...{admin.slice(-6)}
-								</span>
+								<CopyAddress
+									address={admin}
+									sliceStart={12}
+									sliceEnd={6}
+									className="text-xs text-zinc-300"
+								/>
 								<button
 									type="button"
 									onClick={() => handleRemoveAdmin(admin)}

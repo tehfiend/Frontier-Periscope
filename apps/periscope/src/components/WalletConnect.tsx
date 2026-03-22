@@ -1,9 +1,6 @@
-import { useCurrentAccount, useWallets, useDAppKit } from "@mysten/dapp-kit-react";
-import { Wallet, LogOut } from "lucide-react";
-
-function truncateAddress(address: string): string {
-	return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
+import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
+import { LogOut, Wallet } from "lucide-react";
+import { CopyAddress } from "./CopyAddress";
 
 /**
  * Wallet connection button mimicking the default EVE Frontier dApp pattern.
@@ -16,9 +13,7 @@ export function WalletConnect() {
 	const { connectWallet, disconnectWallet } = useDAppKit();
 
 	function handleConnect() {
-		const eveVault = wallets.find(
-			(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
-		);
+		const eveVault = wallets.find((w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"));
 		const wallet = eveVault || wallets[0];
 		if (wallet) {
 			connectWallet({ wallet });
@@ -46,9 +41,12 @@ export function WalletConnect() {
 			title="Click to disconnect"
 		>
 			<span className="h-2 w-2 shrink-0 rounded-full bg-green-500" />
-			<span className="flex-1 truncate font-mono text-xs text-zinc-400">
-				{truncateAddress(account.address)}
-			</span>
+			<CopyAddress
+				address={account.address}
+				sliceStart={6}
+				sliceEnd={4}
+				className="flex-1 truncate text-xs text-zinc-400"
+			/>
 			<LogOut
 				size={12}
 				className="shrink-0 text-zinc-700 opacity-0 transition-opacity group-hover:opacity-100"
@@ -69,9 +67,7 @@ export function ConnectWalletButton({ className = "" }: { className?: string }) 
 	if (account) return null;
 
 	function handleConnect() {
-		const eveVault = wallets.find(
-			(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
-		);
+		const eveVault = wallets.find((w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"));
 		const wallet = eveVault || wallets[0];
 		if (wallet) {
 			connectWallet({ wallet });

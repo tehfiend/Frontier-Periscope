@@ -23,6 +23,7 @@ import { useState } from "react";
 
 import { getTemplatesForAssemblyType } from "@/chain/config";
 import type { OwnedAssembly } from "@/chain/queries";
+import { CopyAddress } from "@/components/CopyAddress";
 import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPanel";
 import { db, notDeleted } from "@/db";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
@@ -132,9 +133,12 @@ export function Extensions() {
 					<span className="text-zinc-300">
 						{character.name ?? activeCharacter?.characterName ?? "Unknown"}
 					</span>
-					<span className="ml-3 font-mono text-xs text-zinc-600">
-						{character.characterObjectId.slice(0, 10)}...
-					</span>
+					<CopyAddress
+						address={character.characterObjectId}
+						sliceStart={10}
+						sliceEnd={0}
+						className="ml-3 text-xs text-zinc-600"
+					/>
 				</div>
 			)}
 
@@ -346,13 +350,22 @@ function AssemblyCard({
 					</div>
 					<div>
 						<p className="text-sm font-medium text-zinc-200">{label}</p>
-						<p className="font-mono text-xs text-zinc-600">
-							{assembly.objectId.slice(0, 10)}...{assembly.objectId.slice(-6)}
-						</p>
+						<CopyAddress
+							address={assembly.objectId}
+							sliceStart={10}
+							sliceEnd={6}
+							className="text-xs text-zinc-600"
+						/>
 						{assembly.ownerCapId && (
-							<p className="font-mono text-xs text-zinc-700">
-								OwnerCap: {assembly.ownerCapId.slice(0, 10)}...
-							</p>
+							<div className="text-xs text-zinc-700">
+								OwnerCap:{" "}
+								<CopyAddress
+									address={assembly.ownerCapId}
+									sliceStart={10}
+									sliceEnd={0}
+									className="text-zinc-700"
+								/>
+							</div>
 						)}
 					</div>
 				</div>

@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
-import { X, Users, Building2 } from "lucide-react";
+import { CopyAddress } from "@/components/CopyAddress";
+import type { GroupMember, MemberKind, PermissionGroup } from "@/db/types";
+import { Building2, Users, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { MemberInput } from "./MemberInput";
-import type { PermissionGroup, GroupMember, MemberKind } from "@/db/types";
 
 const COLOR_OPTIONS = [
 	{ label: "Cyan", value: "#22d3ee" },
@@ -133,9 +134,7 @@ export function GroupEditor({
 				{/* Members section (only for existing groups) */}
 				{group && (
 					<>
-						<h3 className="mb-3 text-sm font-medium text-zinc-400">
-							Members ({members.length})
-						</h3>
+						<h3 className="mb-3 text-sm font-medium text-zinc-400">Members ({members.length})</h3>
 
 						{members.length > 0 && (
 							<div className="mb-4 space-y-1.5">
@@ -148,30 +147,25 @@ export function GroupEditor({
 											{member.kind === "character" ? (
 												<>
 													<Users size={12} className="text-zinc-500" />
-													<span className="text-zinc-200">
-														{member.characterName ?? "Unknown"}
-													</span>
+													<span className="text-zinc-200">{member.characterName ?? "Unknown"}</span>
 													{member.characterId && (
-														<span className="text-zinc-600">
-															#{member.characterId}
-														</span>
+														<span className="text-zinc-600">#{member.characterId}</span>
 													)}
 													{member.suiAddress && (
-														<span className="font-mono text-zinc-600">
-															{member.suiAddress.slice(0, 8)}...
-														</span>
+														<CopyAddress
+															address={member.suiAddress}
+															sliceStart={8}
+															sliceEnd={0}
+															className="text-zinc-600"
+														/>
 													)}
 												</>
 											) : (
 												<>
 													<Building2 size={12} className="text-zinc-500" />
-													<span className="text-zinc-200">
-														{member.tribeName ?? "Tribe"}
-													</span>
+													<span className="text-zinc-200">{member.tribeName ?? "Tribe"}</span>
 													{member.tribeId && (
-														<span className="text-zinc-600">
-															#{member.tribeId}
-														</span>
+														<span className="text-zinc-600">#{member.tribeId}</span>
 													)}
 												</>
 											)}

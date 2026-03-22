@@ -1,3 +1,4 @@
+import { CopyAddress } from "@/components/CopyAddress";
 import type { SharedAclInfo } from "@tehfrontier/chain-shared";
 import { ChevronRight, Crown } from "lucide-react";
 
@@ -27,17 +28,18 @@ export function SharedAclCard({ acl, isOwner, onSelect }: SharedAclCardProps) {
 					)}
 					<span
 						className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-							acl.isAllowlist
-								? "bg-emerald-500/10 text-emerald-400"
-								: "bg-red-500/10 text-red-400"
+							acl.isAllowlist ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
 						}`}
 					>
 						{acl.isAllowlist ? "Allowlist" : "Denylist"}
 					</span>
 				</div>
-				<p className="mt-0.5 font-mono text-[10px] text-zinc-600">
-					{acl.objectId.slice(0, 16)}...{acl.objectId.slice(-8)}
-				</p>
+				<CopyAddress
+					address={acl.objectId}
+					sliceStart={16}
+					sliceEnd={8}
+					className="mt-0.5 text-[10px] text-zinc-600"
+				/>
 				<div className="mt-1 flex gap-3 text-[10px] text-zinc-500">
 					<span>
 						{acl.allowedTribes.length} tribe

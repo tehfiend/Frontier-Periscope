@@ -1,18 +1,46 @@
-import { useState, useEffect, useRef } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { useQueryClient } from "@tanstack/react-query";
-import { useDAppKit } from "@mysten/dapp-kit-react";
+import { lookupCharacterByItemId } from "@/chain/client";
+import type { TenantId } from "@/chain/config";
+import { AddCharacterDialog } from "@/components/AddCharacterDialog";
+import { CopyAddress } from "@/components/CopyAddress";
 import { db, notDeleted } from "@/db";
 import type { CharacterRecord, CharacterSource } from "@/db/types";
-import { TENANTS, type TenantId } from "@/chain/config";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
+import {
+	clearBackupHandle,
+	getBackupHandle,
+	requestBackupDirectory,
+	writeAutoBackup,
+} from "@/lib/autoBackup";
 import { exportData, importData } from "@/lib/dataExport";
-import { fetchAndStoreGameTypes } from "@/lib/worldApi";
-import { getBackupHandle, requestBackupDirectory, clearBackupHandle, writeAutoBackup } from "@/lib/autoBackup";
-import { lookupCharacterByItemId } from "@/chain/client";
-import { AddCharacterDialog } from "@/components/AddCharacterDialog";
 import { getStoredHandle, requestDirectoryAccess } from "@/lib/logFileAccess";
-import { Settings as SettingsIcon, Database, Users, User, Trash2, Download, Upload, HardDrive, FolderOpen, FolderX, RefreshCw, Link2, Unlink, Plus, Wallet, Gamepad2, PenLine, Search, Loader2, ExternalLink, FileText, Server } from "lucide-react";
+import { fetchAndStoreGameTypes } from "@/lib/worldApi";
+import { useDAppKit } from "@mysten/dapp-kit-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLiveQuery } from "dexie-react-hooks";
+import {
+	Database,
+	Download,
+	FileText,
+	FolderOpen,
+	FolderX,
+	Gamepad2,
+	HardDrive,
+	Link2,
+	Loader2,
+	PenLine,
+	Plus,
+	RefreshCw,
+	Search,
+	Server,
+	Settings as SettingsIcon,
+	Trash2,
+	Unlink,
+	Upload,
+	User,
+	Users,
+	Wallet,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 export function Settings() {
 	const meta = useLiveQuery(() => db.cacheMetadata.get("stellarData"));
@@ -65,7 +93,9 @@ export function Settings() {
 								<span className="text-zinc-500">Version</span>
 								<span className="text-zinc-300">{meta.version}</span>
 								<span className="text-zinc-500">Imported</span>
-								<span className="text-zinc-300">{new Date(meta.importedAt).toLocaleDateString()}</span>
+								<span className="text-zinc-300">
+									{new Date(meta.importedAt).toLocaleDateString()}
+								</span>
 								{meta.counts &&
 									Object.entries(meta.counts).map(([key, val]) => (
 										<>
@@ -87,7 +117,9 @@ export function Settings() {
 							</button>
 						</>
 					) : (
-						<p className="text-sm text-zinc-500">No static data loaded. Restart the app to import.</p>
+						<p className="text-sm text-zinc-500">
+							No static data loaded. Restart the app to import.
+						</p>
 					)}
 				</div>
 			</section>
@@ -105,7 +137,9 @@ export function Settings() {
 								<span className="text-zinc-500">Types</span>
 								<span className="text-zinc-300">{typesMeta.counts?.types?.toLocaleString()}</span>
 								<span className="text-zinc-500">Fetched</span>
-								<span className="text-zinc-300">{new Date(typesMeta.importedAt).toLocaleDateString()}</span>
+								<span className="text-zinc-300">
+									{new Date(typesMeta.importedAt).toLocaleDateString()}
+								</span>
 							</div>
 							<button
 								type="button"
@@ -214,8 +248,8 @@ function ServerSection() {
 			</h2>
 			<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
 				<p className="mb-4 text-sm text-zinc-500">
-					Select which EVE Frontier server to connect to. Switching servers
-					will disconnect your wallet and refresh all data.
+					Select which EVE Frontier server to connect to. Switching servers will disconnect your
+					wallet and refresh all data.
 				</p>
 				<div className="flex gap-3">
 					{SERVER_OPTIONS.map((opt) => (
@@ -229,22 +263,16 @@ function ServerSection() {
 									: "border-zinc-800 hover:border-zinc-700"
 							}`}
 						>
-							<span
-								className={`h-3 w-3 shrink-0 rounded-full ${opt.color}`}
-							/>
+							<span className={`h-3 w-3 shrink-0 rounded-full ${opt.color}`} />
 							<div className="text-left">
 								<p
 									className={`text-sm font-medium ${
-										tenant === opt.id
-											? "text-cyan-400"
-											: "text-zinc-300"
+										tenant === opt.id ? "text-cyan-400" : "text-zinc-300"
 									}`}
 								>
 									{opt.label}
 								</p>
-								<p className="text-xs text-zinc-600">
-									{opt.description}
-								</p>
+								<p className="text-xs text-zinc-600">{opt.description}</p>
 							</div>
 						</button>
 					))}
@@ -279,7 +307,9 @@ function BackupRestore() {
 		try {
 			setStatus("Importing...");
 			const result = await importData(file);
-			setStatus(`Imported ${result.recordsImported.toLocaleString()} records across ${result.tablesImported} tables.`);
+			setStatus(
+				`Imported ${result.recordsImported.toLocaleString()} records across ${result.tablesImported} tables.`,
+			);
 		} catch (err) {
 			setStatus(`Import failed: ${err}`);
 		}
@@ -318,8 +348,8 @@ function BackupRestore() {
 			</h2>
 			<div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
 				<p className="text-sm text-zinc-500">
-					Export all intel, log data, and settings as a JSON file.
-					Static star map data is excluded (reloaded automatically).
+					Export all intel, log data, and settings as a JSON file. Static star map data is excluded
+					(reloaded automatically).
 				</p>
 				<div className="flex flex-wrap items-center gap-3">
 					<button
@@ -381,9 +411,7 @@ function BackupRestore() {
 					</div>
 				</div>
 
-				{status && (
-					<p className="text-xs text-zinc-400">{status}</p>
-				)}
+				{status && <p className="text-xs text-zinc-400">{status}</p>}
 			</div>
 		</section>
 	);
@@ -393,19 +421,28 @@ function SourceBadge({ source }: { source?: CharacterSource }) {
 	switch (source) {
 		case "log":
 			return (
-				<span className="inline-flex items-center gap-1 rounded bg-emerald-900/30 px-1.5 py-0.5 text-[10px] text-emerald-400" title="Auto-detected from game logs">
+				<span
+					className="inline-flex items-center gap-1 rounded bg-emerald-900/30 px-1.5 py-0.5 text-[10px] text-emerald-400"
+					title="Auto-detected from game logs"
+				>
 					<Gamepad2 size={10} /> Log
 				</span>
 			);
 		case "wallet":
 			return (
-				<span className="inline-flex items-center gap-1 rounded bg-violet-900/30 px-1.5 py-0.5 text-[10px] text-violet-400" title="Detected from wallet connection">
+				<span
+					className="inline-flex items-center gap-1 rounded bg-violet-900/30 px-1.5 py-0.5 text-[10px] text-violet-400"
+					title="Detected from wallet connection"
+				>
 					<Wallet size={10} /> Wallet
 				</span>
 			);
 		case "manual":
 			return (
-				<span className="inline-flex items-center gap-1 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400" title="Manually entered">
+				<span
+					className="inline-flex items-center gap-1 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400"
+					title="Manually entered"
+				>
 					<PenLine size={10} /> Manual
 				</span>
 			);
@@ -438,9 +475,14 @@ function CharacterCard({ character }: { character: CharacterRecord }) {
 	}
 
 	async function handleDelete() {
-		if (!confirm(`Remove character "${character.characterName}"? This won't delete associated logs.`))
+		if (
+			!confirm(`Remove character "${character.characterName}"? This won't delete associated logs.`)
+		)
 			return;
-		await db.characters.update(character.id, { _deleted: true, updatedAt: new Date().toISOString() });
+		await db.characters.update(character.id, {
+			_deleted: true,
+			updatedAt: new Date().toISOString(),
+		});
 	}
 
 	async function handleResolveFromChain() {
@@ -525,18 +567,13 @@ function CharacterCard({ character }: { character: CharacterRecord }) {
 				{character.suiAddress && !editing ? (
 					<div className="flex items-center gap-2">
 						<Link2 size={12} className="shrink-0 text-cyan-500" />
-						<span className="flex-1 truncate font-mono text-xs text-zinc-400">
-							{character.suiAddress}
-						</span>
-						<a
-							href={`https://suiscan.xyz/testnet/account/${character.suiAddress}`}
-							target="_blank"
-							rel="noopener noreferrer"
-							className="text-zinc-600 hover:text-cyan-400"
-							title="View on Suiscan"
-						>
-							<ExternalLink size={11} />
-						</a>
+						<CopyAddress
+							address={character.suiAddress}
+							sliceStart={14}
+							sliceEnd={6}
+							explorerUrl={`https://suiscan.xyz/testnet/account/${character.suiAddress}`}
+							className="flex-1 text-xs text-zinc-400"
+						/>
 						<button
 							type="button"
 							onClick={() => setEditing(true)}
@@ -597,13 +634,17 @@ function CharacterCard({ character }: { character: CharacterRecord }) {
 				)}
 			</div>
 
-			{resolveStatus && (
-				<p className="mt-2 text-xs text-zinc-500">{resolveStatus}</p>
-			)}
+			{resolveStatus && <p className="mt-2 text-xs text-zinc-500">{resolveStatus}</p>}
 
 			{character.manifestId && (
 				<p className="mt-2 text-xs text-zinc-600">
-					Manifest: <span className="font-mono">{character.manifestId.slice(0, 12)}...</span>
+					Manifest:{" "}
+					<CopyAddress
+						address={character.manifestId}
+						sliceStart={12}
+						sliceEnd={0}
+						className="text-zinc-600"
+					/>
 				</p>
 			)}
 		</div>
@@ -666,7 +707,11 @@ function GameLogsSection() {
 				) : (
 					<div className="flex items-center justify-between">
 						<p className="text-sm text-zinc-500">
-							No log directory set. Point to your <code className="rounded bg-zinc-800 px-1 text-zinc-400">Documents/Frontier/logs</code> folder.
+							No log directory set. Point to your{" "}
+							<code className="rounded bg-zinc-800 px-1 text-zinc-400">
+								Documents/Frontier/logs
+							</code>{" "}
+							folder.
 						</p>
 						<button
 							type="button"
