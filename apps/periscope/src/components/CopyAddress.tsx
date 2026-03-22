@@ -25,7 +25,7 @@ export function CopyAddress({
 
 	const truncated =
 		address.length > sliceStart + sliceEnd + 3
-			? `${address.slice(0, sliceStart)}...${address.slice(-sliceEnd)}`
+			? `${address.slice(0, sliceStart)}...${sliceEnd > 0 ? address.slice(-sliceEnd) : ""}`
 			: address;
 
 	const handleCopy = useCallback(async () => {

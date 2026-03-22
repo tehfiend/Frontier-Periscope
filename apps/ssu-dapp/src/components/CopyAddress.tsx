@@ -19,7 +19,10 @@ export function CopyAddress({
 }: CopyAddressProps) {
 	const [copied, setCopied] = useState(false);
 
-	const truncated = `${address.slice(0, sliceStart)}...${address.slice(-sliceEnd)}`;
+	const truncated =
+		address.length > sliceStart + sliceEnd + 3
+			? `${address.slice(0, sliceStart)}...${sliceEnd > 0 ? address.slice(-sliceEnd) : ""}`
+			: address;
 
 	async function handleCopy() {
 		try {

@@ -124,7 +124,6 @@ export function MarketContent({
 					characterObjectId={characterObjectId}
 					coinType={coinType}
 					ssuObjectId={ssuObjectId}
-					walletAddress={walletAddress}
 					ownerCapReceivingId={ownerCapReceivingId}
 					isConnected={isConnected}
 					coinDecimals={decimals}

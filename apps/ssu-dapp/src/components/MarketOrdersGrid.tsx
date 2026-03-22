@@ -35,7 +35,6 @@ interface MarketOrdersGridProps {
 	characterObjectId?: string;
 	coinType: string;
 	ssuObjectId: string;
-	walletAddress?: string;
 	ownerCapReceivingId?: string;
 	isConnected: boolean;
 	coinDecimals: number;
@@ -102,8 +101,13 @@ export function MarketOrdersGrid({
 			},
 			{
 				id: "price",
-				accessorFn: (row) => Number(row.pricePerUnit),
+				accessorFn: (row) => row.pricePerUnit,
 				header: "Price",
+				sortingFn: (a, b) => {
+					const av = a.original.pricePerUnit;
+					const bv = b.original.pricePerUnit;
+					return av < bv ? -1 : av > bv ? 1 : 0;
+				},
 				size: 120,
 				cell: ({ row }) => (
 					<span>

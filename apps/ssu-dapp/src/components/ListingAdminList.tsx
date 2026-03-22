@@ -116,7 +116,7 @@ export function ListingAdminList({
 						setDialogState({
 							type: "edit",
 							id: listing.listingId,
-							price: String(listing.pricePerUnit),
+							price: formatBaseUnits(listing.pricePerUnit, decimals),
 							qty: String(listing.quantity),
 						});
 					}}
