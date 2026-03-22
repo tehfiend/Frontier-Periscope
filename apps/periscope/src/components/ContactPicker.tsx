@@ -37,7 +37,7 @@ export function ContactPicker({
 	const [highlightIndex, setHighlightIndex] = useState(0);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
-	const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+	const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
 	// Tribe name lookup
 	const allTribes = useLiveQuery(() => db.manifestTribes.toArray()) ?? [];
