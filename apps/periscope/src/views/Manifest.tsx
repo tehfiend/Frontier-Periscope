@@ -1,31 +1,31 @@
-import { useState, useCallback, useMemo } from "react";
-import { useSuiClient } from "@/hooks/useSuiClient";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/db";
-import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
-import { TENANTS, ASSEMBLY_TYPE_IDS } from "@/chain/config";
+import { ASSEMBLY_TYPE_IDS, TENANTS } from "@/chain/config";
 import {
 	discoverCharactersFromEvents,
 	discoverLocationsFromEvents,
-	fetchCharacterByAddress,
-	refreshStaleCharacters,
 	discoverTribes,
+	fetchCharacterByAddress,
 } from "@/chain/manifest";
-import { enqueueTask } from "@/lib/taskWorker";
+import { CopyAddress } from "@/components/CopyAddress";
+import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
+import { db } from "@/db";
+import type { ManifestCharacter, ManifestLocation, ManifestTribe } from "@/db/types";
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { useTaskWorker } from "@/hooks/useTaskWorker";
-import { DataGrid, excelFilterFn, type ColumnDef } from "@/components/DataGrid";
+import { enqueueTask } from "@/lib/taskWorker";
+import { useLiveQuery } from "dexie-react-hooks";
 import {
+	Clock,
 	Database,
-	RefreshCw,
+	ExternalLink,
 	Loader2,
+	MapPin,
+	RefreshCw,
 	Search,
 	UserPlus,
-	Clock,
-	ExternalLink,
 	Users,
-	MapPin,
 } from "lucide-react";
-import type { ManifestCharacter, ManifestLocation, ManifestTribe } from "@/db/types";
+import { useCallback, useMemo, useState } from "react";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -41,7 +41,9 @@ function formatAge(cachedAt: string): string {
 
 // ── Character Columns ───────────────────────────────────────────────────────
 
-function makeCharacterColumns(tribeMap: Record<number, string>): ColumnDef<ManifestCharacter, unknown>[] {
+function makeCharacterColumns(
+	tribeMap: Record<number, string>,
+): ColumnDef<ManifestCharacter, unknown>[] {
 	return [
 		{
 			id: "name",
@@ -49,9 +51,7 @@ function makeCharacterColumns(tribeMap: Record<number, string>): ColumnDef<Manif
 			header: "Name",
 			filterFn: excelFilterFn,
 			cell: ({ row }) => (
-				<span className="font-medium text-zinc-100">
-					{row.original.name || "(unnamed)"}
-				</span>
+				<span className="font-medium text-zinc-100">{row.original.name || "(unnamed)"}</span>
 			),
 		},
 		{
@@ -86,20 +86,11 @@ function makeCharacterColumns(tribeMap: Record<number, string>): ColumnDef<Manif
 			size: 150,
 			filterFn: excelFilterFn,
 			cell: ({ row }) => (
-				<div className="flex items-center gap-1">
-					<span className="font-mono text-xs text-zinc-500" title={row.original.suiAddress}>
-						{row.original.suiAddress.slice(0, 8)}...{row.original.suiAddress.slice(-4)}
-					</span>
-					<a
-						href={`https://suiscan.xyz/testnet/account/${row.original.suiAddress}`}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-zinc-600 hover:text-cyan-400"
-						onClick={(e) => e.stopPropagation()}
-					>
-						<ExternalLink size={10} />
-					</a>
-				</div>
+				<CopyAddress
+					address={row.original.suiAddress}
+					explorerUrl={`https://suiscan.xyz/testnet/account/${row.original.suiAddress}`}
+					className="text-xs text-zinc-500"
+				/>
 			),
 		},
 		{
@@ -109,20 +100,11 @@ function makeCharacterColumns(tribeMap: Record<number, string>): ColumnDef<Manif
 			size: 140,
 			enableColumnFilter: false,
 			cell: ({ row }) => (
-				<div className="flex items-center gap-1">
-					<span className="font-mono text-xs text-zinc-600" title={row.original.id}>
-						{row.original.id.slice(0, 8)}...{row.original.id.slice(-4)}
-					</span>
-					<a
-						href={`https://suiscan.xyz/testnet/object/${row.original.id}`}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-zinc-600 hover:text-cyan-400"
-						onClick={(e) => e.stopPropagation()}
-					>
-						<ExternalLink size={10} />
-					</a>
-				</div>
+				<CopyAddress
+					address={row.original.id}
+					explorerUrl={`https://suiscan.xyz/testnet/object/${row.original.id}`}
+					className="text-xs text-zinc-600"
+				/>
 			),
 		},
 		{
@@ -163,9 +145,7 @@ const tribeColumns: ColumnDef<ManifestTribe, unknown>[] = [
 		accessorKey: "name",
 		header: "Name",
 		filterFn: excelFilterFn,
-		cell: ({ row }) => (
-			<span className="font-medium text-zinc-100">{row.original.name}</span>
-		),
+		cell: ({ row }) => <span className="font-medium text-zinc-100">{row.original.name}</span>,
 	},
 	{
 		id: "nameShort",
@@ -185,9 +165,7 @@ const tribeColumns: ColumnDef<ManifestTribe, unknown>[] = [
 		header: "Tribe ID",
 		size: 110,
 		filterFn: excelFilterFn,
-		cell: ({ row }) => (
-			<span className="font-mono text-xs text-zinc-400">{row.original.id}</span>
-		),
+		cell: ({ row }) => <span className="font-mono text-xs text-zinc-400">{row.original.id}</span>,
 	},
 	{
 		id: "description",
@@ -297,9 +275,7 @@ function makeLocationColumns(
 			size: 90,
 			filterFn: excelFilterFn,
 			cell: ({ row }) => (
-				<span className="font-mono text-xs text-cyan-400">
-					{row.original.lPoint ?? "--"}
-				</span>
+				<span className="font-mono text-xs text-cyan-400">{row.original.lPoint ?? "--"}</span>
 			),
 		},
 		{
@@ -309,20 +285,11 @@ function makeLocationColumns(
 			size: 150,
 			enableColumnFilter: false,
 			cell: ({ row }) => (
-				<div className="flex items-center gap-1">
-					<span className="font-mono text-xs text-zinc-500" title={row.original.id}>
-						{row.original.id.slice(0, 8)}...{row.original.id.slice(-4)}
-					</span>
-					<a
-						href={`https://suiscan.xyz/testnet/object/${row.original.id}`}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-zinc-600 hover:text-cyan-400"
-						onClick={(e) => e.stopPropagation()}
-					>
-						<ExternalLink size={10} />
-					</a>
-				</div>
+				<CopyAddress
+					address={row.original.id}
+					explorerUrl={`https://suiscan.xyz/testnet/object/${row.original.id}`}
+					className="text-xs text-zinc-500"
+				/>
 			),
 		},
 		{
@@ -333,9 +300,7 @@ function makeLocationColumns(
 			enableColumnFilter: false,
 			cell: ({ row }) => (
 				<span className="text-xs text-zinc-500">
-					{row.original.revealedAt
-						? new Date(row.original.revealedAt).toLocaleString()
-						: "--"}
+					{row.original.revealedAt ? new Date(row.original.revealedAt).toLocaleString() : "--"}
 				</span>
 			),
 		},
@@ -370,7 +335,10 @@ export function Manifest() {
 
 	// Filter to current tenant
 	const allCharacters = useLiveQuery(() => db.manifestCharacters.toArray()) ?? [];
-	const characters = useMemo(() => allCharacters.filter((c) => c.tenant === tenant), [allCharacters, tenant]);
+	const characters = useMemo(
+		() => allCharacters.filter((c) => c.tenant === tenant),
+		[allCharacters, tenant],
+	);
 
 	const allTribes = useLiveQuery(() => db.manifestTribes.toArray()) ?? [];
 	const tribes = useMemo(() => allTribes.filter((t) => t.tenant === tenant), [allTribes, tenant]);
@@ -428,7 +396,9 @@ export function Manifest() {
 
 	const handleResolveNames = useCallback(() => {
 		enqueueTask(`Resolve Character Names (${tenant})`, async (ctx) => {
-			const unnamed = await db.manifestCharacters.filter((c) => c.tenant === tenant && !c.name).toArray();
+			const unnamed = await db.manifestCharacters
+				.filter((c) => c.tenant === tenant && !c.name)
+				.toArray();
 			const total = unnamed.length;
 			if (total === 0) {
 				ctx.setProgress("All characters already have names");
@@ -458,7 +428,9 @@ export function Manifest() {
 							}
 						}
 					}
-				} catch { /* batch failed */ }
+				} catch {
+					/* batch failed */
+				}
 				resolved += batch.length;
 				ctx.setItems(resolved, total);
 				ctx.setProgress(`Resolved ${resolved} / ${total} names`);
@@ -485,7 +457,10 @@ export function Manifest() {
 		setLookupAddress("");
 	}, [lookupAddress, lookupLoading, client, tenant, tribeMap]);
 
-	const tribeCounts = useMemo(() => new Set(characters.map((c) => c.tribeId).filter((t) => t > 0)).size, [characters]);
+	const tribeCounts = useMemo(
+		() => new Set(characters.map((c) => c.tribeId).filter((t) => t > 0)).size,
+		[characters],
+	);
 
 	return (
 		<div className="p-6">
@@ -498,12 +473,15 @@ export function Manifest() {
 							Manifest
 						</h1>
 						<p className="mt-1 text-sm text-zinc-500">
-							{characters.length} characters &middot; {tribes.length} tribes &middot; {locations.length} locations &middot; {tribeCounts} unique tribes in characters
+							{characters.length} characters &middot; {tribes.length} tribes &middot;{" "}
+							{locations.length} locations &middot; {tribeCounts} unique tribes in characters
 						</p>
 					</div>
 				</div>
 				<div className="flex items-center gap-2">
-					{syncStatus && <span className="max-w-xs truncate text-xs text-zinc-500">{syncStatus}</span>}
+					{syncStatus && (
+						<span className="max-w-xs truncate text-xs text-zinc-500">{syncStatus}</span>
+					)}
 					{tab === "characters" && (
 						<button
 							type="button"
@@ -521,7 +499,11 @@ export function Manifest() {
 						disabled={activeCount > 0}
 						className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
 					>
-						{activeCount > 0 ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+						{activeCount > 0 ? (
+							<Loader2 size={14} className="animate-spin" />
+						) : (
+							<Search size={14} />
+						)}
 						{tab === "characters"
 							? "Discover"
 							: tab === "tribes"
@@ -537,9 +519,7 @@ export function Manifest() {
 					type="button"
 					onClick={() => setTab("characters")}
 					className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-						tab === "characters"
-							? "bg-zinc-800 text-zinc-100"
-							: "text-zinc-500 hover:text-zinc-300"
+						tab === "characters" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
 					}`}
 				>
 					<UserPlus size={14} />
@@ -549,9 +529,7 @@ export function Manifest() {
 					type="button"
 					onClick={() => setTab("tribes")}
 					className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-						tab === "tribes"
-							? "bg-zinc-800 text-zinc-100"
-							: "text-zinc-500 hover:text-zinc-300"
+						tab === "tribes" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
 					}`}
 				>
 					<Users size={14} />
@@ -561,9 +539,7 @@ export function Manifest() {
 					type="button"
 					onClick={() => setTab("locations")}
 					className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-						tab === "locations"
-							? "bg-zinc-800 text-zinc-100"
-							: "text-zinc-500 hover:text-zinc-300"
+						tab === "locations" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
 					}`}
 				>
 					<MapPin size={14} />
@@ -575,7 +551,10 @@ export function Manifest() {
 			{tab === "characters" && (
 				<div className="mb-4 flex items-center gap-2">
 					<div className="relative max-w-md flex-1">
-						<UserPlus size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+						<UserPlus
+							size={14}
+							className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+						/>
 						<input
 							type="text"
 							value={lookupAddress}

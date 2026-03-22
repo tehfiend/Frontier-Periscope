@@ -1,6 +1,15 @@
+import { CopyAddress } from "@/components/CopyAddress";
+import type { GroupMember, PermissionGroup } from "@/db/types";
+import {
+	Building2,
+	ChevronDown,
+	ChevronRight,
+	Pencil,
+	ShieldOff,
+	Trash2,
+	Users,
+} from "lucide-react";
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Pencil, Trash2, Users, Building2, ShieldOff } from "lucide-react";
-import type { PermissionGroup, GroupMember } from "@/db/types";
 
 interface GroupCardProps {
 	group: PermissionGroup;
@@ -12,7 +21,14 @@ interface GroupCardProps {
 	onMarkHostile?: (member: GroupMember) => void;
 }
 
-export function GroupCard({ group, members, usedByCount, onEdit, onDelete, onMarkHostile }: GroupCardProps) {
+export function GroupCard({
+	group,
+	members,
+	usedByCount,
+	onEdit,
+	onDelete,
+	onMarkHostile,
+}: GroupCardProps) {
 	const [expanded, setExpanded] = useState(false);
 	const charCount = members.filter((m) => m.kind === "character").length;
 	const tribeCount = members.filter((m) => m.kind === "tribe").length;
@@ -31,17 +47,10 @@ export function GroupCard({ group, members, usedByCount, onEdit, onDelete, onMar
 					) : (
 						<ChevronRight size={14} className="text-zinc-600" />
 					)}
-					<span
-						className="h-3 w-3 rounded-full"
-						style={{ backgroundColor: group.color }}
-					/>
+					<span className="h-3 w-3 rounded-full" style={{ backgroundColor: group.color }} />
 					<div>
-						<span className="text-sm font-medium text-zinc-200">
-							{group.name}
-						</span>
-						{group.isBuiltin && (
-							<span className="ml-2 text-xs text-zinc-600">(built-in)</span>
-						)}
+						<span className="text-sm font-medium text-zinc-200">{group.name}</span>
+						{group.isBuiltin && <span className="ml-2 text-xs text-zinc-600">(built-in)</span>}
 						<p className="text-xs text-zinc-500">
 							{charCount} character{charCount !== 1 ? "s" : ""}
 							{" · "}
@@ -79,31 +88,31 @@ export function GroupCard({ group, members, usedByCount, onEdit, onDelete, onMar
 				<div className="border-t border-zinc-800/50 px-4 py-3">
 					<div className="space-y-1.5">
 						{members.map((member) => (
-							<div key={member.id} className="group/member flex items-center gap-2 text-xs text-zinc-400">
+							<div
+								key={member.id}
+								className="group/member flex items-center gap-2 text-xs text-zinc-400"
+							>
 								{member.kind === "character" ? (
 									<>
 										<Users size={12} className="text-zinc-600" />
-										<span className="text-zinc-300">
-											{member.characterName ?? "Unknown"}
-										</span>
+										<span className="text-zinc-300">{member.characterName ?? "Unknown"}</span>
 										{member.characterId && (
 											<span className="text-zinc-600">#{member.characterId}</span>
 										)}
 										{member.suiAddress && (
-											<span className="font-mono text-zinc-600">
-												{member.suiAddress.slice(0, 8)}...
-											</span>
+											<CopyAddress
+												address={member.suiAddress}
+												sliceStart={8}
+												sliceEnd={0}
+												className="text-zinc-600"
+											/>
 										)}
 									</>
 								) : (
 									<>
 										<Building2 size={12} className="text-zinc-600" />
-										<span className="text-zinc-300">
-											{member.tribeName ?? "Tribe"}
-										</span>
-										{member.tribeId && (
-											<span className="text-zinc-600">#{member.tribeId}</span>
-										)}
+										<span className="text-zinc-300">{member.tribeName ?? "Tribe"}</span>
+										{member.tribeId && <span className="text-zinc-600">#{member.tribeId}</span>}
 									</>
 								)}
 								{onMarkHostile && !group.isBuiltin && (

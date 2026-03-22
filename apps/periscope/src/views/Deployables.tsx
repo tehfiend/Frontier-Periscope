@@ -16,9 +16,12 @@ import {
 	classifyExtension,
 	getTemplate,
 } from "@/chain/config";
+import { crossReferencePrivateMapLocations } from "@/chain/manifest";
 import type { OwnedAssembly } from "@/chain/queries";
+import { CopyAddress } from "@/components/CopyAddress";
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { EditableCell } from "@/components/EditableCell";
+import { StructureDetailCard } from "@/components/StructureDetailCard";
 import { SystemSearch } from "@/components/SystemSearch";
 import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPanel";
 import type { AssemblyStatus, Celestial, DeployableIntel, SolarSystem } from "@/db/types";
@@ -43,7 +46,7 @@ import {
 
 // ── Unified Row Type ────────────────────────────────────────────────────────
 
-interface StructureRow {
+export interface StructureRow {
 	id: string;
 	objectId: string;
 	ownership: "mine" | "watched";
@@ -217,14 +220,21 @@ export function Deployables() {
 		return map;
 	}, [systems]);
 
-	// ── Owner Name Lookup ────────────────────────────────────────────────────
+	// ── Owner Name Lookup (players + manifest characters) ─────────────────
+	const manifestChars = useLiveQuery(() => db.manifestCharacters.toArray()) ?? [];
+
 	const ownerNames = useMemo(() => {
 		const map = new Map<string, string>();
+		// Manifest characters first (lower priority)
+		for (const mc of manifestChars) {
+			if (mc.name && mc.suiAddress) map.set(mc.suiAddress, mc.name);
+		}
+		// Players override (higher priority)
 		for (const p of players ?? []) {
 			map.set(p.address, p.name);
 		}
 		return map;
-	}, [players]);
+	}, [players, manifestChars]);
 
 	// ── Extension Lookup (from local deploy records) ────────────────────────
 	const extensionByAssembly = useMemo(() => {
@@ -312,6 +322,7 @@ export function Deployables() {
 	const [syncStatus, setSyncStatus] = useState<string | null>(null);
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [deployTarget, setDeployTarget] = useState<StructureRow | null>(null);
+	const [selectedId, setSelectedId] = useState<string | null>(null);
 
 	// ── Sync Own Structures ──────────────────────────────────────────────────
 	const handleSyncOwn = useCallback(async () => {
@@ -363,6 +374,8 @@ export function Deployables() {
 			}
 
 			setSyncStatus(`Synced ${totalCount} owned`);
+			// Cross-reference private map locations with structures
+			await crossReferencePrivateMapLocations();
 			await db.settings.put({
 				key: "lastChainSync",
 				value: new Date().toISOString(),
@@ -584,26 +597,13 @@ export function Deployables() {
 							disabledTooltip={disabledTooltip}
 						>
 							<span className="font-medium text-zinc-100">{r.label || "\u2014"}</span>
-							<span className="ml-2 font-mono text-xs text-zinc-600" title={r.objectId}>
-								{r.objectId.slice(0, 8)}...
-							</span>
+							<CopyAddress
+								address={r.objectId}
+								sliceStart={8}
+								sliceEnd={0}
+								className="ml-2 text-xs text-zinc-600"
+							/>
 						</EditableCell>
-					);
-				},
-			},
-			{
-				id: "itemId",
-				accessorKey: "itemId",
-				header: "Item ID",
-				size: 100,
-				filterFn: excelFilterFn,
-				cell: ({ row }) => {
-					const id = row.original.itemId;
-					if (!id) return <span className="text-zinc-700">{"\u2014"}</span>;
-					return (
-						<span className="font-mono text-xs text-zinc-400" title={id}>
-							{id}
-						</span>
 					);
 				},
 			},
@@ -710,52 +710,36 @@ export function Deployables() {
 				},
 			},
 			{
-				id: "ownership",
-				accessorKey: "ownership",
-				header: "Ownership",
-				size: 100,
-				filterFn: excelFilterFn,
-				cell: ({ row }) => (
-					<span
-						className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-							row.original.ownership === "mine"
-								? "bg-cyan-500/15 text-cyan-400"
-								: "bg-zinc-700/50 text-zinc-400"
-						}`}
-					>
-						{row.original.ownership === "mine" ? "Mine" : "Watched"}
-					</span>
-				),
-			},
-			{
 				id: "owner",
 				accessorFn: (d) => d.ownerName ?? d.owner,
 				header: "Owner",
-				size: 140,
+				size: 180,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
 					return (
-						<div className="min-w-0">
-							<span className="text-xs text-zinc-300">{r.ownerName ?? "Unknown"}</span>
-							<div className="truncate font-mono text-xs text-zinc-600" title={r.owner}>
-								{r.owner.slice(0, 6)}...{r.owner.slice(-4)}
+						<div className="flex min-w-0 items-center gap-1.5">
+							<span
+								className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+									r.ownership === "mine"
+										? "bg-cyan-500/15 text-cyan-400"
+										: "bg-zinc-700/50 text-zinc-400"
+								}`}
+							>
+								{r.ownership === "mine" ? "Mine" : "Watched"}
+							</span>
+							<div className="min-w-0">
+								<span className="text-xs text-zinc-300">{r.ownerName ?? "Unknown"}</span>
+								<CopyAddress
+									address={r.owner}
+									sliceStart={6}
+									sliceEnd={4}
+									className="block text-xs text-zinc-600"
+								/>
 							</div>
 						</div>
 					);
 				},
-			},
-			{
-				id: "fuelLevel",
-				accessorFn: (d) => d.fuelLevel ?? null,
-				header: "Fuel",
-				size: 100,
-				enableColumnFilter: false,
-				cell: ({ row }) => (
-					<span className="font-mono text-xs">
-						{row.original.fuelLevel != null ? row.original.fuelLevel.toLocaleString() : "\u2014"}
-					</span>
-				),
 			},
 			{
 				id: "runtime",
@@ -943,6 +927,8 @@ export function Deployables() {
 				keyFn={(d) => d.id}
 				searchPlaceholder="Search structures, owners, notes..."
 				emptyMessage='No structures found. Click "Sync Chain" to discover your on-chain deployables, or add targets in the Watchlist.'
+				selectedRowId={selectedId ?? undefined}
+				onRowClick={(id) => setSelectedId(id === selectedId ? null : id)}
 				actions={
 					<>
 						{syncStatus && <span className="text-xs text-zinc-500">{syncStatus}</span>}
@@ -966,6 +952,13 @@ export function Deployables() {
 						</button>
 					</>
 				}
+			/>
+
+			{/* Structure Detail Card */}
+			<StructureDetailCard
+				row={data.find((d) => d.id === selectedId) ?? null}
+				systemNames={systemNames}
+				onSaveNotes={handleSaveNotes}
 			/>
 
 			{typeof lastSync?.value === "string" && (

@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { decryptMapKeys, syncMapLocations, syncPrivateMapsForUser } from "@/chain/manifest";
+import { CopyAddress } from "@/components/CopyAddress";
 import { db } from "@/db";
 import type { ManifestMapLocation, ManifestPrivateMap } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
@@ -26,12 +27,12 @@ import {
 	buildCreateMap,
 	buildInviteMember,
 	buildRemoveLocation,
+	bytesToHex,
 	deriveMapKeyFromSignature,
 	encodeLocationData,
 	generateEphemeralX25519Keypair,
 	getContractAddresses,
 	getPublicKeyForAddress,
-	bytesToHex,
 	hexToBytes,
 	sealForRecipient,
 } from "@tehfrontier/chain-shared";
@@ -124,7 +125,9 @@ function useStoredMapKey(): {
 		}
 
 		loadKey();
-		return () => { cancelled = true; };
+		return () => {
+			cancelled = true;
+		};
 	}, [walletAddress, dAppKit]);
 
 	return { keyPair, isLoading };
@@ -152,14 +155,20 @@ export function PrivateMaps() {
 
 	// Read cached maps from IndexedDB
 	const maps =
-		useLiveQuery(() => db.manifestPrivateMaps.where("tenant").equals(tenant).toArray(), [tenant]) ?? [];
+		useLiveQuery(() => db.manifestPrivateMaps.where("tenant").equals(tenant).toArray(), [tenant]) ??
+		[];
 
 	// Debug: log all cached maps regardless of tenant filter
-	useLiveQuery(() => db.manifestPrivateMaps.toArray().then((all) => {
-		console.log("[PrivateMaps] all cached maps:", all.map((m) => ({ id: m.id, name: m.name, tenant: m.tenant })));
-		console.log("[PrivateMaps] filtering by tenant:", tenant, "-> matched:", maps.length);
-		return all;
-	}));
+	useLiveQuery(() =>
+		db.manifestPrivateMaps.toArray().then((all) => {
+			console.log(
+				"[PrivateMaps] all cached maps:",
+				all.map((m) => ({ id: m.id, name: m.name, tenant: m.tenant })),
+			);
+			console.log("[PrivateMaps] filtering by tenant:", tenant, "-> matched:", maps.length);
+			return all;
+		}),
+	);
 
 	// Read cached locations for selected map
 	const locations =
@@ -187,10 +196,7 @@ export function PrivateMaps() {
 			}
 
 			// Sync locations for all maps that have a decryptedMapKey (no keypair needed)
-			const cachedMaps = await db.manifestPrivateMaps
-				.where("tenant")
-				.equals(tenant)
-				.toArray();
+			const cachedMaps = await db.manifestPrivateMaps.where("tenant").equals(tenant).toArray();
 			for (const m of cachedMaps) {
 				if (m.decryptedMapKey) {
 					await syncMapLocations(client, m.id, m.decryptedMapKey, tenant as TenantId);
@@ -215,7 +221,20 @@ export function PrivateMaps() {
 	// When key becomes available, decrypt any pending map keys + sync locations
 	useEffect(() => {
 		const pending = maps.filter((m) => !m.decryptedMapKey && m.encryptedMapKey);
-		console.log("[PrivateMaps] keyPair:", !!keyPair, "maps:", maps.length, "pendingDecrypt:", pending.length, "maps:", maps.map((m) => ({ name: m.name, hasDecrypted: !!m.decryptedMapKey, hasEncrypted: !!m.encryptedMapKey })));
+		console.log(
+			"[PrivateMaps] keyPair:",
+			!!keyPair,
+			"maps:",
+			maps.length,
+			"pendingDecrypt:",
+			pending.length,
+			"maps:",
+			maps.map((m) => ({
+				name: m.name,
+				hasDecrypted: !!m.decryptedMapKey,
+				hasEncrypted: !!m.encryptedMapKey,
+			})),
+		);
 		if (keyPair && pending.length > 0) {
 			console.log("[PrivateMaps] triggering decryptMapKeys + syncLocations");
 			decryptMapKeys(keyPair, tenant as TenantId).then(() => {
@@ -331,9 +350,7 @@ export function PrivateMaps() {
 										});
 										try {
 											await dAppKit.signAndExecuteTransaction({ transaction: tx });
-											await db.manifestMapLocations.delete(
-												`${selectedMap.id}:${locationId}`,
-											);
+											await db.manifestMapLocations.delete(`${selectedMap.id}:${locationId}`);
 										} catch {
 											// TX failed
 										}
@@ -482,9 +499,12 @@ function MapCard({
 					</div>
 					<div>
 						<p className="text-sm font-medium text-zinc-200">{map.name}</p>
-						<p className="font-mono text-xs text-zinc-600">
-							{map.id.slice(0, 14)}...{map.id.slice(-6)}
-						</p>
+						<CopyAddress
+							address={map.id}
+							sliceStart={14}
+							sliceEnd={6}
+							className="text-xs text-zinc-600"
+						/>
 					</div>
 				</div>
 				<div className="text-xs text-zinc-500">{new Date(map.cachedAt).toLocaleDateString()}</div>
@@ -523,7 +543,8 @@ function LocationsTable({
 	// Resolve structure names + types from cached deployables
 	const structureIds = sorted.map((l) => l.structureId).filter(Boolean) as string[];
 	const deployables = useLiveQuery(
-		() => (structureIds.length > 0 ? db.deployables.where("objectId").anyOf(structureIds).toArray() : []),
+		() =>
+			structureIds.length > 0 ? db.deployables.where("objectId").anyOf(structureIds).toArray() : [],
 		[structureIds.join(",")],
 	);
 
@@ -536,10 +557,10 @@ function LocationsTable({
 		"Portable Refinery": "Field Refinery",
 		"Portable Printer": "Field Printer",
 		"Portable Storage": "Field Storage",
-		"Refuge": "Refuge",
-		"Gate": "Gate",
-		"Turret": "Turret",
-		"Gatekeeper": "Gatekeeper",
+		Refuge: "Refuge",
+		Gate: "Gate",
+		Turret: "Turret",
+		Gatekeeper: "Gatekeeper",
 	};
 
 	const deployableMap = useMemo(() => {
@@ -601,27 +622,42 @@ function LocationsTable({
 							<div>
 								<p className="text-sm text-zinc-300">
 									{systemName ?? `System ${loc.solarSystemId}`}
-									<span className="text-zinc-500"> -- P{loc.planet}-L{loc.lPoint}</span>
+									<span className="text-zinc-500">
+										{" "}
+										-- P{loc.planet}-L{loc.lPoint}
+									</span>
 								</p>
 								{loc.description && <p className="text-xs text-zinc-500">{loc.description}</p>}
 								{loc.structureId && (
 									<p className="text-xs text-zinc-500">
-										{structure
-											? <>
+										{structure ? (
+											<>
 												<span className="text-zinc-400">{structure.label}</span>
 												{structure.typeName !== structure.label && (
-													<span className="text-zinc-600">
-														{" "}({structure.typeName})
-													</span>
+													<span className="text-zinc-600"> ({structure.typeName})</span>
 												)}
 											</>
-											: <span className="font-mono text-zinc-600">{loc.structureId.slice(0, 14)}...</span>
-										}
+										) : (
+											<CopyAddress
+												address={loc.structureId}
+												sliceStart={14}
+												sliceEnd={0}
+												className="text-zinc-600"
+											/>
+										)}
 									</p>
 								)}
 								<p className="mt-0.5 text-xs text-zinc-600">
-									Added by {addedByName ?? `${loc.addedBy.slice(0, 10)}...`} --{" "}
-									{new Date(loc.addedAtMs).toLocaleDateString()}
+									Added by{" "}
+									{addedByName ?? (
+										<CopyAddress
+											address={loc.addedBy}
+											sliceStart={10}
+											sliceEnd={0}
+											className="text-zinc-600"
+										/>
+									)}{" "}
+									-- {new Date(loc.addedAtMs).toLocaleDateString()}
 								</p>
 							</div>
 							{canRemove && (

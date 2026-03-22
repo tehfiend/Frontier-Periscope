@@ -1,21 +1,22 @@
-import { useState, useCallback } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
+import { syncCharacter, syncTargetAssemblies } from "@/chain/sync";
+import { CopyAddress } from "@/components/CopyAddress";
 import { db, notDeleted } from "@/db";
-import { syncTargetAssemblies, syncCharacter } from "@/chain/sync";
+import type { TargetRecord, WatchStatus } from "@/db/types";
+import { useLiveQuery } from "dexie-react-hooks";
 import {
-	Target,
-	Plus,
-	RefreshCw,
-	Loader2,
+	Archive,
+	Clock,
 	Eye,
 	EyeOff,
-	Archive,
+	Loader2,
+	Package,
+	Plus,
+	RefreshCw,
+	Target,
 	Trash2,
 	X,
-	Clock,
-	Package,
 } from "lucide-react";
-import type { TargetRecord, WatchStatus, AssemblyIntel } from "@/db/types";
+import { useCallback, useState } from "react";
 
 const STATUS_BADGE: Record<WatchStatus, { label: string; color: string }> = {
 	active: { label: "Active", color: "bg-green-500/20 text-green-400" },
@@ -76,7 +77,9 @@ export function Targets() {
 				const count = await syncTargetAssemblies(addr);
 				setAddStatus(`Added target. Found ${count} assemblies.`);
 			} catch (e) {
-				setAddStatus(`Added target. Assembly scan failed: ${e instanceof Error ? e.message : String(e)}`);
+				setAddStatus(
+					`Added target. Assembly scan failed: ${e instanceof Error ? e.message : String(e)}`,
+				);
 			}
 
 			setNewAddress("");
@@ -94,7 +97,10 @@ export function Targets() {
 			const now = new Date().toISOString();
 			await db.targetEvents.where("targetId").equals(id).modify({ _deleted: true });
 			await db.inventoryDiffs.where("targetId").equals(id).modify({ _deleted: true });
-			await db.assemblies.where("owner").equals(target.address).modify({ _deleted: true, updatedAt: now });
+			await db.assemblies
+				.where("owner")
+				.equals(target.address)
+				.modify({ _deleted: true, updatedAt: now });
 		}
 		await db.targets.update(id, { _deleted: true });
 	}
@@ -154,7 +160,10 @@ export function Targets() {
 						</button>
 						<button
 							type="button"
-							onClick={() => { setShowAdd(false); setAddStatus(null); }}
+							onClick={() => {
+								setShowAdd(false);
+								setAddStatus(null);
+							}}
 							className="text-zinc-500 hover:text-zinc-300"
 						>
 							<X size={18} />
@@ -172,9 +181,7 @@ export function Targets() {
 						type="button"
 						onClick={() => setFilter(f)}
 						className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
-							filter === f
-								? "bg-zinc-700 text-zinc-100"
-								: "text-zinc-500 hover:text-zinc-300"
+							filter === f ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
 						}`}
 					>
 						{f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
@@ -248,7 +255,13 @@ function TargetRow({
 							{t.name || "Unknown"}
 						</span>
 					</div>
-					<span className="font-mono text-xs text-zinc-600">{t.address}</span>
+					<CopyAddress
+						address={t.address}
+						sliceStart={10}
+						sliceEnd={6}
+						explorerUrl={`https://suiscan.xyz/testnet/account/${t.address}`}
+						className="text-xs text-zinc-600"
+					/>
 				</div>
 
 				{/* Assembly count */}
@@ -277,18 +290,38 @@ function TargetRow({
 						{syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
 					</button>
 					{t.watchStatus === "active" ? (
-						<button type="button" onClick={() => onSetStatus("paused")} className="rounded p-1 text-zinc-600 hover:text-yellow-400" title="Pause">
+						<button
+							type="button"
+							onClick={() => onSetStatus("paused")}
+							className="rounded p-1 text-zinc-600 hover:text-yellow-400"
+							title="Pause"
+						>
 							<EyeOff size={14} />
 						</button>
 					) : (
-						<button type="button" onClick={() => onSetStatus("active")} className="rounded p-1 text-zinc-600 hover:text-green-400" title="Activate">
+						<button
+							type="button"
+							onClick={() => onSetStatus("active")}
+							className="rounded p-1 text-zinc-600 hover:text-green-400"
+							title="Activate"
+						>
 							<Eye size={14} />
 						</button>
 					)}
-					<button type="button" onClick={() => onSetStatus("archived")} className="rounded p-1 text-zinc-600 hover:text-zinc-400" title="Archive">
+					<button
+						type="button"
+						onClick={() => onSetStatus("archived")}
+						className="rounded p-1 text-zinc-600 hover:text-zinc-400"
+						title="Archive"
+					>
 						<Archive size={14} />
 					</button>
-					<button type="button" onClick={onRemove} className="rounded p-1 text-zinc-600 hover:text-red-400" title="Remove">
+					<button
+						type="button"
+						onClick={onRemove}
+						className="rounded p-1 text-zinc-600 hover:text-red-400"
+						title="Remove"
+					>
 						<Trash2 size={14} />
 					</button>
 				</div>
@@ -300,10 +333,19 @@ function TargetRow({
 					<div className="grid gap-1">
 						{assemblies.map((a) => (
 							<div key={a.id} className="flex items-center gap-2 text-xs">
-								<span className={`h-1.5 w-1.5 rounded-full ${a.status === "online" ? "bg-green-400" : "bg-zinc-600"}`} />
+								<span
+									className={`h-1.5 w-1.5 rounded-full ${a.status === "online" ? "bg-green-400" : "bg-zinc-600"}`}
+								/>
 								<span className="text-zinc-400">{a.assemblyType}</span>
-								<span className="font-mono text-zinc-600">{a.objectId.slice(0, 10)}...</span>
-								<span className={a.status === "online" ? "text-green-400" : "text-zinc-600"}>{a.status}</span>
+								<CopyAddress
+									address={a.objectId}
+									sliceStart={10}
+									sliceEnd={0}
+									className="text-zinc-600"
+								/>
+								<span className={a.status === "online" ? "text-green-400" : "text-zinc-600"}>
+									{a.status}
+								</span>
 							</div>
 						))}
 					</div>
@@ -314,7 +356,9 @@ function TargetRow({
 			{t.tags.length > 0 && (
 				<div className="mt-2 flex gap-1">
 					{t.tags.map((tag) => (
-						<span key={tag} className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400">{tag}</span>
+						<span key={tag} className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400">
+							{tag}
+						</span>
 					))}
 				</div>
 			)}

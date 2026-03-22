@@ -1,14 +1,15 @@
-import { useState, useMemo } from "react";
+import { ASSEMBLY_TYPE_IDS } from "@/chain/config";
+import { type AssemblyInventory, fetchAssemblyInventory } from "@/chain/inventory";
+import { CopyAddress } from "@/components/CopyAddress";
+import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
+import { db } from "@/db";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Boxes, Loader2, RefreshCw } from "lucide-react";
-import { DataGrid, excelFilterFn, type ColumnDef } from "@/components/DataGrid";
-import { useActiveCharacter } from "@/hooks/useActiveCharacter";
-import { useActiveTenant, useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
-import { fetchAssemblyInventory, type InventoryItem, type AssemblyInventory } from "@/chain/inventory";
-import { db } from "@/db";
-import { ASSEMBLY_TYPE_IDS } from "@/chain/config";
+import { useMemo } from "react";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -41,9 +42,7 @@ export function Assets() {
 	}, [gameTypes]);
 
 	// Fetch inventories for all storage-type assemblies
-	const storageAssemblies = discovery?.assemblies.filter(
-		(a) => a.type === "storage_unit",
-	) ?? [];
+	const storageAssemblies = discovery?.assemblies.filter((a) => a.type === "storage_unit") ?? [];
 
 	const {
 		data: inventories,
@@ -130,9 +129,12 @@ export function Assets() {
 			header: "Container",
 			filterFn: excelFilterFn,
 			cell: ({ row }) => (
-				<span className="font-mono text-xs text-zinc-500" title={row.original.assemblyId}>
-					{row.original.assemblyId.slice(0, 10)}...{row.original.assemblyId.slice(-6)}
-				</span>
+				<CopyAddress
+					address={row.original.assemblyId}
+					sliceStart={10}
+					sliceEnd={6}
+					className="text-xs text-zinc-500"
+				/>
 			),
 		},
 	];

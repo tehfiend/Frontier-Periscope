@@ -1,19 +1,19 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { CopyAddress } from "@/components/CopyAddress";
+import { TransferDialog } from "@/components/TransferDialog";
+import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
+import { type WalletTransaction, queryWalletTransactions } from "@tehfrontier/chain-shared";
 import {
-	Wallet as WalletIcon,
-	Loader2,
-	RefreshCw,
+	ArrowDownLeft,
+	ArrowUpRight,
 	ExternalLink,
 	Info,
-	ArrowUpRight,
-	ArrowDownLeft,
+	Loader2,
+	RefreshCw,
+	Wallet as WalletIcon,
 } from "lucide-react";
-import { useActiveCharacter } from "@/hooks/useActiveCharacter";
-import {
-	type WalletTransaction,
-	queryWalletTransactions,
-} from "@tehfrontier/chain-shared";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -66,8 +66,10 @@ function isSuiCoin(coinType: string): boolean {
 export function Wallet() {
 	const { activeCharacter } = useActiveCharacter();
 	const client = useSuiClient();
+	const account = useCurrentAccount();
 
 	const suiAddress = activeCharacter?.suiAddress;
+	const [showTransfer, setShowTransfer] = useState(false);
 
 	const [balances, setBalances] = useState<CoinBalance[]>([]);
 	const [coinMeta, setCoinMeta] = useState<Record<string, CoinMeta>>({});
@@ -280,9 +282,13 @@ export function Wallet() {
 						<WalletIcon size={24} className="text-cyan-500" />
 						Wallet
 					</h1>
-					<p className="mt-1 font-mono text-sm text-zinc-300">
-						{suiAddress}
-					</p>
+					<CopyAddress
+						address={suiAddress}
+						sliceStart={20}
+						sliceEnd={8}
+						explorerUrl={`https://suiscan.xyz/testnet/account/${suiAddress}`}
+						className="mt-1 text-sm text-zinc-300"
+					/>
 					<p className="mt-0.5 text-xs text-zinc-600">
 						{activeCharacter.characterName ?? "Unknown character"}
 						{" \u00b7 "}
@@ -291,22 +297,34 @@ export function Wallet() {
 							: `${tokenCount} coin type${tokenCount !== 1 ? "s" : ""}`}
 					</p>
 				</div>
-				<button
-					type="button"
-					onClick={() => {
-						fetchBalances();
-						fetchTransactions();
-					}}
-					disabled={fetching || txLoading}
-					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
-				>
-					{fetching || txLoading ? (
-						<Loader2 size={14} className="animate-spin" />
-					) : (
-						<RefreshCw size={14} />
+				<div className="flex items-center gap-2">
+					{account && (
+						<button
+							type="button"
+							onClick={() => setShowTransfer(true)}
+							className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+						>
+							<ArrowUpRight size={14} />
+							Send
+						</button>
 					)}
-					Refresh
-				</button>
+					<button
+						type="button"
+						onClick={() => {
+							fetchBalances();
+							fetchTransactions();
+						}}
+						disabled={fetching || txLoading}
+						className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+					>
+						{fetching || txLoading ? (
+							<Loader2 size={14} className="animate-spin" />
+						) : (
+							<RefreshCw size={14} />
+						)}
+						Refresh
+					</button>
+				</div>
 			</div>
 
 			{/* Error banner */}
@@ -328,9 +346,7 @@ export function Wallet() {
 					<div className="mb-6 grid grid-cols-2 gap-4">
 						<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
 							<p className="text-xs text-zinc-500">SUI Balance</p>
-							<p className="mt-1 text-2xl font-bold text-zinc-100">
-								{suiHuman} SUI
-							</p>
+							<p className="mt-1 text-2xl font-bold text-zinc-100">{suiHuman} SUI</p>
 							<p className="mt-1 font-mono text-xs text-zinc-600">
 								{BigInt(suiMist).toLocaleString()} MIST
 							</p>
@@ -356,9 +372,7 @@ export function Wallet() {
 					{/* Token Balances Table */}
 					<div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/50">
 						<div className="border-b border-zinc-800 px-4 py-3">
-							<h2 className="text-sm font-medium text-zinc-400">
-								Token Balances
-							</h2>
+							<h2 className="text-sm font-medium text-zinc-400">Token Balances</h2>
 						</div>
 						{balances.length === 0 ? (
 							<div className="px-4 py-8 text-center text-sm text-zinc-600">
@@ -381,18 +395,11 @@ export function Wallet() {
 										const displayBal = `${formatBalance(b.totalBalance, decimals)} ${isSui ? "SUI" : name}`;
 
 										return (
-											<tr
-												key={b.coinType}
-												className="border-b border-zinc-800/50 last:border-b-0"
-											>
+											<tr key={b.coinType} className="border-b border-zinc-800/50 last:border-b-0">
 												<td className="px-4 py-3">
-													<span className="font-medium text-zinc-200">
-														{meta?.name || name}
-													</span>
+													<span className="font-medium text-zinc-200">{meta?.name || name}</span>
 													{meta?.symbol && meta.symbol !== (meta.name || name) && (
-														<span className="ml-1.5 text-xs text-zinc-500">
-															({meta.symbol})
-														</span>
+														<span className="ml-1.5 text-xs text-zinc-500">({meta.symbol})</span>
 													)}
 													{!isSui && (
 														<span
@@ -405,9 +412,7 @@ export function Wallet() {
 														</span>
 													)}
 												</td>
-												<td className="px-4 py-3 font-mono text-sm text-zinc-200">
-													{displayBal}
-												</td>
+												<td className="px-4 py-3 font-mono text-sm text-zinc-200">{displayBal}</td>
 											</tr>
 										);
 									})}
@@ -419,9 +424,7 @@ export function Wallet() {
 					{/* ── Currency Transactions ─────────────────────────────── */}
 					<div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/50">
 						<div className="border-b border-zinc-800 px-4 py-3">
-							<h2 className="text-sm font-medium text-zinc-400">
-								Currency Transactions
-							</h2>
+							<h2 className="text-sm font-medium text-zinc-400">Currency Transactions</h2>
 						</div>
 
 						{/* Filters */}
@@ -481,9 +484,7 @@ export function Wallet() {
 								<table className="w-full text-left text-xs">
 									<thead>
 										<tr className="border-b border-zinc-800 text-[10px] text-zinc-500 uppercase">
-											<ThSort onClick={() => handleSort("time")}>
-												Time{sortIcon("time")}
-											</ThSort>
+											<ThSort onClick={() => handleSort("time")}>Time{sortIcon("time")}</ThSort>
 											<ThSort onClick={() => handleSort("currency")}>
 												Currency{sortIcon("currency")}
 											</ThSort>
@@ -500,44 +501,40 @@ export function Wallet() {
 											const decimals = meta?.decimals ?? 0;
 											const isPositive = tx.amount > 0n;
 											const absAmount = tx.amount < 0n ? -tx.amount : tx.amount;
-											const displayAmt = decimals > 0
-												? formatBalance(absAmount, decimals)
-												: absAmount.toLocaleString();
+											const displayAmt =
+												decimals > 0
+													? formatBalance(absAmount, decimals)
+													: absAmount.toLocaleString();
 											const date = new Date(tx.timestampMs);
 											const timeStr = `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-											const shortDigest = `${tx.digest.slice(0, 8)}...${tx.digest.slice(-6)}`;
-
 											return (
 												<tr
 													key={`${tx.digest}-${tx.coinType}-${i}`}
 													className="border-b border-zinc-800/30 hover:bg-zinc-800/20"
 												>
-													<td className="whitespace-nowrap px-4 py-2.5 text-zinc-400">
-														{timeStr}
-													</td>
-													<td className="px-4 py-2.5 text-zinc-300">
-														{symbol}
-													</td>
+													<td className="whitespace-nowrap px-4 py-2.5 text-zinc-400">{timeStr}</td>
+													<td className="px-4 py-2.5 text-zinc-300">{symbol}</td>
 													<td className="whitespace-nowrap px-4 py-2.5 text-right font-mono">
-														<span className={`inline-flex items-center gap-1 ${isPositive ? "text-emerald-400" : "text-red-400"}`}>
+														<span
+															className={`inline-flex items-center gap-1 ${isPositive ? "text-emerald-400" : "text-red-400"}`}
+														>
 															{isPositive ? (
 																<ArrowDownLeft size={12} />
 															) : (
 																<ArrowUpRight size={12} />
 															)}
-															{isPositive ? "+" : "-"}{displayAmt}
+															{isPositive ? "+" : "-"}
+															{displayAmt}
 														</span>
 													</td>
 													<td className="px-4 py-2.5">
-														<a
-															href={`https://testnet.suivision.xyz/txblock/${tx.digest}`}
-															target="_blank"
-															rel="noopener noreferrer"
-															className="inline-flex items-center gap-1 font-mono text-zinc-600 hover:text-cyan-400"
-														>
-															{shortDigest}
-															<ExternalLink size={10} />
-														</a>
+														<CopyAddress
+															address={tx.digest}
+															sliceStart={8}
+															sliceEnd={6}
+															explorerUrl={`https://testnet.suivision.xyz/txblock/${tx.digest}`}
+															className="text-zinc-600"
+														/>
 													</td>
 												</tr>
 											);
@@ -554,14 +551,24 @@ export function Wallet() {
 							<Info size={16} className="mt-0.5 shrink-0 text-zinc-600" />
 							<p className="text-xs text-zinc-500">
 								Read-only view of on-chain balances for{" "}
-								<span className="text-zinc-400">
-									{activeCharacter.characterName}
-								</span>
-								. Connect EVE Vault only when signing transactions.
+								<span className="text-zinc-400">{activeCharacter.characterName}</span>. Connect EVE
+								Vault only when signing transactions.
 							</p>
 						</div>
 					</div>
 				</>
+			)}
+
+			{showTransfer && suiAddress && (
+				<TransferDialog
+					balances={balances}
+					coinMeta={coinMeta}
+					senderAddress={suiAddress}
+					onClose={() => {
+						setShowTransfer(false);
+						fetchBalances();
+					}}
+				/>
 			)}
 		</div>
 	);
