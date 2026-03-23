@@ -1,5 +1,11 @@
 # Dispatch Log
 
+## 2026-03-23 -- standings-access-control (update)
+- **Action:** UPDATE
+- **File:** docs/plans/active/12-standings-access-control.md
+- **Passes:** 3
+- **Result:** active -- Resolved open questions, incorporated user answers
+
 ## 2026-03-23 -- standings-access-control
 - **Action:** CREATE
 - **File:** docs/plans/pending/12-standings-access-control.md

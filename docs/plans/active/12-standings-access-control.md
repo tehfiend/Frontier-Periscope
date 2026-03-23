@@ -1,6 +1,6 @@
 # Plan: Standings & Access Control System
 
-**Status:** Draft
+**Status:** Active
 **Created:** 2026-03-23
 **Module:** contracts, chain-shared, periscope
 
@@ -95,6 +95,8 @@ StandingsRegistry {
 - `set_character_standing(registry, char_id, standing, ctx)` -- admin only. Same pattern.
 - `remove_tribe_standing(registry, tribe_id, ctx)` -- admin only. Removes dynamic field (entity reverts to default_standing). Emits `StandingRemovedEvent`.
 - `remove_character_standing(registry, char_id, ctx)` -- admin only.
+- `set_tribe_standings_batch(registry, tribe_ids, standings, ctx)` -- admin only. Bulk set; validates vector lengths match.
+- `set_character_standings_batch(registry, char_ids, standings, ctx)` -- admin only. Bulk set; validates vector lengths match.
 - `set_default_standing(registry, standing, ctx)` -- owner only. Updates default for unregistered entities.
 - `update_info(registry, name, ticker, ctx)` -- owner only. Validates ticker format.
 - `add_admin(registry, admin, ctx)` -- owner only.
@@ -110,7 +112,7 @@ StandingsRegistry {
 - `StandingRemovedEvent { registry_id, kind, entity_id }`
 
 **Error codes:**
-- `ENotAdmin` (0), `ENotOwner` (1), `EInvalidStanding` (2), `EInvalidTicker` (3), `EAdminAlreadyExists` (4), `EAdminNotFound` (5), `ECannotRemoveOwner` (6), `EStandingNotFound` (7), `ETickerTooShort` (8), `ETickerTooLong` (9)
+- `ENotAdmin` (0), `ENotOwner` (1), `EInvalidStanding` (2), `EInvalidTicker` (3), `EAdminAlreadyExists` (4), `EAdminNotFound` (5), `ECannotRemoveOwner` (6), `EStandingNotFound` (7), `ETickerTooShort` (8), `ETickerTooLong` (9), `EBatchLengthMismatch` (10)
 
 ### 2. Gate Standings Extension (`contracts/gate_standings/`)
 
@@ -161,6 +163,8 @@ GateStandingsRule {
 
 Extension that references a `StandingsRegistry` for SSU inventory access control. Depends on world contracts (for `StorageUnit`, `Character`, inventory types) and `standings_registry`.
 
+**Key design: Extension wraps deposit/withdraw calls.** The world contracts' SSU extension model requires the extension contract to call `storage_unit::deposit_item<Auth>()` and `storage_unit::withdraw_item<Auth>()` directly, passing its own typed witness. There is no "pre-check" pattern -- the extension IS the intermediary. This matches how `ssu_market` works: it calls `storage_unit::withdraw_item<MarketAuth>(ssu, character, MarketAuth {}, ...)` and `storage_unit::deposit_item<MarketAuth>(ssu, character, item, MarketAuth {}, ctx)`.
+
 **Shared config: `SsuStandingsConfig` (created at init)**
 ```
 SsuStandingsConfig {
@@ -180,8 +184,8 @@ SsuStandingsRule {
 ```
 
 **Functions:**
-- `can_deposit(storage_unit, character, config, registry, ctx)` -- checks standing >= min_deposit.
-- `can_withdraw(storage_unit, character, config, registry, ctx)` -- checks standing >= min_withdraw.
+- `deposit_item(storage_unit, character, item, config, registry, ctx)` -- checks standing >= min_deposit, then calls `storage_unit::deposit_item<SsuStandingsAuth>(storage_unit, character, item, SsuStandingsAuth {}, ctx)`.
+- `withdraw_item(storage_unit, character, config, registry, type_id, quantity, ctx)` -- checks standing >= min_withdraw, then calls `storage_unit::withdraw_item<SsuStandingsAuth>(storage_unit, character, SsuStandingsAuth {}, type_id, quantity, ctx)` and returns the `Item`.
 - Config management: `set_ssu_config()`, `remove_ssu_config()`, admin management.
 
 **Witness type:** `SsuStandingsAuth`
@@ -189,9 +193,17 @@ SsuStandingsRule {
 ### 5. chain-shared Updates
 
 **New file: `packages/chain-shared/src/standings-registry.ts`**
-- TX builders: `buildCreateRegistry()`, `buildSetTribeStanding()`, `buildSetCharacterStanding()`, `buildRemoveTribeStanding()`, `buildRemoveCharacterStanding()`, `buildSetDefaultStanding()`, `buildUpdateRegistryInfo()`, `buildAddRegistryAdmin()`, `buildRemoveRegistryAdmin()`
+- TX builders: `buildCreateRegistry()`, `buildSetTribeStanding()`, `buildSetCharacterStanding()`, `buildRemoveTribeStanding()`, `buildRemoveCharacterStanding()`, `buildSetTribeStandingsBatch()`, `buildSetCharacterStandingsBatch()`, `buildSetDefaultStanding()`, `buildUpdateRegistryInfo()`, `buildAddRegistryAdmin()`, `buildRemoveRegistryAdmin()`
 - Query functions: `queryRegistryDetails()`, `queryAllRegistries()` (by type), `queryRegistryStandings()` (enumerate dynamic fields for tribe/char standings)
 - Constants: `STANDING_LABELS`, `standingToDisplay()`, `displayToStanding()`
+
+**New file: `packages/chain-shared/src/gate-standings.ts`**
+- TX builders: `buildSetGateStandingsConfig()`, `buildRemoveGateStandingsConfig()`, `buildAddGateStandingsAdmin()`, `buildRemoveGateStandingsAdmin()`
+- Same pattern as `ssu-market.ts` TX builders
+
+**New file: `packages/chain-shared/src/ssu-standings.ts`**
+- TX builders: `buildSetSsuStandingsConfig()`, `buildRemoveSsuStandingsConfig()`, `buildDepositWithStandings()`, `buildWithdrawWithStandings()`, `buildAddSsuStandingsAdmin()`, `buildRemoveSsuStandingsAdmin()`
+- Same pattern as `ssu-market.ts` TX builders
 
 **Modify: `packages/chain-shared/src/types.ts`**
 - Replace `StandingsListInfo` etc. with new types: `StandingsRegistryInfo { objectId, owner, admins, name, ticker, defaultStanding }`, `RegistryStandingEntry { kind, tribeId?, characterId?, standing }`
@@ -204,7 +216,7 @@ SsuStandingsRule {
 - Add `standingsRegistry`, `gateStandings`, `ssuStandings` entries (empty initially, populated after publish)
 
 **Modify: `packages/chain-shared/src/index.ts`**
-- Export new `standings-registry` module
+- Export new `standings-registry`, `gate-standings`, `ssu-standings` modules
 
 ### 6. Periscope: Client-Side Contacts (Local Only)
 
@@ -299,6 +311,8 @@ interface RegistryStanding {
 | UI colors | Blue positive / White neutral / Red negative | Intuitive trust/threat color language, 3 shades per polarity using Tailwind utilities |
 | Gate toll currency | Generic `Coin<T>` | Same pattern as `gate_toll` and `gate_unified` -- supports any Sui coin type |
 | No world dependency for registry | Standalone Sui-only contract | StandingsRegistry is extension-agnostic (like SharedAcl). Only extension contracts depend on world |
+| SSU extension model | Extension wraps deposit/withdraw (Option A) | World contracts require the extension to call `storage_unit::deposit_item<Auth>()` / `withdraw_item<Auth>()` with its own typed witness. No pre-check pattern exists. Same pattern as `ssu_market` with `MarketAuth` |
+| Batch standings operations | Both individual + batch functions (Option C) | Individual setters for single updates, batch variants (`set_tribe_standings_batch`, `set_character_standings_batch`) for bulk setup. Batch functions loop internally with same validation logic. Bulk import is a common use case |
 
 ## Implementation Phases
 
@@ -306,12 +320,13 @@ interface RegistryStanding {
 
 1. Create `contracts/standings_registry/Move.toml` with `edition = "2024"`, Sui dependency `rev = "testnet-v1.66.2"`, address `standings_registry = "0x0"`. Pattern matches `contracts/acl_registry/Move.toml` (Sui-only, no world dep).
 2. Create `contracts/standings_registry/sources/standings_registry.move` with:
-   - Error codes: `ENotAdmin` (0), `ENotOwner` (1), `EInvalidStanding` (2), `EInvalidTicker` (3), `EAdminAlreadyExists` (4), `EAdminNotFound` (5), `ECannotRemoveOwner` (6), `EStandingNotFound` (7), `ETickerTooShort` (8), `ETickerTooLong` (9)
+   - Error codes: `ENotAdmin` (0), `ENotOwner` (1), `EInvalidStanding` (2), `EInvalidTicker` (3), `EAdminAlreadyExists` (4), `EAdminNotFound` (5), `ECannotRemoveOwner` (6), `EStandingNotFound` (7), `ETickerTooShort` (8), `ETickerTooLong` (9), `EBatchLengthMismatch` (10)
    - Structs: `StandingsRegistry` (shared, key), `TribeKey` (copy, drop, store), `CharKey` (copy, drop, store)
    - Events: `RegistryCreatedEvent`, `StandingUpdatedEvent`, `StandingRemovedEvent`
    - Ticker validation helper: check each byte is `A-Z` (65-90) or `0-9` (48-57), length 3-6
    - `create_registry()`: validate ticker, create shared object, emit event. Use `#[allow(lint(share_owned))]`.
    - Standing CRUD: `set_tribe_standing()`, `set_character_standing()`, `remove_tribe_standing()`, `remove_character_standing()` -- all admin-only, validate standing 0-6, use `dynamic_field::add/borrow_mut/remove`.
+   - Batch variants: `set_tribe_standings_batch(registry, tribe_ids: vector<u32>, standings: vector<u8>, ctx)`, `set_character_standings_batch(registry, char_ids: vector<u64>, standings: vector<u8>, ctx)` -- admin-only, assert vectors same length, loop calling same internal validation/storage logic. Add error `EBatchLengthMismatch` (10).
    - `get_standing(registry, tribe_id, char_id): u8` -- check `CharKey` dynamic field first, then `TribeKey`, fall back to `default_standing`. This is the primary lookup function used by extensions.
    - `get_tribe_standing()`, `get_character_standing()` -- individual lookups (return default if not found).
    - Owner-only: `set_default_standing()`, `update_info()`, `add_admin()`, `remove_admin()`.
@@ -326,10 +341,12 @@ interface RegistryStanding {
    - `test_admin_management` -- add/remove admins, non-admin rejection
    - `test_owner_only_operations` -- non-owner cannot manage admins or defaults
    - `test_invalid_standing_value` -- standing > 6 rejected
+   - `test_batch_set_standings` -- bulk tribe and character standings in one call
+   - `test_batch_length_mismatch` -- mismatched vector lengths rejected
 
 ### Phase 2: Gate Standings Extension Contract
 
-1. Create `contracts/gate_standings/Move.toml` with `edition = "2024"`, dependencies: `world = { local = "../world_utopia" }`, `standings_registry = { local = "../standings_registry" }`. The `[addresses]` section must pin `standings_registry` to its published address (populated after Phase 1 publish). Pattern matches `contracts/gate_acl/Move.toml`.
+1. Create `contracts/gate_standings/Move.toml` with `edition = "2024"`, dependencies: `world = { local = "../world_utopia" }`, `standings_registry = { local = "../standings_registry" }`. Set `gate_standings = "0x0"` and `standings_registry = "0x0"` in `[addresses]` initially; both get pinned to published addresses in Phase 5. Pattern matches `contracts/gate_acl/Move.toml`.
 2. Create `contracts/gate_standings/sources/gate_standings.move` with:
    - `GateStandingsAuth` witness struct
    - Error codes: `ENotAuthorized` (0), `EGateNotConfigured` (1), `EAccessDenied` (2), `EInsufficientPayment` (3), `ERegistryMismatch` (4)
@@ -346,20 +363,25 @@ interface RegistryStanding {
 
 ### Phase 3: SSU Standings Extension Contract
 
-1. Create `contracts/ssu_standings/Move.toml` with `edition = "2024"`, dependencies: `world = { local = "../world_utopia" }`, `standings_registry = { local = "../standings_registry" }`. Pin `standings_registry` address. Same pattern as gate_standings.
+1. Create `contracts/ssu_standings/Move.toml` with `edition = "2024"`, dependencies: `world = { local = "../world_utopia" }`, `standings_registry = { local = "../standings_registry" }`. Set `ssu_standings = "0x0"` and `standings_registry = "0x0"` in `[addresses]` initially; pinned in Phase 5. Same pattern as gate_standings.
 2. Create `contracts/ssu_standings/sources/ssu_standings.move` with:
-   - `SsuStandingsAuth` witness struct
+   - `SsuStandingsAuth` witness struct (drop)
+   - Error codes: `ENotAuthorized` (0), `ESsuNotConfigured` (1), `EAccessDenied` (2), `ERegistryMismatch` (3)
+   - `deposit_item(storage_unit, character, item, config, registry, ctx)` -- looks up per-SSU config, verifies `registry_id` matches passed registry, calls `standings_registry::get_standing()`, asserts standing >= `min_deposit`, then calls `storage_unit::deposit_item<SsuStandingsAuth>(storage_unit, character, item, SsuStandingsAuth {}, ctx)`.
+   - `withdraw_item(storage_unit, character, config, registry, type_id, quantity, ctx)` -- same pattern, asserts standing >= `min_withdraw`, then calls `storage_unit::withdraw_item<SsuStandingsAuth>(storage_unit, character, SsuStandingsAuth {}, type_id, quantity, ctx)` and returns the `Item`.
+   - Note: The SSU owner must call `storage_unit::authorize_extension<SsuStandingsAuth>()` to register this extension before deposit/withdraw will work.
+3. Create `contracts/ssu_standings/sources/config.move` with:
    - `SsuStandingsConfig` shared object (created in `init()`)
-   - `SsuStandingsRule` per-SSU dynamic field
-   - `can_deposit()` and `can_withdraw()` -- check standing against thresholds
-   - Config management and admin functions
-3. Create `contracts/ssu_standings/sources/config.move` (or inline in main file, depending on complexity).
-4. Write tests.
+   - `SsuStandingsRule` struct for per-SSU dynamic fields (`registry_id: ID`, `min_deposit: u8`, `min_withdraw: u8`)
+   - `set_ssu_config()`, `remove_ssu_config()` -- admin only
+   - Admin management: `add_admin()`, `remove_admin()`
+   - Read accessors: `has_ssu_config()`, `get_ssu_config()`, field accessors
+4. Write tests (mirror ssu_market test patterns for deposit/withdraw flow).
 
 ### Phase 4: chain-shared Integration
 
 1. Create `packages/chain-shared/src/standings-registry.ts` with:
-   - TX builders for all registry operations
+   - TX builders for all registry operations (including `buildSetTribeStandingsBatch()`, `buildSetCharacterStandingsBatch()` for bulk operations)
    - `queryRegistryDetails()` -- fetch single registry by ID
    - `queryAllRegistries()` -- discover all `StandingsRegistry` objects by type (same pattern as `queryAllSharedAcls()`)
    - `queryRegistryStandings()` -- enumerate dynamic fields for tribe/char standings
@@ -370,9 +392,11 @@ interface RegistryStanding {
    - Keep existing `standings` and encrypted types for backwards compat
 3. Update `packages/chain-shared/src/config.ts`:
    - Add `standingsRegistry`, `gateStandings`, `ssuStandings` entries (empty packageId initially)
-4. Update `packages/chain-shared/src/index.ts` to export `standings-registry` module.
-5. Update `packages/chain-shared/src/standings.ts` -- add deprecation comment at top of file noting superseded by `standings-registry.ts`.
-6. Run `pnpm build` to verify chain-shared compiles.
+4. Create `packages/chain-shared/src/gate-standings.ts` with TX builders for gate config management (`buildSetGateStandingsConfig()`, `buildRemoveGateStandingsConfig()`, admin management).
+5. Create `packages/chain-shared/src/ssu-standings.ts` with TX builders for SSU config management and deposit/withdraw wrappers (`buildSetSsuStandingsConfig()`, `buildRemoveSsuStandingsConfig()`, `buildDepositWithStandings()`, `buildWithdrawWithStandings()`, admin management).
+6. Update `packages/chain-shared/src/index.ts` to export `standings-registry`, `gate-standings`, `ssu-standings` modules.
+7. Update `packages/chain-shared/src/standings.ts` -- add deprecation comment at top of file noting superseded by `standings-registry.ts`.
+8. Run `pnpm build` to verify chain-shared compiles.
 
 ### Phase 5: Publish Contracts & Register Addresses
 
@@ -421,9 +445,11 @@ interface RegistryStanding {
 | `contracts/ssu_standings/sources/ssu_standings.move` | Create | SSU extension: standings-based deposit/withdraw access |
 | `contracts/ssu_standings/sources/config.move` | Create | Per-SSU config as dynamic fields on shared SsuStandingsConfig |
 | `packages/chain-shared/src/standings-registry.ts` | Create | TX builders, queries, constants for standings_registry contract |
+| `packages/chain-shared/src/gate-standings.ts` | Create | TX builders for gate_standings config management |
+| `packages/chain-shared/src/ssu-standings.ts` | Create | TX builders for ssu_standings config + deposit/withdraw |
 | `packages/chain-shared/src/types.ts` | Modify | Add StandingsRegistryInfo, RegistryStandingEntry, new ContractAddresses entries |
 | `packages/chain-shared/src/config.ts` | Modify | Add standingsRegistry, gateStandings, ssuStandings address entries |
-| `packages/chain-shared/src/index.ts` | Modify | Export standings-registry module |
+| `packages/chain-shared/src/index.ts` | Modify | Export standings-registry, gate-standings, ssu-standings modules |
 | `packages/chain-shared/src/standings.ts` | Modify | Add deprecation comment (superseded by standings-registry.ts) |
 | `apps/periscope/src/db/types.ts` | Modify | Add Contact, SubscribedRegistry, RegistryStanding types |
 | `apps/periscope/src/db/index.ts` | Modify | Add new DB version with contacts, subscribedRegistries, registryStandings tables |
@@ -435,16 +461,11 @@ interface RegistryStanding {
 
 ## Open Questions
 
-1. **How does the SSU extension hook into the world contracts' inventory system?**
-   - **Option A: Extension inventory methods (deposit_item/withdraw_item)** -- Pros: standard extension pattern. Cons: the world contracts require the extension's typed witness (`Auth`) for deposit/withdraw, meaning the extension contract itself must be the one calling these methods. The game server would need to route through our extension.
-   - **Option B: Access control check only** -- The SSU extension provides `can_deposit()` / `can_withdraw()` check functions, but the actual inventory operations go through the standard world contract paths. The game server calls our extension as an access check before proceeding.
-   - **Recommendation:** Research needed. The world contracts' storage_unit extension model needs deeper investigation to determine exactly how custom extensions participate in the deposit/withdraw flow. If the game server calls the extension's deposit/withdraw functions directly (passing the Auth witness), then Option A. If it's a pre-check, Option B. This should be resolved before Phase 4 implementation.
+All resolved.
 
-2. **Should we batch-set standings in a single transaction, or one-at-a-time?**
-   - **Option A: One-at-a-time (`set_tribe_standing` / `set_character_standing`)** -- Pros: simpler contract, each call is atomic. Cons: many transactions for bulk setup.
-   - **Option B: Batch functions (`set_tribe_standings(registry, tribe_ids, standings)` / `set_character_standings(registry, char_ids, standings)`)** -- Pros: efficient bulk setup. Cons: more complex contract, vector length validation.
-   - **Option C: Both** -- Individual functions for single updates, batch functions for bulk. Pros: best of both worlds. Cons: more code to maintain.
-   - **Recommendation:** Option C. Add batch variants (`set_tribe_standings_batch`, `set_character_standings_batch`) alongside individual setters. Bulk setup is a common use case (importing a whole tribe's standings). The batch functions just loop over the vectors internally and call the same validation/storage logic.
+1. ~~**How does the SSU extension hook into the world contracts' inventory system?**~~ **Resolved: Option A (extension wraps deposit/withdraw).** Research confirmed that the world contracts' SSU extension model requires the extension contract to call `storage_unit::deposit_item<Auth>()` and `storage_unit::withdraw_item<Auth>()` directly, passing its own typed witness. There is no pre-check pattern. The `ssu_market` contract demonstrates this: it calls `storage_unit::withdraw_item<MarketAuth>(ssu, character, MarketAuth {}, ...)`. The `ssu_standings` contract must follow the same pattern with `SsuStandingsAuth`.
+
+2. ~~**Should we batch-set standings in a single transaction, or one-at-a-time?**~~ **Resolved: Option C (both).** Individual setters for single updates, plus batch variants (`set_tribe_standings_batch`, `set_character_standings_batch`) for bulk setup. Batch functions loop internally using the same validation/storage logic. Added `EBatchLengthMismatch` (10) error code.
 
 ## Deferred
 
