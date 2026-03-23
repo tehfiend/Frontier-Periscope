@@ -1,5 +1,11 @@
 # Dispatch Log
 
+## 2026-03-23 -- revoke-extension (review)
+- **Action:** UPDATE
+- **File:** docs/plans/archive/09-revoke-extension.md
+- **Passes:** 1
+- **Result:** archive -- All 3 phases complete; moved from active to archive
+
 ## 2026-03-23 -- standings-access-control (update)
 - **Action:** UPDATE
 - **File:** docs/plans/active/12-standings-access-control.md
@@ -252,3 +258,9 @@
 - **File:** docs/plans/active/25-periscope-wallet-structures-ui.md
 - **Passes:** 3
 - **Result:** active -- Pre-execution review verified all 7 phases (1a, 1b, 2, 3, 4, 5, 6) against codebase. 0/7 phases complete. Three corrections applied: (1) Removed `Players.tsx` from Phase 1a and File Summary -- has no address truncation (only `f.slice(1)` for string capitalization). (2) Added `AclEditor.tsx` and `AclTab.tsx` to Phase 1b permission components and File Summary -- both have address/objectId truncation patterns (6 occurrences total). (3) Fixed `AssemblyActions.tsx` and `PublishToMapDialog.tsx` descriptions from "Address display" to "Object ID display" in both Phase 1b and File Summary. All other references verified correct: ManifestCharacter interface (lines 417-440), searchCachedCharacters (line 230), fetchCharacterByAddress (line 198), StructureRow (lines 46-70), column definitions (Item ID 595-608, Ownership 712-729, Owner 731-746, Fuel 748-758), ownerNames map (line 221), crossReferenceManifestLocations (line 723), syncMapLocations (line 864), Wallet.tsx line refs, queryOwnedCoins in token-factory.ts, @tanstack/react-virtual in ColumnFilter, ContentTabs.tsx listings type (MarketSellListing[] confirmed -- plan correctly identifies the type mismatch). SSU dApp confirmed missing lucide-react, @tanstack/react-table, @tanstack/react-virtual. Both apps use same `@/` path alias. No open questions.
+
+## 2026-03-23 -- update-package-ids-v021 (review)
+- **Action:** UPDATE
+- **File:** docs/plans/archive/10-update-package-ids-v021.md
+- **Passes:** 1
+- **Result:** archive -- All 5 phases verified complete against codebase. Phase 0: Package IDs confirmed from Published.toml. Phase 1: periscope config.ts has worldPublishedAt for Utopia, ssu-dapp has WORLD_PUBLISHED_AT map, turret-priority manifest updated to v0.0.21. ssu-market-dapp uses getContractAddresses() (no world package ID constant needed -- plan corrected). Phase 2: world_utopia Move.toml has v0.0.21 published-at; all 6 git-dep contracts updated to rev v0.0.21; world_stillness unchanged (correct). Phase 3: chain-events-reference.md and world-contracts-reference.md both updated with v0.0.21 IDs and changelog. Phase 4: cycle5-api-reference.md memory file updated. Phase 5: implicitly verified via successful builds during Plans 22-25 execution. Plan moved from active/ to archive/.
