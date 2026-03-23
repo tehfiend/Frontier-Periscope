@@ -1,7 +1,7 @@
+import { getMarketPackageId } from "@/lib/constants";
 import { resolveItemNames } from "@/lib/items";
 import { useQuery } from "@tanstack/react-query";
 import { type MarketBuyOrder, queryMarketBuyOrders } from "@tehfrontier/chain-shared";
-import { getMarketPackageId } from "@/lib/constants";
 import { useSuiClient } from "./useSuiClient";
 
 export interface BuyOrderWithName extends MarketBuyOrder {

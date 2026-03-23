@@ -1,7 +1,7 @@
+import { getTenant, getWorldPackageId } from "@/lib/constants";
 import { useQuery } from "@tanstack/react-query";
 import { getObjectJson } from "@tehfrontier/chain-shared";
 import { useSuiClient } from "./useSuiClient";
-import { getWorldPackageId, getTenant } from "@/lib/constants";
 
 /**
  * Find PlayerProfile object owned by wallet, then derive character object ID.

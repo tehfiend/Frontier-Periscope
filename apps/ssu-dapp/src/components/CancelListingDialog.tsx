@@ -3,7 +3,11 @@ import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { buildCancelListing, formatBaseUnits } from "@tehfrontier/chain-shared";
+import {
+	buildCancelListing,
+	buildPlayerCancelListing,
+	formatBaseUnits,
+} from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
 interface CancelListingDialogProps {
@@ -42,8 +46,11 @@ export function CancelListingDialog({
 		setError(null);
 		setSuccess(null);
 
+		const isAuthorized =
+			account.address === ssuConfig.owner || ssuConfig.delegates.includes(account.address);
+
 		try {
-			const tx = buildCancelListing({
+			const params = {
 				packageId: ssuConfig.packageId,
 				ssuConfigId: ssuConfig.ssuConfigId,
 				marketId: ssuConfig.marketId,
@@ -52,7 +59,8 @@ export function CancelListingDialog({
 				characterObjectId,
 				listingId: listing.listingId,
 				senderAddress: account.address,
-			});
+			};
+			const tx = isAuthorized ? buildCancelListing(params) : buildPlayerCancelListing(params);
 			await signAndExecute(tx);
 			setSuccess("Listing cancelled successfully");
 		} catch (err) {

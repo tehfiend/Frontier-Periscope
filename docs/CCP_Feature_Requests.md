@@ -188,7 +188,7 @@ SSU access control — controlling who can deposit/withdraw items from storage u
 Gates have `can_jump()`, turrets have `get_target_priority_list()`. SSUs need an equivalent entry point for deposit/withdrawal authorization. This would enable vending machines (payment-gated withdrawal), faction-locked storage, and access-controlled supply depots.
 
 **Current blocker:**
-Need to verify what SSU extension entry points exist in world-contracts v0.0.18. The storage_unit module has `authorize_extension` but the expected function signature for extensions isn't documented in the build guide (the SSU build guide page is marked as "PARTIAL - intro + links, no step-by-step").
+Need to verify what SSU extension entry points exist in world-contracts (last checked against v0.0.18; v0.0.21 is now the current version -- see Recent Updates below). The storage_unit module has `authorize_extension` but the expected function signature for extensions isn't documented in the build guide (the SSU build guide page is marked as "PARTIAL - intro + links, no step-by-step").
 
 **What CCP would need to clarify/add:**
 1. Document the SSU extension entry point signature (if it exists)
@@ -262,5 +262,17 @@ This could be:
 
 ---
 
-*Last updated: 2026-03-13*
+## Recent Updates
+
+- **v0.0.19 (Mar 20):** PR #137 merged -- `revoke_extension_authorization()` shipped for Gate, Turret, StorageUnit. Emits `ExtensionRevokedEvent`. Respects `extension_freeze`. Our issue #139 closed.
+- **v0.0.19 also added:** `hp_ratio()`, `shield_ratio()`, `armor_ratio()` public getters on `TargetCandidate`. Useful for turret targeting but doesn't address #5 aggressor cooldown.
+- **v0.0.20 (Mar 22):** `JumpPermitIssuedEvent` added for indexable gate permits.
+- **v0.0.21 (Mar 22):** Updated package IDs after world upgrade.
+- **Open inventory (v0.0.18):** Already used by our `ssu_market` contract.
+
+Note: Requests #1--#8 above remain unaddressed. The new TargetCandidate getters are useful but don't solve the core asks.
+
+---
+
+*Last updated: 2026-03-23*
 *Project: TehFrontier (Cycle 5 Hackathon)*

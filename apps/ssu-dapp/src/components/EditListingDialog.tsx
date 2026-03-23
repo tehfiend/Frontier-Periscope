@@ -120,7 +120,7 @@ export function EditListingDialog({
 									setPrice(e.target.value);
 									setError(null);
 								}}
-								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
+								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none"
 							/>
 						</div>
 
@@ -138,7 +138,7 @@ export function EditListingDialog({
 									setQty(e.target.value);
 									setError(null);
 								}}
-								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
+								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none"
 							/>
 						</div>
 
@@ -147,7 +147,7 @@ export function EditListingDialog({
 							type="button"
 							onClick={handleUpdate}
 							disabled={isPending}
-							className="w-full rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
+							className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
 						>
 							{isPending ? "Saving..." : "Save Changes"}
 						</button>

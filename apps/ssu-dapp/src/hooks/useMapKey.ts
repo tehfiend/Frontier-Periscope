@@ -30,8 +30,9 @@ export function useMapKey(): {
 			});
 			const derived = deriveMapKeyFromSignature(signature);
 			setKeyPair(derived);
-		} catch {
+		} catch (e) {
 			// User rejected or signing failed
+			console.warn("Map key derivation failed:", e);
 		} finally {
 			setIsDerivingKey(false);
 		}

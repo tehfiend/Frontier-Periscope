@@ -3,6 +3,7 @@ import { syncTargetAssemblies } from "@/chain/sync";
 import { buildRenameTx, isRenamableModule } from "@/chain/transactions";
 import { db, notDeleted } from "@/db";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { canRevokeExtension, useExtensionRevoke } from "@/hooks/useExtensionRevoke";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
@@ -185,6 +186,7 @@ async function fetchFuelData(
 export function Deployables() {
 	const client = useSuiClient();
 	const tenant = useActiveTenant();
+	const isValidTenant = tenant in TENANTS;
 	const { activeCharacter, activeSuiAddresses } = useActiveCharacter();
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
@@ -323,6 +325,9 @@ export function Deployables() {
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [deployTarget, setDeployTarget] = useState<StructureRow | null>(null);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
+	const [revokingId, setRevokingId] = useState<string | null>(null);
+	const [revokeConfirmId, setRevokeConfirmId] = useState<string | null>(null);
+	const { revoke: executeRevoke } = useExtensionRevoke();
 
 	// ── Sync Own Structures ──────────────────────────────────────────────────
 	const handleSyncOwn = useCallback(async () => {
@@ -491,10 +496,12 @@ export function Deployables() {
 				await signAndExecute({ transaction: tx });
 
 				// Update local DB on success
-				await db.deployables.update(row.id, {
-					label: newName,
-					updatedAt: new Date().toISOString(),
-				});
+				const now = new Date().toISOString();
+				if (row.source === "assemblies") {
+					await db.assemblies.update(row.id, { label: newName, updatedAt: now });
+				} else {
+					await db.deployables.update(row.id, { label: newName, updatedAt: now });
+				}
 				setSyncStatus(`Renamed to "${newName}"`);
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : String(e);
@@ -522,6 +529,54 @@ export function Deployables() {
 			});
 		}
 	}, []);
+
+	// ── Revoke Extension ─────────────────────────────────────────
+	const handleRevoke = useCallback(
+		async (row: StructureRow) => {
+			if (!account || !row.ownerCapId || !row.characterObjectId) {
+				setSyncStatus("Missing data for revoke -- try re-syncing first");
+				return;
+			}
+			if (!isValidTenant) {
+				setSyncStatus(`Unknown tenant "${tenant}" -- cannot revoke`);
+				return;
+			}
+
+			if (!row.assemblyModule) {
+				console.warn(
+					`[Deployables] assemblyModule missing for ${row.objectId} -- cannot revoke without it`,
+				);
+				setSyncStatus("Cannot revoke: assembly module unknown -- try re-syncing first");
+				return;
+			}
+
+			setRevokingId(row.objectId);
+			try {
+				await executeRevoke({
+					assemblyId: row.objectId,
+					assemblyType: row.assemblyModule,
+					characterId: row.characterObjectId,
+					ownerCapId: row.ownerCapId,
+					tenant: tenant as TenantId,
+				});
+				setSyncStatus("Extension revoked successfully");
+
+				// Update local extensionType
+				const now = new Date().toISOString();
+				if (row.source === "deployables") {
+					await db.deployables.update(row.id, { extensionType: undefined, updatedAt: now });
+				} else {
+					await db.assemblies.update(row.id, { extensionType: undefined, updatedAt: now });
+				}
+			} catch (e) {
+				setSyncStatus(`Revoke failed: ${e instanceof Error ? e.message : String(e)}`);
+			} finally {
+				setRevokingId(null);
+				setRevokeConfirmId(null);
+			}
+		},
+		[account, tenant, isValidTenant, executeRevoke],
+	);
 
 	// ── Stats ────────────────────────────────────────────────────────────────
 	const stats = useMemo(() => {
@@ -656,13 +711,53 @@ export function Deployables() {
 								</>
 							)}
 							{r.ownership === "mine" && (
-								<button
-									type="button"
-									onClick={() => setDeployTarget(r)}
-									className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-900/30"
-								>
-									{actionLabel}
-								</button>
+								<div className="ml-auto flex items-center gap-1">
+									{info.status !== "default" &&
+										r.characterObjectId &&
+										r.ownerCapId &&
+										canRevokeExtension(r.assemblyModule ?? "") &&
+										(revokingId === r.objectId ? (
+											<span className="text-[10px] text-zinc-400">
+												<Loader2 size={10} className="inline animate-spin" /> Revoking...
+											</span>
+										) : revokeConfirmId === r.objectId ? (
+											<>
+												<button
+													type="button"
+													onClick={() => {
+														setRevokeConfirmId(null);
+														handleRevoke(r);
+													}}
+													className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-400 hover:bg-red-900/30"
+												>
+													Confirm
+												</button>
+												<button
+													type="button"
+													onClick={() => setRevokeConfirmId(null)}
+													className="text-[10px] text-zinc-500 hover:text-zinc-300"
+												>
+													Cancel
+												</button>
+											</>
+										) : (
+											<button
+												type="button"
+												onClick={() => setRevokeConfirmId(r.objectId)}
+												className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-400 hover:bg-red-900/30"
+												title="Remove extension (reset to default)"
+											>
+												Reset
+											</button>
+										))}
+									<button
+										type="button"
+										onClick={() => setDeployTarget(r)}
+										className="rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-900/30"
+									>
+										{actionLabel}
+									</button>
+								</div>
 							)}
 						</div>
 					);
@@ -850,6 +945,9 @@ export function Deployables() {
 			handleSaveLocation,
 			handleSaveParent,
 			handleRemove,
+			handleRevoke,
+			revokingId,
+			revokeConfirmId,
 			setDeployTarget,
 			data,
 			parentLabels,
@@ -967,7 +1065,7 @@ export function Deployables() {
 				</p>
 			)}
 
-			{deployTarget && (
+			{deployTarget && isValidTenant && (
 				<DeployExtensionPanel
 					assembly={structureRowToAssembly(deployTarget)}
 					characterId={deployTarget.characterObjectId ?? ""}
@@ -1266,7 +1364,6 @@ function ParentSelect({
 	return (
 		<div className="relative">
 			<input
-				autoFocus
 				type="text"
 				value={search}
 				onChange={(e) => setSearch(e.target.value)}

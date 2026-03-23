@@ -1,7 +1,8 @@
 # EVE Frontier Chain Events Reference
 
 Exhaustive catalog of all blockchain events available for Chain Sonar monitoring.
-Source: world-contracts v0.0.18, deployed extension contracts, Move source analysis.
+Source: world-contracts v0.0.18 (Stillness) / v0.0.21 (Utopia), deployed extension contracts, Move source analysis.
+Events marked with version annotations (v0.0.19+, v0.0.20+) are only available on tenants running that version or later (currently Utopia only).
 
 ---
 
@@ -19,7 +20,7 @@ Source: world-contracts v0.0.18, deployed extension contracts, Move source analy
 | Tenant | World Package | EVE Package |
 |--------|--------------|-------------|
 | Stillness | `0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c` | `0x2a66a89b5a735738ffa4423ac024d23571326163f324f9051557617319e59d60` |
-| Utopia | `0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75` | `0xf0446b93345c1118f21239d7ac58fb82d005219b2016e100f074e4d17162a465` |
+| Utopia | `0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75` (original-id, for queries) / `0x07e6b810c2dff6df56ea7fbad9ff32f4d84cbee53e496267515887b712924bd1` (published-at v0.0.21, for moveCall) | `0xf0446b93345c1118f21239d7ac58fb82d005219b2016e100f074e4d17162a465` |
 
 ### Extension Package IDs (Stillness)
 
@@ -270,6 +271,26 @@ These 5 events are the only ones currently monitored by chain sonar.
 | `destination_gate_id` | `ID` | Second gate |
 | `destination_gate_key` | `TenantItemId` | Second gate tenant+item_id |
 
+### JumpPermitIssuedEvent
+- **Module:** `world::gate`
+- **Move Type:** `{worldPkg}::gate::JumpPermitIssuedEvent`
+- **Emitted When:** Gate extension issues a jump permit for a character
+- **Added in:** v0.0.20+
+- **Sonar Use:** Track permit-based gate access, monitor extension-controlled jump traffic
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `jump_permit_id` | `ID` | Issued jump permit object ID |
+| `source_gate_id` | `ID` | Origin gate object ID |
+| `source_gate_key` | `TenantItemId` | Origin gate tenant+item_id |
+| `destination_gate_id` | `ID` | Destination gate object ID |
+| `destination_gate_key` | `TenantItemId` | Destination gate tenant+item_id |
+| `character_id` | `ID` | Character receiving the permit |
+| `character_key` | `TenantItemId` | Character tenant+item_id |
+| `route_hash` | `vector<u8>` | Hash of the permitted route |
+| `expires_at_timestamp_ms` | `u64` | Permit expiration (ms epoch) |
+| `extension_type` | `TypeName` | Extension that issued the permit |
+
 ---
 
 ## Category 4: Extension Authorization Events
@@ -295,6 +316,20 @@ These fire when assembly owners configure extensions on their structures.
 |-------|------|-------------|
 | `gate_id` | `ID` | Gate object ID |
 
+### ExtensionRevokedEvent (Gate)
+- **Module:** `world::gate`
+- **Move Type:** `{worldPkg}::gate::ExtensionRevokedEvent`
+- **Emitted When:** Gate owner revokes extension authorization via `revoke_extension_authorization()`
+- **Added in:** v0.0.19+
+- **Note:** Aborts with `ENoExtensionToRevoke` (error 19) if no extension set. Cannot revoke if extension is frozen (`extension_freeze::is_extension_frozen()`).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `assembly_id` | `ID` | Gate assembly object ID |
+| `assembly_key` | `TenantItemId` | Gate tenant+item_id |
+| `revoked_extension` | `TypeName` | Move type of the revoked extension witness |
+| `owner_cap_id` | `ID` | OwnerCap used for authorization |
+
 ### ExtensionAuthorizedEvent (StorageUnit)
 - **Module:** `world::storage_unit`
 - **Move Type:** `{worldPkg}::storage_unit::ExtensionAuthorizedEvent`
@@ -312,6 +347,20 @@ These fire when assembly owners configure extensions on their structures.
 |-------|------|-------------|
 | `storage_unit_id` | `ID` | SSU object ID |
 
+### ExtensionRevokedEvent (StorageUnit)
+- **Module:** `world::storage_unit`
+- **Move Type:** `{worldPkg}::storage_unit::ExtensionRevokedEvent`
+- **Emitted When:** StorageUnit owner revokes extension authorization via `revoke_extension_authorization()`
+- **Added in:** v0.0.19+
+- **Note:** Aborts with `ENoExtensionToRevoke` (error 16) if no extension set. Cannot revoke if extension is frozen.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `assembly_id` | `ID` | StorageUnit assembly object ID |
+| `assembly_key` | `TenantItemId` | StorageUnit tenant+item_id |
+| `revoked_extension` | `TypeName` | Move type of the revoked extension witness |
+| `owner_cap_id` | `ID` | OwnerCap used for authorization |
+
 ### ExtensionAuthorizedEvent (Turret)
 - **Module:** `world::turret`
 - **Move Type:** `{worldPkg}::turret::ExtensionAuthorizedEvent`
@@ -320,6 +369,20 @@ These fire when assembly owners configure extensions on their structures.
 |-------|------|-------------|
 | `turret_id` | `ID` | Turret object ID |
 | `extension_type` | `TypeName` | Extension witness type |
+
+### ExtensionRevokedEvent (Turret)
+- **Module:** `world::turret`
+- **Move Type:** `{worldPkg}::turret::ExtensionRevokedEvent`
+- **Emitted When:** Turret owner revokes extension authorization via `revoke_extension_authorization()`
+- **Added in:** v0.0.19+
+- **Note:** Aborts with `ENoExtensionToRevoke` (error 12) if no extension set. Cannot revoke if extension is frozen.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `assembly_id` | `ID` | Turret assembly object ID |
+| `assembly_key` | `TenantItemId` | Turret tenant+item_id |
+| `revoked_extension` | `TypeName` | Move type of the revoked extension witness |
+| `owner_cap_id` | `ID` | OwnerCap used for authorization |
 
 ---
 
@@ -925,7 +988,7 @@ Used in most events as `assembly_key`, `character_key`, etc. The `item_id` is th
 |-------|-----|
 | **CharacterCreatedEvent** | New player discovery (already used for manifest) |
 | **LocationRevealedEvent** | Structure location mapping |
-| **ExtensionAuthorizedEvent** | Track who's configuring what |
+| **ExtensionAuthorizedEvent / ExtensionRevokedEvent** | Track who's configuring/revoking extensions |
 | **MetadataChangedEvent** | Structure renaming |
 | **Energy events** | Node power management |
 | **Lease events** | Structure rental tracking |
@@ -944,7 +1007,7 @@ Used in most events as `assembly_key`, `character_key`, etc. The `item_id` is th
 
 | Source | Event Types | Notes |
 |--------|------------|-------|
-| World core modules | 25 | Inventory (5), Status (1), Fuel (3), Energy (4), Gate (5), Assembly (1), StorageUnit (3), Turret (3), NetworkNode (1), Character (1), Killmail (1), Location (1), Metadata (1) |
+| World core modules | 29 | Inventory (5), Status (1), Fuel (3), Energy (4), Gate (7 -- +ExtensionRevokedEvent v0.0.19, +JumpPermitIssuedEvent v0.0.20), Assembly (1), StorageUnit (4 -- +ExtensionRevokedEvent v0.0.19), Turret (4 -- +ExtensionRevokedEvent v0.0.19), NetworkNode (1), Character (1), Killmail (1), Location (1), Metadata (1) |
 | SSU Market | 8 | Sell orders (4), Buy orders (2), Org market (1), Legacy purchase (1) |
 | Exchange | 3 | Orders (2), Trade (1, not emitted yet) |
 | Bounty Board | 3 | Post, claim, cancel |
@@ -952,4 +1015,4 @@ Used in most events as `assembly_key`, `character_key`, etc. The `item_id` is th
 | Turret Extensions | 2 | Priority list updated (2 contracts) |
 | Lease | 3 | Create, collect, cancel |
 | ACL Registry | 2 | Create, update |
-| **TOTAL** | **49** | 46 actively emitted, 1 defined but unused (TradeEvent), 2 admin-only rare |
+| **TOTAL** | **53** | 50 actively emitted, 1 defined but unused (TradeEvent), 2 admin-only rare |

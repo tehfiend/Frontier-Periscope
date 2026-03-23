@@ -1,7 +1,8 @@
-import { WORLD_API, getTenant } from "./constants";
+import { WORLD_API } from "./constants";
 
 const itemNameCache = new Map<number, string>();
 const itemIconCache = new Map<number, string>();
+const ITEM_CACHE_LIMIT = 500;
 
 interface TypeInfo {
 	name?: string;
@@ -13,11 +14,16 @@ interface TypeInfo {
 async function fetchTypeInfo(typeId: number): Promise<TypeInfo> {
 	const baseUrl = WORLD_API.stillness;
 
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
 	try {
-		const res = await fetch(`${baseUrl}/v2/types/${typeId}`);
+		const res = await fetch(`${baseUrl}/v2/types/${typeId}`, { signal: controller.signal });
+		clearTimeout(timeoutId);
 		if (!res.ok) return {};
 		return (await res.json()) as TypeInfo;
 	} catch {
+		clearTimeout(timeoutId);
 		return {};
 	}
 }
@@ -29,9 +35,11 @@ export async function resolveItemName(typeId: number): Promise<string> {
 
 	const info = await fetchTypeInfo(typeId);
 	const name = info.name ?? `Item #${typeId}`;
+	if (itemNameCache.size >= ITEM_CACHE_LIMIT) itemNameCache.clear();
 	itemNameCache.set(typeId, name);
 
 	if (info.icon_url) {
+		if (itemIconCache.size >= ITEM_CACHE_LIMIT) itemIconCache.clear();
 		itemIconCache.set(typeId, info.icon_url);
 	}
 

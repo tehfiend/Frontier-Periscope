@@ -3,6 +3,8 @@
 export interface TenantConfig {
 	name: string;
 	worldPackageId: string;
+	/** Published-at address for upgraded packages (moveCall targets). Falls back to worldPackageId. */
+	worldPublishedAt?: string;
 	evePackageId: string;
 	datahubUrl: string;
 	dappUrl: string;
@@ -19,11 +21,12 @@ export const TENANTS = {
 	utopia: {
 		name: "Utopia",
 		worldPackageId: "0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75",
+		worldPublishedAt: "0x07e6b810c2dff6df56ea7fbad9ff32f4d84cbee53e496267515887b712924bd1",
 		evePackageId: "0xf0446b93345c1118f21239d7ac58fb82d005219b2016e100f074e4d17162a465",
 		datahubUrl: "world-api-utopia.uat.pub.evefrontier.com",
 		dappUrl: "https://uat.dapps.evefrontier.com/?tenant=utopia",
 	},
-} as const;
+} as const satisfies Record<string, TenantConfig>;
 
 export type TenantId = keyof typeof TENANTS;
 
@@ -31,6 +34,12 @@ export type TenantId = keyof typeof TENANTS;
 
 export function moveType(tenant: TenantId, module: string, type: string): string {
 	return `${TENANTS[tenant].worldPackageId}::${module}::${type}`;
+}
+
+/** Get the published-at address for moveCall targets (handles upgraded packages). */
+export function getWorldTarget(tenant: TenantId): string {
+	const t: TenantConfig = TENANTS[tenant];
+	return t.worldPublishedAt ?? t.worldPackageId;
 }
 
 /** Get Move type strings for a specific tenant. */

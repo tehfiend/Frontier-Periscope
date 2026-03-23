@@ -1,7 +1,7 @@
 import type { AssemblyMetadata } from "@/hooks/useAssembly";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
-import { getTenant, getWorldPackageId } from "@/lib/constants";
+import { getTenant, getWorldPackageId, getWorldPublishedAt } from "@/lib/constants";
 import { decodeErrorMessage } from "@/lib/errors";
 import { Transaction } from "@mysten/sui/transactions";
 import { useState } from "react";
@@ -36,13 +36,14 @@ export function MetadataEditor({
 
 		try {
 			const tenant = getTenant();
-			const worldPkg = getWorldPackageId(tenant);
+			const worldPkg = getWorldPublishedAt(tenant);
+			const worldType = getWorldPackageId(tenant);
 			const tx = new Transaction();
 
 			// Borrow OwnerCap
 			const [borrowedCap, receipt] = tx.moveCall({
 				target: `${worldPkg}::character::borrow_owner_cap`,
-				typeArguments: [`${worldPkg}::storage_unit::StorageUnit`],
+				typeArguments: [`${worldType}::storage_unit::StorageUnit`],
 				arguments: [
 					tx.object(characterObjectId),
 					tx.receivingRef({
@@ -80,7 +81,7 @@ export function MetadataEditor({
 			// Return OwnerCap
 			tx.moveCall({
 				target: `${worldPkg}::character::return_owner_cap`,
-				typeArguments: [`${worldPkg}::storage_unit::StorageUnit`],
+				typeArguments: [`${worldType}::storage_unit::StorageUnit`],
 				arguments: [tx.object(characterObjectId), borrowedCap, receipt],
 			});
 
@@ -102,8 +103,11 @@ export function MetadataEditor({
 
 			<div className="space-y-3">
 				<div>
-					<label className="mb-1 block text-xs text-zinc-500">Name</label>
+					<label htmlFor="meta-name" className="mb-1 block text-xs text-zinc-500">
+						Name
+					</label>
 					<input
+						id="meta-name"
 						type="text"
 						value={name}
 						onChange={(e) => setName(e.target.value)}
@@ -113,8 +117,11 @@ export function MetadataEditor({
 				</div>
 
 				<div>
-					<label className="mb-1 block text-xs text-zinc-500">Description</label>
+					<label htmlFor="meta-desc" className="mb-1 block text-xs text-zinc-500">
+						Description
+					</label>
 					<textarea
+						id="meta-desc"
 						value={description}
 						onChange={(e) => setDescription(e.target.value)}
 						placeholder="Description"
@@ -124,8 +131,11 @@ export function MetadataEditor({
 				</div>
 
 				<div>
-					<label className="mb-1 block text-xs text-zinc-500">dApp URL</label>
+					<label htmlFor="meta-url" className="mb-1 block text-xs text-zinc-500">
+						dApp URL
+					</label>
 					<input
+						id="meta-url"
 						type="text"
 						value={url}
 						onChange={(e) => setUrl(e.target.value)}

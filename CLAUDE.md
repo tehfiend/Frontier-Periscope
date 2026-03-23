@@ -1,4 +1,4 @@
-# CLAUDE.md — TehFrontier
+# CLAUDE.md — Frontier Periscope
 
 ## Project Overview
 
@@ -35,7 +35,7 @@ pnpm clean          # Clean all build artifacts
 | chain-shared | `packages/chain-shared/` | Move contract types, addresses, turret generator |
 | sui-client | `packages/sui-client/` | @mysten/sui gRPC wrapper |
 | tsconfig | `packages/tsconfig/` | Shared TypeScript configs |
-| contracts | `contracts/` | Move smart contracts (13 packages) |
+| contracts | `contracts/` | Move smart contracts (17 packages) |
 
 ## Shared Files (Coordinator-Owned)
 

@@ -1,11 +1,23 @@
+import { getItemId } from "@/lib/constants";
 import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CopyAddress } from "./CopyAddress";
 
 const EVE_VAULT_NAME = "Eve Vault";
 
+/** True when opened from the in-game browser (itemId param present in URL). */
+const isInGame = !!getItemId();
+
+function findEveVault(wallets: ReturnType<typeof useWallets>) {
+	return (
+		wallets.find((w) => w.name === EVE_VAULT_NAME) ??
+		wallets.find((w) => w.name.toLowerCase().includes("eve"))
+	);
+}
+
 /**
  * EVE Vault connect button. No modal, direct connect via useDAppKit().
+ * Auto-connects when running in the in-game browser.
  * Shows abbreviated address when connected.
  */
 export function WalletConnect() {
@@ -13,11 +25,19 @@ export function WalletConnect() {
 	const wallets = useWallets();
 	const dAppKit = useDAppKit();
 	const [connecting, setConnecting] = useState(false);
+	const autoConnectAttempted = useRef(false);
+
+	// Auto-connect when running in-game and wallet is available
+	useEffect(() => {
+		if (!isInGame || account || autoConnectAttempted.current) return;
+		const eveVault = findEveVault(wallets);
+		if (!eveVault) return;
+		autoConnectAttempted.current = true;
+		dAppKit.connectWallet({ wallet: eveVault }).catch(() => {});
+	}, [wallets, account, dAppKit]);
 
 	async function handleConnect() {
-		const eveVault =
-			wallets.find((w) => w.name === EVE_VAULT_NAME) ??
-			wallets.find((w) => w.name.toLowerCase().includes("eve"));
+		const eveVault = findEveVault(wallets);
 		if (!eveVault) return;
 
 		setConnecting(true);
@@ -36,12 +56,12 @@ export function WalletConnect() {
 		}
 		// Clear dapp-kit cached wallet state to prevent auto-reconnect
 		for (const key of Object.keys(localStorage)) {
-			if (key.includes("dapp-kit") || key.includes("wallet") || key.includes("slush")) {
+			if (key.startsWith("dapp-kit") || key.startsWith("slush") || key.startsWith("@mysten")) {
 				localStorage.removeItem(key);
 			}
 		}
 		for (const key of Object.keys(sessionStorage)) {
-			if (key.includes("dapp-kit") || key.includes("wallet") || key.includes("slush")) {
+			if (key.startsWith("dapp-kit") || key.startsWith("slush") || key.startsWith("@mysten")) {
 				sessionStorage.removeItem(key);
 			}
 		}

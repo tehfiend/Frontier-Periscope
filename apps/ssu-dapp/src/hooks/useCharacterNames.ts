@@ -1,7 +1,7 @@
+import { getTenant, getWorldPackageId } from "@/lib/constants";
 import { useQuery } from "@tanstack/react-query";
 import { getObjectJson } from "@tehfrontier/chain-shared";
 import { useSuiClient } from "./useSuiClient";
-import { getWorldPackageId, getTenant } from "@/lib/constants";
 
 const FIND_PROFILES = `
 	query($owner: SuiAddress!, $profileType: String!, $first: Int) {
@@ -26,6 +26,7 @@ interface GqlProfileResponse {
 }
 
 const nameCache = new Map<string, string>();
+const NAME_CACHE_LIMIT = 500;
 
 /**
  * Batch-resolve wallet addresses to character names.
@@ -75,6 +76,7 @@ export function useCharacterNames(addresses: string[]) {
 						const meta = charResult.json?.metadata as Record<string, unknown> | undefined;
 						const name = meta?.name ? String(meta.name) : null;
 						if (name) {
+							if (nameCache.size >= NAME_CACHE_LIMIT) nameCache.clear();
 							nameCache.set(addr, name);
 							result.set(addr, name);
 						}

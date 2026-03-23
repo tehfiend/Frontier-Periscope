@@ -116,9 +116,7 @@ export function InventoryTabs({
 
 		// OwnerCap path: source has a cap AND at least one other cap key
 		const hasCapForSource = transferContext.slotCaps.has(currentSlot.key);
-		const hasOtherCap = [...transferContext.slotCaps.keys()].some(
-			(k) => k !== currentSlot.key,
-		);
+		const hasOtherCap = [...transferContext.slotCaps.keys()].some((k) => k !== currentSlot.key);
 		if (hasCapForSource && hasOtherCap) return true;
 
 		// Market path: admin can transfer from owner/escrow slots
@@ -224,11 +222,7 @@ export function InventoryTabs({
 		// Visible slots the user cannot deposit to
 		const inaccessibleSlots = hasMarket
 			? [] // market-enabled SSUs have no inaccessible slots (admin/player routes cover all)
-			: slots.filter(
-					(s) =>
-						s.key !== sourceSlot.key &&
-						!addedKeys.has(s.key),
-				);
+			: slots.filter((s) => s.key !== sourceSlot.key && !addedKeys.has(s.key));
 
 		return {
 			item: dialogState.item,
@@ -317,17 +311,27 @@ export function InventoryTabs({
 					isLoading={isLoading}
 					canTransfer={canTransferFromActive}
 					onTransfer={handleTransfer}
-					canSell={canSell && (currentSlot.slotType === "owner" ? !!onSell : currentSlot.slotType === "player" ? !!onPlayerSell : false)}
-					onSell={currentSlot.slotType === "owner" ? onSell : currentSlot.slotType === "player" ? onPlayerSell : undefined}
+					canSell={
+						canSell &&
+						(currentSlot.slotType === "owner"
+							? !!onSell
+							: currentSlot.slotType === "player"
+								? !!onPlayerSell
+								: false)
+					}
+					onSell={
+						currentSlot.slotType === "owner"
+							? onSell
+							: currentSlot.slotType === "player"
+								? onPlayerSell
+								: undefined
+					}
 				/>
 			</div>
 
 			{/* Transfer dialog */}
 			{dialogState && transferDialogProps && (
-				<TransferDialog
-					{...transferDialogProps}
-					onClose={() => setDialogState(null)}
-				/>
+				<TransferDialog {...transferDialogProps} onClose={() => setDialogState(null)} />
 			)}
 		</div>
 	);

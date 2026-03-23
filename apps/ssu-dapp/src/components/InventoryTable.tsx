@@ -59,11 +59,8 @@ export function InventoryTable({
 	if (isLoading) {
 		return (
 			<div className="space-y-2">
-				{Array.from({ length: 4 }).map((_, i) => (
-					<div
-						key={i}
-						className="flex gap-3 rounded border border-zinc-800 bg-zinc-900/50 p-3"
-					>
+				{["a", "b", "c", "d"].map((k) => (
+					<div key={k} className="flex gap-3 rounded border border-zinc-800 bg-zinc-900/50 p-3">
 						<div className="flex-1 space-y-1.5">
 							<div className="h-3 w-32 animate-pulse rounded bg-zinc-800" />
 							<div className="h-2.5 w-20 animate-pulse rounded bg-zinc-800" />
@@ -98,25 +95,26 @@ export function InventoryTable({
 							<th
 								className="cursor-pointer px-3 py-2 text-left text-xs font-medium text-zinc-400 hover:text-zinc-300"
 								onClick={() => handleSort("name")}
+								onKeyDown={(e) => e.key === "Enter" && handleSort("name")}
 							>
 								Item{sortIcon("name")}
 							</th>
 							<th
 								className="cursor-pointer px-3 py-2 text-right text-xs font-medium text-zinc-400 hover:text-zinc-300"
 								onClick={() => handleSort("quantity")}
+								onKeyDown={(e) => e.key === "Enter" && handleSort("quantity")}
 							>
 								Qty{sortIcon("quantity")}
 							</th>
 							<th
 								className="cursor-pointer px-3 py-2 text-right text-xs font-medium text-zinc-400 hover:text-zinc-300"
 								onClick={() => handleSort("volume")}
+								onKeyDown={(e) => e.key === "Enter" && handleSort("volume")}
 							>
 								Volume (m&#xB3;){sortIcon("volume")}
 							</th>
 							{hasActions && (
-								<th className="px-3 py-2 text-right text-xs font-medium text-zinc-400">
-									Actions
-								</th>
+								<th className="px-3 py-2 text-right text-xs font-medium text-zinc-400">Actions</th>
 							)}
 						</tr>
 					</thead>

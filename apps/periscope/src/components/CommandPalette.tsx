@@ -39,7 +39,7 @@ const NAV_ITEMS: { path: string; label: string; icon: LucideIcon; keywords: stri
 	{ path: "/targets", label: "Watchlist", icon: Target, keywords: "targets surveillance" },
 	{ path: "/players", label: "Players", icon: Users, keywords: "characters threats" },
 	{ path: "/killmails", label: "Killmails", icon: Skull, keywords: "combat kills deaths" },
-	{ path: "/deployables", label: "Deployables", icon: Package, keywords: "assemblies fuel owned" },
+	{ path: "/deployables", label: "Structures", icon: Package, keywords: "assemblies fuel owned deployables" },
 	{ path: "/assemblies", label: "Assemblies", icon: Box, keywords: "tracked discovered" },
 	{ path: "/extensions", label: "Extensions", icon: Puzzle, keywords: "deploy authorize" },
 	{ path: "/permissions", label: "Permissions", icon: ShieldCheck, keywords: "groups policies acl" },
@@ -180,7 +180,7 @@ export function CommandPalette() {
 				depCount++;
 				out.push({
 					id: `dep-${d.id}`,
-					category: "Deployables",
+					category: "Structures",
 					icon: Package,
 					label: d.label,
 					sublabel: `${d.assemblyType} · ${d.status}`,

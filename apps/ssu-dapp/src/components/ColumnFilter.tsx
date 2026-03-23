@@ -323,7 +323,7 @@ export function ColumnFilter<TData>({ column, valueLabels }: ColumnFilterProps<T
 										const checked = included.has(value);
 										return (
 											<div
-												key={value}
+												key={`${virtualItem.index}-${value}`}
 												style={{
 													position: "absolute",
 													top: 0,

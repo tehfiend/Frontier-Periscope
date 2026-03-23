@@ -16,3 +16,4 @@ export * from "./crypto";
 export * from "./private-map";
 export * from "./standings";
 export * from "./coin-format";
+export * from "./revoke-extension";

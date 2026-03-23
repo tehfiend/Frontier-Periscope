@@ -1,5 +1,5 @@
 /**
- * Crypto utilities for the Private Map system.
+ * Crypto utilities for encrypted on-chain features (Private Maps, Standings).
  *
  * Provides wallet key derivation, X25519 key operations, and NaCl
  * sealed box encrypt/decrypt. All key material is derived deterministically
@@ -21,13 +21,13 @@ import { open, seal } from "tweetnacl-sealedbox-js";
 
 // ── Key Derivation ──────────────────────────────────────────────────────────
 
-/** The message signed by the wallet to derive the map key. */
-export const MAP_KEY_MESSAGE = "TehFrontier Map Key v1";
+/** The message signed by the wallet to derive the encryption keypair. */
+export const ENCRYPTION_KEY_MESSAGE = "Frontier Periscope Encryption Key v1";
 
 /**
  * Derive an X25519 keypair from a wallet signature (base64-encoded).
  *
- * The signature comes from `signPersonalMessage({ message: MAP_KEY_MESSAGE })`.
+ * The signature comes from `signPersonalMessage({ message: ENCRYPTION_KEY_MESSAGE })`.
  * Ed25519 signatures are deterministic, so the same wallet always produces
  * the same derived key -- no local storage needed.
  *

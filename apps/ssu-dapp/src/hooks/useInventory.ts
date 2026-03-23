@@ -116,6 +116,7 @@ interface CapOwnerResponse {
 }
 
 const charIdCache = new Map<string, string>();
+const charIdInflight = new Map<string, Promise<string | null>>();
 
 /**
  * Resolve an OwnerCap<Character> key to its Character object ID.
@@ -129,21 +130,31 @@ async function resolveCharacterObjectId(
 	const cached = charIdCache.get(ownerCapKey);
 	if (cached) return cached;
 
-	try {
-		const r: { data?: CapOwnerResponse | null } = await client.query({
-			query: GET_OWNER_OF_CAP,
-			variables: { id: ownerCapKey },
-		});
+	const inflight = charIdInflight.get(ownerCapKey);
+	if (inflight) return inflight;
 
-		const charId = r.data?.object?.owner?.address?.address;
-		if (charId) {
-			charIdCache.set(ownerCapKey, charId);
-			return charId;
+	const promise = (async (): Promise<string | null> => {
+		try {
+			const r: { data?: CapOwnerResponse | null } = await client.query({
+				query: GET_OWNER_OF_CAP,
+				variables: { id: ownerCapKey },
+			});
+
+			const charId = r.data?.object?.owner?.address?.address;
+			if (charId) {
+				charIdCache.set(ownerCapKey, charId);
+				return charId;
+			}
+			return null;
+		} catch {
+			return null;
+		} finally {
+			charIdInflight.delete(ownerCapKey);
 		}
-		return null;
-	} catch {
-		return null;
-	}
+	})();
+
+	charIdInflight.set(ownerCapKey, promise);
+	return promise;
 }
 
 // ── Character name resolution via OwnerCap -> Character -> metadata ─────────
@@ -177,6 +188,7 @@ interface CharQueryResponse {
 }
 
 const charNameCache = new Map<string, string>();
+const charNameInflight = new Map<string, Promise<string | null>>();
 
 async function resolveCharacterName(
 	client: SuiGraphQLClient,
@@ -185,41 +197,51 @@ async function resolveCharacterName(
 	const cached = charNameCache.get(ownerCapId);
 	if (cached) return cached;
 
-	try {
-		const worldPkg = getWorldPackageId(getTenant());
-		const charType = `${worldPkg}::character::Character`;
+	const inflight = charNameInflight.get(ownerCapId);
+	if (inflight) return inflight;
 
-		let cursor: string | null = null;
-		for (let page = 0; page < 20; page++) {
-			const r: { data?: CharQueryResponse | null } = await client.query({
-				query: FIND_CHAR_BY_CAP,
-				variables: { type: charType, cursor },
-			});
+	const promise = (async (): Promise<string | null> => {
+		try {
+			const worldPkg = getWorldPackageId(getTenant());
+			const charType = `${worldPkg}::character::Character`;
 
-			for (const node of r.data?.objects?.nodes ?? []) {
-				const json = node.asMoveObject?.contents?.json;
-				if (!json) continue;
-				const capId = String(json.owner_cap_id ?? "");
-				const meta = json.metadata as Record<string, unknown> | undefined;
-				const name = String(meta?.name ?? "");
-				if (name && capId) {
-					charNameCache.set(capId, name);
+			let cursor: string | null = null;
+			for (let page = 0; page < 20; page++) {
+				const r: { data?: CharQueryResponse | null } = await client.query({
+					query: FIND_CHAR_BY_CAP,
+					variables: { type: charType, cursor },
+				});
+
+				for (const node of r.data?.objects?.nodes ?? []) {
+					const json = node.asMoveObject?.contents?.json;
+					if (!json) continue;
+					const capId = String(json.owner_cap_id ?? "");
+					const meta = json.metadata as Record<string, unknown> | undefined;
+					const name = String(meta?.name ?? "");
+					if (name && capId) {
+						charNameCache.set(capId, name);
+					}
+					if (capId === ownerCapId && name) {
+						return name;
+					}
 				}
-				if (capId === ownerCapId && name) {
-					return name;
-				}
+
+				const pi: { hasNextPage: boolean; endCursor: string | null } | undefined =
+					r.data?.objects?.pageInfo;
+				if (!pi?.hasNextPage) break;
+				cursor = pi.endCursor;
 			}
 
-			const pi: { hasNextPage: boolean; endCursor: string | null } | undefined =
-				r.data?.objects?.pageInfo;
-			if (!pi?.hasNextPage) break;
-			cursor = pi.endCursor;
+			return null;
+		} catch {
+			return null;
+		} finally {
+			charNameInflight.delete(ownerCapId);
 		}
+	})();
 
-		return null;
-	} catch {
-		return null;
-	}
+	charNameInflight.set(ownerCapId, promise);
+	return promise;
 }
 
 /**
@@ -494,7 +516,13 @@ export function useInventory(
 					}
 				: emptyInventory,
 		};
-	}, [rawSlots, namesQuery.data, characterNamesQuery.data, characterObjectIdsQuery.data, inventoryQuery.data]);
+	}, [
+		rawSlots,
+		namesQuery.data,
+		characterNamesQuery.data,
+		characterObjectIdsQuery.data,
+		inventoryQuery.data,
+	]);
 
 	return {
 		data: inventories,

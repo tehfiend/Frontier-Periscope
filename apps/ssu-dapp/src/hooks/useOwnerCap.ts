@@ -51,9 +51,10 @@ export function useOwnerCap(characterObjectId: string | undefined, ownerCapId: s
 
 			// Verify this OwnerCap is owned by the connected wallet's Character
 			// by checking the cap's owner address matches the characterObjectId
-			const ownerQuery: { data?: { object: { owner: { address?: { address: string } } } | null } | null } =
-				await client.query({
-					query: `query($id: SuiAddress!) {
+			const ownerQuery: {
+				data?: { object: { owner: { address?: { address: string } } } | null } | null;
+			} = await client.query({
+				query: `query($id: SuiAddress!) {
 						object(address: $id) {
 							owner {
 								... on ObjectOwner { address { address } }
@@ -61,8 +62,8 @@ export function useOwnerCap(characterObjectId: string | undefined, ownerCapId: s
 							}
 						}
 					}`,
-					variables: { id: ownerCapId },
-				});
+				variables: { id: ownerCapId },
+			});
 
 			const capOwner = ownerQuery.data?.object?.owner?.address?.address;
 			if (capOwner !== characterObjectId) return null;

@@ -1,5 +1,12 @@
 # Dispatch Log
 
+## 2026-03-23 -- standings-access-control
+- **Action:** CREATE
+- **File:** docs/plans/pending/12-standings-access-control.md
+- **Passes:** 2 (draft + 1 review pass with inline fixes)
+- **Result:** pending -- Standings registry + gate/SSU extension contracts + client-side contacts + registry discovery UI. Replaces encrypted standings (plan 11) with plaintext u8 standings in shared StandingsRegistry objects. Three on-chain contracts: standings_registry (standalone, no world dep), gate_standings (ACL + toll based on standing thresholds), ssu_standings (deposit/withdraw access by standing). Turret integration deferred (game server devInspect fixed signature prevents shared object passing). Client-side contacts in IndexedDB for private notes. Registry discovery via GraphQL type queries. 7 phases, 20 files (10 new, 10 modified). 2 open questions: SSU extension inventory hook model, batch-set standings API.
+- **Supersedes:** plan 11 (encrypted standings module)
+
 ## 2026-03-21 -- manifest-public-locations
 - **Action:** CREATE
 - **File:** docs/plans/active/24-manifest-public-locations.md

@@ -8,8 +8,9 @@ import { InventoryTabs } from "./InventoryTabs";
 import { MarketContent } from "./MarketContent";
 import { SellDialog } from "./SellDialog";
 import type { TransferContext } from "./TransferDialog";
+import { WalletTab } from "./WalletTab";
 
-type TabId = "inventory" | "market";
+type TabId = "inventory" | "market" | "wallet";
 
 interface ContentTabsProps {
 	inventories: SsuInventories;
@@ -23,7 +24,6 @@ interface ContentTabsProps {
 	charOwnerCap?: OwnerCapInfo;
 	charOwnerCapId?: string;
 	isOwner: boolean;
-	isAuthorized: boolean;
 	isConnected: boolean;
 	coinType: string;
 	listings: SellListingWithName[];
@@ -46,7 +46,6 @@ export function ContentTabs({
 	charOwnerCap,
 	charOwnerCapId,
 	isOwner,
-	isAuthorized,
 	isConnected,
 	coinType,
 	listings,
@@ -102,6 +101,19 @@ export function ContentTabs({
 						Market
 					</button>
 				)}
+				{isConnected && (
+					<button
+						type="button"
+						onClick={() => setActiveTab("wallet")}
+						className={`flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+							activeTab === "wallet"
+								? "bg-zinc-700 text-zinc-100"
+								: "text-zinc-500 hover:text-zinc-300"
+						}`}
+					>
+						Wallet
+					</button>
+				)}
 			</div>
 
 			{/* Active tab content */}
@@ -123,7 +135,6 @@ export function ContentTabs({
 					buyOrders={buyOrders}
 					listingsLoading={listingsLoading}
 					buyOrdersLoading={buyOrdersLoading}
-					isAuthorized={isAuthorized}
 					characterObjectId={characterObjectId}
 					isConnected={isConnected}
 					coinType={coinType}
@@ -132,6 +143,8 @@ export function ContentTabs({
 					ownerCapReceivingId={characterOwnerCapId}
 				/>
 			)}
+
+			{activeTab === "wallet" && isConnected && <WalletTab />}
 
 			{/* Sell dialog -- owner or player */}
 			{sellDialogItem && ssuConfig?.marketId && characterObjectId && (

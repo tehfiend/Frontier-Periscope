@@ -3,15 +3,16 @@ import type { InventoryItem } from "@/hooks/useInventory";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
-import { getTenant, getWorldPackageId } from "@/lib/constants";
+import { getTenant, getWorldPublishedAt } from "@/lib/constants";
 import { decodeErrorMessage } from "@/lib/errors";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
+import type { Transaction } from "@mysten/sui/transactions";
 import {
 	buildEscrowAndList,
 	buildPlayerEscrowAndList,
 	formatBaseUnits,
 	parseDisplayPrice,
 } from "@tehfrontier/chain-shared";
-import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useEffect, useRef, useState } from "react";
 
 interface SellDialogProps {
@@ -75,10 +76,10 @@ export function SellDialog({
 		setError(null);
 		setSuccess(null);
 
-		const worldPkg = getWorldPackageId(getTenant());
+		const worldPkg = getWorldPublishedAt(getTenant());
 
 		try {
-			let tx;
+			let tx: Transaction;
 			if (isPlayerSell && charOwnerCap && charOwnerCapId) {
 				tx = buildPlayerEscrowAndList({
 					packageId: ssuConfig.packageId,
@@ -118,7 +119,9 @@ export function SellDialog({
 			}
 
 			await signAndExecute(tx);
-			setSuccess(`Listed ${qty}x ${item.name} at ${formatBaseUnits(priceBase, decimals)} ${symbol} per unit`);
+			setSuccess(
+				`Listed ${qty}x ${item.name} at ${formatBaseUnits(priceBase, decimals)} ${symbol} per unit`,
+			);
 		} catch (err) {
 			setError(decodeErrorMessage(String(err)));
 		}
@@ -171,7 +174,7 @@ export function SellDialog({
 
 						{/* Item info */}
 						<div>
-							<label className="mb-1 block text-xs text-zinc-500">Item</label>
+							<span className="mb-1 block text-xs text-zinc-500">Item</span>
 							<div className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300">
 								{item.name} (x{item.quantity.toLocaleString()})
 							</div>
@@ -179,11 +182,12 @@ export function SellDialog({
 
 						{/* Quantity */}
 						<div>
-							<label className="mb-1 block text-xs text-zinc-500">
+							<label htmlFor="sell-qty" className="mb-1 block text-xs text-zinc-500">
 								Quantity (max: {maxQty.toLocaleString()})
 							</label>
 							<div className="flex gap-2">
 								<input
+									id="sell-qty"
 									type="number"
 									min={1}
 									max={maxQty}
@@ -192,7 +196,7 @@ export function SellDialog({
 										setQuantity(e.target.value);
 										setError(null);
 									}}
-									className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
+									className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
 								/>
 								<button
 									type="button"
@@ -206,10 +210,11 @@ export function SellDialog({
 
 						{/* Price per unit */}
 						<div>
-							<label className="mb-1 block text-xs text-zinc-500">
+							<label htmlFor="sell-price" className="mb-1 block text-xs text-zinc-500">
 								Price per unit{symbol ? ` (${symbol})` : ""}
 							</label>
 							<input
+								id="sell-price"
 								type="number"
 								min={1}
 								value={pricePerUnit}
@@ -218,7 +223,7 @@ export function SellDialog({
 									setError(null);
 								}}
 								placeholder="Token amount per unit"
-								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
+								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none"
 							/>
 						</div>
 
@@ -234,7 +239,7 @@ export function SellDialog({
 							type="button"
 							onClick={handleSell}
 							disabled={isPending || qty <= 0 || priceBase <= 0n}
-							className="w-full rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+							className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
 						>
 							{isPending ? "Creating listing..." : "Create Sell Listing"}
 						</button>

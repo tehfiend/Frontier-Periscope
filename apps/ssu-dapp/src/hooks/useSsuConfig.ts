@@ -4,7 +4,7 @@ import {
 	getSsuMarketPreviousPackageIds,
 } from "@/lib/constants";
 import { useQuery } from "@tanstack/react-query";
-import { discoverSsuConfig, querySsuConfig, queryMarketDetails } from "@tehfrontier/chain-shared";
+import { discoverSsuConfig, queryMarketDetails, querySsuConfig } from "@tehfrontier/chain-shared";
 import { useSuiClient } from "./useSuiClient";
 
 export interface SsuConfigResult {

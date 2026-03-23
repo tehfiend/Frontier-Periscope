@@ -3,7 +3,7 @@ name = "turret_priority"
 edition = "2024"
 
 [dependencies]
-world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "v0.0.18" }
+world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "v0.0.21" }
 
 [addresses]
 turret_priority = "0x0"

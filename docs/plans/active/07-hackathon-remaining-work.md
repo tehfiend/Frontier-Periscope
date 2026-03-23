@@ -2,18 +2,18 @@
 
 **Status:** Active
 **Created:** 2026-03-15
-**Updated:** 2026-03-22 (v11: Plans 22-24 executed, Plan 25 added, contract counts updated. 9 days remaining)
+**Updated:** 2026-03-23 (v12: Plan 25 Phases 1-6 executed, Plan 22 fully complete, new Plans 09/10 discovered, ssu-dapp Phase 7 WalletTab in progress. 8 days remaining)
 **Module:** multi
 
 ## Overview
 
-The EVE Frontier x Sui Hackathon ("A Toolkit for Civilization") runs March 11-31, 2026, with an $80K prize pool. Community voting follows April 1-15, judging April 15-22, and winners announced April 24. With 9 days remaining (March 22 to March 31), this plan maps what has been built, what remains, and the critical path to a compelling hackathon submission.
+The EVE Frontier x Sui Hackathon ("A Toolkit for Civilization") runs March 11-31, 2026, with an $80K prize pool. Community voting follows April 1-15, judging April 15-22, and winners announced April 24. With 8 days remaining (March 23 to March 31), this plan maps what has been built, what remains, and the critical path to a compelling hackathon submission.
 
-The project has made substantial progress: 17 Move packages (14 project contracts + 2 CCP world packages + token_template, all project contracts published to Sui testnet), a 113-file Periscope SPA with 28 views, a standalone SSU dApp (with two-card layout, inventory transfers, and Market tab) and SSU Market dApp, governance.move still deployed on-chain (org claims still work via deployed package), and a full chain-shared package with TX builders for every contract. The monorepo infrastructure is solid (Turborepo, pnpm, Biome, 4 shared packages). Since v10: Plans 22 (Market Buy Order Improvements), 23 (Private Map System), and 24 (Manifest Public Locations) executed -- market + ssu_market contracts upgraded with buy order timestamps/original_quantity/fee fix/is_public, new private_map contract published, chain-shared gains crypto.ts + private-map.ts + coin-format.ts modules, Periscope gains PrivateMaps.tsx view + manifest locations tab, ssu-dapp gains bigint pricing + coin merge + visibility toggle. Plan 25 (Periscope Wallet/Structures/UI) created and ready.
+The project has made substantial progress: 17 Move packages (14 project contracts + 2 CCP world packages + token_template, all project contracts published to Sui testnet), a 117-file Periscope SPA with 28 views, a standalone SSU dApp (with two-card layout, inventory transfers, Market tab, and WalletTab) and SSU Market dApp, governance.move still deployed on-chain (org claims still work via deployed package), and a full chain-shared package with TX builders for every contract. The monorepo infrastructure is solid (Turborepo, pnpm, Biome, 4 shared packages). Since v11: Plan 25 Phases 1-6 executed (CopyAddress, ContactPicker, wallet transfers, structure detail card, private map locations, MarketOrdersGrid for ssu-dapp). Plan 22 fully complete (Phase 5.10 VisibilitySettings integrated). Plan 25 Phase 7 (ssu-dapp WalletTab + CoinTransferDialog + CancelBuyOrderDialog) in progress with 4 new untracked files + ~40 modified files in working tree. New Plans 09 (Revoke Extension) and 10 (Update Package IDs v0.0.21) created -- these address world-contracts v0.0.21 upgrade and new revoke_extension_authorization API.
 
 **Standalone-first approach:** Periscope is a fully client-side SPA -- no backend server required. Currency creation uses in-browser WASM bytecode patching (`buildPublishToken` via `@mysten/move-bytecode-template`), all governance TX builders run in-browser, and the user's wallet (EVE Vault) handles signing and gas. The gas station is an **optional enhancement** for custom turret package compilation only -- it is not on the critical path.
 
-The hackathon theme is "A Toolkit for Civilization." The strongest submission angle is the unified Market<T> economy system (Plan 21) combined with the Periscope intel tool (with encrypted Private Maps from Plan 23), the standalone SSU dApps (with SsuConfig-linked Market tab and full inter-slot transfers), and the shared ACL registry (Plan 16). The critical path is now: **commit pending changes -> test standalone E2E flows -> UI polish (Plan 25) -> record demo -> submit.**
+The hackathon theme is "A Toolkit for Civilization." The strongest submission angle is the unified Market<T> economy system (Plan 21) combined with the Periscope intel tool (with encrypted Private Maps from Plan 23), the standalone SSU dApps (with SsuConfig-linked Market tab and full inter-slot transfers), and the shared ACL registry (Plan 16). The critical path is now: **finish Plan 25 Phase 7 -> commit pending changes -> update package IDs (Plan 27) -> test standalone E2E flows -> record demo -> submit.**
 
 ## Current State -- Module Audit
 
@@ -45,7 +45,7 @@ All contracts are located in `contracts/` with one `sources/` directory each.
 **Key gaps:**
 - `exchange` lacks `match_orders()` (deferred, not critical for hackathon)
 
-### apps/periscope/ -- Frontier Periscope Intel Tool (113 source files)
+### apps/periscope/ -- Frontier Periscope Intel Tool (117 source files)
 
 The primary deliverable. 28 views across 31 routes, IndexedDB with 24 schema versions, dark theme SPA. **Fully standalone -- no backend required.**
 
@@ -80,6 +80,14 @@ The primary deliverable. 28 views across 31 routes, IndexedDB with 24 schema ver
 | `Workers.tsx` | 186 | Background worker status |
 | `Setup.tsx` | 105 | First-launch setup wizard |
 | `PrivateMaps.tsx` | 1064 | **New (plan 23).** Encrypted map management: create/join maps, invite members, add/view encrypted locations, decrypt with wallet-derived X25519 keys. |
+
+**Changes since last update (v11 -> v12):**
+- Plan 25 Phases 1-5 executed (periscope): CopyAddress component, ContactPicker, TransferDialog for wallet transfers, StructureDetailCard for Deployables, private map location display. Commit `c12cbce`.
+- Plan 25 Phases 1b + 6 executed (ssu-dapp): CopyAddress, ColumnFilter, DataGrid, MarketOrdersGrid replacing card-based lists, BuyFromListingDialog, CancelListingDialog, EditListingDialog. Commit `5557fa2`.
+- Plan 22 Phase 5.10 completed: VisibilitySettings imported and rendered in SsuView.tsx. Commit `5557fa2`.
+- Bug fixes: CopyAddress slice(-0) bug (commit `d1a2edb`), ContactPicker useRef initial value (commit `947adcc`), MarketOrdersGrid column filter disable on Qty/Price/Time (commit `13cc303`), periscope build errors (commit `7c59db8`).
+- Plan 25 Phase 7 (ssu-dapp WalletTab + CoinTransferDialog + CancelBuyOrderDialog + coin-utils) in progress -- 4 new untracked files + ~40 modified files in working tree.
+- New Plans 09 (Revoke Extension Authorization) and 10 (Update Package IDs to v0.0.21) created in active/.
 
 **Changes since last update (v10 -> v11):**
 - Plan 22 (Market Buy Order Improvements) executed: market.move fresh-published with `posted_at_ms`/`original_quantity` on BuyOrder, ssu_market (both tenants) upgraded to v2 with `is_public` on SsuConfig + fee calculation fix + enriched events. chain-shared updated with bigint pricing, coin merge, `coin-format.ts` module. ssu-dapp and ssu-market-dapp updated.
@@ -117,9 +125,9 @@ The primary deliverable. 28 views across 31 routes, IndexedDB with 24 schema ver
 
 Standalone Vite + React dApp for SSU marketplace interactions. Deployed at port 3200. Uses `@mysten/dapp-kit-react` with EVE Vault. Components: `MarketView`, `OwnerView`, `BuyerView`, `ListingCard`, `ListingForm`. Has hooks for market config, listings, inventory, and sign+execute. **Updated (plan 16):** Now includes `MarketBrowser`, `MarketDetail`, `PostSellListing`, `PostBuyOrder` components for browsing and interacting with currency markets. Routes between SSU market mode (`?configId=`) and currency market mode (`?marketId=`).
 
-### apps/ssu-dapp/ -- Default SSU Viewer -- COMPLETE
+### apps/ssu-dapp/ -- Default SSU Viewer -- NEARLY COMPLETE
 
-Standalone dApp with two-card layout: SsuInfoCard (header + inline metadata edit) + ContentTabs (Inventory / Market). Inventory tab has transfer dialog + sell button. Market tab shows sell listings (admin edit/cancel, buyer browse/buy) and buy orders. Uses SsuConfig hook for market detection. Full market extension inter-slot transfers. **Updated (Plan 22):** Bigint pricing, coin merge for buy orders, SsuConfig visibility toggle.
+Standalone dApp with two-card layout: SsuInfoCard (header + inline metadata edit) + ContentTabs (Inventory / Market). Inventory tab has transfer dialog + sell button. Market tab shows sell listings (admin edit/cancel, buyer browse/buy) and buy orders via MarketOrdersGrid (DataGrid with excel-like column filtering). Uses SsuConfig hook for market detection. Full market extension inter-slot transfers. **Updated (Plan 22):** Bigint pricing, coin merge for buy orders, SsuConfig visibility toggle. **Updated (Plan 25):** CopyAddress component, MarketOrdersGrid replaces card-based lists, BuyFromListingDialog/CancelListingDialog/EditListingDialog extracted. Phase 7 WalletTab + CoinTransferDialog + CancelBuyOrderDialog in working tree (not yet committed).
 
 ### apps/permissions-dapp/ -- Permissions Management dApp
 
@@ -163,10 +171,12 @@ Functional standalone ACL editor with EVE Vault config. **Updated (plan 16 phase
 | **19 -- SSU Inventory Transfers** | `archive/` | Complete | 100% | None |
 | 20 -- Consolidate dApps | `archive/` | Complete | 100% | None |
 | 21 -- Market Architecture | `archive/` | Complete | 100% | None |
-| 22 -- Market Buy Order Improvements | `active/` | Implemented | ~95% | Contracts upgraded, chain-shared + dApps updated. Uncommitted changes pending commit. Needs E2E testing. |
-| 23 -- Private Map System | `archive/` | Complete | ~100% | All 7 phases done. Archived. |
-| 24 -- Manifest Public Locations | `archive/` | Complete | ~100% | All 4 phases done (commit `a3fde0e`). Archived. |
-| 25 -- Periscope Wallet/Structures/UI | `active/` | Ready | ~0% | Contact list, wallet transfers, structures UI, address copy, SSU market DataGrid |
+| 22 -- Market Buy Order Improvements | `active/` | Complete | 100% | All phases done including Phase 5.10 (commit `5557fa2`). Ready for archive. |
+| 23 -- Private Map System | `archive/` | Complete | 100% | All 7 phases done. Archived. |
+| 24 -- Manifest Public Locations | `archive/` | Complete | 100% | All 4 phases done (commit `a3fde0e`). Archived. |
+| 25 -- Periscope Wallet/Structures/UI | `active/` | In Progress | ~85% | Phases 1-6 committed. Phase 7 (ssu-dapp WalletTab + CoinTransferDialog + CancelBuyOrderDialog) in working tree. |
+| 26 -- Revoke Extension (filed as `09-revoke-extension`) | `active/` | Ready | 0% | New plan. Requires world-contracts v0.0.19+ revoke API. |
+| 27 -- Update Package IDs v0.0.21 (filed as `10-update-package-ids-v021`) | `active/` | Ready | 0% | New plan. world-contracts upgraded to v0.0.21, all package IDs need updating. |
 
 ## Remaining Work
 
@@ -186,7 +196,7 @@ These items are required for a functional standalone demo.
 
 6. ~~**Publish `acl_registry` and `currency_market` to testnet**~~ **DONE** -- Both contracts published. `acl_registry` at `0x3b1cde...3ffc3b55`, `currency_market` at `0x07d963...5cf035a6`. Config updated with real package IDs. `gate_acl` re-published against Utopia world package at `0x44ff83...3af4583`.
 
-7. **Commit pending changes** (~15 min) -- Working tree has uncommitted modifications from Plans 22-23 execution: ssu_market contracts (Published.toml + sources), config.ts, market.ts, ssu-market.ts, ssu-dapp components, Finance.tsx. These need to be committed.
+7. **Commit pending changes** (~15 min) -- Working tree has uncommitted modifications from Plan 25 Phase 7 + bug fixes: ~40 modified files + 4 new untracked files (CancelBuyOrderDialog.tsx, CoinTransferDialog.tsx, WalletTab.tsx, coin-utils.ts). ssu-dapp gains WalletTab for coin balances and transfers, CancelBuyOrderDialog, and various UI polish. These need to be committed after Phase 7 is finalized.
 
 8. **Test standalone E2E flows** (~2-3 hours) -- Start Periscope dev server, connect EVE Vault, test these flows without any gas station:
    - Finance: create currency (in-browser), manage authorized minters, mint tokens, burn tokens
@@ -225,7 +235,7 @@ These items significantly strengthen the submission but are not blocking.
 
 11. ~~**SSU Market contract upgrade on-chain**~~ **DONE (alternative approach)** -- Instead of upgrading `ssu_market` (Stillness), a new `ssu_market_utopia` (v3) was published at `0x53c2bf...17501` with escrow-based sell orders, OrgMarket, buy orders, and `buy_and_withdraw<T>()`. 650 lines. Now superseded by Plan 21 (unified Market<T> + SsuConfig architecture).
 
-12. **UI polish (Plan 25)** (~4-6 hours) -- Contact list, wallet transfers, structures detail card, CopyAddress component, SSU market DataGrid refactor.
+12. ~~**UI polish (Plan 25)**~~ **MOSTLY DONE** (~1 hour remaining) -- Phases 1-6 committed (CopyAddress, ContactPicker, wallet transfers, StructureDetailCard, private map locations, MarketOrdersGrid). Phase 7 (ssu-dapp WalletTab) in working tree -- needs finalization and commit.
     - Files: 47 files across `apps/periscope/` and `apps/ssu-dapp/`
 
 13. **Cross-view navigation polish** (~2 hours) -- Ensure navigation between views works smoothly (e.g., Players -> "Add to tier", Killmails -> "Mark hostile", Finance -> "Go to Claims").
@@ -234,16 +244,22 @@ These items significantly strengthen the submission but are not blocking.
 14. **Deploy dApps to hosting** (~1 hour) -- Get Periscope, SSU dApp, SSU Market dApp, and Permissions dApp hosted at public URLs. Cloudflare Pages config exists for ssu-dapp (`docs/cloudflare-pages-setup.md`); replicate for other apps.
     - Depends on: Cloudflare account setup, push to main
 
-15. ~~**Archive completed plans**~~ **DONE** -- Plans 10, 12, 14, 15, 16, 18, 19, 20, 21 moved to `docs/plans/archive/`. Plans 22, 23, 24 ready for archive after E2E testing.
+15. ~~**Archive completed plans**~~ **DONE** -- Plans 10, 12, 14, 15, 16, 18, 19, 20, 21, 23, 24 moved to `docs/plans/archive/`. Plan 22 ready for archive.
+
+16. **Update package IDs to world-contracts v0.0.21 (Plan 27 / `10-update-package-ids-v021`)** (~2-3 hours) -- world-contracts upgraded from v0.0.18 to v0.0.21. All hardcoded world/EVE package IDs must be updated and Move contract git dependencies must point to v0.0.21. Requires republishing ssu_market and other contracts that depend on world packages.
+    - Files: `packages/chain-shared/src/config.ts`, `contracts/*/Move.toml`, various dApp files
+
+17. **Revoke extension authorization (Plan 26 / `09-revoke-extension`)** (~1-2 hours) -- Add revoke_extension_authorization support from world-contracts v0.0.19+. Chain-shared TX builder + UI in ssu-dapp and periscope.
+    - Files: `packages/chain-shared/`, `apps/ssu-dapp/`, `apps/periscope/`
 
 ### Nice to Have (stretch goals)
 
-16. ~~**Gas station turret pipeline**~~ **REMOVED** -- Gas station removed from codebase.
+18. ~~**Gas station turret pipeline**~~ **REMOVED** -- Gas station removed from codebase.
 
-17. **Exchange `match_orders()` implementation** (~4-6 hours) -- Add order matching to the DEX contract.
+19. **Exchange `match_orders()` implementation** (~4-6 hours) -- Add order matching to the DEX contract.
     - Files: `contracts/exchange/sources/exchange.move`
 
-18. **Bounty board UI in Finance** (~2 hours) -- Wire the bounty posting flow (imports and status already exist).
+20. **Bounty board UI in Finance** (~2 hours) -- Wire the bounty posting flow (imports and status already exist).
     - Files: `apps/periscope/src/views/Finance.tsx`
 
 
@@ -289,7 +305,7 @@ All tracked feature plans have been implemented:
 7. ~~Plan 24 all 4 phases: manifest locations table, event discovery, auto-population, UI tab.~~ **DONE** -- Commit `a3fde0e`.
 8. ~~Bug fixes: market package alignment, coin queries, token template, character persistence.~~ **DONE** -- Commit `e013aab`.
 
-### Phase 4: Contract Publishing & E2E Testing (Days 12-13) -- IN PROGRESS
+### Phase 4: Contract Publishing & E2E Testing (Days 12-13) -- NEARLY COMPLETE
 
 1. ~~Publish `acl_registry` to Sui testnet, update `packages/chain-shared/src/config.ts` with real package ID.~~ **DONE** -- `0x3b1cde...3ffc3b55`.
 2. ~~Publish `currency_market` to Sui testnet, update config.~~ **DONE** -- `0x07d963...5cf035a6`.
@@ -312,10 +328,13 @@ All tracked feature plans have been implemented:
 19. Test Manifest Locations: verify location discovery from chain events, L-point resolution, Locations tab.
 20. Fix any runtime errors discovered during testing.
 
-### Phase 5: UI Polish (Plan 25) (Days 13-14)
+### Phase 5: UI Polish (Plan 25) (Days 13-14) -- MOSTLY COMPLETE
 
-1. Execute Plan 25 phases (CopyAddress, ContactPicker, Wallet transfers, Structures UI, SSU Market DataGrid).
-2. Fix any issues discovered.
+1. ~~Execute Plan 25 Phases 1-5 (CopyAddress, ContactPicker, Wallet transfers, Structures UI, private map locations).~~ **DONE** -- Commit `c12cbce`.
+2. ~~Execute Plan 25 Phase 6 (SSU Market DataGrid).~~ **DONE** -- Commit `5557fa2`.
+3. Execute Plan 25 Phase 7 (ssu-dapp WalletTab + CoinTransferDialog + CancelBuyOrderDialog). **IN PROGRESS** -- Files in working tree.
+4. ~~Fix bugs: CopyAddress slice(-0), ContactPicker useRef, MarketOrdersGrid column filter.~~ **DONE** -- Commits `d1a2edb`, `947adcc`, `13cc303`.
+5. Commit remaining working tree changes.
 
 ### Phase 6: Demo & Submission (Days 15-16)
 
@@ -329,14 +348,23 @@ All tracked feature plans have been implemented:
    - Demo video link
 5. Submit to hackathon.
 
+### Phase 5b: Package ID Update (Plan 27 / `10-update-package-ids-v021`) (Day 14-15) -- NOT STARTED
+
+1. Update all hardcoded world/EVE package IDs in chain-shared config.ts for v0.0.21.
+2. Update Move.toml git dependencies in contracts that reference world packages.
+3. Republish affected contracts (ssu_market, ssu_market_utopia, gate_acl, etc.).
+4. Update Published.toml files with new package IDs.
+5. Verify build passes.
+
 ### Phase 7: Stretch Goals (remaining time, if ahead of schedule)
 
 1. ~~SSU Market upgrade + trade testing (item 11).~~ **DONE** -- Superseded by Plan 21, then Plan 22.
 2. Cross-view navigation polish (item 13).
 3. Deploy dApps to hosting (item 14, plan 17).
-4. ~~Archive completed plans (item 15).~~ **DONE** -- Plans 10, 12, 14, 15, 16, 18, 19, 20, 21 all archived.
+4. ~~Archive completed plans (item 15).~~ **DONE** -- Plans 10, 12, 14, 15, 16, 18, 19, 20, 21, 23, 24 all archived.
 5. ~~Gas station turret pipeline testing.~~ **REMOVED** -- Gas station removed from codebase.
 6. Bounty board integration (item 18).
+7. Revoke extension authorization (Plan 26 / `09-revoke-extension`).
 
 ## File Summary
 
@@ -395,6 +423,20 @@ All tracked feature plans have been implemented:
 | `apps/ssu-dapp/src/components/TransferDialog.tsx` | DONE | Role-aware market PTB builders + character search UI (plan 19) |
 | `apps/ssu-dapp/src/views/SsuView.tsx` | DONE | Integrated useMarketConfig, passes market info to TransferContext (plan 19) |
 | `apps/ssu-dapp/src/lib/constants.ts` | DONE | getSsuMarketPackageId/getSsuMarketOriginalPackageId helpers (plan 19) |
+| `apps/periscope/src/components/CopyAddress.tsx` | DONE | Copy-to-clipboard button for truncated addresses (Plan 25 Phase 1) |
+| `apps/periscope/src/components/StructureDetailCard.tsx` | DONE | Structure detail card below Deployables grid (Plan 25 Phase 4) |
+| `apps/periscope/src/components/TransferDialog.tsx` | DONE | Wallet currency transfer dialog (Plan 25 Phase 3) |
+| `apps/ssu-dapp/src/components/CopyAddress.tsx` | DONE | Address copy for ssu-dapp (Plan 25 Phase 1b) |
+| `apps/ssu-dapp/src/components/ColumnFilter.tsx` | DONE | Excel-like column filtering for DataGrid (Plan 25 Phase 6) |
+| `apps/ssu-dapp/src/components/DataGrid.tsx` | DONE | Reusable data grid for ssu-dapp (Plan 25 Phase 6) |
+| `apps/ssu-dapp/src/components/MarketOrdersGrid.tsx` | DONE | Combined sell+buy orders grid (Plan 25 Phase 6) |
+| `apps/ssu-dapp/src/components/BuyFromListingDialog.tsx` | DONE | Buy from listing dialog (Plan 25 Phase 6) |
+| `apps/ssu-dapp/src/components/CancelListingDialog.tsx` | DONE | Cancel listing dialog (Plan 25 Phase 6) |
+| `apps/ssu-dapp/src/components/EditListingDialog.tsx` | DONE | Edit listing price dialog (Plan 25 Phase 6) |
+| `apps/ssu-dapp/src/components/WalletTab.tsx` | IN PROGRESS | Wallet tab with coin balances + transfers (Plan 25 Phase 7, untracked) |
+| `apps/ssu-dapp/src/components/CoinTransferDialog.tsx` | IN PROGRESS | Coin transfer dialog (Plan 25 Phase 7, untracked) |
+| `apps/ssu-dapp/src/components/CancelBuyOrderDialog.tsx` | IN PROGRESS | Cancel buy order dialog (Plan 25 Phase 7, untracked) |
+| `apps/ssu-dapp/src/lib/coin-utils.ts` | IN PROGRESS | Coin utility functions (Plan 25 Phase 7, untracked) |
 | `apps/periscope/src/views/Finance.tsx` | TEST | Runtime test of Market<T> management (currency creation, mint/burn, authorized minters) |
 | `apps/periscope/src/views/GovernanceClaims.tsx` | TEST | Verify claims CRUD |
 | `apps/periscope/src/views/PrivateMaps.tsx` | TEST | Runtime test of encrypted map operations |
@@ -412,6 +454,8 @@ All tracked feature plans have been implemented:
 5. **App deployment hosting** -- Plan 17 (pending) covers deployment but has open questions. For hackathon submission, do we need public URLs or is a GitHub repo with setup instructions sufficient?
 
 6. ~~**`gate_acl` upgrade publishing**~~ **RESOLVED** -- Re-published as a new package against Utopia world package at `0x44ff83...3af4583`. Stillness version unchanged.
+
+7. **Is the v0.0.21 package ID update blocking for hackathon?** -- world-contracts upgraded to v0.0.21 which changes all package IDs. If the old v0.0.18 package IDs still work on testnet (they should, since old packages remain callable), the upgrade could be deferred to after submission. But if CCP has deprecation behavior or the game client only references v0.0.21 objects, this becomes a blocker for E2E testing.
 
 ## Deferred
 

@@ -1,8 +1,8 @@
 import { useCoinMetadata } from "@/hooks/useCoinMetadata";
-import { formatBaseUnits, parseDisplayPrice } from "@/lib/coin-format";
 import { useGameItems } from "@/hooks/useGameItems";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { formatBaseUnits, parseDisplayPrice } from "@/lib/coin-format";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useQuery } from "@tanstack/react-query";
@@ -61,9 +61,7 @@ export function CreateBuyOrderDialog({
 	const filteredItems = useMemo(() => {
 		if (!gameItems || !itemSearch.trim()) return [];
 		const q = itemSearch.toLowerCase();
-		return gameItems
-			.filter((item) => item.name.toLowerCase().includes(q))
-			.slice(0, 20);
+		return gameItems.filter((item) => item.name.toLowerCase().includes(q)).slice(0, 20);
 	}, [gameItems, itemSearch]);
 
 	// Selected item name for display
@@ -164,15 +162,14 @@ export function CreateBuyOrderDialog({
 				) : (
 					<div className="space-y-3">
 						<p className="text-[10px] text-zinc-600">
-							Post a buy order with escrowed payment. Sellers fill orders and
-							receive payment.
+							Post a buy order with escrowed payment. Sellers fill orders and receive payment.
 						</p>
 
 						{/* Balance display */}
 						<div>
-							<label className="mb-1 block text-xs text-zinc-500">
+							<span className="mb-1 block text-xs text-zinc-500">
 								Wallet Balance{symbol ? ` (${symbol})` : ""}
-							</label>
+							</span>
 							{!queryEnabled ? (
 								<p className="py-2 text-xs text-amber-400">
 									{!account?.address
@@ -184,9 +181,7 @@ export function CreateBuyOrderDialog({
 							) : coinsError ? (
 								<p className="py-2 text-xs text-red-400">
 									Error loading coins:{" "}
-									{coinsError instanceof Error
-										? coinsError.message
-										: String(coinsError)}
+									{coinsError instanceof Error ? coinsError.message : String(coinsError)}
 								</p>
 							) : !ownedCoins?.length ? (
 								<p className="py-2 text-xs text-amber-400">
@@ -199,9 +194,7 @@ export function CreateBuyOrderDialog({
 								<div className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300">
 									{formatBaseUnits(totalBalance, decimals)} {symbol}
 									{totalBaseUnits > 0n && totalBalance < totalBaseUnits && (
-										<span className="ml-2 text-xs text-red-400">
-											(insufficient)
-										</span>
+										<span className="ml-2 text-xs text-red-400">(insufficient)</span>
 									)}
 								</div>
 							)}
@@ -209,10 +202,13 @@ export function CreateBuyOrderDialog({
 
 						{/* Item autocomplete */}
 						<div className="relative">
-							<label className="mb-1 block text-xs text-zinc-500">Item</label>
+							<label htmlFor="buy-order-item" className="mb-1 block text-xs text-zinc-500">
+								Item
+							</label>
 							<input
+								id="buy-order-item"
 								type="text"
-								value={typeId ? (itemSearch || selectedItemName) : itemSearch}
+								value={typeId ? itemSearch || selectedItemName : itemSearch}
 								onChange={(e) => {
 									setItemSearch(e.target.value);
 									setTypeId("");
@@ -221,12 +217,10 @@ export function CreateBuyOrderDialog({
 								onFocus={() => itemSearch && setShowItemResults(true)}
 								onBlur={() => setTimeout(() => setShowItemResults(false), 200)}
 								placeholder="Type to search items..."
-								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
 							/>
 							{typeId && (
-								<span className="absolute right-2 top-7 text-[10px] text-zinc-600">
-									#{typeId}
-								</span>
+								<span className="absolute right-2 top-7 text-[10px] text-zinc-600">#{typeId}</span>
 							)}
 							{showItemResults && filteredItems.length > 0 && (
 								<div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-700 bg-zinc-800 shadow-lg">
@@ -234,15 +228,11 @@ export function CreateBuyOrderDialog({
 										<button
 											key={item.typeId}
 											type="button"
-											onMouseDown={() =>
-												handleSelectItem(item.typeId, item.name)
-											}
+											onMouseDown={() => handleSelectItem(item.typeId, item.name)}
 											className="w-full px-3 py-1.5 text-left text-sm text-zinc-300 hover:bg-zinc-700"
 										>
 											<span>{item.name}</span>
-											<span className="ml-2 text-[10px] text-zinc-600">
-												{item.groupName}
-											</span>
+											<span className="ml-2 text-[10px] text-zinc-600">{item.groupName}</span>
 										</button>
 									))}
 								</div>
@@ -260,28 +250,30 @@ export function CreateBuyOrderDialog({
 						{/* Quantity + Price */}
 						<div className="flex gap-2">
 							<div className="flex-1">
-								<label className="mb-1 block text-xs text-zinc-500">
+								<label htmlFor="buy-order-qty" className="mb-1 block text-xs text-zinc-500">
 									Quantity
 								</label>
 								<input
+									id="buy-order-qty"
 									type="number"
 									value={quantity}
 									onChange={(e) => setQuantity(e.target.value)}
 									placeholder="Amount"
 									min={1}
-									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
 								/>
 							</div>
 							<div className="flex-1">
-								<label className="mb-1 block text-xs text-zinc-500">
+								<label htmlFor="buy-order-price" className="mb-1 block text-xs text-zinc-500">
 									Price per unit{symbol ? ` (${symbol})` : ""}
 								</label>
 								<input
+									id="buy-order-price"
 									type="number"
 									value={pricePerUnit}
 									onChange={(e) => setPricePerUnit(e.target.value)}
 									placeholder="Token amount"
-									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
 								/>
 							</div>
 						</div>
@@ -296,7 +288,7 @@ export function CreateBuyOrderDialog({
 							type="button"
 							onClick={handleSubmit}
 							disabled={isPending}
-							className="w-full rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
+							className="w-full rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
 						>
 							{isPending ? "Creating..." : "Create Buy Order"}
 						</button>

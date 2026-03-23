@@ -150,6 +150,7 @@ export function PublishToMapDialog({
 		selectedMapId,
 		packageId,
 		resolvedMaps,
+		systemId,
 		solarSystemId,
 		planetNum,
 		lPointNum,
@@ -215,8 +216,11 @@ export function PublishToMapDialog({
 			{/* Location inputs */}
 			<div className="mb-4 space-y-2">
 				<div className="relative">
-					<label className="mb-1 block text-xs text-zinc-400">Solar System</label>
+					<label htmlFor="publish-system" className="mb-1 block text-xs text-zinc-400">
+						Solar System
+					</label>
 					<input
+						id="publish-system"
 						type="text"
 						value={systemId ? systemSearch || selectedSystemName : systemSearch}
 						onChange={(e) => {
@@ -262,8 +266,11 @@ export function PublishToMapDialog({
 				</div>
 				<div className="flex gap-2">
 					<div className="flex-1">
-						<label className="mb-1 block text-xs text-zinc-400">Planet</label>
+						<label htmlFor="publish-planet" className="mb-1 block text-xs text-zinc-400">
+							Planet
+						</label>
 						<input
+							id="publish-planet"
 							type="number"
 							min={1}
 							max={13}
@@ -273,8 +280,11 @@ export function PublishToMapDialog({
 						/>
 					</div>
 					<div className="flex-1">
-						<label className="mb-1 block text-xs text-zinc-400">L-Point</label>
+						<label htmlFor="publish-lpoint" className="mb-1 block text-xs text-zinc-400">
+							L-Point
+						</label>
 						<select
+							id="publish-lpoint"
 							value={lPoint}
 							onChange={(e) => setLPoint(e.target.value)}
 							className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none"

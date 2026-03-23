@@ -1,16 +1,37 @@
-# EVE Frontier World Contracts Reference (v0.0.18)
+# EVE Frontier World Contracts Reference (v0.0.18 -- v0.0.21)
 
 Source: https://github.com/evefrontier/world-contracts
 Package: `world`, edition `2024.beta`, Sui testnet-v1.66.2
 
+> **Note:** Utopia was upgraded to v0.0.21 on 2026-03-23. Stillness remains at v0.0.18.
+> On Sui, upgraded packages use the **original package ID** for type strings in GraphQL
+> queries, and the **published-at address** for `moveCall` targets (to reach new functions
+> like `revoke_extension_authorization`).
+
+## Changelog
+
+### v0.0.21 (Mar 22, 2026)
+- Published.toml with upgraded package IDs for testnet, testnet_internal, and Utopia (version 2). Stillness NOT upgraded (remains v0.0.18, version 1).
+
+### v0.0.20 (Mar 22, 2026)
+- Jump permit improvements: `issue_jump_permit_with_id`, `delete_jump_permit`, `delete_jump_permit_with_auth`, `route_hash` utility, `JumpPermitIssuedEvent`.
+- View ID functions added across many modules: `gate::id`, `gate::gate_config_id`, `gate::jump_permit_id`, `storage_unit::id`, `assembly::id`, `access_control::admin_acl_id`, `access_control::server_address_registry_id`, `character::player_profile_id`, `killmail::id` + all killmail getters, `killmail_registry::id`, `network_node::id`, `energy::id`, `fuel::id`, `inventory::id` (Item), `location::id`, `world::id` (GovernorCap).
+- `metadata::name`, `metadata::description`, `metadata::url` promoted from `#[test_only]` to `public`.
+- `access_control::receive_owner_cap` changed from `public(package)` to `public`.
+
+### v0.0.19 (Mar 20, 2026)
+- QoL functions for hackers: `revoke_extension_authorization` on gate, turret, and storage_unit.
+- `ExtensionRevokedEvent` emitted on revoke for all three assembly types.
+- New error code `ENoExtensionToRevoke` on gate (19), turret (12), storage_unit (16).
+
 ## Published Package IDs (chain-id `4c78adac`)
 
-| Environment | Package ID |
-|---|---|
-| testnet | `0x920e577e1bf078bad19385aaa82e7332ef92b4973dcf8534797b129f9814d631` |
-| testnet_internal | `0x353988e063b4683580e3603dbe9e91fefd8f6a06263a646d43fd3a2f3ef6b8c1` |
-| testnet_utopia | `0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75` |
-| testnet_stillness | `0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c` |
+| Environment | Original Package ID | Published-at (moveCall target) | Version |
+|---|---|---|---|
+| testnet | `0x920e577e1bf078bad19385aaa82e7332ef92b4973dcf8534797b129f9814d631` | `0x33226d2eedda428eb7e1a56faf525bd5300f9394a5d61ffbbbcb3993d45a7145` (v0.0.21) | 2 |
+| testnet_internal | `0x353988e063b4683580e3603dbe9e91fefd8f6a06263a646d43fd3a2f3ef6b8c1` | `0xe148a2146cffc32181e7e984c0f6f5229ba26b0234a68251dff2958df01f1cc0` (v0.0.21) | 2 |
+| testnet_utopia | `0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75` | `0x07e6b810c2dff6df56ea7fbad9ff32f4d84cbee53e496267515887b712924bd1` (v0.0.21) | 2 |
+| testnet_stillness | `0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c` | same as original (v0.0.18) | 1 |
 
 ---
 
@@ -36,6 +57,9 @@ Minimal top-level module. Creates `GovernorCap` at publish time and transfers to
 
 ```move
 public struct GovernorCap has key, store { id: UID }
+
+// View (v0.0.20+)
+public fun id(cap: &GovernorCap): ID
 ```
 
 ---
@@ -69,6 +93,7 @@ public fun is_authorized<T: key>(owner_cap: &OwnerCap<T>, id: ID): bool
 public fun verify_sponsor(admin_acl: &AdminACL, ctx: &TxContext)
 
 // Receive an OwnerCap sent to an object (for borrow pattern)
+// NOTE: Changed from public(package) to public in v0.0.20+ -- builders can now directly receive owner caps
 public fun receive_owner_cap<T: key>(parent: &mut UID, ticket: Receiving<OwnerCap<T>>): OwnerCap<T>
 
 // Create a return receipt (pairs with return_owner_cap_to_object)
@@ -80,6 +105,10 @@ public fun return_owner_cap_to_object<T: key>(
 
 // Check if address is in the authorized server list
 public fun is_authorized_server(registry: &ServerAddressRegistry, addr: address): bool
+
+// View — object ID accessors (v0.0.20+)
+public fun admin_acl_id(admin_acl: &AdminACL): ID
+public fun server_address_registry_id(registry: &ServerAddressRegistry): ID
 ```
 
 ### Admin Functions
@@ -144,6 +173,7 @@ public fun update_metadata_description(assembly, owner_cap, description)
 public fun update_metadata_url(assembly, owner_cap, url)
 
 // View
+public fun id(assembly: &Assembly): ID  // (v0.0.20+)
 public fun status(assembly): &AssemblyStatus
 public fun location(assembly): &Location
 public fun is_online(assembly): bool
@@ -211,6 +241,7 @@ public struct GateDistanceProofMessage has drop { ... } // server-signed distanc
 | 15 | `EMetadataNotSet` | "Metadata not set" |
 | 16 | `EGateHasEnergySource` | "Gate has energy source" |
 | 17 | `EGatesOutOfRange` | "Gates out of range" |
+| 19 | `ENoExtensionToRevoke` | "No extension authorization to revoke" | *(v0.0.19+)* |
 
 ### Events
 
@@ -220,6 +251,8 @@ GateLinkedEvent { source_gate_id, destination_gate_id }
 JumpEvent { character_id, source_gate_id, destination_gate_id }
 ExtensionAuthorizedEvent { gate_id, extension_type }
 ExtensionRemovedEvent { gate_id }
+ExtensionRevokedEvent { assembly_id, assembly_key, revoked_extension, owner_cap_id }  // (v0.0.19+)
+JumpPermitIssuedEvent { jump_permit_id, source_gate_id, source_gate_key, destination_gate_id, destination_gate_key, character_id, character_key, route_hash, expires_at_timestamp_ms, extension_type }  // (v0.0.20+)
 ```
 
 ### Key Functions
@@ -229,6 +262,7 @@ ExtensionRemovedEvent { gate_id }
 public fun authorize_extension<Auth: drop>(gate, owner_cap)
 public fun remove_extension(gate, owner_cap)
 public fun freeze_extension_config(gate, owner_cap)  // IRREVERSIBLE
+public fun revoke_extension_authorization(gate: &mut Gate, owner_cap: &OwnerCap<Gate>)  // (v0.0.19+) clears extension auth, restores default behavior
 
 // Jump (no extension — admin only)
 public fun jump(source_gate, destination_gate, character, admin_acl, ctx)
@@ -238,6 +272,14 @@ public fun jump_with_permit(source_gate, destination_gate, character, permit, ad
 
 // Issue permit (extensions call this with their Auth witness)
 public fun issue_jump_permit<Auth: drop>(source_gate, destination_gate, character, auth, expires_at_timestamp_ms, ctx)
+public fun issue_jump_permit_with_id<Auth: drop>(source_gate, destination_gate, character, auth, expires_at_timestamp_ms, ctx): ID  // (v0.0.20+) same as above but returns permit object ID
+
+// Delete permits (v0.0.20+)
+public fun delete_jump_permit(jump_permit: JumpPermit)  // owner deletes own permit
+public fun delete_jump_permit_with_auth<Auth: drop>(source_gate: &Gate, jump_permit: JumpPermit, auth: Auth)  // extension deletes via auth
+
+// Route hash utility (v0.0.20+)
+public fun route_hash(source_gate: &Gate, destination_gate: &Gate): vector<u8>  // compute route hash without issuing permit
 
 // Online/Offline (Owner)
 public fun online(gate, network_node, energy_config, owner_cap)
@@ -248,6 +290,9 @@ public fun link(source_gate, destination_gate, server_registry, proof_bytes, max
 public fun unlink(gate, admin_acl, ctx)
 
 // View
+public fun id(gate: &Gate): ID  // (v0.0.20+)
+public fun gate_config_id(config: &GateConfig): ID  // (v0.0.20+)
+public fun jump_permit_id(permit: &JumpPermit): ID  // (v0.0.20+)
 public fun status(gate): &AssemblyStatus
 public fun location(gate): &Location
 public fun is_online(gate): bool
@@ -315,6 +360,7 @@ Also: `deposit_to_owned<Auth>()` — extension deposits into owner inventory (cr
 | 9 | `EStorageUnitNotAuthorized` | "Not authorized" |
 | 10 | `EMetadataNotSet` | "Metadata not set" |
 | 11 | `EStorageUnitHasEnergySource` | "Has energy source" |
+| 16 | `ENoExtensionToRevoke` | "No extension authorization to revoke" | *(v0.0.19+)* |
 
 ### Events
 
@@ -322,6 +368,7 @@ Also: `deposit_to_owned<Auth>()` — extension deposits into owner inventory (cr
 StorageUnitCreatedEvent { storage_unit_id, storage_unit_key, owner_cap_id, type_id }
 ExtensionAuthorizedEvent { storage_unit_id, extension_type }
 ExtensionRemovedEvent { storage_unit_id }
+ExtensionRevokedEvent { assembly_id, assembly_key, revoked_extension, owner_cap_id }  // (v0.0.19+)
 ```
 
 ### Key Functions
@@ -348,6 +395,7 @@ public fun game_item_to_chain_inventory<T: key>(su, character, owner_cap, admin_
 public fun authorize_extension<Auth: drop>(su, owner_cap)
 public fun remove_extension(su, owner_cap)
 public fun freeze_extension_config(su, owner_cap)  // IRREVERSIBLE
+public fun revoke_extension_authorization(storage_unit: &mut StorageUnit, owner_cap: &OwnerCap<StorageUnit>)  // (v0.0.19+)
 
 // Online/Offline (Owner)
 public fun online(su, network_node, energy_config, owner_cap)
@@ -362,6 +410,7 @@ public fun update_metadata_url(su, owner_cap, url)
 public fun reveal_location(su, registry, admin_acl, solarsystem, x, y, z, ctx)
 
 // View
+public fun id(storage_unit: &StorageUnit): ID  // (v0.0.20+)
 public fun status(su): &AssemblyStatus
 public fun location(su): &Location
 public fun is_online(su): bool
@@ -467,11 +516,14 @@ const ENTERED_WEIGHT_INCREMENT: u64 = 500;
 | 11 | `EMetadataNotSet` | "Metadata not set" |
 | 12 | `ETurretHasEnergySource` | "Has energy source" |
 
+> **v0.0.19+ new error:** `ENoExtensionToRevoke` (code 12) -- "No extension authorization to revoke". Used by `revoke_extension_authorization`.
+
 ### Events
 
 ```move
 TurretCreatedEvent { turret_id, turret_key, owner_cap_id, type_id }
 PriorityListUpdatedEvent { turret_id, priority_list: vector<TargetCandidate> }
+ExtensionRevokedEvent { assembly_id, assembly_key, revoked_extension, owner_cap_id }  // (v0.0.19+)
 ```
 
 ### Default Targeting Rules (no extension)
@@ -524,6 +576,7 @@ public fun turret_id(receipt): ID
 public fun authorize_extension<Auth: drop>(turret, owner_cap)
 public fun remove_extension(turret, owner_cap)
 public fun freeze_extension_config(turret, owner_cap)  // IRREVERSIBLE
+public fun revoke_extension_authorization(turret: &mut Turret, owner_cap: &OwnerCap<Turret>)  // (v0.0.19+)
 
 // Online/Offline (Owner)
 public fun online(turret, network_node, energy_config, owner_cap)
@@ -582,6 +635,8 @@ public(package) fun remove_frozen_marker_if_present(id: &mut UID)  // only for u
 
 Once frozen, the owner **cannot** change or remove the extension. Only `remove_frozen_marker_if_present` (called during unanchor/destroy) can clean it up.
 
+> **v0.0.20+ clarification:** Updated module docstring clarifies before/after freeze behavior -- before freeze, owner can `authorize_extension`, `remove_extension`, or `revoke_extension_authorization`. After freeze, none of these operations are permitted.
+
 ---
 
 ## Module: `world::character` (character/character.move)
@@ -639,6 +694,7 @@ public fun character_address(character): address
 public fun tenant(character): String
 public fun tribe(character): u32
 public fun owner_cap_id(character): ID
+public fun player_profile_id(profile: &PlayerProfile): ID  // (v0.0.20+)
 
 // Metadata (Owner)
 public fun update_metadata_name(character, owner_cap, name)
@@ -688,6 +744,7 @@ EnergyReleasedEvent { energy_source_id, assembly_type_id, energy_released, total
 ### View Functions
 
 ```move
+public fun id(energy_config: &EnergyConfig): ID  // (v0.0.20+)
 public fun assembly_energy(config, type_id): u64
 public fun total_reserved_energy(source): u64
 public fun available_energy(source): u64
@@ -759,6 +816,7 @@ FuelEfficiencyRemovedEvent { fuel_type_id }
 ### View Functions
 
 ```move
+public fun id(fuel_config: &FuelConfig): ID  // (v0.0.20+)
 public fun fuel_efficiency(config, fuel_type_id): u64
 public fun quantity(fuel): u64
 public fun type_id(fuel): Option<u64>
@@ -823,6 +881,7 @@ ItemDestroyedEvent { assembly_id, assembly_key, item_id, type_id, quantity }
 ### View Functions
 
 ```move
+public fun id(item: &Item): ID  // (v0.0.20+) Sui object ID of transit Item
 public fun tenant(item): String
 public fun contains_item(inventory, type_id): bool
 public fun get_item_location_hash(item): vector<u8>
@@ -938,6 +997,7 @@ public fun verify_distance(location, server_registry, proof_bytes, max_distance,
 public fun verify_same_location(location_a_hash, location_b_hash)
 
 // Accessors
+public fun id(registry: &LocationRegistry): ID  // (v0.0.20+)
 public fun hash(location): vector<u8>
 public fun get_location(registry, assembly_id): Option<Coordinates>
 public fun solarsystem(coords): u64
@@ -956,7 +1016,12 @@ public struct Metadata has store { assembly_id: ID, name: String, description: S
 // Events
 MetadataChangedEvent { assembly_id, assembly_key, name, description, url }
 
-// All functions are package-scoped
+// Public view functions (v0.0.20+ -- promoted from #[test_only] to public)
+public fun name(metadata: &Metadata): String
+public fun description(metadata: &Metadata): String
+public fun url(metadata: &Metadata): String
+
+// All mutation functions are package-scoped
 public(package) fun create_metadata(id, key, name, description, url): Metadata
 public(package) fun delete(metadata)
 public(package) fun update_name(metadata, key, name)
@@ -1005,6 +1070,7 @@ Deterministic object ID derivation: `derived_object::claim(registry_id, tenant_i
 
 ```move
 public struct KillmailRegistry has key { id: UID }
+public fun id(registry: &KillmailRegistry): ID  // (v0.0.20+)
 public fun object_exists(registry, key: TenantItemId): bool
 public(package) fun borrow_registry_id(registry): &mut UID
 ```
@@ -1024,6 +1090,18 @@ public struct Killmail has key {
 
 // Events
 KillmailCreatedEvent { key, killer_id, victim_id, reported_by_character_id, loss_type, kill_timestamp, solar_system_id }
+
+// View functions (v0.0.20+)
+public fun id(killmail: &Killmail): ID
+public fun key(killmail: &Killmail): TenantItemId
+public fun killer_id(killmail: &Killmail): TenantItemId
+public fun victim_id(killmail: &Killmail): TenantItemId
+public fun reported_by_character_id(killmail: &Killmail): TenantItemId
+public fun kill_timestamp(killmail: &Killmail): u64
+public fun loss_type(killmail: &Killmail): LossType
+public fun solar_system_id(killmail: &Killmail): TenantItemId
+public fun is_structure_loss(killmail: &Killmail): bool
+public fun is_ship_loss(killmail: &Killmail): bool
 
 // Admin only
 public fun create_killmail(registry, admin_acl, item_id, killer_id, victim_id, reported_by_character, kill_timestamp, loss_type: u8, solar_system_id, ctx)
@@ -1088,6 +1166,7 @@ public fun update_metadata_description(nwn, owner_cap, description)
 public fun update_metadata_url(nwn, owner_cap, url)
 
 // View
+public fun id(nwn: &NetworkNode): ID  // (v0.0.20+)
 public fun connected_assemblies(nwn): vector<ID>
 public fun is_assembly_connected(nwn, assembly_id): bool
 public fun is_network_node_online(nwn): bool

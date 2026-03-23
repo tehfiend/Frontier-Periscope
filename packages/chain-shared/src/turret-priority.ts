@@ -271,7 +271,7 @@ name = "${name}"
 edition = "2024"
 
 [dependencies]
-world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "v0.0.18" }
+world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "v0.0.21" }
 
 [addresses]
 ${name} = "0x0"

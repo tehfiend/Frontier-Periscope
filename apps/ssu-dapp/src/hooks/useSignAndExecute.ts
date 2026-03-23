@@ -31,6 +31,9 @@ export function useSignAndExecute(): {
 				queryClient.invalidateQueries({ queryKey: ["marketBuyOrders"] });
 				queryClient.invalidateQueries({ queryKey: ["ownedCoins"] });
 				return result;
+			} catch (err) {
+				console.error("signAndExecute failed:", err);
+				throw err;
 			} finally {
 				setIsPending(false);
 			}

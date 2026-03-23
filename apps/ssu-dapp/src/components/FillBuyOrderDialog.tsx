@@ -1,9 +1,8 @@
 import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
 import { useCoinMetadata } from "@/hooks/useCoinMetadata";
-import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
-import { getTenant, getWorldPackageId } from "@/lib/constants";
+import { getTenant, getWorldPublishedAt } from "@/lib/constants";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { buildPlayerFillBuyOrder, formatBaseUnits } from "@tehfrontier/chain-shared";
@@ -61,7 +60,7 @@ export function FillBuyOrderDialog({
 				ssuConfigId: ssuConfig.ssuConfigId,
 				marketId: ssuConfig.marketId,
 				coinType,
-				worldPackageId: getWorldPackageId(getTenant()),
+				worldPackageId: getWorldPublishedAt(getTenant()),
 				ssuObjectId,
 				characterObjectId,
 				ownerCapReceivingId,
@@ -72,7 +71,9 @@ export function FillBuyOrderDialog({
 			});
 
 			await signAndExecute(tx);
-			setSuccess(`Filled ${qty}x ${order.name} -- received ${formatBaseUnits(totalPayment, decimals)} payment`);
+			setSuccess(
+				`Filled ${qty}x ${order.name} -- received ${formatBaseUnits(totalPayment, decimals)} payment`,
+			);
 		} catch (err) {
 			setError(decodeErrorMessage(String(err)));
 		}
@@ -86,7 +87,7 @@ export function FillBuyOrderDialog({
 		>
 			<div className="p-4">
 				<div className="mb-4 flex items-center justify-between">
-					<h3 className="text-sm font-medium text-zinc-200">Fill Buy Order</h3>
+					<h3 className="text-sm font-medium text-zinc-200">Sell Order</h3>
 					<button
 						type="button"
 						onClick={() => {
@@ -116,15 +117,13 @@ export function FillBuyOrderDialog({
 				) : (
 					<div className="space-y-3">
 						<p className="text-[10px] text-zinc-600">
-							Fill this buy order by providing items from your inventory.
-							You will receive the escrowed payment.
+							Sell items from your inventory to fill this buy order. You will receive the escrowed
+							payment.
 						</p>
 
 						{/* Order info */}
 						<div className="rounded border border-zinc-800 bg-zinc-800/50 px-3 py-2">
-							<p className="text-xs text-zinc-300">
-								Item: {order.name}
-							</p>
+							<p className="text-xs text-zinc-300">Item: {order.name}</p>
 							<p className="text-[10px] text-zinc-500">
 								{formatBaseUnits(order.pricePerUnit, decimals)} per unit --{" "}
 								{order.quantity.toLocaleString()} wanted
@@ -133,11 +132,12 @@ export function FillBuyOrderDialog({
 
 						{/* Quantity */}
 						<div>
-							<label className="mb-1 block text-xs text-zinc-500">
-								Quantity to fill (max: {maxQty.toLocaleString()})
+							<label htmlFor="fill-order-qty" className="mb-1 block text-xs text-zinc-500">
+								Quantity to sell (max: {maxQty.toLocaleString()})
 							</label>
 							<div className="flex gap-2">
 								<input
+									id="fill-order-qty"
 									type="number"
 									min={1}
 									max={maxQty}
@@ -146,7 +146,7 @@ export function FillBuyOrderDialog({
 										setQuantity(e.target.value);
 										setError(null);
 									}}
-									className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
+									className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
 								/>
 								<button
 									type="button"
@@ -170,9 +170,9 @@ export function FillBuyOrderDialog({
 							type="button"
 							onClick={handleFill}
 							disabled={isPending || qty <= 0}
-							className="w-full rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+							className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
 						>
-							{isPending ? "Filling order..." : "Fill Order"}
+							{isPending ? "Selling..." : "Sell"}
 						</button>
 
 						{error && <p className="text-xs text-red-400">{error}</p>}

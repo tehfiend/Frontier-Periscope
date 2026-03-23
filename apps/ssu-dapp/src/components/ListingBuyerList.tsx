@@ -24,11 +24,7 @@ export function ListingBuyerList({
 	const activeListings = listings.filter((l) => l.quantity > 0);
 
 	if (activeListings.length === 0) {
-		return (
-			<p className="py-4 text-center text-xs text-zinc-600">
-				No items for sale at this SSU.
-			</p>
-		);
+		return <p className="py-4 text-center text-xs text-zinc-600">No items for sale at this SSU.</p>;
 	}
 
 	return (

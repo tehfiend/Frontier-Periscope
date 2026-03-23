@@ -3,7 +3,7 @@ import { useCharacterSearch } from "@/hooks/useCharacterSearch";
 import type { InventoryItem, LabeledInventory } from "@/hooks/useInventory";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
-import { getTenant, getWorldPackageId } from "@/lib/constants";
+import { getTenant, getWorldPublishedAt } from "@/lib/constants";
 import { decodeErrorMessage } from "@/lib/errors";
 import { Transaction } from "@mysten/sui/transactions";
 import { useEffect, useRef, useState } from "react";
@@ -315,7 +315,7 @@ export function TransferDialog({
 		setSuccess(null);
 
 		try {
-			const worldPkg = getWorldPackageId(getTenant());
+			const worldPkg = getWorldPublishedAt(getTenant());
 			const tx = new Transaction();
 
 			if (isSearchMode) {
@@ -338,9 +338,7 @@ export function TransferDialog({
 					selectedCharacter.characterObjectId,
 				);
 				await signAndExecute(tx);
-				setSuccess(
-					`Transferred ${qty}x ${item.name} to ${selectedCharacter.characterName}`,
-				);
+				setSuccess(`Transferred ${qty}x ${item.name} to ${selectedCharacter.characterName}`);
 				return;
 			}
 
@@ -363,8 +361,7 @@ export function TransferDialog({
 					return;
 				}
 
-				const needsPlayerWithdraw =
-					fnName === "player_to_escrow" || fnName === "player_to_owner";
+				const needsPlayerWithdraw = fnName === "player_to_escrow" || fnName === "player_to_owner";
 
 				if (needsPlayerWithdraw) {
 					// Player functions: borrow cap + withdraw + return cap, then market fn
@@ -386,8 +383,7 @@ export function TransferDialog({
 					);
 				} else {
 					// Admin functions: simple moveCall, no cap borrow needed
-					const recipientCharId =
-						dest.recipientCharacterObjectId ?? dest.slot.characterObjectId;
+					const recipientCharId = dest.recipientCharacterObjectId ?? dest.slot.characterObjectId;
 					buildAdminMarketPtb(
 						tx,
 						marketPackageId,
@@ -427,17 +423,14 @@ export function TransferDialog({
 		}
 	}
 
-	const displayCapacity = isSearchMode
-		? searchDestCapacity
-		: (dest?.slot.maxCapacity ?? 0);
+	const displayCapacity = isSearchMode ? searchDestCapacity : (dest?.slot.maxCapacity ?? 0);
 	const displayUsed = isSearchMode ? 0 : (dest?.slot.usedCapacity ?? 0);
 	const displayRemaining = displayCapacity - displayUsed;
 	const remainingM3 = (displayRemaining / 1000).toLocaleString();
 	const usedPct = displayCapacity > 0 ? Math.round((displayUsed / displayCapacity) * 100) : 0;
 
 	// Disable transfer button in search mode if no character is selected
-	const transferDisabled =
-		isPending || maxTransfer === 0 || (isSearchMode && !selectedCharacter);
+	const transferDisabled = isPending || maxTransfer === 0 || (isSearchMode && !selectedCharacter);
 
 	return (
 		<dialog
@@ -478,7 +471,7 @@ export function TransferDialog({
 					<div className="space-y-3">
 						{/* Item name */}
 						<div>
-							<label className="mb-1 block text-xs text-zinc-500">Item</label>
+							<span className="mb-1 block text-xs text-zinc-500">Item</span>
 							<div className="rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300">
 								{item.name} (x{item.quantity.toLocaleString()})
 							</div>
@@ -491,10 +484,11 @@ export function TransferDialog({
 
 						{/* Destination selector */}
 						<div>
-							<label className="mb-1 block text-xs text-zinc-500">
+							<label htmlFor="transfer-dest" className="mb-1 block text-xs text-zinc-500">
 								Destination
 							</label>
 							<select
+								id="transfer-dest"
 								value={selectedDestIdx}
 								onChange={(e) => {
 									const val = Number(e.target.value);
@@ -515,11 +509,7 @@ export function TransferDialog({
 										{d.slot.label}
 									</option>
 								))}
-								{showSearchOption && (
-									<option value={SEARCH_PLAYER_IDX}>
-										Send to player...
-									</option>
-								)}
+								{showSearchOption && <option value={SEARCH_PLAYER_IDX}>Send to player...</option>}
 								{inaccessibleSlots.map((s) => (
 									<option key={s.key} value={-1} disabled>
 										{s.label} (no access)
@@ -536,10 +526,11 @@ export function TransferDialog({
 						{/* Phase 5: Character search UI */}
 						{isSearchMode && (
 							<div className="space-y-2">
-								<label className="block text-xs text-zinc-500">
+								<label htmlFor="transfer-search" className="block text-xs text-zinc-500">
 									Search character by name
 								</label>
 								<input
+									id="transfer-search"
 									type="text"
 									value={searchQuery}
 									onChange={(e) => {
@@ -567,14 +558,13 @@ export function TransferDialog({
 										))}
 									</div>
 								)}
-								{searchResults && searchResults.length === 0 && searchQuery.length >= 2 && !searchLoading && (
-									<p className="text-xs text-zinc-500">No characters found</p>
-								)}
+								{searchResults &&
+									searchResults.length === 0 &&
+									searchQuery.length >= 2 &&
+									!searchLoading && <p className="text-xs text-zinc-500">No characters found</p>}
 								{selectedCharacter && (
 									<div className="flex items-center justify-between rounded border border-cyan-800 bg-cyan-900/20 px-3 py-1.5 text-sm">
-										<span className="text-cyan-300">
-											{selectedCharacter.characterName}
-										</span>
+										<span className="text-cyan-300">{selectedCharacter.characterName}</span>
 										<button
 											type="button"
 											onClick={() => setSelectedCharacter(null)}
@@ -589,17 +579,17 @@ export function TransferDialog({
 
 						{/* Destination capacity indicator */}
 						<div className="text-xs text-zinc-500">
-							Destination capacity: {remainingM3} m{"\u00B3"} available ({usedPct}%
-							used)
+							Destination capacity: {remainingM3} m{"\u00B3"} available ({usedPct}% used)
 						</div>
 
 						{/* Quantity input */}
 						<div>
-							<label className="mb-1 block text-xs text-zinc-500">
+							<label htmlFor="transfer-qty" className="mb-1 block text-xs text-zinc-500">
 								Quantity (max: {maxTransfer.toLocaleString()})
 							</label>
 							<div className="flex gap-2">
 								<input
+									id="transfer-qty"
 									type="number"
 									min={1}
 									max={maxTransfer}

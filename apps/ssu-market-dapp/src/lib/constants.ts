@@ -1,19 +1,17 @@
-/** World package IDs for Stillness/Utopia (same Sui testnet) */
-export const WORLD_PACKAGE_ID =
-	"0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c";
+import { type TenantId, getContractAddresses } from "@tehfrontier/chain-shared";
 
-/** SSU Market contract package ID */
+/** SSU Market contract package ID (Stillness fallback) */
 export const SSU_MARKET_PACKAGE_ID =
 	"0x3339a266b12a7829dc873813608151caff50c46466e13fab020acd6dfe2397a2";
 
-/** Market contract package ID */
+/** Market contract package ID (Stillness fallback) */
 export const MARKET_PACKAGE_ID =
 	"0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a";
 
 /** World API base URLs per tenant */
 export const WORLD_API: Record<string, string> = {
 	stillness: "https://world-api-stillness.live.tech.evefrontier.com",
-	utopia: "https://world-api-utopia.live.tech.evefrontier.com",
+	utopia: "https://world-api-utopia.uat.pub.evefrontier.com",
 };
 
 /** Read URL params or env vars */
@@ -34,10 +32,16 @@ export function getTenant(): string {
 	return getUrlParam("tenant") ?? "stillness";
 }
 
-export function getMarketId(): string {
-	return getUrlParam("marketId") ?? "";
+/** Get the market package ID for the current tenant. URL param overrides chain-shared config. */
+export function getMarketPackageId(tenant?: string): string {
+	const urlOverride = getUrlParam("marketPackageId");
+	if (urlOverride) return urlOverride;
+	const t = (tenant ?? getTenant()) as TenantId;
+	return getContractAddresses(t).market?.packageId ?? MARKET_PACKAGE_ID;
 }
 
-export function getMarketPackageId(): string {
-	return getUrlParam("marketPackageId") ?? MARKET_PACKAGE_ID;
+/** Get the ssu_market package ID for the current tenant (latest version, for moveCall targets) */
+export function getSsuMarketPackageId(tenant?: string): string {
+	const t = (tenant ?? getTenant()) as TenantId;
+	return getContractAddresses(t).ssuMarket?.packageId ?? SSU_MARKET_PACKAGE_ID;
 }

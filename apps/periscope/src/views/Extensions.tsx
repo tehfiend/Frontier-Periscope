@@ -15,18 +15,20 @@ import {
 	Puzzle,
 	Shield,
 	ShoppingBag,
+	Trash2,
 	User,
 	Wifi,
 	WifiOff,
 } from "lucide-react";
 import { useState } from "react";
 
-import { getTemplatesForAssemblyType } from "@/chain/config";
+import { TENANTS, type TenantId, getTemplatesForAssemblyType } from "@/chain/config";
 import type { OwnedAssembly } from "@/chain/queries";
 import { CopyAddress } from "@/components/CopyAddress";
 import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPanel";
 import { db, notDeleted } from "@/db";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { canRevokeExtension, useExtensionRevoke } from "@/hooks/useExtensionRevoke";
 import { useActiveTenant, useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useQuery } from "@tanstack/react-query";
@@ -178,6 +180,7 @@ export function Extensions() {
 							onDeploy={() => setSelectedAssembly(assembly)}
 							walletConnected={!!account}
 							tenant={tenant}
+							characterId={character?.characterObjectId}
 						/>
 					))}
 				</div>
@@ -324,12 +327,14 @@ function AssemblyCard({
 	onDeploy,
 	walletConnected,
 	tenant,
+	characterId,
 }: {
 	assembly: OwnedAssembly;
 	extensionRecord?: { templateName: string; status: string };
 	onDeploy: () => void;
 	walletConnected: boolean;
 	tenant: string;
+	characterId?: string;
 }) {
 	const Icon = assemblyIcons[assembly.type];
 	const label = assemblyLabels[assembly.type];
@@ -340,6 +345,20 @@ function AssemblyCard({
 		assembly.type === "storage_unit" ||
 		assembly.type === "smart_storage_unit" ||
 		assembly.type === "protocol_depot";
+	const showRevoke =
+		hasExtension &&
+		walletConnected &&
+		!!characterId &&
+		!!assembly.ownerCapId &&
+		canRevokeExtension(assembly.type);
+
+	const {
+		revoke,
+		reset: resetRevoke,
+		status: revokeStatus,
+		error: revokeError,
+	} = useExtensionRevoke();
+	const [confirmRevoke, setConfirmRevoke] = useState(false);
 
 	return (
 		<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
@@ -402,17 +421,50 @@ function AssemblyCard({
 					<span className="text-xs text-zinc-600">No extension</span>
 				)}
 
-				{templates.length > 0 && (
-					<button
-						type="button"
-						onClick={onDeploy}
-						disabled={!walletConnected}
-						title={walletConnected ? undefined : "Connect wallet to deploy"}
-						className="rounded-lg bg-cyan-600/20 px-3 py-1.5 text-xs font-medium text-cyan-400 transition-colors hover:bg-cyan-600/30 disabled:opacity-40 disabled:cursor-not-allowed"
-					>
-						{hasExtension ? "Change Extension" : "Deploy Extension"}
-					</button>
-				)}
+				<div className="flex items-center gap-2">
+					{showRevoke && (
+						<RevokeButton
+							confirming={confirmRevoke}
+							status={revokeStatus}
+							error={revokeError}
+							onClick={() => {
+								if (!confirmRevoke) {
+									setConfirmRevoke(true);
+									return;
+								}
+								if (!characterId || !assembly.ownerCapId) return;
+								if (!(tenant in TENANTS)) {
+									console.warn(`[Extensions] Unknown tenant "${tenant}" -- cannot revoke`);
+									return;
+								}
+								setConfirmRevoke(false);
+								revoke({
+									assemblyId: assembly.objectId,
+									assemblyType: assembly.type,
+									characterId,
+									ownerCapId: assembly.ownerCapId,
+									tenant: tenant as TenantId,
+								});
+							}}
+							onCancel={() => setConfirmRevoke(false)}
+							onReset={() => {
+								resetRevoke();
+								setConfirmRevoke(false);
+							}}
+						/>
+					)}
+					{templates.length > 0 && (
+						<button
+							type="button"
+							onClick={onDeploy}
+							disabled={!walletConnected}
+							title={walletConnected ? undefined : "Connect wallet to deploy"}
+							className="rounded-lg bg-cyan-600/20 px-3 py-1.5 text-xs font-medium text-cyan-400 transition-colors hover:bg-cyan-600/30 disabled:opacity-40 disabled:cursor-not-allowed"
+						>
+							{hasExtension ? "Change Extension" : "Deploy Extension"}
+						</button>
+					)}
+				</div>
 			</div>
 
 			{/* On-chain config discovery for SSU market */}
@@ -421,12 +473,107 @@ function AssemblyCard({
 	);
 }
 
+// ---- Revoke Button ----
+
+function RevokeButton({
+	confirming,
+	status,
+	error,
+	onClick,
+	onCancel,
+	onReset,
+}: {
+	confirming: boolean;
+	status: string;
+	error?: string;
+	onClick: () => void;
+	onCancel: () => void;
+	onReset: () => void;
+}) {
+	if (status === "done") {
+		return (
+			<button
+				type="button"
+				onClick={onReset}
+				className="rounded-lg bg-green-600/20 px-3 py-1.5 text-xs font-medium text-green-400"
+			>
+				Revoked
+			</button>
+		);
+	}
+
+	if (status === "building" || status === "signing" || status === "confirming") {
+		return (
+			<span className="flex items-center gap-1 text-xs text-zinc-400">
+				<Loader2 size={12} className="animate-spin" />
+				{status === "building"
+					? "Building..."
+					: status === "signing"
+						? "Signing..."
+						: "Confirming..."}
+			</span>
+		);
+	}
+
+	if (status === "error") {
+		return (
+			<div className="flex items-center gap-1.5">
+				<span className="text-xs text-red-400" title={error}>
+					Failed
+				</span>
+				<button
+					type="button"
+					onClick={onReset}
+					className="text-xs text-zinc-500 hover:text-zinc-300"
+				>
+					Dismiss
+				</button>
+			</div>
+		);
+	}
+
+	if (confirming) {
+		return (
+			<div className="flex items-center gap-1.5">
+				<button
+					type="button"
+					onClick={onClick}
+					className="rounded-lg bg-red-600/30 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-600/40"
+				>
+					Confirm Revoke
+				</button>
+				<button
+					type="button"
+					onClick={onCancel}
+					className="text-xs text-zinc-500 hover:text-zinc-300"
+				>
+					Cancel
+				</button>
+			</div>
+		);
+	}
+
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className="flex items-center gap-1 rounded-lg bg-red-600/10 px-2.5 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-600/20"
+		>
+			<Trash2 size={12} />
+			Revoke
+		</button>
+	);
+}
+
 /** Discovers and displays SsuConfig for an SSU */
 function SsuConfigPanel({ assemblyId, tenant }: { assemblyId: string; tenant: string }) {
 	const client = useSuiClient();
-	const addresses = getContractAddresses(tenant as Parameters<typeof getContractAddresses>[0]);
-	const originalPkgId = addresses.ssuMarket?.originalPackageId;
-	const previousPkgIds = addresses.ssuMarket?.previousOriginalPackageIds;
+	const isTenantValid = tenant in TENANTS;
+	const addresses = isTenantValid
+		? getContractAddresses(tenant as Parameters<typeof getContractAddresses>[0])
+		: null;
+	const originalPkgId = addresses?.ssuMarket?.originalPackageId;
+	const previousPkgIds = addresses?.ssuMarket?.previousOriginalPackageIds;
 
 	const { data: configId, isLoading } = useQuery({
 		queryKey: ["ssuConfig-discover", assemblyId, originalPkgId],

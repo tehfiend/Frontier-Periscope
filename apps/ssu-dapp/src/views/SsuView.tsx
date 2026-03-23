@@ -162,7 +162,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 	}
 
 	return (
-		<div className="mx-auto max-w-2xl space-y-4">
+		<div className="mx-auto max-w-3xl space-y-4">
 			{/* Card 1: SSU Info + Edit */}
 			<SsuInfoCard
 				assembly={assembly}
@@ -193,7 +193,6 @@ export function SsuView({ objectId }: SsuViewProps) {
 						charOwnerCap={charOwnerCapInfo ?? undefined}
 						charOwnerCapId={character?.characterOwnerCapId ?? undefined}
 						isOwner={isOwner}
-						isAuthorized={isAuthorized}
 						isConnected={!!account}
 						coinType={ssuConfig?.coinType ?? ""}
 						listings={listings ?? []}
@@ -215,7 +214,13 @@ export function SsuView({ objectId }: SsuViewProps) {
 				/>
 			)}
 
-			<ExtensionInfo extensionType={assembly.extensionType} isOwner={isOwner} />
+			<ExtensionInfo
+				extensionType={assembly.extensionType}
+				isOwner={isOwner}
+				characterObjectId={character?.characterObjectId}
+				ownerCap={ownerCapInfo ?? undefined}
+				ssuObjectId={objectId}
+			/>
 
 			{/* Publish to Map button (visible when wallet connected and contract deployed) */}
 			{walletAddress && hasPrivateMapContract && (

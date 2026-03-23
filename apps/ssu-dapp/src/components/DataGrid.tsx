@@ -11,7 +11,7 @@ import {
 	useReactTable,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, ChevronsUpDown, Search, X } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { ColumnFilter } from "./ColumnFilter";
 
 // ── Re-exports for consumers ────────────────────────────────────────────────
@@ -62,12 +62,6 @@ export function DataGrid<T>({
 
 	const hasFilters = columnFilters.length > 0;
 
-	// Compute total width from column definitions so the table overflows + scrolls
-	const totalWidth = useMemo(
-		() => table.getHeaderGroups()[0]?.headers.reduce((sum, h) => sum + h.getSize(), 0) ?? 0,
-		[table],
-	);
-
 	return (
 		<div className="flex flex-col gap-3">
 			{/* Toolbar */}
@@ -109,14 +103,14 @@ export function DataGrid<T>({
 
 			{/* Table */}
 			<div className="overflow-x-auto rounded-lg border border-zinc-800">
-				<table className="text-sm" style={{ width: totalWidth, tableLayout: "fixed" }}>
+				<table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
 					<thead>
 						{table.getHeaderGroups().map((headerGroup) => (
 							<tr key={headerGroup.id} className="border-b border-zinc-800 bg-zinc-900/80">
 								{headerGroup.headers.map((header) => (
 									<th
 										key={header.id}
-										className="whitespace-nowrap px-3 py-2 text-left font-medium text-zinc-400"
+										className="whitespace-nowrap px-2 py-1.5 text-left font-medium text-zinc-400"
 										style={{
 											minWidth: header.getSize(),
 											width: header.getSize(),
@@ -163,7 +157,7 @@ export function DataGrid<T>({
 									className="border-b border-zinc-800/30 transition-colors hover:bg-zinc-800/30"
 								>
 									{row.getVisibleCells().map((cell) => (
-										<td key={cell.id} className="px-3 py-2 text-zinc-300">
+										<td key={cell.id} className="px-2 py-1.5 text-zinc-300">
 											{flexRender(cell.column.columnDef.cell, cell.getContext())}
 										</td>
 									))}

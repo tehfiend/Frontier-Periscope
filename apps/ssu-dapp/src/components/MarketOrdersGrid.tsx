@@ -4,6 +4,7 @@ import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { formatBaseUnits } from "@tehfrontier/chain-shared";
 import { useMemo, useState } from "react";
 import { BuyFromListingDialog } from "./BuyFromListingDialog";
+import { CancelBuyOrderDialog } from "./CancelBuyOrderDialog";
 import { CancelListingDialog } from "./CancelListingDialog";
 import { CopyAddress } from "./CopyAddress";
 import { type ColumnDef, DataGrid, excelFilterFn } from "./DataGrid";
@@ -39,6 +40,7 @@ interface MarketOrdersGridProps {
 	isConnected: boolean;
 	coinDecimals: number;
 	coinSymbol: string;
+	marketPackageId?: string | null;
 }
 
 // ── Dialog state ────────────────────────────────────────────────────────────
@@ -48,7 +50,8 @@ type DialogState =
 	| { type: "buyFromListing"; listing: SellListingWithName }
 	| { type: "editListing"; listing: SellListingWithName }
 	| { type: "cancelListing"; listing: SellListingWithName }
-	| { type: "fillBuyOrder"; order: BuyOrderWithName };
+	| { type: "fillBuyOrder"; order: BuyOrderWithName }
+	| { type: "cancelBuyOrder"; order: BuyOrderWithName };
 
 // ── Component ───────────────────────────────────────────────────────────────
 
@@ -62,6 +65,7 @@ export function MarketOrdersGrid({
 	isConnected,
 	coinDecimals,
 	coinSymbol,
+	marketPackageId,
 }: MarketOrdersGridProps) {
 	const [dialog, setDialog] = useState<DialogState>(null);
 
@@ -70,7 +74,7 @@ export function MarketOrdersGrid({
 			{
 				accessorKey: "type",
 				header: "Type",
-				size: 80,
+				size: 56,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const t = row.original.type;
@@ -89,14 +93,14 @@ export function MarketOrdersGrid({
 			},
 			{
 				accessorKey: "itemName",
-				header: "Item Name",
-				size: 180,
+				header: "Item",
+				size: 130,
 				filterFn: excelFilterFn,
 			},
 			{
 				accessorKey: "quantity",
 				header: "Qty",
-				size: 80,
+				size: 56,
 				enableColumnFilter: false,
 				cell: ({ row }) => row.original.quantity.toLocaleString(),
 			},
@@ -110,7 +114,7 @@ export function MarketOrdersGrid({
 					const bv = b.original.pricePerUnit;
 					return av < bv ? -1 : av > bv ? 1 : 0;
 				},
-				size: 120,
+				size: 100,
 				cell: ({ row }) => (
 					<span>
 						{formatBaseUnits(row.original.pricePerUnit, coinDecimals)} {coinSymbol}
@@ -120,7 +124,7 @@ export function MarketOrdersGrid({
 			{
 				accessorKey: "by",
 				header: "By",
-				size: 140,
+				size: 90,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const { by, byAddress } = row.original;
@@ -144,17 +148,14 @@ export function MarketOrdersGrid({
 			{
 				accessorKey: "timestamp",
 				header: "Time",
-				size: 140,
+				size: 70,
 				enableColumnFilter: false,
 				cell: ({ row }) => {
 					const d = row.original.timestamp;
 					return (
-						<span className="text-xs text-zinc-500">
-							{d.toLocaleDateString()}{" "}
-							{d.toLocaleTimeString([], {
-								hour: "2-digit",
-								minute: "2-digit",
-							})}
+						<span className="text-xs text-zinc-500" title={d.toLocaleString()}>
+							{d.toLocaleDateString([], { month: "numeric", day: "numeric" })}{" "}
+							{d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}
 						</span>
 					);
 				},
@@ -162,7 +163,7 @@ export function MarketOrdersGrid({
 			{
 				id: "actions",
 				header: "",
-				size: 120,
+				size: 80,
 				enableSorting: false,
 				enableColumnFilter: false,
 				cell: ({ row }) => {
@@ -177,7 +178,7 @@ export function MarketOrdersGrid({
 							<button
 								type="button"
 								onClick={() => setDialog({ type: "buyFromListing", listing: l })}
-								className="rounded bg-cyan-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-cyan-500"
+								className="rounded bg-amber-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-amber-500"
 							>
 								Buy
 							</button>
@@ -191,7 +192,7 @@ export function MarketOrdersGrid({
 								<button
 									type="button"
 									onClick={() => setDialog({ type: "editListing", listing: l })}
-									className="rounded bg-cyan-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-cyan-500"
+									className="rounded bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-blue-500"
 								>
 									Edit
 								</button>
@@ -217,18 +218,23 @@ export function MarketOrdersGrid({
 							<button
 								type="button"
 								onClick={() => setDialog({ type: "fillBuyOrder", order: o })}
-								className="rounded bg-amber-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-amber-500"
+								className="rounded bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-blue-500"
 							>
-								Fill
+								Sell
 							</button>
 						);
 					}
 
-					if (r.type === "Buy" && r.isMine) {
+					if (r.type === "Buy" && r.isMine && buyOrder) {
+						const o = buyOrder;
 						return (
-							<span className="rounded bg-cyan-900/30 px-1.5 py-0.5 text-[10px] text-cyan-400">
-								Your order
-							</span>
+							<button
+								type="button"
+								onClick={() => setDialog({ type: "cancelBuyOrder", order: o })}
+								className="rounded bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-red-500"
+							>
+								Cancel
+							</button>
 						);
 					}
 
@@ -298,6 +304,19 @@ export function MarketOrdersGrid({
 					ssuObjectId={ssuObjectId}
 					characterObjectId={characterObjectId}
 					ownerCapReceivingId={ownerCapReceivingId}
+					onClose={() => setDialog(null)}
+				/>
+			)}
+
+			{/* Cancel buy order dialog */}
+			{dialog?.type === "cancelBuyOrder" && ssuConfig.marketId && marketPackageId && (
+				<CancelBuyOrderDialog
+					order={dialog.order}
+					marketId={ssuConfig.marketId}
+					marketPackageId={marketPackageId}
+					coinType={coinType}
+					coinDecimals={coinDecimals}
+					coinSymbol={coinSymbol}
 					onClose={() => setDialog(null)}
 				/>
 			)}

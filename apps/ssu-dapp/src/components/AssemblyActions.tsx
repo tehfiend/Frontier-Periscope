@@ -1,7 +1,5 @@
 import type { AssemblyData } from "@/hooks/useAssembly";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
-import { useSignAndExecute } from "@/hooks/useSignAndExecute";
-import { useState } from "react";
 import { CopyAddress } from "./CopyAddress";
 
 interface AssemblyActionsProps {
@@ -19,10 +17,7 @@ interface AssemblyActionsProps {
  * available from the client. This component shows the current status and
  * provides the toggle as a best-effort operation.
  */
-export function AssemblyActions({ assembly, characterObjectId, ownerCap }: AssemblyActionsProps) {
-	const { isPending } = useSignAndExecute();
-	const [error, setError] = useState<string | null>(null);
-
+export function AssemblyActions({ assembly }: AssemblyActionsProps) {
 	// Online/offline requires NetworkNode + EnergyConfig shared objects
 	// which are game-server-managed. We show status but note the limitation.
 	return (
@@ -53,8 +48,6 @@ export function AssemblyActions({ assembly, characterObjectId, ownerCap }: Assem
 					/>
 				</p>
 			)}
-
-			{error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 		</div>
 	);
 }

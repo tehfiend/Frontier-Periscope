@@ -18,7 +18,7 @@ export function parseDisplayPrice(input: string, decimals: number): bigint {
 	const trimmed = input.trim();
 	if (!trimmed || trimmed === "." || trimmed === "-") return 0n;
 
-	const parts = trimmed.split(".");
+	const parts = trimmed.replace(/,/g, "").split(".");
 	const whole = BigInt(parts[0] || "0");
 	const fracStr = (parts[1] || "").padEnd(decimals, "0").slice(0, decimals);
 	const frac = BigInt(fracStr);

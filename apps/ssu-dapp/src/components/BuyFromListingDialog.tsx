@@ -155,7 +155,7 @@ export function BuyFromListingDialog({
 										setQuantity(e.target.value);
 										setError(null);
 									}}
-									className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
+									className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
 								/>
 								<button
 									type="button"
@@ -179,7 +179,7 @@ export function BuyFromListingDialog({
 							type="button"
 							onClick={handleBuy}
 							disabled={isPending || qty <= 0}
-							className="w-full rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
+							className="w-full rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
 						>
 							{isPending ? "Buying..." : "Buy"}
 						</button>

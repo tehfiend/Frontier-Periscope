@@ -1,5 +1,13 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { type AssemblyKind, type TenantId, TENANTS, type ExtensionTemplate } from "./config";
+import { ASSEMBLY_MODULE_MAP } from "@tehfrontier/chain-shared";
+export { ASSEMBLY_MODULE_MAP };
+import {
+	type AssemblyKind,
+	type ExtensionTemplate,
+	TENANTS,
+	type TenantId,
+	getWorldTarget,
+} from "./config";
 
 // ── Rename Types ─────────────────────────────────────────────────────────────
 
@@ -52,9 +60,12 @@ interface ConfigureTribeGateParams {
  *   2. turret/gate/storage_unit::authorize_extension<Auth>(assembly, ownerCap)
  *   3. character::return_owner_cap<T>() → consume receipt
  */
+
 export function buildAuthorizeExtension(params: AuthorizeExtensionParams): Transaction {
-	const { tenant, template, assemblyType, assemblyId, characterId, ownerCapId, senderAddress } = params;
+	const { tenant, template, assemblyType, assemblyId, characterId, ownerCapId, senderAddress } =
+		params;
 	const worldPkg = TENANTS[tenant].worldPackageId;
+	const worldTarget = getWorldTarget(tenant);
 	const extensionPkg = template.packageIds[tenant];
 
 	if (!extensionPkg) {
@@ -64,40 +75,25 @@ export function buildAuthorizeExtension(params: AuthorizeExtensionParams): Trans
 	const tx = new Transaction();
 	tx.setSender(senderAddress);
 
-	// Map assembly type to Move module + type
-	const assemblyModuleMap: Record<AssemblyKind, { module: string; type: string }> = {
-		turret: { module: "turret", type: "Turret" },
-		gate: { module: "gate", type: "Gate" },
-		storage_unit: { module: "storage_unit", type: "StorageUnit" },
-		smart_storage_unit: { module: "storage_unit", type: "StorageUnit" },
-		network_node: { module: "network_node", type: "NetworkNode" },
-		protocol_depot: { module: "storage_unit", type: "StorageUnit" },
-	};
-
-	const { module: assemblyModule, type: assemblyMoveType } = assemblyModuleMap[assemblyType];
+	const { module: assemblyModule, type: assemblyMoveType } = ASSEMBLY_MODULE_MAP[assemblyType];
+	// Type arguments use original package ID (for type string construction)
 	const fullAssemblyType = `${worldPkg}::${assemblyModule}::${assemblyMoveType}`;
 
-	// Parse witness type: "module::Struct" → full path
+	// Parse witness type: "module::Struct" -> full path
 	const fullWitnessType = `${extensionPkg}::${template.witnessType}`;
 
 	// Step 1: Borrow OwnerCap from Character
 	const [ownerCap, receipt] = tx.moveCall({
-		target: `${worldPkg}::character::borrow_owner_cap`,
+		target: `${worldTarget}::character::borrow_owner_cap`,
 		typeArguments: [fullAssemblyType],
-		arguments: [
-			tx.object(characterId),
-			tx.object(ownerCapId),
-		],
+		arguments: [tx.object(characterId), tx.object(ownerCapId)],
 	});
 
 	// Step 2: Authorize extension
 	tx.moveCall({
-		target: `${worldPkg}::${assemblyModule}::authorize_extension`,
+		target: `${worldTarget}::${assemblyModule}::authorize_extension`,
 		typeArguments: [fullWitnessType],
-		arguments: [
-			tx.object(assemblyId),
-			ownerCap,
-		],
+		arguments: [tx.object(assemblyId), ownerCap],
 	});
 
 	// Step 2b: For ssu_market extensions, also create SsuConfig (enables escrow transfers)
@@ -110,13 +106,9 @@ export function buildAuthorizeExtension(params: AuthorizeExtensionParams): Trans
 
 	// Step 3: Return OwnerCap
 	tx.moveCall({
-		target: `${worldPkg}::character::return_owner_cap`,
+		target: `${worldTarget}::character::return_owner_cap`,
 		typeArguments: [fullAssemblyType],
-		arguments: [
-			tx.object(characterId),
-			ownerCap,
-			receipt,
-		],
+		arguments: [tx.object(characterId), ownerCap, receipt],
 	});
 
 	return tx;
@@ -175,6 +167,7 @@ export function buildRenameTx(params: RenameAssemblyParams): Transaction {
 	const { tenant, assemblyModule, assemblyId, characterId, ownerCapId, newName, senderAddress } =
 		params;
 	const worldPkg = TENANTS[tenant].worldPackageId;
+	const worldTarget = getWorldTarget(tenant);
 
 	const entry = RENAMABLE_MODULES[assemblyModule];
 	if (!entry) {
@@ -191,20 +184,77 @@ export function buildRenameTx(params: RenameAssemblyParams): Transaction {
 
 	// Step 1: Borrow OwnerCap from Character
 	const [ownerCap, receipt] = tx.moveCall({
-		target: `${worldPkg}::character::borrow_owner_cap`,
+		target: `${worldTarget}::character::borrow_owner_cap`,
 		typeArguments: [fullAssemblyType],
 		arguments: [tx.object(characterId), tx.object(ownerCapId)],
 	});
 
 	// Step 2: Rename
 	tx.moveCall({
-		target: `${worldPkg}::${entry.module}::update_metadata_name`,
+		target: `${worldTarget}::${entry.module}::update_metadata_name`,
 		arguments: [tx.object(assemblyId), ownerCap, tx.pure.string(newName)],
 	});
 
 	// Step 3: Return OwnerCap
 	tx.moveCall({
-		target: `${worldPkg}::character::return_owner_cap`,
+		target: `${worldTarget}::character::return_owner_cap`,
+		typeArguments: [fullAssemblyType],
+		arguments: [tx.object(characterId), ownerCap, receipt],
+	});
+
+	return tx;
+}
+
+// ── Remove Extension Transaction ────────────────────────────────────────────
+
+interface RemoveExtensionParams {
+	tenant: TenantId;
+	assemblyType: AssemblyKind;
+	assemblyId: string;
+	characterId: string;
+	ownerCapId: string;
+	senderAddress: string;
+}
+
+/**
+ * Build a PTB to remove (revoke) the current extension from an assembly.
+ *
+ * Flow:
+ *   1. character::borrow_owner_cap<T>() -> (ownerCap, receipt)
+ *   2. {module}::remove_extension(assembly, ownerCap)
+ *   3. character::return_owner_cap<T>() -> consume receipt
+ */
+export function buildRemoveExtension(params: RemoveExtensionParams): Transaction {
+	const { tenant, assemblyType, assemblyId, characterId, ownerCapId, senderAddress } = params;
+	const worldPkg = TENANTS[tenant].worldPackageId;
+	const worldTarget = getWorldTarget(tenant);
+
+	const entry = ASSEMBLY_MODULE_MAP[assemblyType];
+	if (!entry) {
+		throw new Error(`Assembly type "${assemblyType}" not supported for extension removal`);
+	}
+
+	const fullAssemblyType = `${worldPkg}::${entry.module}::${entry.type}`;
+
+	const tx = new Transaction();
+	tx.setSender(senderAddress);
+
+	// Step 1: Borrow OwnerCap from Character
+	const [ownerCap, receipt] = tx.moveCall({
+		target: `${worldTarget}::character::borrow_owner_cap`,
+		typeArguments: [fullAssemblyType],
+		arguments: [tx.object(characterId), tx.object(ownerCapId)],
+	});
+
+	// Step 2: Remove extension
+	tx.moveCall({
+		target: `${worldTarget}::${entry.module}::remove_extension`,
+		arguments: [tx.object(assemblyId), ownerCap],
+	});
+
+	// Step 3: Return OwnerCap
+	tx.moveCall({
+		target: `${worldTarget}::character::return_owner_cap`,
 		typeArguments: [fullAssemblyType],
 		arguments: [tx.object(characterId), ownerCap, receipt],
 	});

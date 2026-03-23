@@ -14,7 +14,6 @@ interface MarketContentProps {
 	buyOrders: BuyOrderWithName[];
 	listingsLoading?: boolean;
 	buyOrdersLoading?: boolean;
-	isAuthorized: boolean;
 	characterObjectId?: string;
 	isConnected: boolean;
 	coinType: string;
@@ -107,7 +106,7 @@ export function MarketContent({
 					<button
 						type="button"
 						onClick={() => setShowBuyOrderDialog(true)}
-						className="rounded border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-500 hover:border-cyan-600 hover:text-cyan-400"
+						className="rounded border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-500 hover:border-amber-600 hover:text-amber-400"
 					>
 						+ Create Buy Order
 					</button>
@@ -128,6 +127,7 @@ export function MarketContent({
 					isConnected={isConnected}
 					coinDecimals={decimals}
 					coinSymbol={symbol}
+					marketPackageId={marketPkg}
 				/>
 			)}
 

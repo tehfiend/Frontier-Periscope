@@ -57,13 +57,13 @@ export function App() {
 		<QueryClientProvider client={queryClient}>
 			<DAppKitProvider dAppKit={dAppKit}>
 				<div className="flex min-h-full flex-col">
-					<header className="flex items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2 sm:px-4 sm:py-3">
+					<header className="flex items-center justify-between gap-2 border-b border-zinc-800 px-2 py-1.5 sm:px-4 sm:py-3">
 						<h1 className="shrink-0 text-xs font-semibold tracking-wide text-zinc-300 uppercase sm:text-sm">
 							SSU Viewer
 						</h1>
 						<WalletConnect />
 					</header>
-					<main className="flex-1 overflow-auto p-3 sm:p-4">
+					<main className="flex-1 overflow-auto p-2 sm:p-4">
 						{objectId ? (
 							<SsuView objectId={objectId} />
 						) : (
@@ -82,7 +82,7 @@ export function App() {
 						)}
 					</main>
 					<footer className="border-t border-zinc-800/50 px-4 py-2 text-center text-xs text-zinc-700">
-						TehFrontier &middot; EVE Frontier Cycle 5
+						Frontier Periscope &middot; EVE Frontier Cycle 5
 					</footer>
 				</div>
 			</DAppKitProvider>
