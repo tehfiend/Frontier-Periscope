@@ -3,6 +3,7 @@ import { useAppStore } from "@/stores/appStore";
 import { useSonarStore } from "@/stores/sonarStore";
 import { Link } from "@tanstack/react-router";
 import {
+	BookUser,
 	Boxes,
 	Cog,
 	Coins,
@@ -75,6 +76,7 @@ const navGroups: NavGroup[] = [
 			{ to: "/killmails", icon: Skull, label: "Killmails" },
 			{ to: "/manifest", icon: Database, label: "Manifest" },
 			{ to: "/private-maps", icon: Lock, label: "Private Maps" },
+			{ to: "/standings", icon: BookUser, label: "Standings" },
 		],
 	},
 	{

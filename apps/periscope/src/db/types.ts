@@ -532,6 +532,64 @@ export interface ManifestMapLocation {
 	cachedAt: string;
 }
 
+// ── Standings Types ─────────────────────────────────────────────────────────
+
+export interface ManifestStandingsList {
+	/** StandingsList object ID (primary key) */
+	id: string;
+	/** List name */
+	name: string;
+	/** List description */
+	description: string;
+	/** Creator address */
+	creator: string;
+	/** Hex-encoded X25519 public key */
+	publicKey: string;
+	/** Hex-encoded decrypted list secret key (populated after decryption) */
+	decryptedListKey?: string;
+	/** Hex-encoded encrypted list key from the StandingsInvite */
+	encryptedListKey?: string;
+	/** The user's StandingsInvite object ID */
+	inviteId: string;
+	/** Editor addresses authorized to modify standings */
+	editors: string[];
+	/** Whether the current user is an editor */
+	isEditor: boolean;
+	/** "stillness" or "utopia" */
+	tenant: string;
+	/** ISO timestamp */
+	cachedAt: string;
+}
+
+export interface ManifestStandingEntry {
+	/** Composite key: "{listId}:{entryId}" */
+	id: string;
+	/** StandingsList object ID */
+	listId: string;
+	/** Entry ID within the list */
+	entryId: number;
+	/** Entry kind */
+	kind: "character" | "tribe";
+	/** Character ID (when kind=character) */
+	characterId?: number;
+	/** Tribe ID (when kind=tribe) */
+	tribeId?: number;
+	/** Standing value (-3 to +3) */
+	standing: number;
+	/** Human-readable standing label */
+	label: string;
+	/** Description / notes */
+	description: string;
+	/** Address that added this entry */
+	addedBy: string;
+	/** Last updated timestamp (ms) */
+	updatedAtMs: number;
+	/** "stillness" or "utopia" */
+	tenant: string;
+	/** ISO timestamp */
+	cachedAt: string;
+}
+
 // ── Governance Types ────────────────────────────────────────────────────────
 
 export type OrgTier = "stakeholder" | "member" | "serf" | "opposition";

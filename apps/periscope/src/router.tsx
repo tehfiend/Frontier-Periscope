@@ -36,6 +36,9 @@ const LazyGovernanceClaims = lazy(() =>
 const LazyPrivateMaps = lazy(() =>
 	import("@/views/PrivateMaps").then((m) => ({ default: m.PrivateMaps })),
 );
+const LazyStandings = lazy(() =>
+	import("@/views/Standings").then((m) => ({ default: m.Standings })),
+);
 
 function LoadingFallback() {
 	return (
@@ -121,6 +124,14 @@ function PrivateMapsPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
 			<LazyPrivateMaps />
+		</Suspense>
+	);
+}
+
+function StandingsPage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyStandings />
 		</Suspense>
 	);
 }
@@ -313,6 +324,12 @@ const privateMapsRoute = createRoute({
 	component: PrivateMapsPage,
 });
 
+const standingsRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/standings",
+	component: StandingsPage,
+});
+
 const workersRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/workers",
@@ -354,6 +371,7 @@ const routeTree = rootRoute.addChildren([
 	walletRoute,
 	jumpPlannerRoute,
 	privateMapsRoute,
+	standingsRoute,
 
 	workersRoute,
 	settingsRoute,

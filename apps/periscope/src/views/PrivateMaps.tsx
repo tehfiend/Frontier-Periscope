@@ -20,6 +20,7 @@ import { db } from "@/db";
 import type { ManifestMapLocation, ManifestPrivateMap } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
+import { useStoredEncryptionKey } from "@/hooks/useStoredEncryptionKey";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import {
 	type TenantId,
@@ -28,7 +29,6 @@ import {
 	buildInviteMember,
 	buildRemoveLocation,
 	bytesToHex,
-	deriveMapKeyFromSignature,
 	encodeLocationData,
 	generateEphemeralX25519Keypair,
 	getContractAddresses,
@@ -36,102 +36,6 @@ import {
 	hexToBytes,
 	sealForRecipient,
 } from "@tehfrontier/chain-shared";
-
-const MAP_KEY_MESSAGE = "TehFrontier Map Key v1";
-
-// ── Stored Map Key Hook ─────────────────────────────────────────────────────
-
-/**
- * Load the map keypair for the connected wallet address.
- * Stored permanently in settings keyed by wallet address.
- * If wallet is connected and key not yet stored, auto-derives it
- * (one-time transparent sign) and persists permanently.
- */
-function useStoredMapKey(): {
-	keyPair: { publicKey: Uint8Array; secretKey: Uint8Array } | null;
-	isLoading: boolean;
-} {
-	const dAppKit = useDAppKit();
-	const account = useCurrentAccount();
-	const walletAddress = account?.address;
-
-	const [keyPair, setKeyPair] = useState<{
-		publicKey: Uint8Array;
-		secretKey: Uint8Array;
-	} | null>(null);
-	const [isLoading, setIsLoading] = useState(false);
-	const attemptedRef = useRef<string | null>(null);
-
-	useEffect(() => {
-		if (!walletAddress) {
-			setKeyPair(null);
-			attemptedRef.current = null;
-			return;
-		}
-
-		// Don't re-attempt for the same address
-		if (attemptedRef.current === walletAddress) return;
-		attemptedRef.current = walletAddress;
-
-		let cancelled = false;
-		const settingsKey = `mapKey:${walletAddress}`;
-
-		async function loadKey() {
-			setIsLoading(true);
-			try {
-				// Check if key is already stored
-				const stored = await db.settings.get(settingsKey);
-				if (cancelled) return;
-
-				if (stored?.value) {
-					const { publicHex, secretHex } = stored.value as {
-						publicHex: string;
-						secretHex: string;
-					};
-					if (publicHex && secretHex) {
-						setKeyPair({
-							publicKey: hexToBytes(publicHex),
-							secretKey: hexToBytes(secretHex),
-						});
-						return;
-					}
-				}
-
-				// Not stored -- derive from wallet signature (one-time)
-				const { signature } = await dAppKit.signPersonalMessage({
-					message: new TextEncoder().encode(MAP_KEY_MESSAGE),
-				});
-				if (cancelled) return;
-
-				const derived = deriveMapKeyFromSignature(signature);
-
-				// Store permanently
-				await db.settings.put({
-					key: settingsKey,
-					value: {
-						publicHex: bytesToHex(derived.publicKey),
-						secretHex: bytesToHex(derived.secretKey),
-					},
-				});
-
-				if (!cancelled) {
-					setKeyPair(derived);
-				}
-			} catch {
-				// User rejected signing or other error
-			} finally {
-				if (!cancelled) setIsLoading(false);
-			}
-		}
-
-		loadKey();
-		return () => {
-			cancelled = true;
-		};
-	}, [walletAddress, dAppKit]);
-
-	return { keyPair, isLoading };
-}
 
 // ── Main Component ──────────────────────────────────────────────────────────
 
@@ -141,7 +45,7 @@ export function PrivateMaps() {
 	const tenant = useActiveTenant();
 	const client = useSuiClient();
 	const dAppKit = useDAppKit();
-	const { keyPair, isLoading: isLoadingKey } = useStoredMapKey();
+	const { keyPair, isLoading: isLoadingKey } = useStoredEncryptionKey();
 
 	// Use stored suiAddress for reads (no wallet needed), wallet address for writes
 	const suiAddress = activeCharacter?.suiAddress;

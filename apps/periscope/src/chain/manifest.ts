@@ -12,6 +12,8 @@ import type {
 	ManifestLocation,
 	ManifestMapLocation,
 	ManifestPrivateMap,
+	ManifestStandingEntry,
+	ManifestStandingsList,
 	ManifestTribe,
 } from "@/db/types";
 import { ensureCelestialsLoaded } from "@/lib/celestials";
@@ -21,8 +23,10 @@ import { parseSerializedSignature } from "@mysten/sui/cryptography";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import {
+	MAP_KEY_MESSAGE,
 	bytesToHex,
 	decodeLocationData,
+	decodeStandingData,
 	deriveMapKeyFromSignature,
 	getContractAddresses,
 	getObjectJson,
@@ -31,6 +35,9 @@ import {
 	queryMapInvitesForUser,
 	queryMapLocations,
 	queryPrivateMap,
+	queryStandingEntries,
+	queryStandingsList,
+	queryStandingsInvitesForUser,
 	queryTransactionsByObject,
 	unsealWithKey,
 } from "@tehfrontier/chain-shared";
@@ -134,8 +141,9 @@ export async function ensureMapKeyForCharacter(
 	// Try wallet signing to derive full keypair
 	if (signPersonalMessage) {
 		try {
-			const MAP_KEY_MESSAGE = "TehFrontier Map Key v1";
-			const { signature } = await signPersonalMessage(new TextEncoder().encode(MAP_KEY_MESSAGE));
+			const { signature } = await signPersonalMessage(
+				new TextEncoder().encode(MAP_KEY_MESSAGE),
+			);
 			const derived = deriveMapKeyFromSignature(signature);
 
 			await db.manifestCharacters.update(characterId, {
@@ -1010,4 +1018,225 @@ export async function invalidateMapCache(mapId: string): Promise<void> {
 	await db.manifestPrivateMaps.delete(mapId);
 	const locations = await db.manifestMapLocations.where("mapId").equals(mapId).toArray();
 	await db.manifestMapLocations.bulkDelete(locations.map((l) => l.id));
+}
+
+// ── Standings Cache ─────────────────────────────────────────────────────────
+
+/**
+ * Discover and cache standings lists for a user. No decryption key needed --
+ * just finds StandingsInvite objects and fetches list metadata.
+ * Call decryptStandingsKeys() separately when the wallet key is available.
+ */
+export async function syncStandingsListsForUser(
+	client: SuiGraphQLClient,
+	tenant: TenantId,
+	userAddress: string,
+	ctx?: TaskContext,
+): Promise<number> {
+	const addresses = getContractAddresses(tenant);
+	const packageId = addresses.standings?.packageId;
+	console.log(
+		"[syncStandingsLists] tenant:",
+		tenant,
+		"packageId:",
+		packageId,
+		"user:",
+		userAddress,
+	);
+	if (!packageId) return 0;
+
+	let newCount = 0;
+
+	try {
+		ctx?.setProgress("Discovering standings invites...");
+		const invites = await queryStandingsInvitesForUser(client, userAddress, packageId);
+		console.log("[syncStandingsLists] found", invites.length, "invites");
+
+		for (const invite of invites) {
+			if (ctx?.isCancelled()) break;
+
+			const existing = await db.manifestStandingsLists.get(invite.listId);
+
+			// Fetch list details
+			const listInfo = await queryStandingsList(client, invite.listId);
+			console.log("[syncStandingsLists] list info for", invite.listId, ":", listInfo);
+			if (!listInfo) continue;
+
+			const isEditor =
+				listInfo.creator === userAddress || listInfo.editors.includes(userAddress);
+
+			const entry: ManifestStandingsList = {
+				id: invite.listId,
+				name: listInfo.name,
+				description: listInfo.description,
+				creator: listInfo.creator,
+				publicKey: listInfo.publicKey,
+				encryptedListKey: invite.encryptedListKey,
+				decryptedListKey: existing?.decryptedListKey, // preserve if already decrypted
+				inviteId: invite.objectId,
+				editors: listInfo.editors,
+				isEditor,
+				tenant,
+				cachedAt: new Date().toISOString(),
+			};
+
+			await db.manifestStandingsLists.put(entry);
+			newCount++;
+			console.log(
+				"[syncStandingsLists] cached list:",
+				entry.name,
+				entry.id,
+				"tenant:",
+				tenant,
+			);
+		}
+
+		console.log("[syncStandingsLists] synced", newCount, "lists");
+	} catch (err) {
+		console.error("[syncStandingsLists] error:", err);
+		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return newCount;
+}
+
+/**
+ * Decrypt list keys for all cached standings lists that don't have a
+ * decryptedListKey yet. Requires the wallet's X25519 keypair.
+ */
+export async function decryptStandingsKeys(
+	walletKeyPair: { publicKey: Uint8Array; secretKey: Uint8Array },
+	tenant: TenantId,
+): Promise<number> {
+	let count = 0;
+	const lists = await db.manifestStandingsLists.where("tenant").equals(tenant).toArray();
+
+	for (const list of lists) {
+		console.log(
+			"[decryptStandingsKeys]",
+			list.name,
+			"hasDecrypted:",
+			!!list.decryptedListKey,
+			"hasEncrypted:",
+			!!list.encryptedListKey,
+		);
+		if (list.decryptedListKey || !list.encryptedListKey) continue;
+
+		try {
+			const encryptedKeyBytes = hexToBytes(list.encryptedListKey);
+			console.log(
+				"[decryptStandingsKeys] decrypting",
+				list.name,
+				"encryptedLen:",
+				encryptedKeyBytes.length,
+			);
+			const decryptedKey = unsealWithKey(
+				encryptedKeyBytes,
+				walletKeyPair.publicKey,
+				walletKeyPair.secretKey,
+			);
+			console.log("[decryptStandingsKeys] success:", list.name);
+
+			await db.manifestStandingsLists.update(list.id, {
+				decryptedListKey: bytesToHex(decryptedKey),
+			});
+			count++;
+		} catch (err) {
+			console.error("[decryptStandingsKeys] failed for", list.name, err);
+		}
+	}
+
+	return count;
+}
+
+/**
+ * Sync all entries for a specific standings list.
+ * Fetches StandingEntry dynamic fields, decrypts each with the list key,
+ * and caches in manifestStandingEntries.
+ */
+export async function syncStandingEntries(
+	client: SuiGraphQLClient,
+	listId: string,
+	decryptedListKey: string,
+	tenant: TenantId,
+	ctx?: TaskContext,
+): Promise<number> {
+	let newCount = 0;
+
+	try {
+		ctx?.setProgress("Fetching standing entries...");
+
+		// Get the list's public key for decryption
+		const listInfo = await queryStandingsList(client, listId);
+		if (!listInfo) return 0;
+
+		const listPublicKey = hexToBytes(listInfo.publicKey);
+		const listSecretKey = hexToBytes(decryptedListKey);
+		console.log(
+			"[syncStandingEntries] listId:",
+			listId,
+			"pubKeyLen:",
+			listPublicKey.length,
+			"secKeyLen:",
+			listSecretKey.length,
+		);
+
+		const rawEntries = await queryStandingEntries(client, listId);
+		console.log("[syncStandingEntries] found", rawEntries.length, "raw entries");
+
+		// Clear existing entries for this list and replace with fresh data
+		const existingEntries = await db.manifestStandingEntries
+			.where("listId")
+			.equals(listId)
+			.toArray();
+		if (existingEntries.length > 0) {
+			await db.manifestStandingEntries.bulkDelete(existingEntries.map((e) => e.id));
+		}
+
+		for (const raw of rawEntries) {
+			if (ctx?.isCancelled()) break;
+
+			const compositeId = `${listId}:${raw.entryId}`;
+
+			try {
+				const encryptedBytes = hexToBytes(raw.encryptedData);
+				console.log(
+					"[syncStandingEntries] decrypting entry",
+					raw.entryId,
+					"encryptedLen:",
+					encryptedBytes.length,
+				);
+				const plaintext = unsealWithKey(encryptedBytes, listPublicKey, listSecretKey);
+				const data = decodeStandingData(plaintext);
+				console.log("[syncStandingEntries] decrypted:", data);
+
+				const entry: ManifestStandingEntry = {
+					id: compositeId,
+					listId,
+					entryId: raw.entryId,
+					kind: data.kind,
+					characterId: data.characterId,
+					tribeId: data.tribeId,
+					standing: data.standing,
+					label: data.label,
+					description: data.description,
+					addedBy: raw.addedBy,
+					updatedAtMs: raw.updatedAtMs,
+					tenant,
+					cachedAt: new Date().toISOString(),
+				};
+
+				await db.manifestStandingEntries.put(entry);
+				newCount++;
+			} catch (err) {
+				console.error("[syncStandingEntries] decrypt failed for entry", raw.entryId, err);
+			}
+		}
+
+		ctx?.setProgress(`Decrypted ${newCount} entries`);
+	} catch (err) {
+		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return newCount;
 }
