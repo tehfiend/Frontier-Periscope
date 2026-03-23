@@ -188,6 +188,41 @@ export interface MapLocationInfo {
 	addedAtMs: number;
 }
 
+// ── Standings Types ─────────────────────────────────────────────────────────
+
+export interface StandingsListInfo {
+	objectId: string;
+	name: string;
+	description: string;
+	creator: string;
+	publicKey: string; // hex
+	editors: string[];
+	nextEntryId: number;
+}
+
+export interface StandingsInviteInfo {
+	objectId: string;
+	listId: string;
+	sender: string;
+	encryptedListKey: string; // hex
+}
+
+export interface StandingEntryInfo {
+	entryId: number;
+	encryptedData: string; // hex
+	addedBy: string;
+	updatedAtMs: number;
+}
+
+export interface StandingData {
+	kind: "character" | "tribe";
+	characterId?: number;
+	tribeId?: number;
+	standing: number; // -3 to 3
+	label: string;
+	description: string;
+}
+
 // ── Contract Addresses ──────────────────────────────────────────────────────
 
 export interface ContractAddresses {
@@ -210,4 +245,5 @@ export interface ContractAddresses {
 	aclRegistry?: { packageId: string };
 	market?: { packageId: string };
 	privateMap?: { packageId: string };
+	standings?: { packageId: string };
 }

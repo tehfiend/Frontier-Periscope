@@ -14,4 +14,5 @@ export * from "./market";
 export * from "./claims";
 export * from "./crypto";
 export * from "./private-map";
+export * from "./standings";
 export * from "./coin-format";

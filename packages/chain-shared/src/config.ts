@@ -63,6 +63,8 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		privateMap: {
 			packageId: "0x2be1058fa8b002b81d4f91fd33065f17e2a3bbd9799ea0d934b74aaff8160a17",
 		},
+		// TODO: populate after contract publish
+		standings: { packageId: "" },
 	},
 	utopia: {
 		gateUnified: {
@@ -121,6 +123,8 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		privateMap: {
 			packageId: "0x2be1058fa8b002b81d4f91fd33065f17e2a3bbd9799ea0d934b74aaff8160a17",
 		},
+		// TODO: populate after contract publish
+		standings: { packageId: "" },
 	},
 };
 
