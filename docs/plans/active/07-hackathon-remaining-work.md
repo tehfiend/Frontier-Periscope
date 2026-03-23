@@ -220,8 +220,10 @@ These items are required for a functional standalone demo.
    - SSU dApp: open with `?tenant=&itemId=` params, verify inventory display + owner transfers + market extension transfers (admin: owner<->escrow, owner->player, escrow->player; player: to escrow, to owner; character search for new player transfers). Test visibility toggle (is_public).
    - SSU Market dApp: open with `?configId=`, verify listings and buy flow; test currency market browser
    - Permissions dApp: test shared ACL creation and browsing
+   - Standings: create standings list, set standings for tribes/characters, verify list/detail views
+   - Extension revoke: test revoking an extension on an assembly via Extensions view
    - Fix any runtime errors discovered
-   - Files: Various `apps/periscope/src/views/Finance.tsx`, `apps/periscope/src/views/GovernanceClaims.tsx`, `apps/periscope/src/views/PrivateMaps.tsx`, `apps/ssu-dapp/`, `apps/ssu-market-dapp/`, `apps/permissions-dapp/`
+   - Files: Various `apps/periscope/src/views/Finance.tsx`, `apps/periscope/src/views/GovernanceClaims.tsx`, `apps/periscope/src/views/PrivateMaps.tsx`, `apps/periscope/src/views/Standings.tsx`, `apps/ssu-dapp/`, `apps/ssu-market-dapp/`, `apps/permissions-dapp/`
 
 9. **Demo recording** (~2-3 hours) -- Record screen captures of key flows:
    - System claims (GovernanceClaims)
@@ -235,6 +237,8 @@ These items are required for a functional standalone demo.
    - SSU dApp inventory viewing + owner transfers + market extension inter-slot transfers
    - **Private Maps -- create map, invite, add encrypted location (Plan 23)**
    - **Manifest locations tab -- public structure locations (Plan 24)**
+   - **Standings -- create list, set standings, view detail panels**
+   - **Extension revoke -- revoking extension on assembly**
    - Wallet view with balances
    - Periscope dashboard overview
 
@@ -356,7 +360,7 @@ All tracked feature plans have been implemented:
 4. Write/update README with:
    - Project description (economy + intel toolkit for EVE Frontier)
    - Setup instructions (prerequisites, commands -- no gas station required)
-   - Architecture overview (monorepo, 14 project contracts + 2 world packages + token_template, standalone Periscope SPA, 3 standalone dApps)
+   - Architecture overview (monorepo, 15 project contracts + 2 world packages + token_template, standalone Periscope SPA, 3 standalone dApps)
    - Demo video link
 5. Submit to hackathon.
 
@@ -386,9 +390,9 @@ All tracked feature plans have been implemented:
 1. ~~SSU Market upgrade + trade testing (item 11).~~ **DONE** -- Superseded by Plan 21, then Plan 22.
 2. Cross-view navigation polish (item 13).
 3. Deploy dApps to hosting (item 14, plan 17).
-4. ~~Archive completed plans (item 15).~~ **DONE** -- Plans 09, 10, 12, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25 all archived.
+4. ~~Archive completed plans (item 15).~~ **DONE** -- All completed plans archived (09-graphql, 09-revoke, 10-server, 10-update, 12-ssu, 14-18, 19-25). Plan 11-standings superseded by plan 12.
 5. ~~Gas station turret pipeline testing.~~ **REMOVED** -- Gas station removed from codebase.
-6. Bounty board integration (item 18).
+6. Bounty board integration (item 21).
 7. ~~Revoke extension authorization (Plan 26 / `09-revoke-extension`).~~ **DONE** -- Archived.
 8. Standings & Access Control plaintext model (Plan 28 / `12-standings-access-control`) -- New contracts + client-side update.
 
