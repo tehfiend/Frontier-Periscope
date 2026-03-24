@@ -1,3 +1,4 @@
+import type React from "react";
 import { useEffect, useRef, useCallback } from "react";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { queryEventsGql } from "@tehfrontier/chain-shared";
@@ -5,6 +6,7 @@ import { db } from "@/db";
 import { useSonarStore } from "@/stores/sonarStore";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { getEventTypes } from "@/chain/config";
+import { pollCharacterEvents } from "@/chain/manifest";
 import type { SonarEvent } from "@/db/types";
 
 const POLL_INTERVAL = 15_000; // 15 seconds
@@ -18,8 +20,10 @@ const INVENTORY_EVENT_MAP = [
 ] as const;
 
 /**
- * Polls for on-chain inventory events (deposits, withdrawals, mints, burns)
- * on owned SSUs. Writes matching events to the sonarEvents table.
+ * Polls for on-chain events every 15s:
+ * - CharacterCreated: discovers new characters, populates manifest
+ * - Inventory events: deposits/withdrawals/mints/burns on owned SSUs
+ *
  * Persists cursors to sonarState for resume across page reloads.
  */
 export function useChainSonar() {
@@ -34,6 +38,28 @@ export function useChainSonar() {
 
 	const poll = useCallback(async () => {
 		try {
+			// ── Manifest: CharacterCreated events (no ownership filter) ──
+			try {
+				const charCursorKey = `CharacterCreated:${tenant}`;
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual @mysten/sui versions
+				const charResult = await pollCharacterEvents(
+					client as any,
+					tenant,
+					cursorsRef.current[charCursorKey] ?? null,
+				);
+				if (charResult.nextCursor) {
+					cursorsRef.current[charCursorKey] = charResult.nextCursor;
+				}
+				if (charResult.newCount > 0) {
+					console.log(
+						`[ChainSonar] ${charResult.newCount} new characters discovered`,
+					);
+				}
+			} catch (err) {
+				console.error("[ChainSonar] Error polling CharacterCreated:", err);
+			}
+
+			// ── Inventory events (require registered characters + SSUs) ──
 			// Load all characters with suiAddress for SSU ownership lookup
 			const characters = await db.characters.toArray();
 			const suiAddresses = new Set(
@@ -43,7 +69,9 @@ export function useChainSonar() {
 			);
 
 			if (suiAddresses.size === 0) {
-				// No characters with addresses -- nothing to monitor
+				// No characters with addresses -- skip inventory monitoring
+				// but still persist cursors (character polling already ran above)
+				await persistCursors(cursorsRef, setChainStatus);
 				return;
 			}
 
@@ -65,8 +93,8 @@ export function useChainSonar() {
 			const ssuObjectIds = new Set(deployables.map((d) => d.objectId));
 
 			if (ssuObjectIds.size === 0) {
-				// No SSUs found -- still mark as active (no error)
-				setChainStatus("active");
+				// No SSUs found -- skip inventory monitoring
+				await persistCursors(cursorsRef, setChainStatus);
 				return;
 			}
 
@@ -172,13 +200,7 @@ export function useChainSonar() {
 			}
 
 			// Persist cursors to DB
-			await db.sonarState.update("chain", {
-				status: "active",
-				cursors: cursorsRef.current as Record<string, string>,
-				lastPollAt: new Date().toISOString(),
-			});
-
-			setChainStatus("active");
+			await persistCursors(cursorsRef, setChainStatus);
 			pingChain();
 		} catch (err) {
 			console.error("[ChainSonar] Poll error:", err);
@@ -229,4 +251,17 @@ export function useChainSonar() {
 			}
 		};
 	}, [chainEnabled, poll, setChainStatus]);
+}
+
+/** Persist all cursors to sonarState and mark chain as active. */
+async function persistCursors(
+	cursorsRef: React.MutableRefObject<Record<string, string | null>>,
+	setChainStatus: (s: "active" | "off" | "error") => void,
+) {
+	await db.sonarState.update("chain", {
+		status: "active",
+		cursors: cursorsRef.current as Record<string, string>,
+		lastPollAt: new Date().toISOString(),
+	});
+	setChainStatus("active");
 }

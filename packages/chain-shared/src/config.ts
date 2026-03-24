@@ -127,8 +127,9 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		privateMap: {
 			packageId: "0x2be1058fa8b002b81d4f91fd33065f17e2a3bbd9799ea0d934b74aaff8160a17",
 		},
-		// TODO: populate after contract publish
-		standings: { packageId: "" },
+		standings: {
+			packageId: "0xb1e222afffd559191bb909784e139d4ec7c044f57f2be2a376548c63c5d35abd",
+		},
 		// TODO: populate after standings_registry contract publish
 		standingsRegistry: { packageId: "" },
 		gateStandings: { packageId: "", configObjectId: "" },

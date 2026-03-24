@@ -237,7 +237,7 @@ export async function listCoinsGql(
 
 const QUERY_EVENTS = `
 	query($type: String!, $first: Int, $after: String) {
-		events(filter: { eventType: $type }, first: $first, after: $after) {
+		events(filter: { type: $type }, first: $first, after: $after) {
 			nodes {
 				sender { address }
 				contents { json type { repr } }

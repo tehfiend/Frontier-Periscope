@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { useManifestAutoSync } from "@/hooks/useManifestAutoSync";
 import { fetchAndStoreGameTypes } from "@/lib/worldApi";
 import { useAppStore } from "@/stores/appStore";
 import { Loader2, Telescope } from "lucide-react";
@@ -15,6 +16,9 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 	const [steps, setSteps] = useState<LoadingStep[]>([]);
 	const setStaticDataReady = useAppStore((s) => s.setStaticDataReady);
 	const setProfileConfigured = useAppStore((s) => s.setProfileConfigured);
+
+	// Auto-sync manifest characters for all tenants (background, non-blocking)
+	useManifestAutoSync();
 
 	useEffect(() => {
 		initialize();

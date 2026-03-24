@@ -20,7 +20,6 @@ import {
 	ExternalLink,
 	Loader2,
 	MapPin,
-	RefreshCw,
 	Search,
 	UserPlus,
 	Users,
@@ -106,6 +105,19 @@ function makeCharacterColumns(
 					className="text-xs text-zinc-600"
 				/>
 			),
+		},
+		{
+			id: "status",
+			accessorFn: (c) => (c.deletedAt ? "Deleted" : "Active"),
+			header: "Status",
+			size: 90,
+			filterFn: excelFilterFn,
+			cell: ({ row }) =>
+				row.original.deletedAt ? (
+					<span className="text-xs text-red-400">Deleted</span>
+				) : (
+					<span className="text-xs text-green-400">Active</span>
+				),
 		},
 		{
 			id: "createdOnChain",
@@ -375,6 +387,32 @@ export function Manifest() {
 	const [lookupAddress, setLookupAddress] = useState("");
 	const [lookupLoading, setLookupLoading] = useState(false);
 
+	const handleFullResync = useCallback(() => {
+		if (tab === "characters") {
+			enqueueTask(`Full Character Resync (${tenant})`, async (ctx) => {
+				// Clear cursor to force full re-sync from scratch
+				const cursorKey = `manifestCharCursor:${worldPkg}`;
+				await db.settings.delete(cursorKey);
+				// Clear soft-delete flags so they get re-evaluated
+				const deleted = await db.manifestCharacters
+					.filter((c) => !!c.deletedAt)
+					.toArray();
+				for (const c of deleted) {
+					await db.manifestCharacters.update(c.id, { deletedAt: undefined, name: "" });
+				}
+				await discoverCharactersFromEvents(client, tenant, worldPkg, 50000, ctx);
+			});
+			setSyncStatus("Full resync queued — check Workers page");
+		} else if (tab === "locations") {
+			enqueueTask(`Full Location Resync (${tenant})`, async (ctx) => {
+				const cursorKey = `manifestLocCursor:${worldPkg}`;
+				await db.settings.delete(cursorKey);
+				await discoverLocationsFromEvents(client, tenant, worldPkg, 50000, ctx);
+			});
+			setSyncStatus("Full resync queued — check Workers page");
+		}
+	}, [tab, client, tenant, worldPkg]);
+
 	const handleDiscover = useCallback(() => {
 		if (tab === "characters") {
 			enqueueTask(`Discover Characters (${tenant})`, async (ctx) => {
@@ -393,51 +431,6 @@ export function Manifest() {
 			setSyncStatus("Location discovery queued — check Workers page");
 		}
 	}, [tab, client, tenant, worldPkg]);
-
-	const handleResolveNames = useCallback(() => {
-		enqueueTask(`Resolve Character Names (${tenant})`, async (ctx) => {
-			const unnamed = await db.manifestCharacters
-				.filter((c) => c.tenant === tenant && !c.name)
-				.toArray();
-			const total = unnamed.length;
-			if (total === 0) {
-				ctx.setProgress("All characters already have names");
-				return;
-			}
-			ctx.setProgress(`Resolving ${total} names...`);
-			ctx.setItems(0, total);
-
-			const BATCH_SIZE = 50;
-			let resolved = 0;
-			for (let i = 0; i < unnamed.length; i += BATCH_SIZE) {
-				if (ctx.isCancelled()) break;
-				const batch = unnamed.slice(i, i + BATCH_SIZE);
-				try {
-					const { objects } = await client.getObjects({
-						objectIds: batch.map((e) => e.id),
-						include: { json: true },
-					});
-					for (let j = 0; j < objects.length; j++) {
-						const obj = objects[j];
-						if ("objectId" in obj && obj.json) {
-							const fields = obj.json as Record<string, unknown>;
-							const meta = fields.metadata as { name?: string } | undefined;
-							const name = meta?.name;
-							if (name) {
-								await db.manifestCharacters.update(batch[j].id, { name });
-							}
-						}
-					}
-				} catch {
-					/* batch failed */
-				}
-				resolved += batch.length;
-				ctx.setItems(resolved, total);
-				ctx.setProgress(`Resolved ${resolved} / ${total} names`);
-			}
-		});
-		setSyncStatus("Name resolution queued — check Workers page");
-	}, [client, tenant]);
 
 	const handleLookup = useCallback(async () => {
 		if (!lookupAddress.trim() || lookupLoading) return;
@@ -482,15 +475,15 @@ export function Manifest() {
 					{syncStatus && (
 						<span className="max-w-xs truncate text-xs text-zinc-500">{syncStatus}</span>
 					)}
-					{tab === "characters" && (
+					{(tab === "characters" || tab === "locations") && (
 						<button
 							type="button"
-							onClick={handleResolveNames}
+							onClick={handleFullResync}
 							disabled={activeCount > 0}
 							className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-50"
 						>
-							<RefreshCw size={14} />
-							Resolve Names
+							<Database size={14} />
+							Full Resync
 						</button>
 					)}
 					<button

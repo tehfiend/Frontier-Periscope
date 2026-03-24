@@ -23,7 +23,7 @@ import { parseSerializedSignature } from "@mysten/sui/cryptography";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import {
-	MAP_KEY_MESSAGE,
+	ENCRYPTION_KEY_MESSAGE,
 	bytesToHex,
 	decodeLocationData,
 	decodeStandingData,
@@ -142,7 +142,7 @@ export async function ensureMapKeyForCharacter(
 	if (signPersonalMessage) {
 		try {
 			const { signature } = await signPersonalMessage(
-				new TextEncoder().encode(MAP_KEY_MESSAGE),
+				new TextEncoder().encode(ENCRYPTION_KEY_MESSAGE),
 			);
 			const derived = deriveMapKeyFromSignature(signature);
 
@@ -236,15 +236,17 @@ export async function fetchCharacterByAddress(
 export async function searchCachedCharacters(
 	query: string,
 	limit = 20,
+	includeDeleted = false,
 ): Promise<ManifestCharacter[]> {
 	if (!query || query.length < 2) return [];
 	const q = query.toLowerCase();
 	return db.manifestCharacters
 		.filter(
 			(c) =>
-				c.name.toLowerCase().includes(q) ||
-				c.characterItemId.includes(q) ||
-				c.suiAddress.toLowerCase().includes(q),
+				(includeDeleted || !c.deletedAt) &&
+				(c.name.toLowerCase().includes(q) ||
+					c.characterItemId.includes(q) ||
+					c.suiAddress.toLowerCase().includes(q)),
 		)
 		.limit(limit)
 		.toArray();
@@ -261,7 +263,7 @@ export async function searchCachedCharacters(
  */
 export async function discoverCharactersFromEvents(
 	client: SuiGraphQLClient,
-	_tenant: TenantId,
+	tenant: TenantId,
 	worldPkg: string,
 	limit = 5000,
 	ctx?: TaskContext,
@@ -338,7 +340,7 @@ export async function discoverCharactersFromEvents(
 					name: "",
 					suiAddress: String(parsed.character_address ?? ""),
 					tribeId: Number(parsed.tribe_id ?? 0),
-					tenant: String(keyObj?.tenant ?? ""),
+					tenant: String(keyObj?.tenant ?? tenant),
 					createdOnChain: createdAt,
 					cachedAt: new Date().toISOString(),
 				};
@@ -362,45 +364,9 @@ export async function discoverCharactersFromEvents(
 			await db.settings.put({ key: cursorKey, value: latestCursor });
 		}
 
-		// Phase 2: Resolve names in batches using getObjects
+		// Phase 2: Resolve names for unnamed characters in this tenant
 		if (!ctx?.isCancelled()) {
-			const unnamed = await db.manifestCharacters.filter((c) => !c.name).toArray();
-			const total = unnamed.length;
-			ctx?.setProgress(`Resolving ${total} character names...`);
-			ctx?.setItems(0, total);
-
-			const BATCH_SIZE = 50;
-			let resolved = 0;
-
-			for (let i = 0; i < unnamed.length; i += BATCH_SIZE) {
-				if (ctx?.isCancelled()) break;
-
-				const batch = unnamed.slice(i, i + BATCH_SIZE);
-				try {
-					const { objects } = await client.getObjects({
-						objectIds: batch.map((e) => e.id),
-						include: { json: true },
-					});
-
-					for (let j = 0; j < objects.length; j++) {
-						const obj = objects[j];
-						if ("objectId" in obj && obj.json) {
-							const fields = obj.json as Record<string, unknown>;
-							const metadata = asRecord(fields.metadata);
-							const name = String(metadata.name ?? "");
-							if (name) {
-								await db.manifestCharacters.update(batch[j].id, { name });
-							}
-						}
-					}
-				} catch {
-					// Batch failed — skip, will retry on next refresh
-				}
-
-				resolved += batch.length;
-				ctx?.setItems(resolved, total);
-				ctx?.setProgress(`Resolved ${resolved} / ${total} names`);
-			}
+			await resolveUnnamedCharacters(client, tenant, undefined, ctx);
 		}
 
 		ctx?.setProgress(`Done: ${newCount} characters discovered`);
@@ -409,6 +375,130 @@ export async function discoverCharactersFromEvents(
 	}
 
 	return newCount;
+}
+
+/**
+ * Resolve names for unnamed characters in the manifest for a given tenant.
+ * Uses getObjectJson per-character (reliable, no batch format issues).
+ * Also updates suiAddress, tribeId, and soft-deletes missing objects.
+ */
+export async function resolveUnnamedCharacters(
+	client: SuiGraphQLClient,
+	tenant: TenantId,
+	limit?: number,
+	ctx?: TaskContext,
+): Promise<number> {
+	const unnamed = await db.manifestCharacters
+		.where("tenant")
+		.equals(tenant)
+		.filter((c) => !c.name && !c.deletedAt)
+		.toArray();
+
+	const chars = limit != null ? unnamed.slice(0, limit) : unnamed;
+	const total = chars.length;
+	if (total === 0) return 0;
+
+	ctx?.setProgress(`Resolving ${total} character names...`);
+	ctx?.setItems(0, total);
+
+	const PARALLEL = 5;
+	let resolved = 0;
+
+	for (let i = 0; i < chars.length; i += PARALLEL) {
+		if (ctx?.isCancelled()) break;
+
+		const batch = chars.slice(i, i + PARALLEL);
+		await Promise.allSettled(
+			batch.map(async (char) => {
+				try {
+					const result = await getObjectJson(client, char.id);
+					if (!result.json) {
+						if (!char.deletedAt) {
+							await db.manifestCharacters.update(char.id, {
+								deletedAt: new Date().toISOString(),
+							});
+						}
+						return;
+					}
+					const fields = result.json;
+					const metadata = asRecord(fields.metadata);
+					const name = String(metadata.name ?? "");
+					const updates: Partial<ManifestCharacter> = {
+						cachedAt: new Date().toISOString(),
+					};
+					if (name) updates.name = name;
+					if (char.deletedAt) updates.deletedAt = undefined;
+					if (fields.character_address) {
+						updates.suiAddress = String(fields.character_address);
+					}
+					if (fields.tribe_id != null) {
+						updates.tribeId = Number(fields.tribe_id);
+					}
+					await db.manifestCharacters.update(char.id, updates);
+				} catch {
+					// Will retry on next sync cycle
+				}
+			}),
+		);
+
+		resolved += batch.length;
+		ctx?.setItems(resolved, total);
+		ctx?.setProgress(`Resolved ${resolved} / ${total} names`);
+	}
+
+	return resolved;
+}
+
+/**
+ * Poll for new CharacterCreatedEvent events and cache any new characters.
+ * Used by Chain Sonar for real-time monitoring. Resolves names inline
+ * since poll batches are small (0-5 new characters typically).
+ */
+export async function pollCharacterEvents(
+	client: SuiGraphQLClient,
+	tenant: TenantId,
+	cursor: string | null,
+): Promise<{ newCount: number; nextCursor: string | null }> {
+	const worldPkg = TENANTS[tenant].worldPackageId;
+	const eventType = `${worldPkg}::character::CharacterCreatedEvent`;
+
+	const result = await queryEventsGql(client, eventType, {
+		cursor,
+		limit: 50,
+	});
+
+	let newCount = 0;
+	for (const event of result.data) {
+		const parsed = event.parsedJson;
+		const charId = parsed.character_id as string;
+		if (!charId) continue;
+
+		const exists = await db.manifestCharacters.get(charId);
+		if (exists) continue;
+
+		const keyObj = parsed.key as { item_id?: string; tenant?: string } | undefined;
+		await db.manifestCharacters.put({
+			id: charId,
+			characterItemId: String(keyObj?.item_id ?? ""),
+			name: "",
+			suiAddress: String(parsed.character_address ?? ""),
+			tribeId: Number(parsed.tribe_id ?? 0),
+			tenant: String(keyObj?.tenant ?? tenant),
+			createdOnChain: new Date(Number(event.timestampMs)).toISOString(),
+			cachedAt: new Date().toISOString(),
+		});
+		newCount++;
+	}
+
+	// Resolve names for newly discovered characters
+	if (newCount > 0) {
+		await resolveUnnamedCharacters(client, tenant, newCount + 10);
+	}
+
+	return {
+		newCount,
+		nextCursor: result.nextCursor,
+	};
 }
 
 /**

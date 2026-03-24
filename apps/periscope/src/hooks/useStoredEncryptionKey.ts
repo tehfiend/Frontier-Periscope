@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { db } from "@/db";
 import {
-	MAP_KEY_MESSAGE,
+	ENCRYPTION_KEY_MESSAGE,
 	bytesToHex,
 	deriveMapKeyFromSignature,
 	hexToBytes,
@@ -71,7 +71,7 @@ export function useStoredEncryptionKey(): {
 
 				// Not stored -- derive from wallet signature (one-time)
 				const { signature } = await dAppKit.signPersonalMessage({
-					message: new TextEncoder().encode(MAP_KEY_MESSAGE),
+					message: new TextEncoder().encode(ENCRYPTION_KEY_MESSAGE),
 				});
 				if (cancelled) return;
 

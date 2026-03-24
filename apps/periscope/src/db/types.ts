@@ -437,6 +437,8 @@ export interface ManifestCharacter {
 	mapKeySecretHex?: string;
 	/** When this entry was last fetched from chain */
 	cachedAt: string;
+	/** Set when the character object no longer exists on-chain (deleted/destroyed) */
+	deletedAt?: string;
 }
 
 export interface ManifestTribe {
