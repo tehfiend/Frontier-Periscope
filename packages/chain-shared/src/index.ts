@@ -20,3 +20,7 @@ export * from "./gate-standings";
 export * from "./ssu-standings";
 export * from "./coin-format";
 export * from "./revoke-extension";
+export * from "./market-standings";
+export * from "./ssu-market-standings";
+export * from "./token-factory-standings";
+export * from "./private-map-standings";

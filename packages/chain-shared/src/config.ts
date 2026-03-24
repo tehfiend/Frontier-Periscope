@@ -69,6 +69,11 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		standingsRegistry: { packageId: "" },
 		gateStandings: { packageId: "", configObjectId: "" },
 		ssuStandings: { packageId: "", configObjectId: "" },
+		// TODO: populate after market_standings contract publish
+		marketStandings: { packageId: "" },
+		tokenTemplateStandings: { packageId: "" },
+		ssuMarketStandings: { packageId: "" },
+		privateMapStandings: { packageId: "" },
 	},
 	utopia: {
 		gateUnified: {
@@ -134,6 +139,11 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		standingsRegistry: { packageId: "" },
 		gateStandings: { packageId: "", configObjectId: "" },
 		ssuStandings: { packageId: "", configObjectId: "" },
+		// TODO: populate after market_standings contract publish
+		marketStandings: { packageId: "" },
+		tokenTemplateStandings: { packageId: "" },
+		ssuMarketStandings: { packageId: "" },
+		privateMapStandings: { packageId: "" },
 	},
 };
 

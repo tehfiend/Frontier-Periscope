@@ -534,6 +534,39 @@ export interface ManifestMapLocation {
 	cachedAt: string;
 }
 
+// ── Private Map V2 Types ────────────────────────────────────────────────────
+
+export interface ManifestPrivateMapV2 {
+	/** PrivateMapV2 object ID (primary key) */
+	id: string;
+	/** Map name */
+	name: string;
+	/** Creator address */
+	creator: string;
+	/** Editor addresses */
+	editors: string[];
+	/** 0 = encrypted (invite-only), 1 = cleartext standings */
+	mode: number;
+	/** Hex-encoded X25519 public key (mode=0 only) */
+	publicKey?: string;
+	/** Hex-encoded decrypted map secret key (mode=0, populated on-demand) */
+	decryptedMapKey?: string;
+	/** Hex-encoded encrypted map key from the MapInviteV2 (mode=0) */
+	encryptedMapKey?: string;
+	/** The user's MapInviteV2 object ID (mode=0) */
+	inviteId?: string;
+	/** StandingsRegistry object ID (mode=1) */
+	registryId?: string;
+	/** Minimum standing to view locations (mode=1, client-enforced) */
+	minReadStanding?: number;
+	/** Minimum standing to add locations (mode=1) */
+	minWriteStanding?: number;
+	/** "stillness" or "utopia" */
+	tenant: string;
+	/** ISO timestamp */
+	cachedAt: string;
+}
+
 // ── Standings Types ─────────────────────────────────────────────────────────
 
 export interface ManifestStandingsList {

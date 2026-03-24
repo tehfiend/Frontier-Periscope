@@ -68,6 +68,29 @@ export interface MarketBuyOrder {
 	postedAtMs: number;
 }
 
+// ── Market Standings Types ──────────────────────────────────────────────────
+
+export interface MarketStandingsInfo {
+	objectId: string;
+	/** Package ID that defined this Market<T> (from type repr, always the original). */
+	packageId: string;
+	creator: string;
+	/** StandingsRegistry object ID referenced by this market. */
+	registryId: string;
+	/** Minimum standing to mint tokens (0-6). */
+	minMint: number;
+	/** Minimum standing to post sell listings (0-6). */
+	minTrade: number;
+	/** Minimum standing to buy from listings or post buy orders (0-6). */
+	minBuy: number;
+	feeBps: number;
+	feeRecipient: string;
+	nextSellId: number;
+	nextBuyId: number;
+	coinType: string;
+	totalSupply?: number;
+}
+
 // ── SSU Config Types ───────────────────────────────────────────────────────
 
 export interface SsuConfigInfo {
@@ -188,6 +211,35 @@ export interface MapLocationInfo {
 	addedAtMs: number;
 }
 
+// ── Private Map V2 Types ────────────────────────────────────────────────────
+
+export interface PrivateMapV2Info {
+	objectId: string;
+	name: string;
+	creator: string;
+	editors: string[];
+	/** 0 = encrypted (invite-only), 1 = cleartext standings */
+	mode: number;
+	/** Hex-encoded X25519 public key (mode=0 only) */
+	publicKey?: string;
+	/** StandingsRegistry object ID (mode=1 only) */
+	registryId?: string;
+	/** Minimum standing to view locations (mode=1, client-enforced) */
+	minReadStanding?: number;
+	/** Minimum standing to add locations (mode=1) */
+	minWriteStanding?: number;
+	nextLocationId: number;
+}
+
+export interface MapLocationV2Info {
+	locationId: number;
+	structureId: string | null;
+	/** Hex-encoded data (encrypted for mode=0, plaintext JSON for mode=1) */
+	data: string;
+	addedBy: string;
+	addedAtMs: number;
+}
+
 // ── Standings Types ─────────────────────────────────────────────────────────
 
 export interface StandingsListInfo {
@@ -267,4 +319,12 @@ export interface ContractAddresses {
 	standingsRegistry?: { packageId: string };
 	gateStandings?: { packageId: string; configObjectId: string };
 	ssuStandings?: { packageId: string; configObjectId: string };
+	marketStandings?: { packageId: string };
+	tokenTemplateStandings?: { packageId: string };
+	ssuMarketStandings?: {
+		packageId: string;
+		originalPackageId?: string;
+		previousOriginalPackageIds?: string[];
+	};
+	privateMapStandings?: { packageId: string };
 }

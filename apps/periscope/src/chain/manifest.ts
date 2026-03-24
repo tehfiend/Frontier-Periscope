@@ -12,6 +12,7 @@ import type {
 	ManifestLocation,
 	ManifestMapLocation,
 	ManifestPrivateMap,
+	ManifestPrivateMapV2,
 	ManifestStandingEntry,
 	ManifestStandingsList,
 	ManifestTribe,
@@ -33,11 +34,15 @@ import {
 	hexToBytes,
 	queryEventsGql,
 	queryMapInvitesForUser,
+	queryMapInvitesV2ForUser,
 	queryMapLocations,
+	queryMapLocationsV2,
 	queryPrivateMap,
+	queryPrivateMapV2,
 	queryStandingEntries,
 	queryStandingsList,
 	queryStandingsInvitesForUser,
+	queryStandingsMaps,
 	queryTransactionsByObject,
 	unsealWithKey,
 } from "@tehfrontier/chain-shared";
@@ -1329,4 +1334,232 @@ export async function syncStandingEntries(
 	}
 
 	return newCount;
+}
+
+// ── Private Map V2 Cache ────────────────────────────────────────────────────
+
+/**
+ * Sync V2 private maps for a specific user address.
+ * Handles both modes:
+ * - Mode 0 (encrypted): discovers MapInviteV2 objects owned by user
+ * - Mode 1 (standings): discovers maps via MapCreatedEvent events filtered
+ *   by subscribed registries, then checks user's standing against min_read
+ *
+ * Also supports manual map ID entry for any standings map the user knows about.
+ */
+export async function syncPrivateMapsV2ForUser(
+	client: SuiGraphQLClient,
+	tenant: TenantId,
+	userAddress: string,
+	ctx?: TaskContext,
+): Promise<number> {
+	const addresses = getContractAddresses(tenant);
+	const packageId = addresses.privateMapStandings?.packageId;
+	if (!packageId) return 0;
+
+	let newCount = 0;
+
+	try {
+		// Phase 1: Discover encrypted maps (mode=0) via MapInviteV2 objects
+		ctx?.setProgress("Discovering V2 map invites...");
+		const invites = await queryMapInvitesV2ForUser(client, packageId, userAddress);
+
+		for (const invite of invites) {
+			if (ctx?.isCancelled()) break;
+
+			const existing = await db.manifestPrivateMapsV2.get(invite.mapId);
+
+			const mapInfo = await queryPrivateMapV2(client, invite.mapId);
+			if (!mapInfo) continue;
+
+			const entry: ManifestPrivateMapV2 = {
+				id: invite.mapId,
+				name: mapInfo.name,
+				creator: mapInfo.creator,
+				editors: mapInfo.editors,
+				mode: mapInfo.mode,
+				publicKey: mapInfo.publicKey,
+				encryptedMapKey: invite.encryptedMapKey,
+				decryptedMapKey: existing?.decryptedMapKey,
+				inviteId: invite.objectId,
+				registryId: mapInfo.registryId,
+				minReadStanding: mapInfo.minReadStanding,
+				minWriteStanding: mapInfo.minWriteStanding,
+				tenant,
+				cachedAt: new Date().toISOString(),
+			};
+
+			await db.manifestPrivateMapsV2.put(entry);
+			newCount++;
+		}
+
+		// Phase 2: Discover standings maps (mode=1) via events + registry filtering
+		ctx?.setProgress("Discovering standings maps...");
+		const subscribedRegs = await db.subscribedRegistries
+			.where("tenant")
+			.equals(tenant)
+			.toArray();
+		const subscribedRegIds = new Set(subscribedRegs.map((r) => r.id));
+
+		if (subscribedRegIds.size > 0) {
+			const standingsMapIds = await queryStandingsMaps(client, packageId);
+
+			for (const mapId of standingsMapIds) {
+				if (ctx?.isCancelled()) break;
+
+				// Skip if already cached
+				const existing = await db.manifestPrivateMapsV2.get(mapId);
+				if (existing) continue;
+
+				const mapInfo = await queryPrivateMapV2(client, mapId);
+				if (!mapInfo || mapInfo.mode !== 1) continue;
+
+				// Only include maps referencing a subscribed registry
+				if (!mapInfo.registryId || !subscribedRegIds.has(mapInfo.registryId))
+					continue;
+
+				const entry: ManifestPrivateMapV2 = {
+					id: mapId,
+					name: mapInfo.name,
+					creator: mapInfo.creator,
+					editors: mapInfo.editors,
+					mode: 1,
+					registryId: mapInfo.registryId,
+					minReadStanding: mapInfo.minReadStanding,
+					minWriteStanding: mapInfo.minWriteStanding,
+					tenant,
+					cachedAt: new Date().toISOString(),
+				};
+
+				await db.manifestPrivateMapsV2.put(entry);
+				newCount++;
+			}
+		}
+	} catch (err) {
+		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return newCount;
+}
+
+/**
+ * Sync all locations for a specific V2 private map.
+ * For mode=0: fetches and decrypts location data with the map key.
+ * For mode=1: fetches plaintext JSON location data (no decryption needed).
+ */
+export async function syncMapLocationsV2(
+	client: SuiGraphQLClient,
+	mapId: string,
+	mode: number,
+	decryptedMapKey: string | undefined,
+	mapPublicKeyHex: string | undefined,
+	tenant: TenantId,
+	ctx?: TaskContext,
+): Promise<number> {
+	let newCount = 0;
+
+	try {
+		ctx?.setProgress("Fetching V2 map locations...");
+		const rawLocations = await queryMapLocationsV2(client, mapId);
+
+		for (const loc of rawLocations) {
+			if (ctx?.isCancelled()) break;
+
+			const compositeId = `v2:${mapId}:${loc.locationId}`;
+			const existing = await db.manifestMapLocations.get(compositeId);
+			if (existing) continue;
+
+			try {
+				let data: {
+					solarSystemId: number;
+					planet: number;
+					lPoint: number;
+					description?: string;
+				};
+
+				if (mode === 0) {
+					// Encrypted mode -- decrypt with map key
+					if (!decryptedMapKey || !mapPublicKeyHex) continue;
+					const mapPublicKey = hexToBytes(mapPublicKeyHex);
+					const mapSecretKey = hexToBytes(decryptedMapKey);
+					const encryptedBytes = hexToBytes(loc.data);
+					const plaintext = unsealWithKey(
+						encryptedBytes,
+						mapPublicKey,
+						mapSecretKey,
+					);
+					data = decodeLocationData(plaintext);
+				} else {
+					// Cleartext standings mode -- parse JSON directly
+					const dataBytes = hexToBytes(loc.data);
+					const jsonStr = new TextDecoder().decode(dataBytes);
+					data = JSON.parse(jsonStr);
+				}
+
+				const entry: ManifestMapLocation = {
+					id: compositeId,
+					mapId,
+					locationId: loc.locationId,
+					structureId: loc.structureId,
+					solarSystemId: data.solarSystemId,
+					planet: data.planet,
+					lPoint: data.lPoint,
+					description: data.description ?? "",
+					addedBy: loc.addedBy,
+					addedAtMs: loc.addedAtMs,
+					tenant,
+					cachedAt: new Date().toISOString(),
+				};
+
+				await db.manifestMapLocations.put(entry);
+				newCount++;
+			} catch (err) {
+				console.error(
+					"[syncMapLocationsV2] failed for loc",
+					loc.locationId,
+					err,
+				);
+			}
+		}
+
+		ctx?.setProgress(`Synced ${newCount} V2 locations`);
+	} catch (err) {
+		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return newCount;
+}
+
+/**
+ * Add a known map by ID to the local cache (manual entry fallback).
+ * Fetches the map details and caches regardless of standings checks.
+ */
+export async function addMapV2ById(
+	client: SuiGraphQLClient,
+	mapId: string,
+	tenant: TenantId,
+): Promise<ManifestPrivateMapV2 | null> {
+	try {
+		const mapInfo = await queryPrivateMapV2(client, mapId);
+		if (!mapInfo) return null;
+
+		const entry: ManifestPrivateMapV2 = {
+			id: mapId,
+			name: mapInfo.name,
+			creator: mapInfo.creator,
+			editors: mapInfo.editors,
+			mode: mapInfo.mode,
+			publicKey: mapInfo.publicKey,
+			registryId: mapInfo.registryId,
+			minReadStanding: mapInfo.minReadStanding,
+			minWriteStanding: mapInfo.minWriteStanding,
+			tenant,
+			cachedAt: new Date().toISOString(),
+		};
+
+		await db.manifestPrivateMapsV2.put(entry);
+		return entry;
+	} catch {
+		return null;
+	}
 }
