@@ -175,7 +175,7 @@ MapLocationV2 {
   - `queryPrivateMapV2(client, mapId)` -- fetch PrivateMapV2 details
   - `queryMapInvitesV2ForUser(client, packageId, userAddress)` -- discover MapInviteV2 objects
   - `queryMapLocationsV2(client, mapId)` -- fetch all locations (returns raw data bytes, caller decrypts if needed)
-  - `queryStandingsMapsForRegistry(client, packageId, registryId)` -- discover cleartext maps linked to a specific registry
+  - `queryStandingsMaps(client, packageId)` -- discover all mode=1 maps by querying all `PrivateMapV2` objects by type (same pattern as `queryAllSharedAcls`), then the caller filters by `registryId` client-side. Alternatively, scan `MapCreatedEvent` events with `mode=1` for event-based discovery.
 
 **Modify `packages/chain-shared/src/types.ts`:**
 - Add `PrivateMapV2Info { objectId, name, creator, editors, mode, publicKey?, registryId?, minReadStanding?, minWriteStanding?, nextLocationId }`
