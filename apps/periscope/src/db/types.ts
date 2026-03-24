@@ -757,12 +757,60 @@ export interface CurrencyRecord extends SyncMeta {
 export type SonarSource = "local" | "chain";
 
 export type SonarEventType =
+	// ── Log events ──────────────────────────────────────────────────────────
 	| "system_change"
 	| "chat"
+	// ── Inventory ───────────────────────────────────────────────────────────
 	| "item_deposited"
 	| "item_withdrawn"
 	| "item_minted"
-	| "item_burned";
+	| "item_burned"
+	| "item_destroyed"
+	// ── Combat / intel ──────────────────────────────────────────────────────
+	| "killmail"
+	| "bounty_posted"
+	| "bounty_claimed"
+	| "bounty_cancelled"
+	// ── Navigation ──────────────────────────────────────────────────────────
+	| "jump"
+	| "gate_linked"
+	| "jump_permit_issued"
+	// ── Fuel / energy ───────────────────────────────────────────────────────
+	| "fuel"
+	| "energy_start"
+	| "energy_stop"
+	| "energy_reserved"
+	| "energy_released"
+	// ── Structure lifecycle ─────────────────────────────────────────────────
+	| "assembly_created"
+	| "gate_created"
+	| "storage_unit_created"
+	| "turret_created"
+	| "network_node_created"
+	| "status_changed"
+	| "metadata_changed"
+	| "location_revealed"
+	// ── Market (token market) ───────────────────────────────────────────────
+	| "market_sell_posted"
+	| "market_buy_posted"
+	| "market_buy_filled"
+	| "market_buy_cancelled"
+	| "market_sell_cancelled"
+	// ── SSU Market ──────────────────────────────────────────────────────────
+	| "ssu_market_buy_filled"
+	| "ssu_market_transfer"
+	| "ssu_market_sell_cancelled"
+	// ── Gate extensions ─────────────────────────────────────────────────────
+	| "toll_collected"
+	| "access_granted"
+	// ── Lease ───────────────────────────────────────────────────────────────
+	| "lease_created"
+	| "rent_collected"
+	| "lease_cancelled"
+	// ── Exchange ────────────────────────────────────────────────────────────
+	| "exchange_order_placed"
+	| "exchange_order_cancelled"
+	| "exchange_trade";
 
 export interface SonarEvent {
 	id?: number;

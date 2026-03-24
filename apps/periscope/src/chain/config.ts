@@ -1,3 +1,5 @@
+import { getContractAddresses } from "@tehfrontier/chain-shared";
+
 // ── Tenant Configuration ─────────────────────────────────────────────────────
 
 export interface TenantConfig {
@@ -57,23 +59,116 @@ export function getMoveTypes(tenant: TenantId) {
 	};
 }
 
-/** Get event type strings for a specific tenant. */
+/** Get event type strings for a specific tenant (world package events). */
 export function getEventTypes(tenant: TenantId) {
 	const pkg = TENANTS[tenant].worldPackageId;
 	return {
-		FuelEvent: `${pkg}::fuel::FuelEvent`,
-		JumpEvent: `${pkg}::gate::JumpEvent`,
-		KillmailCreated: `${pkg}::killmail::KillmailCreatedEvent`,
-		AssemblyCreated: `${pkg}::assembly::AssemblyCreatedEvent`,
-		StatusChanged: `${pkg}::status::StatusChangedEvent`,
+		// ── Character ───────────────────────────────────────────────────────
 		CharacterCreated: `${pkg}::character::CharacterCreatedEvent`,
-		// Inventory events (Sonar)
+
+		// ── Assembly lifecycle ──────────────────────────────────────────────
+		AssemblyCreated: `${pkg}::assembly::AssemblyCreatedEvent`,
+		GateCreated: `${pkg}::gate::GateCreatedEvent`,
+		StorageUnitCreated: `${pkg}::storage_unit::StorageUnitCreatedEvent`,
+		TurretCreated: `${pkg}::turret::TurretCreatedEvent`,
+		NetworkNodeCreated: `${pkg}::network_node::NetworkNodeCreatedEvent`,
+
+		// ── Status ──────────────────────────────────────────────────────────
+		StatusChanged: `${pkg}::status::StatusChangedEvent`,
+
+		// ── Location ────────────────────────────────────────────────────────
+		LocationRevealed: `${pkg}::location::LocationRevealedEvent`,
+
+		// ── Metadata ────────────────────────────────────────────────────────
+		MetadataChanged: `${pkg}::metadata::MetadataChangedEvent`,
+
+		// ── Gate ────────────────────────────────────────────────────────────
+		JumpEvent: `${pkg}::gate::JumpEvent`,
+		GateLinked: `${pkg}::gate::GateLinkedEvent`,
+		JumpPermitIssued: `${pkg}::gate::JumpPermitIssuedEvent`,
+
+		// ── Inventory ───────────────────────────────────────────────────────
 		ItemDeposited: `${pkg}::inventory::ItemDepositedEvent`,
 		ItemWithdrawn: `${pkg}::inventory::ItemWithdrawnEvent`,
 		ItemMinted: `${pkg}::inventory::ItemMintedEvent`,
 		ItemBurned: `${pkg}::inventory::ItemBurnedEvent`,
-		LocationRevealed: `${pkg}::location::LocationRevealedEvent`,
+		ItemDestroyed: `${pkg}::inventory::ItemDestroyedEvent`,
+
+		// ── Fuel ────────────────────────────────────────────────────────────
+		FuelEvent: `${pkg}::fuel::FuelEvent`,
+
+		// ── Energy ──────────────────────────────────────────────────────────
+		StartEnergyProduction: `${pkg}::energy::StartEnergyProductionEvent`,
+		StopEnergyProduction: `${pkg}::energy::StopEnergyProductionEvent`,
+		EnergyReserved: `${pkg}::energy::EnergyReservedEvent`,
+		EnergyReleased: `${pkg}::energy::EnergyReleasedEvent`,
+
+		// ── Killmail ────────────────────────────────────────────────────────
+		KillmailCreated: `${pkg}::killmail::KillmailCreatedEvent`,
 	};
+}
+
+/** Get extension contract event type strings for a specific tenant. */
+export function getExtensionEventTypes(tenant: TenantId) {
+	const addrs = getContractAddresses(tenant);
+	const events: Record<string, string> = {};
+
+	// ── SSU Market (use originalPackageId for event queries) ────────────
+	const ssuMarketPkg = addrs.ssuMarket?.originalPackageId;
+	if (ssuMarketPkg) {
+		events.SsuMarketBuyOrderFilled = `${ssuMarketPkg}::ssu_market::BuyOrderFilledEvent`;
+		events.SsuMarketTransfer = `${ssuMarketPkg}::ssu_market::TransferEvent`;
+		events.SsuMarketSellListingCancelled = `${ssuMarketPkg}::ssu_market::SellListingCancelledEvent`;
+	}
+
+	// ── Bounty Board ───────────────────────────────────────────────────
+	const bountyPkg = addrs.bountyBoard?.packageId;
+	if (bountyPkg) {
+		events.BountyPosted = `${bountyPkg}::bounty_board::BountyPostedEvent`;
+		events.BountyClaimed = `${bountyPkg}::bounty_board::BountyClaimedEvent`;
+		events.BountyCancelled = `${bountyPkg}::bounty_board::BountyCancelledEvent`;
+	}
+
+	// ── Gate Unified (toll + access) ───────────────────────────────────
+	const gateUnifiedPkg = addrs.gateUnified?.packageId;
+	if (gateUnifiedPkg) {
+		events.UnifiedTollCollected = `${gateUnifiedPkg}::gate_unified::TollCollectedEvent`;
+		events.UnifiedAccessGranted = `${gateUnifiedPkg}::gate_unified::AccessGrantedEvent`;
+	}
+
+	// ── Gate Toll ──────────────────────────────────────────────────────
+	const gateTollPkg = addrs.gateToll?.packageId;
+	if (gateTollPkg) {
+		events.TollCollected = `${gateTollPkg}::gate_toll::TollCollectedEvent`;
+	}
+
+	// ── Lease ──────────────────────────────────────────────────────────
+	const leasePkg = addrs.lease?.packageId;
+	if (leasePkg) {
+		events.LeaseCreated = `${leasePkg}::lease::LeaseCreatedEvent`;
+		events.RentCollected = `${leasePkg}::lease::RentCollectedEvent`;
+		events.LeaseCancelled = `${leasePkg}::lease::LeaseCancelledEvent`;
+	}
+
+	// ── Exchange ───────────────────────────────────────────────────────
+	const exchangePkg = addrs.exchange?.packageId;
+	if (exchangePkg) {
+		events.ExchangeOrderPlaced = `${exchangePkg}::exchange::OrderPlacedEvent`;
+		events.ExchangeOrderCancelled = `${exchangePkg}::exchange::OrderCancelledEvent`;
+		events.ExchangeTrade = `${exchangePkg}::exchange::TradeEvent`;
+	}
+
+	// ── Market ─────────────────────────────────────────────────────────
+	const marketPkg = addrs.market?.packageId;
+	if (marketPkg) {
+		events.MarketSellListingPosted = `${marketPkg}::market::SellListingPostedEvent`;
+		events.MarketBuyOrderPosted = `${marketPkg}::market::BuyOrderPostedEvent`;
+		events.MarketBuyOrderFilled = `${marketPkg}::market::BuyOrderFilledEvent`;
+		events.MarketBuyOrderCancelled = `${marketPkg}::market::BuyOrderCancelledEvent`;
+		events.MarketSellListingCancelled = `${marketPkg}::market::SellListingCancelledEvent`;
+	}
+
+	return events;
 }
 
 /** @deprecated Use getMoveTypes(tenant) instead */

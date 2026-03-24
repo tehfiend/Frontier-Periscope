@@ -1,29 +1,24 @@
-import type React from "react";
-import { useEffect, useRef, useCallback } from "react";
-import { useSuiClient } from "@/hooks/useSuiClient";
-import { queryEventsGql } from "@tehfrontier/chain-shared";
-import { db } from "@/db";
-import { useSonarStore } from "@/stores/sonarStore";
-import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
-import { getEventTypes } from "@/chain/config";
+import { getEventTypes, getExtensionEventTypes } from "@/chain/config";
 import { pollCharacterEvents } from "@/chain/manifest";
+import { EVENT_HANDLER_REGISTRY, type HandlerContext } from "@/chain/sonarEventHandlers";
+import { db } from "@/db";
 import type { SonarEvent } from "@/db/types";
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
+import { useSuiClient } from "@/hooks/useSuiClient";
+import { useSonarStore } from "@/stores/sonarStore";
+import { queryEventsGql } from "@tehfrontier/chain-shared";
+import type React from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 const POLL_INTERVAL = 15_000; // 15 seconds
-
-/** Inventory event types we poll for and their sonarEvent eventType names. */
-const INVENTORY_EVENT_MAP = [
-	{ key: "ItemDeposited", eventType: "item_deposited" },
-	{ key: "ItemWithdrawn", eventType: "item_withdrawn" },
-	{ key: "ItemMinted", eventType: "item_minted" },
-	{ key: "ItemBurned", eventType: "item_burned" },
-] as const;
+const CONCURRENCY = 5; // max parallel event queries
 
 /**
  * Polls for on-chain events every 15s:
  * - CharacterCreated: discovers new characters, populates manifest
- * - Inventory events: deposits/withdrawals/mints/burns on owned SSUs
+ * - All world + extension events: via handler registry with ownership filters
  *
+ * Uses parallel batching (5 concurrent) with Promise.allSettled.
  * Persists cursors to sonarState for resume across page reloads.
  */
 export function useChainSonar() {
@@ -51,56 +46,35 @@ export function useChainSonar() {
 					cursorsRef.current[charCursorKey] = charResult.nextCursor;
 				}
 				if (charResult.newCount > 0) {
-					console.log(
-						`[ChainSonar] ${charResult.newCount} new characters discovered`,
-					);
+					console.log(`[ChainSonar] ${charResult.newCount} new characters discovered`);
 				}
 			} catch (err) {
 				console.error("[ChainSonar] Error polling CharacterCreated:", err);
 			}
 
-			// ── Inventory events (require registered characters + SSUs) ──
-			// Load all characters with suiAddress for SSU ownership lookup
+			// ── Build handler context ───────────────────────────────────
 			const characters = await db.characters.toArray();
-			const suiAddresses = new Set(
-				characters
-					.filter((c) => c.suiAddress && !c._deleted)
-					.map((c) => c.suiAddress as string),
+			const ownedAddresses = new Set(
+				characters.filter((c) => c.suiAddress && !c._deleted).map((c) => c.suiAddress as string),
 			);
 
-			if (suiAddresses.size === 0) {
-				// No characters with addresses -- skip inventory monitoring
-				// but still persist cursors (character polling already ran above)
-				await persistCursors(cursorsRef, setChainStatus);
-				return;
-			}
-
-			// Load SSU object IDs owned by any registered character
-			const ssuTypes = new Set([
-				"storage_unit",
-				"smart_storage_unit",
-				"protocol_depot",
-			]);
-			const deployables = await db.deployables
-				.filter(
-					(d) =>
-						d.owner != null &&
-						suiAddresses.has(d.owner) &&
-						ssuTypes.has(d.assemblyType),
-				)
+			// Load ALL deployables owned by registered characters
+			const allDeployables = await db.deployables
+				.filter((d) => d.owner != null && ownedAddresses.has(d.owner as string))
 				.toArray();
 
-			const ssuObjectIds = new Set(deployables.map((d) => d.objectId));
+			// SSU object IDs (for inventory-specific filters)
+			const ssuTypes = new Set(["storage_unit", "smart_storage_unit", "protocol_depot"]);
+			const ssuObjectIds = new Set(
+				allDeployables.filter((d) => ssuTypes.has(d.assemblyType)).map((d) => d.objectId),
+			);
 
-			if (ssuObjectIds.size === 0) {
-				// No SSUs found -- skip inventory monitoring
-				await persistCursors(cursorsRef, setChainStatus);
-				return;
-			}
+			// All owned assembly IDs (SSUs + gates + turrets + nodes)
+			const ownedAssemblyIds = new Set(allDeployables.map((d) => d.objectId));
 
-			// Build assembly name lookup
+			// Assembly name lookup
 			const assemblyNameMap = new Map<string, string>();
-			for (const d of deployables) {
+			for (const d of allDeployables) {
 				if (d.label) assemblyNameMap.set(d.objectId, d.label);
 			}
 
@@ -119,78 +93,78 @@ export function useChainSonar() {
 				}
 			}
 
-			const eventTypes = getEventTypes(tenant);
+			// Also populate from manifest characters
+			const manifestChars = await db.manifestCharacters.toArray();
+			for (const mc of manifestChars) {
+				if (mc.characterItemId && mc.name) {
+					charNameMap.set(mc.characterItemId, mc.name);
+				}
+			}
+
+			const handlerCtx: HandlerContext = {
+				ssuObjectIds,
+				ownedAssemblyIds,
+				ownedAddresses,
+				assemblyNameMap,
+				typeNameMap,
+				charNameMap,
+			};
+
+			// ── Build event type map: key -> moveEventType string ────────
+			const worldEvents = getEventTypes(tenant);
+			const extensionEvents = getExtensionEventTypes(tenant);
+			const allEventTypes: Record<string, string> = {
+				...worldEvents,
+				...extensionEvents,
+			};
+
+			// Remove CharacterCreated -- handled separately above
+			allEventTypes.CharacterCreated = undefined;
+
+			// Build list of {key, moveEventType} pairs that have handlers
+			const pollTasks: { key: string; moveEventType: string }[] = [];
+			for (const [key, moveEventType] of Object.entries(allEventTypes)) {
+				if (moveEventType && EVENT_HANDLER_REGISTRY[key]) {
+					pollTasks.push({ key, moveEventType });
+				}
+			}
+
+			// ── Poll in parallel batches of CONCURRENCY ────────────────
 			const sonarEntries: Omit<SonarEvent, "id">[] = [];
 
-			for (const { key, eventType } of INVENTORY_EVENT_MAP) {
-				const moveEventType = eventTypes[key as keyof typeof eventTypes];
-				if (!moveEventType) continue;
+			for (let i = 0; i < pollTasks.length; i += CONCURRENCY) {
+				const batch = pollTasks.slice(i, i + CONCURRENCY);
+				const results = await Promise.allSettled(
+					batch.map(async ({ key, moveEventType }) => {
+						const cursor = cursorsRef.current[key] ?? null;
+						const handler = EVENT_HANDLER_REGISTRY[key];
 
-				const cursor = cursorsRef.current[key] ?? null;
+						// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual @mysten/sui versions
+						const result = await queryEventsGql(client as any, moveEventType, {
+							cursor,
+							limit: 50,
+						});
 
-				try {
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual @mysten/sui versions
-					const result = await queryEventsGql(client as any, moveEventType, {
-						cursor,
-						limit: 50,
-					});
-
-					for (const event of result.data) {
-						const parsed = event.parsedJson;
-
-						// Extract assembly_id -- may be nested object or string
-						const assemblyIdRaw =
-							(parsed.assembly_id as { item_id?: string })?.item_id ??
-							(parsed.assembly_key as string) ??
-							(parsed.assembly_id as string);
-
-						// Filter: only keep events for our SSUs
-						if (!assemblyIdRaw || !ssuObjectIds.has(assemblyIdRaw)) {
-							continue;
+						const entries: Omit<SonarEvent, "id">[] = [];
+						for (const event of result.data) {
+							const parsed = handler.parse(event, handlerCtx);
+							entries.push(...parsed);
 						}
 
-						// Extract fields
-						const typeId = Number(
-							(parsed.type_id as { item_id?: string })?.item_id ??
-								parsed.type_id,
-						);
-						const quantity = Number(parsed.quantity ?? 0);
-						const charIdRaw =
-							(parsed.character_id as { item_id?: string })?.item_id ??
-							(parsed.character_key as string) ??
-							(parsed.character_id as string);
+						if (result.nextCursor) {
+							cursorsRef.current[key] = result.nextCursor;
+						}
 
-						sonarEntries.push({
-							timestamp: new Date(
-								Number(event.timestampMs),
-							).toISOString(),
-							source: "chain",
-							eventType,
-							characterName: charIdRaw
-								? charNameMap.get(charIdRaw)
-								: undefined,
-							characterId: charIdRaw || undefined,
-							assemblyId: assemblyIdRaw,
-							assemblyName: assemblyNameMap.get(assemblyIdRaw),
-							typeId: Number.isNaN(typeId) ? undefined : typeId,
-							typeName: Number.isNaN(typeId)
-								? undefined
-								: typeNameMap.get(typeId),
-							quantity,
-							txDigest: `chain-${event.timestampMs}`,
-						});
-					}
+						return entries;
+					}),
+				);
 
-					// Update cursor
-					if (result.nextCursor) {
-						cursorsRef.current[key] = result.nextCursor;
+				for (const result of results) {
+					if (result.status === "fulfilled") {
+						sonarEntries.push(...result.value);
+					} else {
+						console.error("[ChainSonar] Batch query error:", result.reason);
 					}
-				} catch (err) {
-					console.error(
-						`[ChainSonar] Error polling ${key}:`,
-						err,
-					);
-					// Continue to next event type rather than failing completely
 				}
 			}
 

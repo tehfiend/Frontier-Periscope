@@ -1,25 +1,90 @@
-import { useMemo, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { Link } from "@tanstack/react-router";
-import { db } from "@/db";
-import { useSonarStore } from "@/stores/sonarStore";
-import { useLogStore } from "@/stores/logStore";
-import { DataGrid, excelFilterFn, type ColumnDef } from "@/components/DataGrid";
-import { StatCard } from "@/components/StatCard";
-import { LogEventRow } from "@/components/LogEventRow";
+import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { GrantAccessView } from "@/components/GrantAccessView";
-import type { SonarEvent, SonarChannelStatus, SonarEventType } from "@/db/types";
+import { LogEventRow } from "@/components/LogEventRow";
+import { StatCard } from "@/components/StatCard";
+import { db } from "@/db";
+import type { SonarChannelStatus, SonarEvent, SonarEventType } from "@/db/types";
+import { useLogStore } from "@/stores/logStore";
+import { useSonarStore } from "@/stores/sonarStore";
+import { Link } from "@tanstack/react-router";
+import { useLiveQuery } from "dexie-react-hooks";
 import {
-	FileText,
-	Settings,
+	Activity,
 	Bell,
 	BellOff,
+	ChevronDown,
+	ChevronRight,
+	FileText,
+	Pickaxe,
+	Settings,
+	Swords,
 	Volume2,
 	VolumeX,
-	Activity,
-	Pickaxe,
-	Swords,
 } from "lucide-react";
+import { useMemo, useState } from "react";
+
+// ── Event Type Color Badges ──────────────────────────────────────────────────
+
+/** Color category for event type badges. */
+function getEventBadgeColor(eventType: string): string {
+	switch (eventType) {
+		// Red -- combat / bounty
+		case "killmail":
+		case "bounty_posted":
+		case "bounty_claimed":
+		case "bounty_cancelled":
+			return "bg-red-500/15 text-red-400";
+		// Blue -- navigation / gate
+		case "jump":
+		case "gate_linked":
+		case "jump_permit_issued":
+		case "access_granted":
+			return "bg-blue-500/15 text-blue-400";
+		// Green -- market / trade
+		case "market_sell_posted":
+		case "market_buy_posted":
+		case "market_buy_filled":
+		case "market_buy_cancelled":
+		case "market_sell_cancelled":
+		case "ssu_market_buy_filled":
+		case "ssu_market_transfer":
+		case "ssu_market_sell_cancelled":
+		case "exchange_order_placed":
+		case "exchange_order_cancelled":
+		case "exchange_trade":
+			return "bg-green-500/15 text-green-400";
+		// Orange -- fuel / energy
+		case "fuel":
+		case "energy_start":
+		case "energy_stop":
+		case "energy_reserved":
+		case "energy_released":
+			return "bg-orange-500/15 text-orange-400";
+		// Gray -- admin / structure lifecycle
+		case "assembly_created":
+		case "gate_created":
+		case "storage_unit_created":
+		case "turret_created":
+		case "network_node_created":
+		case "status_changed":
+		case "metadata_changed":
+		case "location_revealed":
+		case "lease_created":
+		case "rent_collected":
+		case "lease_cancelled":
+			return "bg-zinc-500/15 text-zinc-400";
+		// Teal -- inventory
+		case "item_deposited":
+		case "item_withdrawn":
+		case "item_minted":
+		case "item_burned":
+		case "item_destroyed":
+			return "bg-teal-500/15 text-teal-400";
+		// Default
+		default:
+			return "bg-zinc-500/15 text-zinc-400";
+	}
+}
 
 // ── Column Definitions ───────────────────────────────────────────────────────
 
@@ -61,10 +126,15 @@ const columns: ColumnDef<SonarEvent, unknown>[] = [
 	{
 		accessorKey: "eventType",
 		header: "Type",
-		size: 140,
+		size: 160,
 		cell: ({ getValue }) => {
 			const type = getValue() as string;
-			return type.replace(/_/g, " ");
+			const badgeColor = getEventBadgeColor(type);
+			return (
+				<span className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${badgeColor}`}>
+					{type.replace(/_/g, " ")}
+				</span>
+			);
 		},
 		filterFn: excelFilterFn,
 	},
@@ -80,18 +150,18 @@ const columns: ColumnDef<SonarEvent, unknown>[] = [
 		header: "Details",
 		accessorFn: (row) => {
 			if (row.source === "local") {
-				return row.systemName
-					? `Entered ${row.systemName}`
-					: (row.details ?? "-");
+				return row.systemName ? `Entered ${row.systemName}` : (row.details ?? "-");
 			}
-			// Chain events
+			// Chain events -- prefer details field when present (new handler events)
+			if (row.details) return row.details;
+			// Fallback for inventory events with structured fields
 			const parts: string[] = [];
 			if (row.typeName) parts.push(row.typeName);
 			else if (row.typeId) parts.push(`type #${row.typeId}`);
 			if (row.quantity != null) parts.push(`x${row.quantity}`);
 			if (row.assemblyName) parts.push(`@ ${row.assemblyName}`);
 			else if (row.assemblyId) parts.push(`@ ${row.assemblyId.slice(0, 10)}...`);
-			return parts.length > 0 ? parts.join(" ") : (row.details ?? "-");
+			return parts.length > 0 ? parts.join(" ") : "-";
 		},
 		filterFn: excelFilterFn,
 	},
@@ -268,14 +338,193 @@ function SonarTabBar({
 
 // ── Ping Settings Labels ─────────────────────────────────────────────────────
 
-const PING_TYPE_LABELS: Record<SonarEventType, string> = {
-	system_change: "System Change (Jump)",
-	item_deposited: "Item Deposited",
-	item_withdrawn: "Item Withdrawn",
-	item_minted: "Item Minted",
-	item_burned: "Item Burned",
-	chat: "Chat Message",
-};
+// ── Ping Type Categories ──────────────────────────────────────────────────────
+
+interface PingCategory {
+	label: string;
+	types: Partial<Record<SonarEventType, string>>;
+}
+
+const PING_CATEGORIES: PingCategory[] = [
+	{
+		label: "Log Events",
+		types: {
+			system_change: "System Change (Jump)",
+			chat: "Chat Message",
+		},
+	},
+	{
+		label: "Inventory",
+		types: {
+			item_deposited: "Item Deposited",
+			item_withdrawn: "Item Withdrawn",
+			item_minted: "Item Minted",
+			item_burned: "Item Burned",
+			item_destroyed: "Item Destroyed",
+		},
+	},
+	{
+		label: "Combat / Intel",
+		types: {
+			killmail: "Killmail",
+			bounty_posted: "Bounty Posted",
+			bounty_claimed: "Bounty Claimed",
+			bounty_cancelled: "Bounty Cancelled",
+		},
+	},
+	{
+		label: "Navigation",
+		types: {
+			jump: "Jump",
+			gate_linked: "Gate Linked",
+			jump_permit_issued: "Jump Permit Issued",
+			toll_collected: "Toll Collected",
+			access_granted: "Access Granted",
+		},
+	},
+	{
+		label: "Fuel / Energy",
+		types: {
+			fuel: "Fuel",
+			energy_start: "Energy Start",
+			energy_stop: "Energy Stop",
+			energy_reserved: "Energy Reserved",
+			energy_released: "Energy Released",
+		},
+	},
+	{
+		label: "Structure Lifecycle",
+		types: {
+			assembly_created: "Assembly Created",
+			gate_created: "Gate Created",
+			storage_unit_created: "SSU Created",
+			turret_created: "Turret Created",
+			network_node_created: "Network Node Created",
+			status_changed: "Status Changed",
+			metadata_changed: "Metadata Changed",
+			location_revealed: "Location Revealed",
+		},
+	},
+	{
+		label: "Market",
+		types: {
+			market_sell_posted: "Sell Listing Posted",
+			market_buy_posted: "Buy Order Posted",
+			market_buy_filled: "Buy Order Filled",
+			market_buy_cancelled: "Buy Order Cancelled",
+			market_sell_cancelled: "Sell Listing Cancelled",
+			ssu_market_buy_filled: "SSU Buy Order Filled",
+			ssu_market_transfer: "SSU Transfer",
+			ssu_market_sell_cancelled: "SSU Sell Cancelled",
+		},
+	},
+	{
+		label: "Lease / Exchange",
+		types: {
+			lease_created: "Lease Created",
+			rent_collected: "Rent Collected",
+			lease_cancelled: "Lease Cancelled",
+			exchange_order_placed: "Exchange Order Placed",
+			exchange_order_cancelled: "Exchange Order Cancelled",
+			exchange_trade: "Exchange Trade",
+		},
+	},
+];
+
+/** Flat lookup of all sonar event type -> display label. */
+const _PING_TYPE_LABELS: Record<SonarEventType, string> = Object.fromEntries(
+	PING_CATEGORIES.flatMap((cat) => Object.entries(cat.types)),
+) as Record<SonarEventType, string>;
+
+// ── Ping Settings Panel (Collapsible Categories) ─────────────────────────────
+
+function PingSettingsPanel({
+	pingEventTypes,
+	onToggle,
+}: {
+	pingEventTypes: Set<SonarEventType>;
+	onToggle: (type: SonarEventType) => void;
+}) {
+	const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+		() => new Set(["Log Events", "Inventory", "Combat / Intel"]),
+	);
+
+	function toggleCategory(label: string) {
+		setExpandedCategories((prev) => {
+			const next = new Set(prev);
+			if (next.has(label)) next.delete(label);
+			else next.add(label);
+			return next;
+		});
+	}
+
+	function toggleAllInCategory(cat: PingCategory) {
+		const types = Object.keys(cat.types) as SonarEventType[];
+		const allChecked = types.every((t) => pingEventTypes.has(t));
+		for (const t of types) {
+			if (allChecked) {
+				if (pingEventTypes.has(t)) onToggle(t);
+			} else {
+				if (!pingEventTypes.has(t)) onToggle(t);
+			}
+		}
+	}
+
+	return (
+		<div className="max-h-64 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+			<p className="mb-2 text-xs font-medium text-zinc-400">Alert on these event types:</p>
+			<div className="space-y-1">
+				{PING_CATEGORIES.map((cat) => {
+					const isExpanded = expandedCategories.has(cat.label);
+					const types = Object.keys(cat.types) as SonarEventType[];
+					const checkedCount = types.filter((t) => pingEventTypes.has(t)).length;
+					return (
+						<div key={cat.label}>
+							<div className="flex items-center gap-1">
+								<button
+									type="button"
+									onClick={() => toggleCategory(cat.label)}
+									className="flex flex-1 items-center gap-1.5 rounded px-1.5 py-1 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
+								>
+									{isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+									{cat.label}
+									<span className="text-zinc-600">
+										({checkedCount}/{types.length})
+									</span>
+								</button>
+								<button
+									type="button"
+									onClick={() => toggleAllInCategory(cat)}
+									className="rounded px-1.5 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
+								>
+									{checkedCount === types.length ? "none" : "all"}
+								</button>
+							</div>
+							{isExpanded && (
+								<div className="ml-4 flex flex-wrap gap-1.5 pb-1 pt-0.5">
+									{types.map((type) => (
+										<label
+											key={type}
+											className="flex cursor-pointer items-center gap-1.5 rounded-md border border-zinc-800 px-2 py-1 text-xs transition-colors hover:border-zinc-700"
+										>
+											<input
+												type="checkbox"
+												checked={pingEventTypes.has(type)}
+												onChange={() => onToggle(type)}
+												className="accent-teal-500"
+											/>
+											<span className="text-zinc-300">{cat.types[type]}</span>
+										</label>
+									))}
+								</div>
+							)}
+						</div>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
 
 // ── Pings Tab ────────────────────────────────────────────────────────────────
 
@@ -352,11 +601,7 @@ function PingsTab() {
 								? "border-blue-500/40 bg-blue-500/10 text-blue-300"
 								: "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"
 						}`}
-						title={
-							pingNotifyEnabled
-								? "Desktop notifications on"
-								: "Desktop notifications off"
-						}
+						title={pingNotifyEnabled ? "Desktop notifications on" : "Desktop notifications off"}
 					>
 						{pingNotifyEnabled ? <Bell size={12} /> : <BellOff size={12} />}
 						Notify
@@ -367,33 +612,9 @@ function PingsTab() {
 				</span>
 			</div>
 
-			{/* Collapsible settings panel */}
+			{/* Collapsible settings panel with categories */}
 			{showSettings && (
-				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-					<p className="mb-2 text-xs font-medium text-zinc-400">
-						Alert on these event types:
-					</p>
-					<div className="flex flex-wrap gap-2">
-						{(Object.keys(PING_TYPE_LABELS) as SonarEventType[]).map(
-							(type) => (
-								<label
-									key={type}
-									className="flex cursor-pointer items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1.5 text-xs transition-colors hover:border-zinc-700"
-								>
-									<input
-										type="checkbox"
-										checked={pingEventTypes.has(type)}
-										onChange={() => toggleEventType(type)}
-										className="accent-teal-500"
-									/>
-									<span className="text-zinc-300">
-										{PING_TYPE_LABELS[type]}
-									</span>
-								</label>
-							),
-						)}
-					</div>
-				</div>
+				<PingSettingsPanel pingEventTypes={pingEventTypes} onToggle={toggleEventType} />
 			)}
 
 			{/* Filtered DataGrid */}
@@ -425,12 +646,7 @@ function LogFeedTab() {
 	const recentEvents = useLiveQuery(
 		() =>
 			activeSessionId
-				? db.logEvents
-						.where("sessionId")
-						.equals(activeSessionId)
-						.reverse()
-						.limit(50)
-						.toArray()
+				? db.logEvents.where("sessionId").equals(activeSessionId).reverse().limit(50).toArray()
 				: [],
 		[activeSessionId],
 	);
@@ -439,10 +655,7 @@ function LogFeedTab() {
 	const sessionMining = useLiveQuery(
 		() =>
 			activeSessionId
-				? db.logEvents
-						.where("[sessionId+type]")
-						.equals([activeSessionId, "mining"])
-						.toArray()
+				? db.logEvents.where("[sessionId+type]").equals([activeSessionId, "mining"]).toArray()
 				: [],
 		[activeSessionId],
 	);
@@ -451,15 +664,11 @@ function LogFeedTab() {
 	const sessionDamageDealt = useLiveQuery(
 		() =>
 			activeSessionId
-				? db.logEvents
-						.where("[sessionId+type]")
-						.equals([activeSessionId, "combat_dealt"])
-						.toArray()
+				? db.logEvents.where("[sessionId+type]").equals([activeSessionId, "combat_dealt"]).toArray()
 				: [],
 		[activeSessionId],
 	);
-	const totalDamageDealt =
-		sessionDamageDealt?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
+	const totalDamageDealt = sessionDamageDealt?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
 
 	const sessionDamageRecv = useLiveQuery(
 		() =>
@@ -471,8 +680,7 @@ function LogFeedTab() {
 				: [],
 		[activeSessionId],
 	);
-	const totalDamageRecv =
-		sessionDamageRecv?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
+	const totalDamageRecv = sessionDamageRecv?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
 
 	if (!hasAccess) {
 		if (!grantAccess) {
@@ -564,13 +772,7 @@ function LogFeedTab() {
 
 function ChainFeedTab() {
 	const events = useLiveQuery(
-		() =>
-			db.sonarEvents
-				.where("source")
-				.equals("chain")
-				.reverse()
-				.limit(1000)
-				.toArray(),
+		() => db.sonarEvents.where("source").equals("chain").reverse().limit(1000).toArray(),
 		[],
 	);
 
@@ -584,7 +786,7 @@ function ChainFeedTab() {
 					data={data}
 					keyFn={(row) => String(row.id ?? 0)}
 					searchPlaceholder="Search chain events..."
-					emptyMessage="No chain events. Enable Chain Sonar to monitor SSU inventory activity."
+					emptyMessage="No chain events. Enable Chain Sonar to monitor jumps, killmails, inventory, market, and structure events."
 				/>
 			</div>
 		</div>
