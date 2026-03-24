@@ -288,3 +288,9 @@
 - **File:** docs/plans/active/13-market-standings.md
 - **Passes:** 4
 - **Result:** active -- Resolved all 3 open questions: (1) No world dependency -- caller passes tribe_id/char_id (Option A). (2) Added min_buy threshold for buy_from_listing and post_buy_order (Option B) -- enables "sell cheap fuel without enemies benefiting." (3) Bake registry_id as 32-byte constant vector (Option A). Three-threshold model (min_mint, min_trade, min_buy) with sentinels 251/252/253. Added missing ssu-market-standings.ts to chain-shared file list. Removed buy_from_listing as standalone market function (check happens in ssu_market_standings via check_standing helper). Plan moved from pending/ to active/.
+
+## 2026-03-23 -- private-map-standings (update)
+- **Action:** UPDATE
+- **File:** docs/plans/active/14-private-map-standings.md
+- **Passes:** 2
+- **Result:** active -- Resolved all 3 open questions: (1) No public mode -- always require a registry (Option A). (2) Raw tribe_id/char_id parameters, no world dependency (Option A). (3) Registry-based discovery + manual fallback (Option B+C). Fixed invite_member lint annotation (no self_transfer needed). Added packageId to all TX builder param lists. Added DB V27 version number. Added "Public mode" to deferred items. Plan moved from pending/ to active/.

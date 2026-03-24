@@ -1,6 +1,6 @@
 # Plan: Private Map with Standings-Based Access Control
 
-**Status:** Draft
+**Status:** Active
 **Created:** 2026-03-23
 **Module:** contracts, chain-shared, periscope
 
@@ -48,7 +48,7 @@ This is a big bang replacement -- a completely new contract, not an upgrade of t
 
 ### 1. New Move Contract: `private_map_standings` (`contracts/private_map_standings/`)
 
-A new contract that supports **two map modes**: encrypted (invite-based, identical to current) and cleartext (standings-gated). One contract, two access models.
+A new contract that supports **two map modes**: encrypted (invite-based, identical to current) and cleartext (standings-gated). One contract, two access models. No public mode -- a registry with `default_standing=6` effectively makes any map public.
 
 **Shared object: `PrivateMapV2`**
 ```
@@ -107,7 +107,7 @@ MapLocationV2 {
 - `create_standings_map(name: String, registry_id: ID, min_read_standing: u8, min_write_standing: u8, ctx: &mut TxContext)` -- `#[allow(lint(share_owned))]`. Creates mode=1 map. Validates standings 0-6. Stores registry_id as `option::some(registry_id)`. Creator auto-added to editors. Map shared. No invite created.
 
 **Functions -- Encrypted mode member management:**
-- `invite_member(map: &PrivateMapV2, recipient: address, encrypted_map_key: vector<u8>, ctx: &mut TxContext)` -- `#[allow(lint(self_transfer))]`. Asserts mode=0 + sender is creator. Creates MapInviteV2 transferred to recipient.
+- `invite_member(map: &PrivateMapV2, recipient: address, encrypted_map_key: vector<u8>, ctx: &mut TxContext)` -- Asserts mode=0 + sender is creator. Creates MapInviteV2 transferred to recipient. No lint suppression needed (transfer is to recipient, not sender).
 - `revoke_member(map: &mut PrivateMapV2, addr: address, ctx: &TxContext)` -- asserts mode=0 + sender is creator. Adds addr to revoked list. Asserts not already revoked.
 
 **Functions -- Editor management (both modes):**
@@ -162,20 +162,20 @@ MapLocationV2 {
 **New file: `packages/chain-shared/src/private-map-standings.ts`**
 - TX builders:
   - `buildCreateEncryptedMap(params)` -- same interface as current `buildCreateMap` plus packageId
-  - `buildCreateStandingsMap(params)` -- name, registryId, minReadStanding, minWriteStanding, senderAddress
+  - `buildCreateStandingsMap(params)` -- packageId, name, registryId, minReadStanding, minWriteStanding, senderAddress
   - `buildInviteMemberV2(params)` -- same as current `buildInviteMember`
   - `buildRevokeMemberV2(params)` -- same as current `buildRevokeMember`
-  - `buildAddEditor(params)` -- mapId, editorAddress, senderAddress
-  - `buildRemoveEditor(params)` -- mapId, editorAddress, senderAddress
-  - `buildUpdateStandingsConfig(params)` -- mapId, registryId, minReadStanding, minWriteStanding, senderAddress
+  - `buildAddEditor(params)` -- packageId, mapId, editorAddress, senderAddress
+  - `buildRemoveEditor(params)` -- packageId, mapId, editorAddress, senderAddress
+  - `buildUpdateStandingsConfig(params)` -- packageId, mapId, registryId, minReadStanding, minWriteStanding, senderAddress
   - `buildAddLocationEncrypted(params)` -- same interface as current `buildAddLocation`
-  - `buildAddLocationStandings(params)` -- mapId, registryId, tribeId, charId, structureId?, data, senderAddress
+  - `buildAddLocationStandings(params)` -- packageId, mapId, registryId, tribeId, charId, structureId?, data, senderAddress
   - `buildRemoveLocationV2(params)` -- same as current `buildRemoveLocation`
 - Query functions:
   - `queryPrivateMapV2(client, mapId)` -- fetch PrivateMapV2 details
   - `queryMapInvitesV2ForUser(client, packageId, userAddress)` -- discover MapInviteV2 objects
   - `queryMapLocationsV2(client, mapId)` -- fetch all locations (returns raw data bytes, caller decrypts if needed)
-  - `queryStandingsMaps(client, packageId)` -- discover all mode=1 maps by querying all `PrivateMapV2` objects by type (same pattern as `queryAllSharedAcls`), then the caller filters by `registryId` client-side. Alternatively, scan `MapCreatedEvent` events with `mode=1` for event-based discovery.
+  - `queryStandingsMaps(client, packageId)` -- discover mode=1 maps via `MapCreatedEvent` events with `mode=1`, then filter by `registryId` client-side against the user's subscribed registries. Returns all matching `PrivateMapV2` object IDs for the caller to fetch details.
 
 **Modify `packages/chain-shared/src/types.ts`:**
 - Add `PrivateMapV2Info { objectId, name, creator, editors, mode, publicKey?, registryId?, minReadStanding?, minWriteStanding?, nextLocationId }`
@@ -201,19 +201,24 @@ MapLocationV2 {
 - Reuse existing `ManifestMapLocation` type (same fields; for cleartext maps, data is already decrypted)
 
 **Modify `apps/periscope/src/db/index.ts`:**
-- Add new DB version with `manifestPrivateMapsV2` table
+- Add new DB version (V27) with `manifestPrivateMapsV2` table
+- Index: `"id, name, creator, mode, registryId, tenant, cachedAt"`
 
 **Modify `apps/periscope/src/chain/manifest.ts`:**
-- Add `syncPrivateMapsV2ForUser()` -- discovers both encrypted invites AND cleartext maps (by querying MapCreatedEvent events with mode=1, filtering by standing check)
-- Add `syncMapLocationsV2()` -- for cleartext maps, locations are already in plaintext JSON; for encrypted maps, uses existing decrypt flow
+- Add `syncPrivateMapsV2ForUser()`:
+  - **Encrypted maps (mode=0):** discover MapInviteV2 objects owned by user (same pattern as existing `syncPrivateMapsForUser`)
+  - **Standings maps (mode=1):** registry-based discovery -- query `MapCreatedEvent` events with `mode=1`, filter to maps whose `registry_id` matches a subscribed registry from the `subscribedRegistries` DB table, then check the user's standing against `min_read_standing` to determine visibility
+  - **Manual entry fallback:** user can paste a map ID directly to add any standings map they know about
+- Add `syncMapLocationsV2()` -- for mode=0, same decrypt flow as existing; for mode=1, plaintext JSON decode only
 - Keep existing functions for backwards compat with old `private_map` contract
 
-**Replace `apps/periscope/src/views/PrivateMaps.tsx`:**
+**Modify `apps/periscope/src/views/PrivateMaps.tsx`:**
 - Unified view showing both old (v1) encrypted maps and new (v2) maps
 - Create Map dialog with mode selector: "Encrypted (Invite-Only)" or "Standings-Gated (Cleartext)"
 - Standings-gated creation: pick a subscribed registry, set min read/write thresholds
 - Map card shows mode badge: lock icon for encrypted, shield icon for standings
 - For standings maps: show standings threshold info, no invite button, add-location checks standing threshold client-side
+- "Add Map by ID" button for manual entry of known map IDs (standings maps fallback)
 
 **Modify `apps/periscope/src/chain/config.ts`:**
 - No extension template needed (private_map_standings is not a structure extension)
@@ -233,6 +238,9 @@ MapLocationV2 {
 | Mode field type | `u8` constant (0 or 1) | Simple, extensible. Could add mode 2 (e.g., standings+toll) later without changing the struct. |
 | Write permission model for standings maps | Editors OR standing >= min_write | Dual path: editors are explicitly trusted writers (like org officers), while anyone meeting the write threshold can also contribute. Inclusive for large organizations. |
 | Registry reference at creation | Store ID, verify at write time | `create_standings_map` stores `registry_id: ID` without taking `&StandingsRegistry`. Verification happens in `add_location_standings` which takes the actual `&StandingsRegistry` and asserts `object::id(registry) == stored registry_id`. Same pattern as gate_standings config. |
+| Public mode support | No -- always require a registry | A registry with `default_standing=6` effectively makes a map public. Keeps the contract simpler and avoids a third code path. Mode=2 can be added later if needed since the u8 field is extensible. |
+| Identity verification | Raw tribe_id/char_id parameters | No world dependency. Wallet signature is the real auth. Lying about identity only affects standing lookup, not the immutable `added_by` address. Registry character-level overrides can block specific addresses if needed. |
+| Standings map discovery | Registry-based + manual fallback | Periscope queries `MapCreatedEvent` events for mode=1, filters by subscribed registries + user standing. Manual map ID entry covers edge cases (shared via out-of-band channels). Avoids scanning all events. |
 
 ## Implementation Phases
 
@@ -300,9 +308,12 @@ MapLocationV2 {
 ### Phase 4: Periscope UI
 
 1. Add `ManifestPrivateMapV2` type to `apps/periscope/src/db/types.ts`.
-2. Bump DB version in `apps/periscope/src/db/index.ts`, add `manifestPrivateMapsV2` table.
+2. Bump DB version in `apps/periscope/src/db/index.ts` (V27), add `manifestPrivateMapsV2` table with index `"id, name, creator, mode, registryId, tenant, cachedAt"`.
 3. Add sync functions to `apps/periscope/src/chain/manifest.ts`:
-   - `syncPrivateMapsV2ForUser()` -- discovers encrypted invites (MapInviteV2) for the user, plus any cleartext standings maps the user has interacted with (via MapCreatedEvent + LocationAddedEvent events). For cleartext maps that reference a subscribed registry, checks the user's standing to determine if they should see the map.
+   - `syncPrivateMapsV2ForUser()`:
+     - For encrypted maps (mode=0): discover `MapInviteV2` objects owned by user (same pattern as existing `syncPrivateMapsForUser`)
+     - For standings maps (mode=1): query `MapCreatedEvent` events with `mode=1`, filter to maps whose `registry_id` matches a subscribed registry from the `subscribedRegistries` DB table, then check user's standing against `min_read_standing`
+     - Support manual map ID entry for any standings map the user knows about
    - `syncMapLocationsV2()` -- for mode=0, same decrypt flow as existing; for mode=1, plaintext JSON decode only.
 4. Update `apps/periscope/src/views/PrivateMaps.tsx`:
    - Show V1 maps (existing) and V2 maps (new) in a unified list
@@ -311,6 +322,7 @@ MapLocationV2 {
    - Standings map creation: dropdown to select registry (from subscribed registries), sliders/inputs for min_read and min_write thresholds
    - For standings maps: "Add Location" doesn't require invite/encryption -- just builds plaintext TX
    - For standings maps: show standings info panel (registry name, thresholds, user's current standing)
+   - "Add Map by ID" button for manual entry of known map IDs (standings maps fallback)
 5. Run `pnpm build` and `pnpm dev` to verify.
 
 ## File Summary
@@ -324,27 +336,13 @@ MapLocationV2 {
 | `packages/chain-shared/src/config.ts` | Modify | Add privateMapStandings packageId entries |
 | `packages/chain-shared/src/index.ts` | Modify | Export new module |
 | `apps/periscope/src/db/types.ts` | Modify | Add ManifestPrivateMapV2 type |
-| `apps/periscope/src/db/index.ts` | Modify | Add DB version with manifestPrivateMapsV2 table |
+| `apps/periscope/src/db/index.ts` | Modify | Add DB V27 with manifestPrivateMapsV2 table |
 | `apps/periscope/src/chain/manifest.ts` | Modify | Add syncPrivateMapsV2ForUser, syncMapLocationsV2 |
 | `apps/periscope/src/views/PrivateMaps.tsx` | Modify | Unified view for V1 + V2 maps, mode selector, standings UI |
 
 ## Open Questions
 
-1. **Should cleartext standings maps also support a "public" mode (no standing check, anyone can read/write)?**
-   - **Option A: No, always require a registry reference** -- Pros: simpler contract, consistent model. Cons: requires creating a registry even for truly open maps.
-   - **Option B: Add a MODE_PUBLIC (mode=2) with no standings check** -- Pros: covers "open intel board" use case. Cons: scope creep, can be done later since mode is a u8.
-   - **Recommendation:** Option A for now. A registry with default_standing=6 effectively makes it public. Mode=2 can be added later without contract changes (the u8 mode field is extensible).
-
-2. **Should `add_location_standings` verify identity via a world `Character` object reference?**
-   - **Option A: Pass tribe_id/char_id as raw u32/u64 parameters** -- Pros: no world dependency, simpler Move.toml, faster builds. Cons: caller can pass incorrect identity (though wallet signature is still required).
-   - **Option B: Take `&Character` reference and extract tribe_id/char_id** -- Pros: trustless identity verification. Cons: adds world dependency, larger contract binary, all world transitive deps.
-   - **Recommendation:** Option A. The wallet signature is the real authorization. Lying about tribe_id/char_id only affects which standing value is looked up -- and if someone passes a tribe with higher standing than their real one, the standings registry admin can set character-level overrides. The security model does not meaningfully degrade.
-
-3. **How should Periscope discover cleartext standings maps the user can access?**
-   - **Option A: Discover via MapCreatedEvent events for mode=1 maps, filter by standing client-side** -- Pros: finds all standings maps ever created. Cons: potentially large event scan, privacy concern (broadcasts intent to check standings maps).
-   - **Option B: Registry-based discovery -- user subscribes to registries, Periscope discovers maps linked to those registries** -- Pros: scoped discovery, user controls what they see. Cons: requires knowing which registries to subscribe to.
-   - **Option C: Manual map ID entry + bookmark system** -- Pros: simplest, user explicitly adds maps they know about. Cons: no automatic discovery.
-   - **Recommendation:** Option B as primary, with Option C as fallback. Registry subscription is already in the standings system (plan 12). Periscope can query `MapCreatedEvent` events filtered to maps whose `registry_id` matches a subscribed registry, then check the user's standing to determine visibility. Manual map ID entry covers edge cases.
+All resolved.
 
 ## Deferred
 
@@ -354,3 +352,4 @@ MapLocationV2 {
 - **Batch location operations** -- Adding multiple locations in one TX. Nice-to-have, not blocking.
 - **Location update (in-place edit)** -- Currently must remove + re-add. Could add `update_location()` later.
 - **Transfer map ownership** -- Currently creator is immutable. Could add `transfer_ownership()` later.
+- **Public mode (mode=2)** -- No-registry mode for truly open maps. Deferred because `default_standing=6` on a registry achieves the same result. Can add later since mode is a u8.
