@@ -26,6 +26,7 @@ import type {
 	ManifestLocation,
 	ManifestMapLocation,
 	ManifestPrivateMap,
+	ManifestPrivateMapV2,
 	ManifestStandingEntry,
 	ManifestStandingsList,
 	ManifestTribe,
@@ -127,6 +128,9 @@ class PeriscopeDB extends Dexie {
 	// Sonar
 	sonarEvents!: EntityTable<SonarEvent, "id">;
 	sonarState!: EntityTable<SonarChannelState, "channel">;
+
+	// Private Maps V2 (dual-mode: encrypted + cleartext standings)
+	manifestPrivateMapsV2!: EntityTable<ManifestPrivateMapV2, "id">;
 
 	constructor() {
 		super("frontier-periscope");
@@ -532,6 +536,11 @@ class PeriscopeDB extends Dexie {
 			registryStandings: "id, registryId, kind, characterId, tribeId, [registryId+kind]",
 			manifestStandingsLists: null,
 			manifestStandingEntries: null,
+		});
+		// V27: Private Maps V2 -- dual-mode maps (encrypted + cleartext standings)
+		this.version(27).stores({
+			manifestPrivateMapsV2:
+				"id, name, creator, mode, registryId, tenant, cachedAt",
 		});
 	}
 }
