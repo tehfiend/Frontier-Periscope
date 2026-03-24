@@ -15,5 +15,8 @@ export * from "./claims";
 export * from "./crypto";
 export * from "./private-map";
 export * from "./standings";
+export * from "./standings-registry";
+export * from "./gate-standings";
+export * from "./ssu-standings";
 export * from "./coin-format";
 export * from "./revoke-extension";

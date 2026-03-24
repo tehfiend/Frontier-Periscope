@@ -252,6 +252,30 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 		configObjectIds: {},
 		witnessType: "ssu_market::MarketAuth",
 	},
+	{
+		id: "gate_standings",
+		name: "Gate Standings",
+		description:
+			"Control gate access based on a StandingsRegistry. Block, toll, or grant free passage based on character standing thresholds.",
+		assemblyTypes: ["gate"],
+		hasConfig: true,
+		// TODO: populate after contract publish
+		packageIds: {},
+		configObjectIds: {},
+		witnessType: "gate_standings::GateStandingsAuth",
+	},
+	{
+		id: "ssu_standings",
+		name: "SSU Standings",
+		description:
+			"Restrict SSU inventory access based on a StandingsRegistry. Set minimum standing thresholds for deposit and withdraw operations.",
+		assemblyTypes: ["storage_unit", "smart_storage_unit", "protocol_depot"],
+		hasConfig: true,
+		// TODO: populate after contract publish
+		packageIds: {},
+		configObjectIds: {},
+		witnessType: "ssu_standings::SsuStandingsAuth",
+	},
 ];
 
 export function getTemplatesForAssemblyType(kind: AssemblyKind): ExtensionTemplate[] {

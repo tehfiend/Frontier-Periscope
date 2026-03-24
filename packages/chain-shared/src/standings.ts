@@ -1,3 +1,6 @@
+// @deprecated -- Superseded by standings-registry.ts (plaintext standings model).
+// This file supports the legacy encrypted standings contract.
+
 /**
  * Standings -- Transaction builders and query helpers for the
  * standings Move module.
@@ -332,9 +335,7 @@ export async function queryStandingsList(
 			description: String(fields.description ?? ""),
 			creator: String(fields.creator ?? ""),
 			publicKey: decodeVectorU8(fields.public_key),
-			editors: Array.isArray(fields.editors)
-				? fields.editors.map((e: unknown) => String(e))
-				: [],
+			editors: Array.isArray(fields.editors) ? fields.editors.map((e: unknown) => String(e)) : [],
 			nextEntryId: Number(fields.next_entry_id ?? 0),
 		};
 	} catch {

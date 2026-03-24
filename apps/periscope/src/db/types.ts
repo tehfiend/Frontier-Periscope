@@ -590,6 +590,57 @@ export interface ManifestStandingEntry {
 	cachedAt: string;
 }
 
+// ── Contacts Types (local-only, not on-chain) ──────────────────────────────
+
+export interface Contact {
+	/** UUID */
+	id: string;
+	kind: "character" | "tribe";
+	characterId?: number;
+	characterName?: string;
+	tribeId?: number;
+	tribeName?: string;
+	/** Standing value (-3 to +3) */
+	standing: number;
+	/** Human-readable standing label */
+	label: string;
+	/** Free-text private notes */
+	notes: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+// ── Registry Subscription Types ─────────────────────────────────────────────
+
+export interface SubscribedRegistry {
+	/** StandingsRegistry object ID */
+	id: string;
+	name: string;
+	ticker: string;
+	/** Creator Sui address */
+	creator: string;
+	/** Resolved character name for creator */
+	creatorName?: string;
+	defaultStanding: number;
+	subscribedAt: string;
+	lastSyncedAt?: string;
+	/** "stillness" or "utopia" */
+	tenant: string;
+}
+
+export interface RegistryStanding {
+	/** Composite key: "{registryId}:{kind}:{entityId}" */
+	id: string;
+	registryId: string;
+	kind: "character" | "tribe";
+	characterId?: number;
+	tribeId?: number;
+	/** Standing value (0-6, raw u8) */
+	standing: number;
+	/** ISO timestamp */
+	cachedAt: string;
+}
+
 // ── Governance Types ────────────────────────────────────────────────────────
 
 export type OrgTier = "stakeholder" | "member" | "serf" | "opposition";

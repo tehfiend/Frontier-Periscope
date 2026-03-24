@@ -9,6 +9,7 @@ import type {
 	CharacterRecord,
 	ChatIntelEntry,
 	Constellation,
+	Contact,
 	CurrencyRecord,
 	DeployableIntel,
 	ExtensionRecord,
@@ -34,10 +35,12 @@ import type {
 	PermissionGroup,
 	PlayerIntel,
 	Region,
+	RegistryStanding,
 	SettingsEntry,
 	SolarSystem,
 	SonarChannelState,
 	SonarEvent,
+	SubscribedRegistry,
 	SyncMeta,
 	SystemClaimRecord,
 	SystemNickname,
@@ -100,9 +103,16 @@ class PeriscopeDB extends Dexie {
 	manifestPrivateMaps!: EntityTable<ManifestPrivateMap, "id">;
 	manifestMapLocations!: EntityTable<ManifestMapLocation, "id">;
 
-	// Standings (encrypted contact standings cache)
+	// Standings (encrypted contact standings cache) -- @deprecated, superseded by contacts
 	manifestStandingsLists!: EntityTable<ManifestStandingsList, "id">;
 	manifestStandingEntries!: EntityTable<ManifestStandingEntry, "id">;
+
+	// Contacts (local-only standings)
+	contacts!: EntityTable<Contact, "id">;
+
+	// Registry subscriptions (on-chain standings registries)
+	subscribedRegistries!: EntityTable<SubscribedRegistry, "id">;
+	registryStandings!: EntityTable<RegistryStanding, "id">;
 
 	// Governance
 	organizations!: EntityTable<OrganizationRecord, "id">;
@@ -512,6 +522,16 @@ class PeriscopeDB extends Dexie {
 		this.version(25).stores({
 			manifestStandingsLists: "id, name, creator, tenant, cachedAt",
 			manifestStandingEntries: "id, listId, kind, standing, tenant, [listId+kind]",
+		});
+
+		// V26: Contacts + Registry subscriptions -- plaintext standings model
+		// Drop old encrypted standings tables (superseded by contacts + registries)
+		this.version(26).stores({
+			contacts: "id, kind, characterId, tribeId, standing, updatedAt",
+			subscribedRegistries: "id, name, ticker, creator, tenant, subscribedAt",
+			registryStandings: "id, registryId, kind, characterId, tribeId, [registryId+kind]",
+			manifestStandingsLists: null,
+			manifestStandingEntries: null,
 		});
 	}
 }
