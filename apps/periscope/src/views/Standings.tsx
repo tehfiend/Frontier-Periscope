@@ -4,70 +4,90 @@ import { useLiveQuery } from "dexie-react-hooks";
 import {
 	AlertCircle,
 	BookUser,
-	ChevronDown,
 	Filter,
+	Globe,
 	Loader2,
+	Pencil,
 	Plus,
 	RefreshCw,
 	Shield,
+	Star,
 	Trash2,
-	UserMinus,
 	UserPlus,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-	decryptStandingsKeys,
-	syncStandingEntries,
-	syncStandingsListsForUser,
-} from "@/chain/manifest";
 import { ContactPicker } from "@/components/ContactPicker";
 import { CopyAddress } from "@/components/CopyAddress";
+import { StandingBadge } from "@/components/StandingBadge";
 import { db } from "@/db";
-import type { ManifestStandingEntry, ManifestStandingsList } from "@/db/types";
+import type { Contact, RegistryStanding } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import {
+	useAddContact,
+	useContacts,
+	useDeleteContact,
+	useUpdateContact,
+} from "@/hooks/useContacts";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
-import { useStoredEncryptionKey } from "@/hooks/useStoredEncryptionKey";
+import {
+	useRegistryStandings,
+	useSubscribeRegistry,
+	useSubscribedRegistries,
+	useSyncRegistryStandings,
+	useUnsubscribeRegistry,
+} from "@/hooks/useRegistrySubscriptions";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import {
-	STANDING_LABELS,
+	REGISTRY_STANDING_LABELS,
+	type StandingsRegistryInfo,
 	type TenantId,
-	buildAddEditor,
-	buildCreateStandingsList,
-	buildInviteStandingsMember,
-	buildRemoveEditor,
-	buildRemoveStanding,
-	buildSetStanding,
-	bytesToHex,
-	encodeStandingData,
-	generateEphemeralX25519Keypair,
+	buildAddRegistryAdmin,
+	buildCreateRegistry,
+	buildRemoveCharacterStanding,
+	buildRemoveRegistryAdmin,
+	buildRemoveTribeStanding,
+	buildSetCharacterStanding,
+	buildSetTribeStanding,
+	displayToStanding,
 	getContractAddresses,
-	getPublicKeyForAddress,
-	hexToBytes,
-	sealForRecipient,
+	queryAllRegistries,
+	standingToDisplay,
 } from "@tehfrontier/chain-shared";
 
-// ── Standing Badge ──────────────────────────────────────────────────────────
+// ── Tab Types ───────────────────────────────────────────────────────────────
 
-const STANDING_STYLES: Record<number, { text: string; bg: string }> = {
-	3: { text: "text-blue-400", bg: "bg-blue-400/20" },
-	2: { text: "text-blue-300", bg: "bg-blue-300/20" },
-	1: { text: "text-blue-200", bg: "bg-blue-200/20" },
-	0: { text: "text-zinc-100", bg: "bg-zinc-100/20" },
-	"-1": { text: "text-red-200", bg: "bg-red-200/20" },
-	"-2": { text: "text-red-300", bg: "bg-red-300/20" },
-	"-3": { text: "text-red-400", bg: "bg-red-400/20" },
-};
+type StandingsTab = "contacts" | "registries" | "my-registries";
 
-function StandingBadge({ standing }: { standing: number }) {
-	const style = STANDING_STYLES[standing] ?? STANDING_STYLES[0];
-	const label = STANDING_LABELS.get(standing) ?? "Unknown";
+// ── Standing Selector ───────────────────────────────────────────────────────
+
+const STANDING_OPTIONS = [3, 2, 1, 0, -1, -2, -3];
+
+function StandingSelect({
+	value,
+	onChange,
+	className,
+}: {
+	value: number;
+	onChange: (v: number) => void;
+	className?: string;
+}) {
 	return (
-		<span
-			className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${style.text} ${style.bg}`}
+		<select
+			value={value}
+			onChange={(e) => onChange(Number(e.target.value))}
+			className={`rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-300 focus:border-cyan-500 focus:outline-none ${className ?? ""}`}
 		>
-			{standing > 0 ? `+${standing}` : standing} {label}
-		</span>
+			{STANDING_OPTIONS.map((v) => {
+				const raw = displayToStanding(v);
+				const label = REGISTRY_STANDING_LABELS.get(raw) ?? "Unknown";
+				return (
+					<option key={v} value={v}>
+						{v > 0 ? `+${v}` : v} {label}
+					</option>
+				);
+			})}
+		</select>
 	);
 }
 
@@ -75,330 +95,564 @@ function StandingBadge({ standing }: { standing: number }) {
 
 export function Standings() {
 	const account = useCurrentAccount();
-	const { activeCharacter } = useActiveCharacter();
+	useActiveCharacter();
 	const tenant = useActiveTenant();
-	const client = useSuiClient();
-	const dAppKit = useDAppKit();
-	const { keyPair, isLoading: isLoadingKey } = useStoredEncryptionKey();
-
-	const suiAddress = activeCharacter?.suiAddress;
 	const walletAddress = account?.address;
 
-	const [isSyncing, setIsSyncing] = useState(false);
-	const [selectedListId, setSelectedListId] = useState<string | null>(null);
-	const [showCreateDialog, setShowCreateDialog] = useState(false);
-	const [showInviteDialog, setShowInviteDialog] = useState(false);
-	const [showSetStandingDialog, setShowSetStandingDialog] = useState(false);
-	const [showAddEditorDialog, setShowAddEditorDialog] = useState(false);
+	const [activeTab, setActiveTab] = useState<StandingsTab>("contacts");
+
+	const tabs: { id: StandingsTab; label: string; icon: React.ReactNode }[] = [
+		{ id: "contacts", label: "Contacts", icon: <BookUser size={14} /> },
+		{ id: "registries", label: "Registries", icon: <Globe size={14} /> },
+		{ id: "my-registries", label: "My Registries", icon: <Star size={14} /> },
+	];
+
+	return (
+		<div className="mx-auto max-w-4xl p-6">
+			{/* Header */}
+			<div className="mb-6">
+				<h1 className="flex items-center gap-2 text-2xl font-bold text-zinc-100">
+					<Shield size={24} />
+					Standings
+				</h1>
+				<p className="mt-1 text-sm text-zinc-500">
+					Manage contacts, browse on-chain registries, and set standings
+				</p>
+			</div>
+
+			{/* Tabs */}
+			<div className="mb-6 flex gap-1 border-b border-zinc-800">
+				{tabs.map((tab) => (
+					<button
+						key={tab.id}
+						type="button"
+						onClick={() => setActiveTab(tab.id)}
+						className={`flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+							activeTab === tab.id
+								? "border-cyan-500 text-cyan-400"
+								: "border-transparent text-zinc-500 hover:text-zinc-300"
+						}`}
+					>
+						{tab.icon}
+						{tab.label}
+					</button>
+				))}
+			</div>
+
+			{/* Tab Content */}
+			{activeTab === "contacts" && <ContactsTab />}
+			{activeTab === "registries" && (
+				<RegistriesTab tenant={tenant} walletAddress={walletAddress} />
+			)}
+			{activeTab === "my-registries" && (
+				<MyRegistriesTab tenant={tenant} walletAddress={walletAddress} />
+			)}
+		</div>
+	);
+}
+
+// ── Contacts Tab ────────────────────────────────────────────────────────────
+
+function ContactsTab() {
+	const contacts = useContacts();
+	const addContact = useAddContact();
+	const updateContact = useUpdateContact();
+	const deleteContact = useDeleteContact();
+
+	const [showAddDialog, setShowAddDialog] = useState(false);
+	const [editingContact, setEditingContact] = useState<Contact | null>(null);
 	const [filterKind, setFilterKind] = useState<"all" | "character" | "tribe">("all");
-	const [filterStanding, setFilterStanding] = useState<number | null>(null);
 
-	// Read cached lists from IndexedDB
-	const lists =
-		useLiveQuery(
-			() => db.manifestStandingsLists.where("tenant").equals(tenant).toArray(),
-			[tenant],
-		) ?? [];
-
-	// Read cached entries for selected list
-	const allEntries =
-		useLiveQuery(
-			() =>
-				selectedListId
-					? db.manifestStandingEntries.where("listId").equals(selectedListId).toArray()
-					: ([] as ManifestStandingEntry[]),
-			[selectedListId],
-		) ?? [];
-
-	// Apply filters
-	const entries = useMemo(() => {
-		let filtered = allEntries;
+	const filtered = useMemo(() => {
+		let result = contacts;
 		if (filterKind !== "all") {
-			filtered = filtered.filter((e) => e.kind === filterKind);
+			result = result.filter((c) => c.kind === filterKind);
 		}
-		if (filterStanding !== null) {
-			filtered = filtered.filter((e) => e.standing === filterStanding);
-		}
-		return filtered.sort((a, b) => b.standing - a.standing || a.label.localeCompare(b.label));
-	}, [allEntries, filterKind, filterStanding]);
-
-	const selectedList = lists.find((l) => l.id === selectedListId) ?? null;
-
-	const addresses = getContractAddresses(tenant as TenantId);
-	const packageId = addresses.standings?.packageId;
-
-	// Discover lists from chain
-	const handleSync = useCallback(async () => {
-		if (!suiAddress) return;
-		console.log(
-			"[Standings] handleSync triggered, suiAddress:",
-			suiAddress,
-			"tenant:",
-			tenant,
+		return result.sort(
+			(a, b) =>
+				b.standing - a.standing ||
+				(a.characterName ?? a.tribeName ?? "").localeCompare(b.characterName ?? b.tribeName ?? ""),
 		);
-		setIsSyncing(true);
-		try {
-			await syncStandingsListsForUser(client, tenant as TenantId, suiAddress);
+	}, [contacts, filterKind]);
 
-			// Decrypt any pending list keys (needs wallet keypair)
-			if (keyPair) {
-				await decryptStandingsKeys(keyPair, tenant as TenantId);
-			}
-
-			// Sync entries for all lists that have a decryptedListKey
-			const cachedLists = await db.manifestStandingsLists
-				.where("tenant")
-				.equals(tenant)
-				.toArray();
-			for (const l of cachedLists) {
-				if (l.decryptedListKey) {
-					await syncStandingEntries(
-						client,
-						l.id,
-						l.decryptedListKey,
-						tenant as TenantId,
-					);
-				}
-			}
-		} catch {
-			// Sync error -- silently continue
-		} finally {
-			setIsSyncing(false);
-		}
-	}, [suiAddress, keyPair, client, tenant]);
-
-	// Auto-sync when suiAddress is available
-	const syncedRef = useRef<string | null>(null);
-	useEffect(() => {
-		if (suiAddress && syncedRef.current !== suiAddress) {
-			syncedRef.current = suiAddress;
-			handleSync();
-		}
-	}, [suiAddress, handleSync]);
-
-	// When key becomes available, decrypt pending list keys + sync entries
-	useEffect(() => {
-		const pending = lists.filter((l) => !l.decryptedListKey && l.encryptedListKey);
-		if (keyPair && pending.length > 0) {
-			decryptStandingsKeys(keyPair, tenant as TenantId).then(() => {
-				db.manifestStandingsLists
-					.where("tenant")
-					.equals(tenant)
-					.toArray()
-					.then((cachedLists) => {
-						for (const l of cachedLists) {
-							if (l.decryptedListKey) {
-								syncStandingEntries(
-									client,
-									l.id,
-									l.decryptedListKey,
-									tenant as TenantId,
-								);
-							}
-						}
-					});
-			});
-		}
-	}, [keyPair, lists, client, tenant]);
-
-	// Sync entries when a list is selected
-	useEffect(() => {
-		if (!selectedList?.decryptedListKey) return;
-		syncStandingEntries(
-			client,
-			selectedList.id,
-			selectedList.decryptedListKey,
-			tenant as TenantId,
-		);
-	}, [selectedList?.id, selectedList?.decryptedListKey, client, tenant]);
-
-	// Resolve character/tribe names for entries
-	const characterIds = useMemo(
-		() =>
-			entries
-				.filter((e) => e.kind === "character" && e.characterId != null)
-				.map((e) => e.characterId as number),
-		[entries],
-	);
+	// Resolve tribe names from manifest
 	const tribeIds = useMemo(
-		() =>
-			entries
-				.filter((e) => e.kind === "tribe" && e.tribeId != null)
-				.map((e) => e.tribeId as number),
-		[entries],
+		() => contacts.filter((c) => c.kind === "tribe" && c.tribeId).map((c) => c.tribeId as number),
+		[contacts],
 	);
-
-	const manifestChars = useLiveQuery(
-		() =>
-			characterIds.length > 0
-				? db.manifestCharacters
-						.filter((c) => characterIds.includes(Number(c.characterItemId)))
-						.toArray()
-				: [],
-		[characterIds.join(",")],
-	);
-	const charNameMap = useMemo(() => {
-		const map = new Map<number, string>();
-		for (const c of manifestChars ?? []) {
-			if (c.name && c.characterItemId) {
-				map.set(Number(c.characterItemId), c.name);
-			}
-		}
-		return map;
-	}, [manifestChars]);
-
 	const manifestTribes = useLiveQuery(
-		() =>
-			tribeIds.length > 0 ? db.manifestTribes.where("id").anyOf(tribeIds).toArray() : [],
+		() => (tribeIds.length > 0 ? db.manifestTribes.where("id").anyOf(tribeIds).toArray() : []),
 		[tribeIds.join(",")],
 	);
 	const tribeNameMap = useMemo(() => {
 		const map = new Map<number, string>();
-		for (const t of manifestTribes ?? []) {
-			map.set(t.id, t.name);
-		}
+		for (const t of manifestTribes ?? []) map.set(t.id, t.name);
 		return map;
 	}, [manifestTribes]);
 
-	// Entry count per list
-	const entryCountMap = useLiveQuery(async () => {
-		const map = new Map<string, number>();
-		for (const l of lists) {
-			const count = await db.manifestStandingEntries
-				.where("listId")
-				.equals(l.id)
-				.count();
-			map.set(l.id, count);
+	return (
+		<div className="space-y-4">
+			{/* Actions */}
+			<div className="flex items-center justify-between">
+				<div className="flex items-center gap-3">
+					<div className="flex items-center gap-1.5">
+						<Filter size={14} className="text-zinc-600" />
+						<select
+							value={filterKind}
+							onChange={(e) => setFilterKind(e.target.value as "all" | "character" | "tribe")}
+							className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:border-cyan-500 focus:outline-none"
+						>
+							<option value="all">All Types</option>
+							<option value="character">Characters</option>
+							<option value="tribe">Tribes</option>
+						</select>
+					</div>
+					<span className="text-xs text-zinc-600">
+						{filtered.length} contact{filtered.length !== 1 ? "s" : ""}
+					</span>
+				</div>
+				<button
+					type="button"
+					onClick={() => setShowAddDialog(true)}
+					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500"
+				>
+					<Plus size={14} />
+					Add Contact
+				</button>
+			</div>
+
+			{/* Contact List */}
+			{filtered.length === 0 ? (
+				<EmptyState
+					icon={<BookUser size={48} className="text-zinc-700" />}
+					title="No contacts"
+					description="Add characters or tribes to track their standings locally."
+				/>
+			) : (
+				<div className="divide-y divide-zinc-800/50 rounded-lg border border-zinc-800 bg-zinc-900/50">
+					{filtered.map((contact) => {
+						const displayName =
+							contact.kind === "character"
+								? (contact.characterName ?? `Character #${contact.characterId}`)
+								: (contact.tribeName ??
+									tribeNameMap.get(contact.tribeId ?? 0) ??
+									`Tribe #${contact.tribeId}`);
+						return (
+							<div key={contact.id} className="flex items-center justify-between px-4 py-3">
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-2">
+										<span className="text-sm font-medium text-zinc-200">{displayName}</span>
+										<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
+											{contact.kind}
+										</span>
+										<StandingBadge standing={contact.standing} source="contacts" />
+									</div>
+									{contact.notes && <p className="mt-0.5 text-xs text-zinc-500">{contact.notes}</p>}
+								</div>
+								<div className="flex shrink-0 items-center gap-1">
+									<button
+										type="button"
+										onClick={() => setEditingContact(contact)}
+										title="Edit contact"
+										className="rounded p-1 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+									>
+										<Pencil size={14} />
+									</button>
+									<button
+										type="button"
+										onClick={() => deleteContact(contact.id)}
+										title="Delete contact"
+										className="rounded p-1 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-red-400"
+									>
+										<Trash2 size={14} />
+									</button>
+								</div>
+							</div>
+						);
+					})}
+				</div>
+			)}
+
+			{/* Add Contact Dialog */}
+			{showAddDialog && (
+				<AddContactDialog onClose={() => setShowAddDialog(false)} onAdd={addContact} />
+			)}
+
+			{/* Edit Contact Dialog */}
+			{editingContact && (
+				<EditContactDialog
+					contact={editingContact}
+					onClose={() => setEditingContact(null)}
+					onUpdate={updateContact}
+				/>
+			)}
+		</div>
+	);
+}
+
+// ── Registries Tab ──────────────────────────────────────────────────────────
+
+function RegistriesTab({
+	tenant,
+}: {
+	tenant: string;
+	walletAddress?: string;
+}) {
+	const client = useSuiClient();
+	const subscribed = useSubscribedRegistries(tenant);
+	const subscribe = useSubscribeRegistry();
+	const unsubscribe = useUnsubscribeRegistry();
+	const syncStandings = useSyncRegistryStandings();
+
+	const [allRegistries, setAllRegistries] = useState<StandingsRegistryInfo[]>([]);
+	const [isLoading, setIsLoading] = useState(false);
+	const [selectedRegistryId, setSelectedRegistryId] = useState<string | null>(null);
+
+	const addresses = getContractAddresses(tenant as TenantId);
+	const packageId = addresses.standingsRegistry?.packageId;
+
+	// Fetch all registries from chain
+	const handleBrowse = useCallback(async () => {
+		if (!packageId) return;
+		setIsLoading(true);
+		try {
+			const registries = await queryAllRegistries(client, packageId);
+			setAllRegistries(registries);
+		} catch {
+			// Fetch error
+		} finally {
+			setIsLoading(false);
+		}
+	}, [client, packageId]);
+
+	// Auto-fetch on mount
+	const fetchedRef = useRef(false);
+	useEffect(() => {
+		if (packageId && !fetchedRef.current) {
+			fetchedRef.current = true;
+			handleBrowse();
+		}
+	}, [packageId, handleBrowse]);
+
+	const subscribedIds = useMemo(() => new Set(subscribed.map((s) => s.id)), [subscribed]);
+
+	// Resolve creator names from manifest
+	const creatorAddresses = useMemo(
+		() => [...new Set(allRegistries.map((r) => r.owner))],
+		[allRegistries],
+	);
+	const manifestChars = useLiveQuery(
+		() =>
+			creatorAddresses.length > 0
+				? db.manifestCharacters.where("suiAddress").anyOf(creatorAddresses).toArray()
+				: [],
+		[creatorAddresses.join(",")],
+	);
+	const creatorNameMap = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const c of manifestChars ?? []) {
+			if (c.name) map.set(c.suiAddress, c.name);
 		}
 		return map;
-	}, [lists.map((l) => l.id).join(",")]);
+	}, [manifestChars]);
 
-	const isCreator = !!(walletAddress && selectedList && selectedList.creator === walletAddress);
-	const isEditor = !!(selectedList?.isEditor);
+	// Selected registry standings
+	const selectedStandings = useRegistryStandings(selectedRegistryId);
 
 	return (
-		<div className="flex h-full gap-6 p-6">
-			{/* Left: List Panel */}
-			<div className="w-72 shrink-0 space-y-3">
-				<div className="flex items-center justify-between">
-					<h1 className="flex items-center gap-2 text-lg font-bold text-zinc-100">
-						<BookUser size={20} />
-						Standings
-					</h1>
-					<div className="flex items-center gap-1.5">
-						{suiAddress && (
-							<button
-								type="button"
-								onClick={handleSync}
-								disabled={isSyncing}
-								className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300 disabled:opacity-50"
-								title="Sync from chain"
-							>
-								<RefreshCw
-									size={14}
-									className={isSyncing ? "animate-spin" : ""}
-								/>
-							</button>
-						)}
-						{walletAddress && keyPair && packageId && (
-							<button
-								type="button"
-								onClick={() => setShowCreateDialog(true)}
-								className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-cyan-500"
-							>
-								<Plus size={12} />
-								Create
-							</button>
-						)}
-					</div>
-				</div>
-				<p className="text-xs text-zinc-600">
-					Encrypted contact standings shared with trusted players
-				</p>
+		<div className="space-y-4">
+			{/* Actions */}
+			<div className="flex items-center justify-between">
+				<span className="text-xs text-zinc-600">
+					{allRegistries.length} registr{allRegistries.length !== 1 ? "ies" : "y"} found
+					{" -- "}
+					{subscribed.length} subscribed
+				</span>
+				<button
+					type="button"
+					onClick={handleBrowse}
+					disabled={isLoading || !packageId}
+					className="flex items-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-300 disabled:opacity-50"
+				>
+					<RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
+					Browse
+				</button>
+			</div>
 
-				{lists.length === 0 ? (
-					<div className="flex flex-col items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 py-12">
-						<Shield size={36} className="text-zinc-700" />
-						<p className="text-xs text-zinc-500">
-							{isSyncing || isLoadingKey
-								? "Syncing..."
-								: !suiAddress
-									? "Select a character to discover your standings."
-									: "No standings lists found."}
-						</p>
-					</div>
-				) : (
-					<div className="space-y-1.5">
-						{lists.map((l) => (
-							<button
-								key={l.id}
-								type="button"
-								onClick={() =>
-									setSelectedListId(l.id === selectedListId ? null : l.id)
-								}
-								className={`w-full rounded-lg border p-3 text-left transition-colors ${
-									l.id === selectedListId
-										? "border-cyan-500/50 bg-cyan-500/5"
-										: "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
+			{!packageId && (
+				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-8 text-center text-sm text-zinc-600">
+					Standings Registry contract not yet published for this tenant.
+				</div>
+			)}
+
+			{/* Registry List */}
+			{allRegistries.length === 0 && packageId ? (
+				<EmptyState
+					icon={<Globe size={48} className="text-zinc-700" />}
+					title="No registries found"
+					description={
+						isLoading
+							? "Searching chain..."
+							: "No StandingsRegistry objects found on-chain. Create one in the My Registries tab."
+					}
+				/>
+			) : (
+				<div className="space-y-2">
+					{allRegistries.map((registry) => {
+						const isSubscribed = subscribedIds.has(registry.objectId);
+						const isSelected = selectedRegistryId === registry.objectId;
+						const creatorName = creatorNameMap.get(registry.owner);
+
+						return (
+							<div
+								key={registry.objectId}
+								className={`rounded-lg border p-4 transition-colors ${
+									isSelected ? "border-cyan-500/50 bg-cyan-500/5" : "border-zinc-800 bg-zinc-900/50"
 								}`}
 							>
 								<div className="flex items-center justify-between">
-									<p className="truncate text-sm font-medium text-zinc-200">
-										{l.name}
-									</p>
-									<span className="shrink-0 text-xs text-zinc-600">
-										{entryCountMap?.get(l.id) ?? 0}
-									</span>
+									<button
+										type="button"
+										onClick={() => setSelectedRegistryId(isSelected ? null : registry.objectId)}
+										className="min-w-0 flex-1 text-left"
+									>
+										<div className="flex items-center gap-2">
+											<span className="text-sm font-medium text-zinc-200">{registry.name}</span>
+											<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400">
+												{registry.ticker}
+											</span>
+										</div>
+										<div className="mt-1 flex items-center gap-3 text-xs text-zinc-600">
+											<span>
+												Creator:{" "}
+												{creatorName ?? (
+													<CopyAddress
+														address={registry.owner}
+														sliceStart={8}
+														sliceEnd={4}
+														className="text-zinc-500"
+													/>
+												)}
+											</span>
+											<span>
+												{registry.admins.length} admin{registry.admins.length !== 1 ? "s" : ""}
+											</span>
+											<span>
+												Default:{" "}
+												<StandingBadge standing={standingToDisplay(registry.defaultStanding)} />
+											</span>
+										</div>
+									</button>
+									<div className="flex shrink-0 items-center gap-1.5">
+										{isSubscribed ? (
+											<button
+												type="button"
+												onClick={() => unsubscribe(registry.objectId)}
+												className="rounded-lg bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-700"
+											>
+												Unsubscribe
+											</button>
+										) : (
+											<button
+												type="button"
+												onClick={() => subscribe(registry, tenant, creatorName)}
+												className="rounded-lg bg-cyan-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-cyan-500"
+											>
+												Subscribe
+											</button>
+										)}
+										{isSubscribed && (
+											<button
+												type="button"
+												onClick={() => syncStandings(client, registry.objectId)}
+												title="Sync standings"
+												className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+											>
+												<RefreshCw size={14} />
+											</button>
+										)}
+									</div>
 								</div>
-								{l.description && (
-									<p className="mt-0.5 truncate text-xs text-zinc-500">
-										{l.description}
-									</p>
+
+								{/* Expanded: show standings */}
+								{isSelected && isSubscribed && (
+									<RegistryStandingsView
+										standings={selectedStandings}
+										defaultStanding={registry.defaultStanding}
+									/>
 								)}
-							</button>
-						))}
-					</div>
-				)}
+							</div>
+						);
+					})}
+				</div>
+			)}
+		</div>
+	);
+}
+
+// ── My Registries Tab ───────────────────────────────────────────────────────
+
+function MyRegistriesTab({
+	tenant,
+	walletAddress,
+}: {
+	tenant: string;
+	walletAddress?: string;
+}) {
+	const client = useSuiClient();
+	const dAppKit = useDAppKit();
+
+	const [myRegistries, setMyRegistries] = useState<StandingsRegistryInfo[]>([]);
+	const [isLoading, setIsLoading] = useState(false);
+	const [showCreateDialog, setShowCreateDialog] = useState(false);
+	const [selectedRegistryId, setSelectedRegistryId] = useState<string | null>(null);
+	const [showSetStandingDialog, setShowSetStandingDialog] = useState(false);
+	const [showAddAdminDialog, setShowAddAdminDialog] = useState(false);
+
+	const addresses = getContractAddresses(tenant as TenantId);
+	const packageId = addresses.standingsRegistry?.packageId;
+
+	// Fetch registries owned by wallet
+	const handleRefresh = useCallback(async () => {
+		if (!packageId) return;
+		setIsLoading(true);
+		try {
+			const all = await queryAllRegistries(client, packageId);
+			// Show registries where user is owner or admin
+			const mine = walletAddress
+				? all.filter((r) => r.owner === walletAddress || r.admins.includes(walletAddress))
+				: [];
+			setMyRegistries(mine);
+		} catch {
+			// Fetch error
+		} finally {
+			setIsLoading(false);
+		}
+	}, [client, packageId, walletAddress]);
+
+	const fetchedRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (packageId && walletAddress && fetchedRef.current !== walletAddress) {
+			fetchedRef.current = walletAddress;
+			handleRefresh();
+		}
+	}, [packageId, walletAddress, handleRefresh]);
+
+	const selectedRegistry = selectedRegistryId
+		? (myRegistries.find((r) => r.objectId === selectedRegistryId) ?? null)
+		: null;
+
+	const isOwner = !!(walletAddress && selectedRegistry?.owner === walletAddress);
+
+	if (!walletAddress) {
+		return (
+			<EmptyState
+				icon={<Star size={48} className="text-zinc-700" />}
+				title="Connect wallet"
+				description="Connect your wallet to create and manage standings registries."
+			/>
+		);
+	}
+
+	return (
+		<div className="space-y-4">
+			{/* Actions */}
+			<div className="flex items-center justify-between">
+				<span className="text-xs text-zinc-600">
+					{myRegistries.length} registr{myRegistries.length !== 1 ? "ies" : "y"}
+				</span>
+				<div className="flex items-center gap-2">
+					<button
+						type="button"
+						onClick={handleRefresh}
+						disabled={isLoading || !packageId}
+						className="flex items-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-300 disabled:opacity-50"
+					>
+						<RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
+						Refresh
+					</button>
+					{packageId && (
+						<button
+							type="button"
+							onClick={() => setShowCreateDialog(true)}
+							className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500"
+						>
+							<Plus size={14} />
+							Create Registry
+						</button>
+					)}
+				</div>
 			</div>
 
-			{/* Right: Detail Panel */}
-			<div className="min-w-0 flex-1">
-				{selectedList ? (
-					<div className="space-y-4">
-						{/* List Header */}
-						<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-							<div className="flex items-start justify-between">
-								<div>
-									<h2 className="text-lg font-semibold text-zinc-100">
-										{selectedList.name}
-									</h2>
-									{selectedList.description && (
-										<p className="mt-0.5 text-sm text-zinc-500">
-											{selectedList.description}
-										</p>
-									)}
-									<div className="mt-2 flex items-center gap-3 text-xs text-zinc-600">
+			{!packageId && (
+				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-8 text-center text-sm text-zinc-600">
+					Standings Registry contract not yet published for this tenant.
+				</div>
+			)}
+
+			{/* Registry List */}
+			{myRegistries.length === 0 && packageId ? (
+				<EmptyState
+					icon={<Star size={48} className="text-zinc-700" />}
+					title="No registries"
+					description={
+						isLoading
+							? "Loading..."
+							: "You have no standings registries. Create one to get started."
+					}
+				/>
+			) : (
+				<div className="space-y-2">
+					{myRegistries.map((registry) => {
+						const isSelected = selectedRegistryId === registry.objectId;
+						return (
+							<div
+								key={registry.objectId}
+								className={`rounded-lg border p-4 transition-colors ${
+									isSelected ? "border-cyan-500/50 bg-cyan-500/5" : "border-zinc-800 bg-zinc-900/50"
+								}`}
+							>
+								<button
+									type="button"
+									onClick={() => setSelectedRegistryId(isSelected ? null : registry.objectId)}
+									className="w-full text-left"
+								>
+									<div className="flex items-center gap-2">
+										<span className="text-sm font-medium text-zinc-200">{registry.name}</span>
+										<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400">
+											{registry.ticker}
+										</span>
+										{registry.owner === walletAddress && (
+											<span className="rounded bg-cyan-900/30 px-1.5 py-0.5 text-[10px] text-cyan-400">
+												owner
+											</span>
+										)}
+									</div>
+									<div className="mt-1 flex items-center gap-3 text-xs text-zinc-600">
+										<CopyAddress
+											address={registry.objectId}
+											sliceStart={14}
+											sliceEnd={6}
+											className="text-zinc-600"
+										/>
 										<span>
-											Creator:{" "}
-											<CopyAddress
-												address={selectedList.creator}
-												sliceStart={8}
-												sliceEnd={4}
-												className="text-zinc-500"
-											/>
+											{registry.admins.length} admin{registry.admins.length !== 1 ? "s" : ""}
 										</span>
 										<span>
-											{selectedList.editors.length} editor
-											{selectedList.editors.length !== 1 ? "s" : ""}
+											Default:{" "}
+											<StandingBadge standing={standingToDisplay(registry.defaultStanding)} />
 										</span>
 									</div>
+								</button>
 
-									{/* Editor list (visible to all) */}
-									{selectedList.editors.length > 0 && (
-										<div className="mt-2">
-											<p className="text-xs text-zinc-600">Editors:</p>
+								{/* Expanded: manage registry */}
+								{isSelected && (
+									<div className="mt-3 space-y-3 border-t border-zinc-800 pt-3">
+										{/* Admin list */}
+										<div>
+											<p className="text-xs text-zinc-500">Admins:</p>
 											<div className="mt-1 flex flex-wrap gap-1.5">
-												{selectedList.editors.map((addr) => (
+												{registry.admins.map((addr) => (
 													<span
 														key={addr}
 														className="inline-flex items-center gap-1 rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400"
@@ -409,267 +663,378 @@ export function Standings() {
 															sliceEnd={4}
 															className="text-zinc-500"
 														/>
-														{isCreator && addr !== walletAddress && (
+														{isOwner && addr !== walletAddress && (
 															<button
 																type="button"
 																onClick={async () => {
-																	if (!packageId || !walletAddress)
-																		return;
+																	if (!packageId || !walletAddress) return;
 																	try {
-																		const tx = buildRemoveEditor({
+																		const tx = buildRemoveRegistryAdmin({
 																			packageId,
-																			listId: selectedList.id,
-																			editorAddress: addr,
-																			senderAddress:
-																				walletAddress,
+																			registryId: registry.objectId,
+																			adminAddress: addr,
+																			senderAddress: walletAddress,
 																		});
-																		await dAppKit.signAndExecuteTransaction(
-																			{ transaction: tx },
-																		);
-																		await new Promise((r) =>
-																			setTimeout(r, 2000),
-																		);
-																		handleSync();
+																		await dAppKit.signAndExecuteTransaction({
+																			transaction: tx,
+																		});
+																		await new Promise((r) => setTimeout(r, 2000));
+																		handleRefresh();
 																	} catch {
 																		// TX failed
 																	}
 																}}
-																title="Remove editor"
+																title="Remove admin"
 																className="text-zinc-600 hover:text-red-400"
 															>
-																<UserMinus size={10} />
+																<Trash2 size={10} />
 															</button>
 														)}
 													</span>
 												))}
 											</div>
 										</div>
-									)}
-								</div>
 
-								{/* Actions */}
-								<div className="flex items-center gap-1.5">
-									{walletAddress && isEditor && packageId && (
-										<button
-											type="button"
-											onClick={() => setShowSetStandingDialog(true)}
-											className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-cyan-500"
-										>
-											<Plus size={12} />
-											Set Standing
-										</button>
-									)}
-									{isCreator && packageId && (
-										<>
-											<button
-												type="button"
-												onClick={() => setShowInviteDialog(true)}
-												className="flex items-center gap-1 rounded-lg bg-zinc-800 px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
-											>
-												<UserPlus size={12} />
-												Invite
-											</button>
-											<button
-												type="button"
-												onClick={() => setShowAddEditorDialog(true)}
-												className="flex items-center gap-1 rounded-lg bg-zinc-800 px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
-											>
-												<UserPlus size={12} />
-												Add Editor
-											</button>
-										</>
-									)}
-								</div>
-							</div>
-						</div>
-
-						{/* Filters */}
-						<div className="flex items-center gap-3">
-							<div className="flex items-center gap-1.5">
-								<Filter size={14} className="text-zinc-600" />
-								<select
-									value={filterKind}
-									onChange={(e) =>
-										setFilterKind(
-											e.target.value as "all" | "character" | "tribe",
-										)
-									}
-									className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:border-cyan-500 focus:outline-none"
-								>
-									<option value="all">All Types</option>
-									<option value="character">Characters</option>
-									<option value="tribe">Tribes</option>
-								</select>
-							</div>
-							<select
-								value={filterStanding ?? ""}
-								onChange={(e) =>
-									setFilterStanding(
-										e.target.value === "" ? null : Number(e.target.value),
-									)
-								}
-								className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 focus:border-cyan-500 focus:outline-none"
-							>
-								<option value="">All Standings</option>
-								{[3, 2, 1, 0, -1, -2, -3].map((v) => (
-									<option key={v} value={v}>
-										{v > 0 ? `+${v}` : v}{" "}
-										{STANDING_LABELS.get(v) ?? "Unknown"}
-									</option>
-								))}
-							</select>
-							<span className="text-xs text-zinc-600">
-								{entries.length} entr{entries.length !== 1 ? "ies" : "y"}
-							</span>
-						</div>
-
-						{/* Entries */}
-						{entries.length === 0 ? (
-							<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-8 text-center text-sm text-zinc-600">
-								{allEntries.length === 0
-									? "No standing entries yet"
-									: "No entries match the current filters"}
-							</div>
-						) : (
-							<div className="divide-y divide-zinc-800/50 rounded-lg border border-zinc-800 bg-zinc-900/50">
-								{entries.map((entry) => {
-									const name =
-										entry.kind === "character" && entry.characterId != null
-											? charNameMap.get(entry.characterId) ??
-												`Character #${entry.characterId}`
-											: entry.kind === "tribe" && entry.tribeId != null
-												? tribeNameMap.get(entry.tribeId) ??
-													`Tribe #${entry.tribeId}`
-												: entry.label;
-									const canRemove =
-										isCreator ||
-										(walletAddress && entry.addedBy === walletAddress);
-									return (
-										<div
-											key={entry.id}
-											className="flex items-center justify-between px-4 py-3"
-										>
-											<div className="min-w-0 flex-1">
-												<div className="flex items-center gap-2">
-													<span className="text-sm font-medium text-zinc-200">
-														{name}
-													</span>
-													<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
-														{entry.kind}
-													</span>
-													<StandingBadge standing={entry.standing} />
-												</div>
-												{entry.description && (
-													<p className="mt-0.5 text-xs text-zinc-500">
-														{entry.description}
-													</p>
-												)}
-												<p className="mt-0.5 text-[10px] text-zinc-600">
-													Updated{" "}
-													{new Date(
-														entry.updatedAtMs,
-													).toLocaleDateString()}
-												</p>
-											</div>
-											{canRemove && packageId && walletAddress && (
+										{/* Actions */}
+										<div className="flex items-center gap-2">
+											{packageId && (
 												<button
 													type="button"
-													onClick={async () => {
-														try {
-															const tx = buildRemoveStanding({
-																packageId,
-																listId: entry.listId,
-																entryId: entry.entryId,
-																senderAddress: walletAddress,
-															});
-															await dAppKit.signAndExecuteTransaction(
-																{ transaction: tx },
-															);
-															await db.manifestStandingEntries.delete(
-																entry.id,
-															);
-														} catch {
-															// TX failed
-														}
-													}}
-													title="Remove standing"
-													className="shrink-0 rounded p-1 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-red-400"
+													onClick={() => setShowSetStandingDialog(true)}
+													className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-cyan-500"
 												>
-													<Trash2 size={14} />
+													<Plus size={12} />
+													Set Standing
+												</button>
+											)}
+											{isOwner && packageId && (
+												<button
+													type="button"
+													onClick={() => setShowAddAdminDialog(true)}
+													className="flex items-center gap-1 rounded-lg bg-zinc-800 px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
+												>
+													<UserPlus size={12} />
+													Add Admin
 												</button>
 											)}
 										</div>
-									);
-								})}
+
+										{/* Registry standings */}
+										<RegistryStandingsManagement
+											registry={registry}
+											packageId={packageId ?? ""}
+											walletAddress={walletAddress}
+											onRefresh={handleRefresh}
+										/>
+									</div>
+								)}
 							</div>
-						)}
-					</div>
-				) : (
-					<div className="flex h-full flex-col items-center justify-center gap-3">
-						<BookUser size={48} className="text-zinc-800" />
-						<p className="text-sm text-zinc-600">
-							Select a standings list to view entries
-						</p>
-					</div>
-				)}
-			</div>
+						);
+					})}
+				</div>
+			)}
 
 			{/* Dialogs */}
-			{showCreateDialog && packageId && walletAddress && keyPair && (
-				<CreateListDialog
+			{showCreateDialog && packageId && walletAddress && (
+				<CreateRegistryDialog
 					packageId={packageId}
-					walletKeyPair={keyPair}
 					senderAddress={walletAddress}
-					tenant={tenant}
 					onClose={() => setShowCreateDialog(false)}
-					onCreated={handleSync}
+					onCreated={handleRefresh}
 				/>
 			)}
 
-			{showInviteDialog && selectedList && packageId && walletAddress && (
-				<InviteMemberDialog
+			{showSetStandingDialog && selectedRegistry && packageId && walletAddress && (
+				<SetRegistryStandingDialog
 					packageId={packageId}
-					list={selectedList}
-					senderAddress={walletAddress}
-					onClose={() => setShowInviteDialog(false)}
-					onInvited={handleSync}
-				/>
-			)}
-
-			{showSetStandingDialog && selectedList && packageId && walletAddress && (
-				<SetStandingDialog
-					packageId={packageId}
-					list={selectedList}
+					registry={selectedRegistry}
 					senderAddress={walletAddress}
 					tenant={tenant}
 					onClose={() => setShowSetStandingDialog(false)}
-					onAdded={() => {
-						if (selectedList.decryptedListKey) {
-							syncStandingEntries(
-								client,
-								selectedList.id,
-								selectedList.decryptedListKey,
-								tenant as TenantId,
-							);
-						}
-					}}
+					onSet={handleRefresh}
 				/>
 			)}
 
-			{showAddEditorDialog && selectedList && packageId && walletAddress && (
-				<AddEditorDialog
+			{showAddAdminDialog && selectedRegistry && packageId && walletAddress && (
+				<AddAdminDialog
 					packageId={packageId}
-					listId={selectedList.id}
+					registryId={selectedRegistry.objectId}
 					senderAddress={walletAddress}
-					onClose={() => setShowAddEditorDialog(false)}
-					onAdded={handleSync}
+					onClose={() => setShowAddAdminDialog(false)}
+					onAdded={handleRefresh}
 				/>
 			)}
 		</div>
 	);
 }
 
-// ── Dialogs ─────────────────────────────────────────────────────────────────
+// ── Registry Standings View (read-only, for Registries tab) ─────────────────
+
+function RegistryStandingsView({
+	standings,
+}: {
+	standings: RegistryStanding[];
+	defaultStanding: number;
+}) {
+	// Resolve names
+	const tribeIds = useMemo(
+		() => standings.filter((s) => s.kind === "tribe").map((s) => s.tribeId as number),
+		[standings],
+	);
+	const charIds = useMemo(
+		() => standings.filter((s) => s.kind === "character").map((s) => s.characterId as number),
+		[standings],
+	);
+
+	const manifestTribes = useLiveQuery(
+		() => (tribeIds.length > 0 ? db.manifestTribes.where("id").anyOf(tribeIds).toArray() : []),
+		[tribeIds.join(",")],
+	);
+	const manifestChars = useLiveQuery(
+		() =>
+			charIds.length > 0
+				? db.manifestCharacters.filter((c) => charIds.includes(Number(c.characterItemId))).toArray()
+				: [],
+		[charIds.join(",")],
+	);
+
+	const tribeNameMap = useMemo(() => {
+		const map = new Map<number, string>();
+		for (const t of manifestTribes ?? []) map.set(t.id, t.name);
+		return map;
+	}, [manifestTribes]);
+
+	const charNameMap = useMemo(() => {
+		const map = new Map<number, string>();
+		for (const c of manifestChars ?? []) {
+			if (c.characterItemId) map.set(Number(c.characterItemId), c.name);
+		}
+		return map;
+	}, [manifestChars]);
+
+	if (standings.length === 0) {
+		return (
+			<div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-6 text-center text-xs text-zinc-600">
+				No standings set in this registry
+			</div>
+		);
+	}
+
+	const sorted = [...standings].sort((a, b) => b.standing - a.standing);
+
+	return (
+		<div className="mt-3 divide-y divide-zinc-800/50 rounded-lg border border-zinc-800 bg-zinc-900/50">
+			{sorted.map((entry) => {
+				const name =
+					entry.kind === "tribe"
+						? (tribeNameMap.get(entry.tribeId ?? 0) ?? `Tribe #${entry.tribeId}`)
+						: (charNameMap.get(entry.characterId ?? 0) ?? `Character #${entry.characterId}`);
+				return (
+					<div key={entry.id} className="flex items-center justify-between px-4 py-2.5">
+						<div className="flex items-center gap-2">
+							<span className="text-sm text-zinc-300">{name}</span>
+							<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
+								{entry.kind}
+							</span>
+						</div>
+						<StandingBadge standing={standingToDisplay(entry.standing)} />
+					</div>
+				);
+			})}
+		</div>
+	);
+}
+
+// ── Registry Standings Management (for My Registries tab) ───────────────────
+
+function RegistryStandingsManagement({
+	registry,
+	packageId,
+	walletAddress,
+}: {
+	registry: StandingsRegistryInfo;
+	packageId: string;
+	walletAddress: string;
+	onRefresh: () => void;
+}) {
+	const client = useSuiClient();
+	const dAppKit = useDAppKit();
+	const [standings, setStandings] = useState<
+		Array<{ kind: "tribe" | "character"; id: number; standing: number }>
+	>([]);
+	const [isLoading, setIsLoading] = useState(false);
+
+	// Fetch standings
+	const fetchStandings = useCallback(async () => {
+		setIsLoading(true);
+		try {
+			const { queryRegistryStandings } = await import("@tehfrontier/chain-shared");
+			const entries = await queryRegistryStandings(client, registry.objectId);
+			setStandings(
+				entries.map((e) => ({
+					kind: e.kind,
+					id: (e.kind === "tribe" ? e.tribeId : e.characterId) ?? 0,
+					standing: e.standing,
+				})),
+			);
+		} catch {
+			// Fetch error
+		} finally {
+			setIsLoading(false);
+		}
+	}, [client, registry.objectId]);
+
+	const fetchedRef = useRef(false);
+	useEffect(() => {
+		if (!fetchedRef.current) {
+			fetchedRef.current = true;
+			fetchStandings();
+		}
+	}, [fetchStandings]);
+
+	// Resolve names
+	const tribeIds = useMemo(
+		() => standings.filter((s) => s.kind === "tribe").map((s) => s.id),
+		[standings],
+	);
+	const charIds = useMemo(
+		() => standings.filter((s) => s.kind === "character").map((s) => s.id),
+		[standings],
+	);
+
+	const manifestTribes = useLiveQuery(
+		() => (tribeIds.length > 0 ? db.manifestTribes.where("id").anyOf(tribeIds).toArray() : []),
+		[tribeIds.join(",")],
+	);
+	const manifestChars = useLiveQuery(
+		() =>
+			charIds.length > 0
+				? db.manifestCharacters.filter((c) => charIds.includes(Number(c.characterItemId))).toArray()
+				: [],
+		[charIds.join(",")],
+	);
+
+	const tribeNameMap = useMemo(() => {
+		const map = new Map<number, string>();
+		for (const t of manifestTribes ?? []) map.set(t.id, t.name);
+		return map;
+	}, [manifestTribes]);
+
+	const charNameMap = useMemo(() => {
+		const map = new Map<number, string>();
+		for (const c of manifestChars ?? []) {
+			if (c.characterItemId) map.set(Number(c.characterItemId), c.name);
+		}
+		return map;
+	}, [manifestChars]);
+
+	const handleRemove = async (kind: "tribe" | "character", entityId: number) => {
+		if (!packageId || !walletAddress) return;
+		try {
+			const tx =
+				kind === "tribe"
+					? buildRemoveTribeStanding({
+							packageId,
+							registryId: registry.objectId,
+							tribeId: entityId,
+							senderAddress: walletAddress,
+						})
+					: buildRemoveCharacterStanding({
+							packageId,
+							registryId: registry.objectId,
+							characterId: entityId,
+							senderAddress: walletAddress,
+						});
+			await dAppKit.signAndExecuteTransaction({ transaction: tx });
+			await new Promise((r) => setTimeout(r, 2000));
+			fetchStandings();
+		} catch {
+			// TX failed
+		}
+	};
+
+	if (isLoading) {
+		return (
+			<div className="flex items-center gap-2 text-xs text-zinc-500">
+				<Loader2 size={14} className="animate-spin" />
+				Loading standings...
+			</div>
+		);
+	}
+
+	const sorted = [...standings].sort((a, b) => b.standing - a.standing);
+
+	return (
+		<div>
+			<div className="flex items-center justify-between">
+				<p className="text-xs text-zinc-500">
+					{standings.length} standing{standings.length !== 1 ? "s" : ""}
+				</p>
+				<button
+					type="button"
+					onClick={fetchStandings}
+					className="text-xs text-zinc-600 transition-colors hover:text-zinc-400"
+				>
+					<RefreshCw size={12} />
+				</button>
+			</div>
+			{sorted.length > 0 && (
+				<div className="mt-2 divide-y divide-zinc-800/50 rounded-lg border border-zinc-800 bg-zinc-900/50">
+					{sorted.map((entry) => {
+						const name =
+							entry.kind === "tribe"
+								? (tribeNameMap.get(entry.id) ?? `Tribe #${entry.id}`)
+								: (charNameMap.get(entry.id) ?? `Character #${entry.id}`);
+						return (
+							<div
+								key={`${entry.kind}:${entry.id}`}
+								className="flex items-center justify-between px-4 py-2"
+							>
+								<div className="flex items-center gap-2">
+									<span className="text-sm text-zinc-300">{name}</span>
+									<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
+										{entry.kind}
+									</span>
+								</div>
+								<div className="flex items-center gap-2">
+									<StandingBadge standing={standingToDisplay(entry.standing)} />
+									<button
+										type="button"
+										onClick={() => handleRemove(entry.kind, entry.id)}
+										title="Remove standing"
+										className="rounded p-1 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-red-400"
+									>
+										<Trash2 size={12} />
+									</button>
+								</div>
+							</div>
+						);
+					})}
+				</div>
+			)}
+		</div>
+	);
+}
+
+// ── Shared Sub-Components ───────────────────────────────────────────────────
+
+function EmptyState({
+	icon,
+	title,
+	description,
+}: {
+	icon: React.ReactNode;
+	title: string;
+	description: string;
+}) {
+	return (
+		<div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-800 bg-zinc-900/50 py-16">
+			{icon}
+			<p className="text-sm text-zinc-400">{title}</p>
+			<p className="text-xs text-zinc-600">{description}</p>
+		</div>
+	);
+}
 
 function DialogOverlay({
 	children,
@@ -697,101 +1062,346 @@ function DialogOverlay({
 	);
 }
 
-function CreateListDialog({
+// ── Add Contact Dialog ──────────────────────────────────────────────────────
+
+function AddContactDialog({
+	onClose,
+	onAdd,
+}: {
+	onClose: () => void;
+	onAdd: (params: {
+		kind: "character" | "tribe";
+		characterId?: number;
+		characterName?: string;
+		tribeId?: number;
+		tribeName?: string;
+		standing: number;
+		notes?: string;
+	}) => Promise<Contact>;
+}) {
+	const [kind, setKind] = useState<"character" | "tribe">("character");
+	const [standing, setStanding] = useState(0);
+	const [notes, setNotes] = useState("");
+	const [isPending, setIsPending] = useState(false);
+
+	// Character selection
+	const [selectedCharacter, setSelectedCharacter] = useState<{
+		characterItemId: string;
+		name: string;
+	} | null>(null);
+
+	// Tribe selection
+	const [tribeSearch, setTribeSearch] = useState("");
+	const allTribes = useLiveQuery(() => db.manifestTribes.toArray()) ?? [];
+	const matchedTribes = useMemo(() => {
+		if (!tribeSearch || tribeSearch.length < 2) return [];
+		const q = tribeSearch.toLowerCase();
+		return allTribes
+			.filter(
+				(t) =>
+					t.name.toLowerCase().includes(q) ||
+					t.nameShort.toLowerCase().includes(q) ||
+					String(t.id) === tribeSearch,
+			)
+			.slice(0, 10);
+	}, [allTribes, tribeSearch]);
+	const [selectedTribe, setSelectedTribe] = useState<{
+		id: number;
+		name: string;
+	} | null>(null);
+
+	const canSubmit =
+		(kind === "character" && selectedCharacter) || (kind === "tribe" && selectedTribe);
+
+	const handleAdd = async () => {
+		if (!canSubmit) return;
+		setIsPending(true);
+		try {
+			if (kind === "character" && selectedCharacter) {
+				await onAdd({
+					kind: "character",
+					characterId: Number(selectedCharacter.characterItemId),
+					characterName: selectedCharacter.name,
+					standing,
+					notes,
+				});
+			} else if (kind === "tribe" && selectedTribe) {
+				await onAdd({
+					kind: "tribe",
+					tribeId: selectedTribe.id,
+					tribeName: selectedTribe.name,
+					standing,
+					notes,
+				});
+			}
+			onClose();
+		} catch {
+			// Add failed
+		} finally {
+			setIsPending(false);
+		}
+	};
+
+	return (
+		<DialogOverlay onClose={onClose}>
+			<h2 className="mb-4 text-lg font-semibold text-zinc-100">Add Contact</h2>
+
+			{/* Kind selector */}
+			<div className="mb-4 flex gap-2">
+				<button
+					type="button"
+					onClick={() => setKind("character")}
+					className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+						kind === "character"
+							? "bg-cyan-600 text-white"
+							: "bg-zinc-800 text-zinc-400 hover:text-zinc-300"
+					}`}
+				>
+					Character
+				</button>
+				<button
+					type="button"
+					onClick={() => setKind("tribe")}
+					className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+						kind === "tribe"
+							? "bg-cyan-600 text-white"
+							: "bg-zinc-800 text-zinc-400 hover:text-zinc-300"
+					}`}
+				>
+					Tribe
+				</button>
+			</div>
+
+			{/* Search */}
+			{kind === "character" ? (
+				<div className="mb-4">
+					<span className="mb-1 block text-xs text-zinc-400">Character</span>
+					{selectedCharacter ? (
+						<div className="flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
+							<span className="text-sm text-zinc-200">{selectedCharacter.name}</span>
+							<button
+								type="button"
+								onClick={() => setSelectedCharacter(null)}
+								className="text-xs text-zinc-500 hover:text-zinc-300"
+							>
+								Change
+							</button>
+						</div>
+					) : (
+						<ContactPicker
+							onSelect={(character) =>
+								setSelectedCharacter({
+									characterItemId: character.characterItemId,
+									name: character.name,
+								})
+							}
+							placeholder="Search characters..."
+						/>
+					)}
+				</div>
+			) : (
+				<div className="mb-4">
+					<span className="mb-1 block text-xs text-zinc-400">Tribe</span>
+					{selectedTribe ? (
+						<div className="flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
+							<span className="text-sm text-zinc-200">
+								{selectedTribe.name} (#{selectedTribe.id})
+							</span>
+							<button
+								type="button"
+								onClick={() => setSelectedTribe(null)}
+								className="text-xs text-zinc-500 hover:text-zinc-300"
+							>
+								Change
+							</button>
+						</div>
+					) : (
+						<div className="relative">
+							<input
+								type="text"
+								value={tribeSearch}
+								onChange={(e) => setTribeSearch(e.target.value)}
+								placeholder="Search tribes by name or ID..."
+								className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+							/>
+							{matchedTribes.length > 0 && (
+								<div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl">
+									{matchedTribes.map((t) => (
+										<button
+											key={t.id}
+											type="button"
+											onClick={() => {
+												setSelectedTribe({ id: t.id, name: t.name });
+												setTribeSearch("");
+											}}
+											className="w-full px-3 py-2 text-left text-sm text-zinc-300 transition-colors hover:bg-zinc-700"
+										>
+											{t.name} <span className="text-zinc-500">#{t.id}</span>
+										</button>
+									))}
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+			)}
+
+			{/* Standing */}
+			<div className="mb-3">
+				<span className="mb-1 block text-xs text-zinc-400">Standing</span>
+				<StandingSelect value={standing} onChange={setStanding} className="w-full" />
+			</div>
+
+			{/* Notes */}
+			<label className="mb-4 block">
+				<span className="mb-1 block text-xs text-zinc-400">Notes (optional)</span>
+				<textarea
+					value={notes}
+					onChange={(e) => setNotes(e.target.value)}
+					placeholder="Private notes about this contact..."
+					rows={2}
+					className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+				/>
+			</label>
+
+			<div className="flex justify-end gap-2">
+				<button
+					type="button"
+					onClick={onClose}
+					className="rounded-lg px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:text-zinc-300"
+				>
+					Cancel
+				</button>
+				<button
+					type="button"
+					onClick={handleAdd}
+					disabled={!canSubmit || isPending}
+					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+				>
+					{isPending && <Loader2 size={14} className="animate-spin" />}
+					Add
+				</button>
+			</div>
+		</DialogOverlay>
+	);
+}
+
+// ── Edit Contact Dialog ─────────────────────────────────────────────────────
+
+function EditContactDialog({
+	contact,
+	onClose,
+	onUpdate,
+}: {
+	contact: Contact;
+	onClose: () => void;
+	onUpdate: (
+		id: string,
+		updates: Partial<Pick<Contact, "standing" | "notes" | "characterName" | "tribeName">>,
+	) => Promise<void>;
+}) {
+	const [standing, setStanding] = useState(contact.standing);
+	const [notes, setNotes] = useState(contact.notes);
+	const [isPending, setIsPending] = useState(false);
+
+	const handleSave = async () => {
+		setIsPending(true);
+		try {
+			await onUpdate(contact.id, { standing, notes });
+			onClose();
+		} catch {
+			// Update failed
+		} finally {
+			setIsPending(false);
+		}
+	};
+
+	const displayName =
+		contact.kind === "character"
+			? (contact.characterName ?? `Character #${contact.characterId}`)
+			: (contact.tribeName ?? `Tribe #${contact.tribeId}`);
+
+	return (
+		<DialogOverlay onClose={onClose}>
+			<h2 className="mb-4 text-lg font-semibold text-zinc-100">Edit Contact</h2>
+			<p className="mb-4 text-sm text-zinc-400">{displayName}</p>
+
+			<div className="mb-3">
+				<span className="mb-1 block text-xs text-zinc-400">Standing</span>
+				<StandingSelect value={standing} onChange={setStanding} className="w-full" />
+			</div>
+
+			<label className="mb-4 block">
+				<span className="mb-1 block text-xs text-zinc-400">Notes</span>
+				<textarea
+					value={notes}
+					onChange={(e) => setNotes(e.target.value)}
+					rows={3}
+					className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+				/>
+			</label>
+
+			<div className="flex justify-end gap-2">
+				<button
+					type="button"
+					onClick={onClose}
+					className="rounded-lg px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:text-zinc-300"
+				>
+					Cancel
+				</button>
+				<button
+					type="button"
+					onClick={handleSave}
+					disabled={isPending}
+					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+				>
+					{isPending && <Loader2 size={14} className="animate-spin" />}
+					Save
+				</button>
+			</div>
+		</DialogOverlay>
+	);
+}
+
+// ── Create Registry Dialog ──────────────────────────────────────────────────
+
+function CreateRegistryDialog({
 	packageId,
-	walletKeyPair,
 	senderAddress,
-	tenant,
 	onClose,
 	onCreated,
 }: {
 	packageId: string;
-	walletKeyPair: { publicKey: Uint8Array; secretKey: Uint8Array };
 	senderAddress: string;
-	tenant: string;
 	onClose: () => void;
 	onCreated: () => void;
 }) {
 	const dAppKit = useDAppKit();
-	const client = useSuiClient();
 	const [name, setName] = useState("");
-	const [description, setDescription] = useState("");
+	const [ticker, setTicker] = useState("");
+	const [defaultStanding, setDefaultStanding] = useState(0);
 	const [isPending, setIsPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	const tickerValid = /^[A-Z0-9]{3,6}$/.test(ticker);
+
 	const handleCreate = async () => {
-		if (!name.trim()) return;
+		if (!name.trim() || !tickerValid) return;
 		setIsPending(true);
 		setError(null);
 
 		try {
-			// Generate ephemeral list keypair
-			const listKeyPair = generateEphemeralX25519Keypair();
-
-			// Self-invite: encrypt list secret key with own wallet-derived X25519 key
-			const selfInviteEncrypted = sealForRecipient(
-				listKeyPair.secretKey,
-				walletKeyPair.publicKey,
-			);
-
-			const tx = buildCreateStandingsList({
+			const tx = buildCreateRegistry({
 				packageId,
 				name: name.trim(),
-				description: description.trim(),
-				publicKey: bytesToHex(listKeyPair.publicKey),
-				selfInviteEncryptedKey: bytesToHex(selfInviteEncrypted),
+				ticker: ticker.trim(),
+				defaultStanding: displayToStanding(defaultStanding),
 				senderAddress,
 			});
 
-			const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
-			const digest =
-				result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
-
-			// Try to read created object IDs for instant cache
-			let listObjectId: string | undefined;
-			let inviteObjectId: string | undefined;
-			try {
-				const fullResult = await client.waitForTransaction({
-					digest,
-					include: { effects: true, objectTypes: true },
-				});
-				const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
-				const changedObjects = fullTx?.effects?.changedObjects ?? [];
-				const objectTypesMap = fullTx?.objectTypes ?? {};
-
-				for (const change of changedObjects) {
-					const objType = objectTypesMap[change.objectId] ?? "";
-					if (objType.includes("::standings::StandingsList")) {
-						listObjectId = change.objectId;
-					} else if (objType.includes("::standings::StandingsInvite")) {
-						inviteObjectId = change.objectId;
-					}
-				}
-			} catch {
-				// If we can't read the TX result, fall back to indexer sync
-			}
-
-			// Cache directly if possible
-			if (listObjectId) {
-				const entry: ManifestStandingsList = {
-					id: listObjectId,
-					name: name.trim(),
-					description: description.trim(),
-					creator: senderAddress,
-					publicKey: bytesToHex(listKeyPair.publicKey),
-					decryptedListKey: bytesToHex(listKeyPair.secretKey),
-					inviteId: inviteObjectId ?? "",
-					editors: [],
-					isEditor: true,
-					tenant,
-					cachedAt: new Date().toISOString(),
-				};
-				await db.manifestStandingsLists.put(entry);
-			} else {
-				await new Promise((r) => setTimeout(r, 3000));
-				onCreated();
-			}
-
+			await dAppKit.signAndExecuteTransaction({ transaction: tx });
+			await new Promise((r) => setTimeout(r, 3000));
+			onCreated();
 			onClose();
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
@@ -802,29 +1412,51 @@ function CreateListDialog({
 
 	return (
 		<DialogOverlay onClose={onClose}>
-			<h2 className="mb-4 text-lg font-semibold text-zinc-100">Create Standings List</h2>
+			<h2 className="mb-4 text-lg font-semibold text-zinc-100">Create Standings Registry</h2>
 
 			<label className="mb-3 block">
-				<span className="mb-1 block text-xs text-zinc-400">List Name</span>
+				<span className="mb-1 block text-xs text-zinc-400">Registry Name</span>
 				<input
 					type="text"
 					value={name}
 					onChange={(e) => setName(e.target.value)}
-					placeholder="e.g., Alliance Contacts"
+					placeholder="e.g., Alliance Standings"
 					className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 				/>
 			</label>
 
-			<label className="mb-4 block">
-				<span className="mb-1 block text-xs text-zinc-400">Description (optional)</span>
-				<textarea
-					value={description}
-					onChange={(e) => setDescription(e.target.value)}
-					placeholder="e.g., Shared contact standings for our alliance"
-					rows={2}
-					className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+			<label className="mb-3 block">
+				<span className="mb-1 block text-xs text-zinc-400">Ticker (3-6 chars, A-Z 0-9)</span>
+				<input
+					type="text"
+					value={ticker}
+					onChange={(e) =>
+						setTicker(
+							e.target.value
+								.toUpperCase()
+								.replace(/[^A-Z0-9]/g, "")
+								.slice(0, 6),
+						)
+					}
+					placeholder="e.g., BURQE"
+					className={`w-full rounded-lg border bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none ${
+						ticker && !tickerValid
+							? "border-red-500 focus:border-red-500"
+							: "border-zinc-700 focus:border-cyan-500"
+					}`}
 				/>
+				{ticker && !tickerValid && (
+					<p className="mt-1 text-[10px] text-red-400">Must be 3-6 characters, A-Z and 0-9 only</p>
+				)}
 			</label>
+
+			<div className="mb-4">
+				<span className="mb-1 block text-xs text-zinc-400">Default Standing</span>
+				<StandingSelect value={defaultStanding} onChange={setDefaultStanding} className="w-full" />
+				<p className="mt-1 text-[10px] text-zinc-600">
+					Standing for entities not explicitly listed
+				</p>
+			</div>
 
 			{error && (
 				<div className="mb-4 flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
@@ -844,7 +1476,7 @@ function CreateListDialog({
 				<button
 					type="button"
 					onClick={handleCreate}
-					disabled={!name.trim() || isPending}
+					disabled={!name.trim() || !tickerValid || isPending}
 					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
 				>
 					{isPending && <Loader2 size={14} className="animate-spin" />}
@@ -855,191 +1487,88 @@ function CreateListDialog({
 	);
 }
 
-function InviteMemberDialog({
+// ── Set Registry Standing Dialog ────────────────────────────────────────────
+
+function SetRegistryStandingDialog({
 	packageId,
-	list,
-	senderAddress,
-	onClose,
-	onInvited,
-}: {
-	packageId: string;
-	list: ManifestStandingsList;
-	senderAddress: string;
-	onClose: () => void;
-	onInvited: () => void;
-}) {
-	const dAppKit = useDAppKit();
-	const client = useSuiClient();
-	const [isPending, setIsPending] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-
-	const handleInvite = useCallback(
-		async (character: { suiAddress: string; name: string }) => {
-			setIsPending(true);
-			setError(null);
-
-			try {
-				// Get recipient's X25519 public key from their on-chain transactions
-				const recipientX25519PubKey = await getPublicKeyForAddress(
-					client,
-					character.suiAddress,
-				);
-
-				// Decrypt our own list key, then re-encrypt for the recipient
-				if (!list.decryptedListKey)
-					throw new Error("List key not yet decrypted. Connect wallet first.");
-				const listSecretKey = hexToBytes(list.decryptedListKey);
-				const encryptedForRecipient = sealForRecipient(
-					listSecretKey,
-					recipientX25519PubKey,
-				);
-
-				const tx = buildInviteStandingsMember({
-					packageId,
-					listId: list.id,
-					recipient: character.suiAddress,
-					encryptedListKey: bytesToHex(encryptedForRecipient),
-					senderAddress,
-				});
-
-				await dAppKit.signAndExecuteTransaction({ transaction: tx });
-				onInvited();
-				onClose();
-			} catch (err) {
-				setError(err instanceof Error ? err.message : String(err));
-			} finally {
-				setIsPending(false);
-			}
-		},
-		[client, dAppKit, list, packageId, senderAddress, onClose, onInvited],
-	);
-
-	return (
-		<DialogOverlay onClose={onClose}>
-			<h2 className="mb-4 text-lg font-semibold text-zinc-100">Invite Member</h2>
-			<p className="mb-3 text-xs text-zinc-500">
-				List: <span className="text-zinc-300">{list.name}</span>
-			</p>
-
-			<div className="mb-4">
-				<span className="mb-1 block text-xs text-zinc-400">Search Character</span>
-				<ContactPicker
-					onSelect={(char) => handleInvite(char)}
-					placeholder="Search by name or address..."
-				/>
-			</div>
-
-			<p className="mb-4 text-xs text-zinc-600">
-				The recipient's Ed25519 public key will be extracted from their on-chain
-				transactions. Only Ed25519 wallets are supported.
-			</p>
-
-			{error && (
-				<div className="mb-4 flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
-					<AlertCircle size={14} />
-					{error}
-				</div>
-			)}
-
-			{isPending && (
-				<div className="mb-4 flex items-center justify-center gap-2 text-sm text-zinc-400">
-					<Loader2 size={14} className="animate-spin" />
-					Inviting...
-				</div>
-			)}
-
-			<div className="flex justify-end">
-				<button
-					type="button"
-					onClick={onClose}
-					className="rounded-lg px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:text-zinc-300"
-				>
-					Cancel
-				</button>
-			</div>
-		</DialogOverlay>
-	);
-}
-
-function SetStandingDialog({
-	packageId,
-	list,
+	registry,
 	senderAddress,
 	tenant,
 	onClose,
-	onAdded,
+	onSet,
 }: {
 	packageId: string;
-	list: ManifestStandingsList;
+	registry: StandingsRegistryInfo;
 	senderAddress: string;
 	tenant: string;
 	onClose: () => void;
-	onAdded: () => void;
+	onSet: () => void;
 }) {
 	const dAppKit = useDAppKit();
-	const [kind, setKind] = useState<"character" | "tribe">("character");
-	const [selectedCharacterId, setSelectedCharacterId] = useState<number | null>(null);
-	const [selectedCharacterName, setSelectedCharacterName] = useState("");
-	const [tribeSearch, setTribeSearch] = useState("");
-	const [selectedTribeId, setSelectedTribeId] = useState<number | null>(null);
+	const [kind, setKind] = useState<"character" | "tribe">("tribe");
 	const [standing, setStanding] = useState(0);
-	const [description, setDescription] = useState("");
 	const [isPending, setIsPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	// Tribe search from local DB
-	const tribeResults = useLiveQuery(() => {
-		if (kind !== "tribe" || tribeSearch.length < 2) return [];
+	// Character selection
+	const [selectedCharacter, setSelectedCharacter] = useState<{
+		characterItemId: string;
+		name: string;
+	} | null>(null);
+
+	// Tribe selection
+	const [tribeSearch, setTribeSearch] = useState("");
+	const allTribes = useLiveQuery(() => db.manifestTribes.toArray()) ?? [];
+	const matchedTribes = useMemo(() => {
+		if (!tribeSearch || tribeSearch.length < 2) return [];
 		const q = tribeSearch.toLowerCase();
-		return db.manifestTribes
+		return allTribes
 			.filter(
 				(t) =>
 					t.name.toLowerCase().includes(q) ||
 					t.nameShort.toLowerCase().includes(q) ||
-					String(t.id).includes(q),
+					String(t.id) === tribeSearch,
 			)
-			.limit(10)
-			.toArray();
-	}, [kind, tribeSearch]);
+			.slice(0, 10);
+	}, [allTribes, tribeSearch]);
+	const [selectedTribe, setSelectedTribe] = useState<{
+		id: number;
+		name: string;
+	} | null>(null);
 
-	const handleSubmit = async () => {
-		if (kind === "character" && selectedCharacterId == null) return;
-		if (kind === "tribe" && selectedTribeId == null) return;
+	const canSubmit =
+		(kind === "character" && selectedCharacter) || (kind === "tribe" && selectedTribe);
 
+	const handleSet = async () => {
+		if (!canSubmit) return;
 		setIsPending(true);
 		setError(null);
 
 		try {
-			if (!list.decryptedListKey)
-				throw new Error("List key not yet decrypted. Connect wallet first.");
+			const rawStanding = displayToStanding(standing);
 
-			const label = STANDING_LABELS.get(standing) ?? "Neutral";
-			const standingData = {
-				kind,
-				...(kind === "character" ? { characterId: selectedCharacterId! } : {}),
-				...(kind === "tribe" ? { tribeId: selectedTribeId! } : {}),
-				standing,
-				label,
-				description: description.trim(),
-			};
+			if (kind === "tribe" && selectedTribe) {
+				const tx = buildSetTribeStanding({
+					packageId,
+					registryId: registry.objectId,
+					tribeId: selectedTribe.id,
+					standing: rawStanding,
+					senderAddress,
+				});
+				await dAppKit.signAndExecuteTransaction({ transaction: tx });
+			} else if (kind === "character" && selectedCharacter) {
+				const tx = buildSetCharacterStanding({
+					packageId,
+					registryId: registry.objectId,
+					characterId: Number(selectedCharacter.characterItemId),
+					standing: rawStanding,
+					senderAddress,
+				});
+				await dAppKit.signAndExecuteTransaction({ transaction: tx });
+			}
 
-			// Encode and encrypt
-			const plaintext = encodeStandingData(standingData);
-			const listPublicKey = hexToBytes(list.publicKey);
-			const encryptedData = sealForRecipient(plaintext, listPublicKey);
-
-			const tx = buildSetStanding({
-				packageId,
-				listId: list.id,
-				inviteId: list.inviteId,
-				entryId: null, // new entry
-				encryptedData: bytesToHex(encryptedData),
-				senderAddress,
-			});
-
-			await dAppKit.signAndExecuteTransaction({ transaction: tx });
 			await new Promise((r) => setTimeout(r, 2000));
-			onAdded();
+			onSet();
 			onClose();
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
@@ -1051,49 +1580,46 @@ function SetStandingDialog({
 	return (
 		<DialogOverlay onClose={onClose}>
 			<h2 className="mb-4 text-lg font-semibold text-zinc-100">Set Standing</h2>
-			<p className="mb-3 text-xs text-zinc-500">
-				List: <span className="text-zinc-300">{list.name}</span>
+			<p className="mb-4 text-xs text-zinc-500">
+				Registry: {registry.name} ({registry.ticker})
 			</p>
 
 			{/* Kind selector */}
-			<div className="mb-3 flex gap-2">
-				<button
-					type="button"
-					onClick={() => setKind("character")}
-					className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
-						kind === "character"
-							? "border-cyan-500/50 bg-cyan-500/10 text-cyan-400"
-							: "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
-					}`}
-				>
-					Character
-				</button>
+			<div className="mb-4 flex gap-2">
 				<button
 					type="button"
 					onClick={() => setKind("tribe")}
-					className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
+					className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
 						kind === "tribe"
-							? "border-cyan-500/50 bg-cyan-500/10 text-cyan-400"
-							: "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
+							? "bg-cyan-600 text-white"
+							: "bg-zinc-800 text-zinc-400 hover:text-zinc-300"
 					}`}
 				>
 					Tribe
 				</button>
+				<button
+					type="button"
+					onClick={() => setKind("character")}
+					className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+						kind === "character"
+							? "bg-cyan-600 text-white"
+							: "bg-zinc-800 text-zinc-400 hover:text-zinc-300"
+					}`}
+				>
+					Character
+				</button>
 			</div>
 
-			{/* Target selection */}
+			{/* Entity search */}
 			{kind === "character" ? (
-				<div className="mb-3">
+				<div className="mb-4">
 					<span className="mb-1 block text-xs text-zinc-400">Character</span>
-					{selectedCharacterId != null ? (
+					{selectedCharacter ? (
 						<div className="flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
-							<span className="text-sm text-zinc-200">{selectedCharacterName}</span>
+							<span className="text-sm text-zinc-200">{selectedCharacter.name}</span>
 							<button
 								type="button"
-								onClick={() => {
-									setSelectedCharacterId(null);
-									setSelectedCharacterName("");
-								}}
+								onClick={() => setSelectedCharacter(null)}
 								className="text-xs text-zinc-500 hover:text-zinc-300"
 							>
 								Change
@@ -1101,29 +1627,28 @@ function SetStandingDialog({
 						</div>
 					) : (
 						<ContactPicker
-							onSelect={(char) => {
-								setSelectedCharacterId(Number(char.characterItemId));
-								setSelectedCharacterName(char.name || char.suiAddress);
-							}}
+							onSelect={(character) =>
+								setSelectedCharacter({
+									characterItemId: character.characterItemId,
+									name: character.name,
+								})
+							}
 							placeholder="Search characters..."
 							tenant={tenant}
 						/>
 					)}
 				</div>
 			) : (
-				<div className="mb-3">
+				<div className="mb-4">
 					<span className="mb-1 block text-xs text-zinc-400">Tribe</span>
-					{selectedTribeId != null ? (
+					{selectedTribe ? (
 						<div className="flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
 							<span className="text-sm text-zinc-200">
-								{tribeSearch || `Tribe #${selectedTribeId}`}
+								{selectedTribe.name} (#{selectedTribe.id})
 							</span>
 							<button
 								type="button"
-								onClick={() => {
-									setSelectedTribeId(null);
-									setTribeSearch("");
-								}}
+								onClick={() => setSelectedTribe(null)}
 								className="text-xs text-zinc-500 hover:text-zinc-300"
 							>
 								Change
@@ -1135,25 +1660,22 @@ function SetStandingDialog({
 								type="text"
 								value={tribeSearch}
 								onChange={(e) => setTribeSearch(e.target.value)}
-								placeholder="Search tribe name or ID..."
+								placeholder="Search tribes..."
 								className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 							/>
-							{(tribeResults ?? []).length > 0 && (
-								<div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
-									{(tribeResults ?? []).map((tribe) => (
+							{matchedTribes.length > 0 && (
+								<div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl">
+									{matchedTribes.map((t) => (
 										<button
-											key={tribe.id}
+											key={t.id}
 											type="button"
 											onClick={() => {
-												setSelectedTribeId(tribe.id);
-												setTribeSearch(tribe.name);
+												setSelectedTribe({ id: t.id, name: t.name });
+												setTribeSearch("");
 											}}
-											className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+											className="w-full px-3 py-2 text-left text-sm text-zinc-300 transition-colors hover:bg-zinc-700"
 										>
-											<span>{tribe.name}</span>
-											<span className="text-xs text-zinc-600">
-												#{tribe.id}
-											</span>
+											{t.name} <span className="text-zinc-500">#{t.id}</span>
 										</button>
 									))}
 								</div>
@@ -1163,36 +1685,11 @@ function SetStandingDialog({
 				</div>
 			)}
 
-			{/* Standing selector */}
-			<label className="mb-3 block">
+			{/* Standing */}
+			<div className="mb-4">
 				<span className="mb-1 block text-xs text-zinc-400">Standing</span>
-				<select
-					value={standing}
-					onChange={(e) => setStanding(Number(e.target.value))}
-					className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none"
-				>
-					{[3, 2, 1, 0, -1, -2, -3].map((v) => (
-						<option key={v} value={v}>
-							{v > 0 ? `+${v}` : v} {STANDING_LABELS.get(v) ?? "Unknown"}
-						</option>
-					))}
-				</select>
-				<div className="mt-1.5">
-					<StandingBadge standing={standing} />
-				</div>
-			</label>
-
-			{/* Description */}
-			<label className="mb-4 block">
-				<span className="mb-1 block text-xs text-zinc-400">Description (optional)</span>
-				<textarea
-					value={description}
-					onChange={(e) => setDescription(e.target.value)}
-					placeholder="e.g., Trusted trade partner"
-					rows={2}
-					className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-				/>
-			</label>
+				<StandingSelect value={standing} onChange={setStanding} className="w-full" />
+			</div>
 
 			{error && (
 				<div className="mb-4 flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
@@ -1211,12 +1708,8 @@ function SetStandingDialog({
 				</button>
 				<button
 					type="button"
-					onClick={handleSubmit}
-					disabled={
-						isPending ||
-						(kind === "character" && selectedCharacterId == null) ||
-						(kind === "tribe" && selectedTribeId == null)
-					}
+					onClick={handleSet}
+					disabled={!canSubmit || isPending}
 					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
 				>
 					{isPending && <Loader2 size={14} className="animate-spin" />}
@@ -1227,61 +1720,82 @@ function SetStandingDialog({
 	);
 }
 
-function AddEditorDialog({
+// ── Add Admin Dialog ────────────────────────────────────────────────────────
+
+function AddAdminDialog({
 	packageId,
-	listId,
+	registryId,
 	senderAddress,
 	onClose,
 	onAdded,
 }: {
 	packageId: string;
-	listId: string;
+	registryId: string;
 	senderAddress: string;
 	onClose: () => void;
 	onAdded: () => void;
 }) {
 	const dAppKit = useDAppKit();
+	const [selectedCharacter, setSelectedCharacter] = useState<{
+		suiAddress: string;
+		name: string;
+	} | null>(null);
 	const [isPending, setIsPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const handleAdd = useCallback(
-		async (character: { suiAddress: string }) => {
-			setIsPending(true);
-			setError(null);
+	const handleAdd = async () => {
+		if (!selectedCharacter) return;
+		setIsPending(true);
+		setError(null);
 
-			try {
-				const tx = buildAddEditor({
-					packageId,
-					listId,
-					editorAddress: character.suiAddress,
-					senderAddress,
-				});
+		try {
+			const tx = buildAddRegistryAdmin({
+				packageId,
+				registryId,
+				adminAddress: selectedCharacter.suiAddress,
+				senderAddress,
+			});
 
-				await dAppKit.signAndExecuteTransaction({ transaction: tx });
-				onAdded();
-				onClose();
-			} catch (err) {
-				setError(err instanceof Error ? err.message : String(err));
-			} finally {
-				setIsPending(false);
-			}
-		},
-		[dAppKit, packageId, listId, senderAddress, onClose, onAdded],
-	);
+			await dAppKit.signAndExecuteTransaction({ transaction: tx });
+			await new Promise((r) => setTimeout(r, 2000));
+			onAdded();
+			onClose();
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setIsPending(false);
+		}
+	};
 
 	return (
 		<DialogOverlay onClose={onClose}>
-			<h2 className="mb-4 text-lg font-semibold text-zinc-100">Add Editor</h2>
-			<p className="mb-3 text-xs text-zinc-500">
-				Editors can add and modify standing entries.
-			</p>
+			<h2 className="mb-4 text-lg font-semibold text-zinc-100">Add Admin</h2>
 
 			<div className="mb-4">
-				<span className="mb-1 block text-xs text-zinc-400">Search Character</span>
-				<ContactPicker
-					onSelect={(char) => handleAdd(char)}
-					placeholder="Search by name or address..."
-				/>
+				<span className="mb-1 block text-xs text-zinc-400">Admin Address</span>
+				{selectedCharacter ? (
+					<div className="flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
+						<span className="text-sm text-zinc-200">{selectedCharacter.name}</span>
+						<button
+							type="button"
+							onClick={() => setSelectedCharacter(null)}
+							className="text-xs text-zinc-500 hover:text-zinc-300"
+						>
+							Change
+						</button>
+					</div>
+				) : (
+					<ContactPicker
+						onSelect={(character) =>
+							setSelectedCharacter({
+								suiAddress: character.suiAddress,
+								name: character.name,
+							})
+						}
+						placeholder="Search characters..."
+						excludeAddresses={[senderAddress]}
+					/>
+				)}
 			</div>
 
 			{error && (
@@ -1291,20 +1805,22 @@ function AddEditorDialog({
 				</div>
 			)}
 
-			{isPending && (
-				<div className="mb-4 flex items-center justify-center gap-2 text-sm text-zinc-400">
-					<Loader2 size={14} className="animate-spin" />
-					Adding editor...
-				</div>
-			)}
-
-			<div className="flex justify-end">
+			<div className="flex justify-end gap-2">
 				<button
 					type="button"
 					onClick={onClose}
 					className="rounded-lg px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:text-zinc-300"
 				>
 					Cancel
+				</button>
+				<button
+					type="button"
+					onClick={handleAdd}
+					disabled={!selectedCharacter || isPending}
+					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+				>
+					{isPending && <Loader2 size={14} className="animate-spin" />}
+					Add Admin
 				</button>
 			</div>
 		</DialogOverlay>

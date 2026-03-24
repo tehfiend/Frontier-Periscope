@@ -223,6 +223,24 @@ export interface StandingData {
 	description: string;
 }
 
+// ── Standings Registry Types ────────────────────────────────────────────────
+
+export interface StandingsRegistryInfo {
+	objectId: string;
+	owner: string;
+	admins: string[];
+	name: string;
+	ticker: string;
+	defaultStanding: number;
+}
+
+export interface RegistryStandingEntry {
+	kind: "character" | "tribe";
+	tribeId?: number;
+	characterId?: number;
+	standing: number;
+}
+
 // ── Contract Addresses ──────────────────────────────────────────────────────
 
 export interface ContractAddresses {
@@ -246,4 +264,7 @@ export interface ContractAddresses {
 	market?: { packageId: string };
 	privateMap?: { packageId: string };
 	standings?: { packageId: string };
+	standingsRegistry?: { packageId: string };
+	gateStandings?: { packageId: string; configObjectId: string };
+	ssuStandings?: { packageId: string; configObjectId: string };
 }
