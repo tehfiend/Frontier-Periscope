@@ -21,7 +21,6 @@ import { Suspense, lazy } from "react";
 // Lazy-load heavy views that pull in large deps
 const LazyStarMap = lazy(() => import("@/views/StarMap").then((m) => ({ default: m.StarMap })));
 const LazySonar = lazy(() => import("@/views/Sonar").then((m) => ({ default: m.Sonar })));
-const LazyBridge = lazy(() => import("@/views/Bridge").then((m) => ({ default: m.Bridge })));
 const LazyManifest = lazy(() => import("@/views/Manifest").then((m) => ({ default: m.Manifest })));
 const LazyWallet = lazy(() => import("@/views/Wallet").then((m) => ({ default: m.Wallet })));
 const LazyGovernanceTurrets = lazy(() =>
@@ -58,14 +57,6 @@ function SonarPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
 			<LazySonar />
-		</Suspense>
-	);
-}
-
-function BridgePage() {
-	return (
-		<Suspense fallback={<LoadingFallback />}>
-			<LazyBridge />
 		</Suspense>
 	);
 }
@@ -208,12 +199,6 @@ const sonarRoute = createRoute({
 	component: SonarPage,
 });
 
-const bridgeRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/bridge",
-	component: BridgePage,
-});
-
 const opsecRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/opsec",
@@ -341,7 +326,6 @@ const routeTree = rootRoute.addChildren([
 	blueprintsRoute,
 	logsRoute,
 	sonarRoute,
-	bridgeRoute,
 	opsecRoute,
 	notesRoute,
 	extensionsRoute,

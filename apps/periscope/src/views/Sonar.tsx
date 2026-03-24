@@ -1,5 +1,5 @@
-import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { ContactPicker } from "@/components/ContactPicker";
+import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { GrantAccessView } from "@/components/GrantAccessView";
 import { LogEventRow } from "@/components/LogEventRow";
 import { StatCard } from "@/components/StatCard";
@@ -344,7 +344,7 @@ function ChannelToggle({
 type SonarTab = "pings" | "logFeed" | "chainFeed" | "watchlist";
 
 const SONAR_TABS: { id: SonarTab; label: string }[] = [
-	{ id: "pings", label: "Pings" },
+	{ id: "pings", label: "Dashboard" },
 	{ id: "logFeed", label: "Log Feed" },
 	{ id: "chainFeed", label: "Chain Feed" },
 	{ id: "watchlist", label: "Watchlist" },
@@ -567,7 +567,54 @@ function PingSettingsPanel({
 	);
 }
 
-// ── Pings Tab ────────────────────────────────────────────────────────────────
+// ── Location Card ────────────────────────────────────────────────────────────
+
+interface LocationEntry {
+	characterName: string;
+	systemName: string;
+	timestamp: string;
+}
+
+function formatRelative(isoTimestamp: string): string {
+	const diff = Date.now() - new Date(isoTimestamp).getTime();
+	if (diff < 60_000) return "just now";
+	if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+	if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+	return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function LocationCard({ locations }: { locations: LocationEntry[] }) {
+	return (
+		<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+			<div className="mb-3 flex items-center gap-2">
+				<Navigation size={16} className="text-cyan-400" />
+				<h2 className="text-sm font-semibold text-zinc-200">Character Locations</h2>
+			</div>
+			{locations.length === 0 ? (
+				<p className="text-sm text-zinc-600">
+					No location data. Enable Log Sonar and ensure log files are accessible.
+				</p>
+			) : (
+				<div className="space-y-2">
+					{locations.map((loc) => (
+						<div
+							key={loc.characterName}
+							className="flex items-center justify-between rounded-md bg-zinc-800/50 px-3 py-2"
+						>
+							<div>
+								<span className="text-sm font-medium text-zinc-200">{loc.characterName}</span>
+								<span className="ml-2 text-sm text-cyan-400">{loc.systemName}</span>
+							</div>
+							<span className="text-xs text-zinc-600">{formatRelative(loc.timestamp)}</span>
+						</div>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+// ── Pings Tab (Dashboard) ────────────────────────────────────────────────────
 
 function PingsTab() {
 	const [showSettings, setShowSettings] = useState(false);
@@ -577,12 +624,73 @@ function PingsTab() {
 	const setPingEventTypes = useSonarStore((s) => s.setPingEventTypes);
 	const setPingAudioEnabled = useSonarStore((s) => s.setPingAudioEnabled);
 	const setPingNotifyEnabled = useSonarStore((s) => s.setPingNotifyEnabled);
-	const { matchesWatchlist, isOwnedEvent } = useWatchlistFilter();
+	const { matchesWatchlist } = useWatchlistFilter();
+
+	// Stat card hooks
+	const isWatching = useLogStore((s) => s.isWatching);
+	const miningRate = useLogStore((s) => s.miningRate);
+	const miningOre = useLogStore((s) => s.miningOre);
+	const dpsDealt = useLogStore((s) => s.dpsDealt);
+	const dpsReceived = useLogStore((s) => s.dpsReceived);
+	const activeSessionId = useLogStore((s) => s.activeSessionId);
+
+	// Session totals
+	const sessionMining = useLiveQuery(
+		() =>
+			activeSessionId
+				? db.logEvents.where("[sessionId+type]").equals([activeSessionId, "mining"]).toArray()
+				: [],
+		[activeSessionId],
+	);
+	const totalMined = sessionMining?.reduce((sum, e) => sum + (e.amount ?? 0), 0) ?? 0;
+
+	const sessionDamageDealt = useLiveQuery(
+		() =>
+			activeSessionId
+				? db.logEvents.where("[sessionId+type]").equals([activeSessionId, "combat_dealt"]).toArray()
+				: [],
+		[activeSessionId],
+	);
+	const totalDamageDealt = sessionDamageDealt?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
+
+	const sessionDamageRecv = useLiveQuery(
+		() =>
+			activeSessionId
+				? db.logEvents
+						.where("[sessionId+type]")
+						.equals([activeSessionId, "combat_received"])
+						.toArray()
+				: [],
+		[activeSessionId],
+	);
+	const totalDamageRecv = sessionDamageRecv?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
 
 	const events = useLiveQuery(
-		() => db.sonarEvents.orderBy("id").reverse().limit(1000).toArray(),
+		() => db.sonarEvents.orderBy("id").reverse().limit(5000).toArray(),
 		[],
 	);
+
+	// Derive character locations from latest system_change per character
+	const locations = useMemo<LocationEntry[]>(() => {
+		if (!events) return [];
+		const latest = new Map<string, SonarEvent>();
+		// Events are sorted newest first, so first occurrence per character wins
+		for (const e of events) {
+			if (
+				e.eventType === "system_change" &&
+				e.characterName &&
+				e.systemName &&
+				!latest.has(e.characterName)
+			) {
+				latest.set(e.characterName, e);
+			}
+		}
+		return Array.from(latest.values()).map((e) => ({
+			characterName: e.characterName as string,
+			systemName: e.systemName as string,
+			timestamp: e.timestamp,
+		}));
+	}, [events]);
 
 	const filteredData = useMemo(() => {
 		if (!events) return [];
@@ -643,6 +751,46 @@ function PingsTab() {
 
 	return (
 		<div className="flex h-full flex-col gap-3">
+			{/* Live stat cards */}
+			{isWatching && (
+				<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+					<StatCard
+						label="Mining Rate"
+						value={`${Math.round(miningRate)}/min`}
+						sub={miningOre ?? "--"}
+						color="text-amber-400"
+						icon={Pickaxe}
+						active={miningRate > 0}
+					/>
+					<StatCard
+						label="DPS Dealt"
+						value={dpsDealt.toFixed(1)}
+						sub="damage/sec"
+						color="text-cyan-400"
+						icon={Swords}
+						active={dpsDealt > 0}
+					/>
+					<StatCard
+						label="DPS Received"
+						value={dpsReceived.toFixed(1)}
+						sub="damage/sec"
+						color="text-red-400"
+						icon={Swords}
+						active={dpsReceived > 0}
+					/>
+					<StatCard
+						label="Session Totals"
+						value={totalMined.toLocaleString()}
+						sub={`ore mined | ${totalDamageDealt.toLocaleString()} dealt | ${totalDamageRecv.toLocaleString()} recv`}
+						color="text-zinc-300"
+						icon={Activity}
+					/>
+				</div>
+			)}
+
+			{/* Character locations */}
+			<LocationCard locations={locations} />
+
 			{/* Settings toggle */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2">
@@ -701,8 +849,8 @@ function PingsTab() {
 					columns={pingColumns}
 					data={filteredData}
 					keyFn={(row) => String(row.id ?? 0)}
-					searchPlaceholder="Search pings..."
-					emptyMessage="No ping events. Adjust event type filters in Ping Settings above."
+					searchPlaceholder="Search events..."
+					emptyMessage="No events. Adjust event type filters in Ping Settings above."
 				/>
 			</div>
 		</div>
@@ -774,47 +922,11 @@ function ActivityFeed() {
 function LogFeedTab() {
 	const hasAccess = useLogStore((s) => s.hasAccess);
 	const isWatching = useLogStore((s) => s.isWatching);
-	const miningRate = useLogStore((s) => s.miningRate);
-	const miningOre = useLogStore((s) => s.miningOre);
-	const dpsDealt = useLogStore((s) => s.dpsDealt);
-	const dpsReceived = useLogStore((s) => s.dpsReceived);
-	const activeSessionId = useLogStore((s) => s.activeSessionId);
 	const grantAccess = useLogStore((s) => s.grantAccess);
 	const clearAndReimport = useLogStore((s) => s.clearAndReimport);
 	const activeSubTab = useLogStore((s) => s.activeTab);
 	const setActiveSubTab = useLogStore((s) => s.setActiveTab);
 	const selectedSessionId = useLogStore((s) => s.selectedSessionId);
-
-	// Session totals
-	const sessionMining = useLiveQuery(
-		() =>
-			activeSessionId
-				? db.logEvents.where("[sessionId+type]").equals([activeSessionId, "mining"]).toArray()
-				: [],
-		[activeSessionId],
-	);
-	const totalMined = sessionMining?.reduce((sum, e) => sum + (e.amount ?? 0), 0) ?? 0;
-
-	const sessionDamageDealt = useLiveQuery(
-		() =>
-			activeSessionId
-				? db.logEvents.where("[sessionId+type]").equals([activeSessionId, "combat_dealt"]).toArray()
-				: [],
-		[activeSessionId],
-	);
-	const totalDamageDealt = sessionDamageDealt?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
-
-	const sessionDamageRecv = useLiveQuery(
-		() =>
-			activeSessionId
-				? db.logEvents
-						.where("[sessionId+type]")
-						.equals([activeSessionId, "combat_received"])
-						.toArray()
-				: [],
-		[activeSessionId],
-	);
-	const totalDamageRecv = sessionDamageRecv?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
 
 	if (!hasAccess) {
 		if (!grantAccess) {
@@ -840,41 +952,6 @@ function LogFeedTab() {
 
 	return (
 		<div className="flex h-full flex-col gap-3">
-			{/* Live stat cards */}
-			<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-				<StatCard
-					label="Mining Rate"
-					value={`${Math.round(miningRate)}/min`}
-					sub={miningOre ?? "--"}
-					color="text-amber-400"
-					icon={Pickaxe}
-					active={miningRate > 0}
-				/>
-				<StatCard
-					label="DPS Dealt"
-					value={dpsDealt.toFixed(1)}
-					sub="damage/sec"
-					color="text-cyan-400"
-					icon={Swords}
-					active={dpsDealt > 0}
-				/>
-				<StatCard
-					label="DPS Received"
-					value={dpsReceived.toFixed(1)}
-					sub="damage/sec"
-					color="text-red-400"
-					icon={Swords}
-					active={dpsReceived > 0}
-				/>
-				<StatCard
-					label="Session Totals"
-					value={totalMined.toLocaleString()}
-					sub={`ore mined | ${totalDamageDealt.toLocaleString()} dealt | ${totalDamageRecv.toLocaleString()} recv`}
-					color="text-zinc-300"
-					icon={Activity}
-				/>
-			</div>
-
 			{/* Header controls row */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2">
@@ -1099,11 +1176,7 @@ function WatchlistTab() {
 					.reverse()
 					.first();
 			} else if (item.kind === "tribe" && item.tribeId) {
-				event = await db.sonarEvents
-					.where("tribeId")
-					.equals(item.tribeId)
-					.reverse()
-					.first();
+				event = await db.sonarEvents.where("tribeId").equals(item.tribeId).reverse().first();
 			}
 			if (event) map.set(item.id, event.timestamp);
 		}
@@ -1178,10 +1251,7 @@ function WatchlistTab() {
 					items.map((item) => {
 						const lastEvent = lastEventMap?.get(item.id);
 						return (
-							<div
-								key={item.id}
-								className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3"
-							>
+							<div key={item.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
 								<div className="flex items-center gap-3">
 									{/* Kind badge */}
 									<span
@@ -1201,9 +1271,7 @@ function WatchlistTab() {
 												? item.characterName || "Unknown"
 												: item.tribeName || `Tribe #${item.tribeId}`}
 										</span>
-										{item.notes && (
-											<p className="truncate text-xs text-zinc-500">{item.notes}</p>
-										)}
+										{item.notes && <p className="truncate text-xs text-zinc-500">{item.notes}</p>}
 									</div>
 
 									{/* Last event */}
@@ -1217,9 +1285,7 @@ function WatchlistTab() {
 									{/* Ping status toggle */}
 									<button
 										type="button"
-										onClick={() =>
-											updateWatchItem(item.id, { pingEnabled: !item.pingEnabled })
-										}
+										onClick={() => updateWatchItem(item.id, { pingEnabled: !item.pingEnabled })}
 										className={`rounded p-1 transition-colors ${
 											item.pingEnabled
 												? "text-teal-400 hover:text-teal-300"
