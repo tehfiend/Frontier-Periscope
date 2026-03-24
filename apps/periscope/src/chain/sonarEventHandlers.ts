@@ -24,6 +24,8 @@ export interface HandlerContext {
 	typeNameMap: Map<number, string>;
 	/** Character ID (string) -> display name */
 	charNameMap: Map<string, string>;
+	/** Character ID (string) -> tribe ID */
+	charTribeMap: Map<string, number>;
 }
 
 // ── Handler interface ───────────────────────────────────────────────────────
@@ -61,7 +63,7 @@ function extractId(val: unknown): string | undefined {
 
 /** Build a base sonar entry from an event. */
 function baseEntry(
-	event: { timestampMs: string },
+	event: { timestampMs: string; sender: string },
 	sonarType: SonarEventType,
 ): Omit<SonarEvent, "id"> {
 	return {
@@ -69,6 +71,7 @@ function baseEntry(
 		source: "chain",
 		eventType: sonarType,
 		txDigest: `chain-${event.timestampMs}`,
+		sender: event.sender,
 	};
 }
 

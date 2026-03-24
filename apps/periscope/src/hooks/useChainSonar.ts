@@ -101,6 +101,14 @@ export function useChainSonar() {
 				}
 			}
 
+			// Build character -> tribe lookup
+			const charTribeMap = new Map<string, number>();
+			for (const mc of manifestChars) {
+				if (mc.characterItemId && mc.tribeId) {
+					charTribeMap.set(mc.characterItemId, mc.tribeId);
+				}
+			}
+
 			const handlerCtx: HandlerContext = {
 				ssuObjectIds,
 				ownedAssemblyIds,
@@ -108,6 +116,7 @@ export function useChainSonar() {
 				assemblyNameMap,
 				typeNameMap,
 				charNameMap,
+				charTribeMap,
 			};
 
 			// ── Build event type map: key -> moveEventType string ────────
@@ -165,6 +174,14 @@ export function useChainSonar() {
 					} else {
 						console.error("[ChainSonar] Batch query error:", result.reason);
 					}
+				}
+			}
+
+			// Enrich entries with tribeId from charTribeMap
+			for (const entry of sonarEntries) {
+				if (entry.characterId && !entry.tribeId) {
+					const tid = handlerCtx.charTribeMap.get(entry.characterId);
+					if (tid) entry.tribeId = tid;
 				}
 			}
 

@@ -828,6 +828,8 @@ export interface SonarEvent {
 	details?: string;
 	sessionId?: string;
 	txDigest?: string;
+	sender?: string;
+	tribeId?: number;
 }
 
 export type SonarChannelStatus = "active" | "off" | "error";
@@ -840,4 +842,27 @@ export interface SonarChannelState {
 	lastProcessedLogId?: number;
 	cursors?: Record<string, string>;
 	lastPollAt?: string;
+}
+
+export type SonarWatchKind = "character" | "tribe";
+
+export interface SonarWatchItem {
+	id: string;
+	kind: SonarWatchKind;
+	/** Character item ID (for kind=character) */
+	characterId?: string;
+	characterName?: string;
+	/** Sui address (for kind=character) */
+	suiAddress?: string;
+	/** Tribe ID (for kind=tribe or kind=character with tribe) */
+	tribeId?: number;
+	tribeName?: string;
+	/** Whether pings are enabled for this watch item */
+	pingEnabled: boolean;
+	/** Per-item ping event type overrides (undefined = use global defaults) */
+	pingEventTypes?: SonarEventType[];
+	/** User notes */
+	notes?: string;
+	createdAt: string;
+	updatedAt: string;
 }

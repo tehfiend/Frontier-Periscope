@@ -14,7 +14,6 @@ import { Permissions } from "@/views/Permissions";
 import { Players } from "@/views/Players";
 import { Settings } from "@/views/Settings";
 import { Setup } from "@/views/Setup";
-import { Targets } from "@/views/Targets";
 import { Workers } from "@/views/Workers";
 import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { Suspense, lazy } from "react";
@@ -166,7 +165,9 @@ const locationsRoute = createRoute({
 const targetsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/targets",
-	component: Targets,
+	beforeLoad: () => {
+		throw redirect({ to: "/sonar" });
+	},
 });
 
 const intelRoute = createRoute({

@@ -40,6 +40,8 @@ interface NavItem {
 	label: string;
 	/** Optional: render a status dot next to the label */
 	statusDot?: boolean;
+	/** Optional callback triggered on navigation */
+	onNavigate?: () => void;
 }
 
 interface NavGroup {
@@ -71,7 +73,12 @@ const navGroups: NavGroup[] = [
 			{ to: "/sonar", icon: Radio, label: "Sonar", statusDot: true },
 			{ to: "/bridge", icon: Navigation, label: "Bridge" },
 			{ to: "/intel", icon: Radio, label: "Intel Channel" },
-			{ to: "/targets", icon: Target, label: "Watchlist" },
+			{
+			to: "/sonar",
+			icon: Target,
+			label: "Watchlist",
+			onNavigate: () => useSonarStore.getState().setActiveTab("watchlist"),
+		},
 			{ to: "/players", icon: Users, label: "Players" },
 			{ to: "/killmails", icon: Skull, label: "Killmails" },
 			{ to: "/manifest", icon: Database, label: "Manifest" },
@@ -121,7 +128,7 @@ function useSonarDots(): { local: string; chain: string } {
 	};
 }
 
-function NavLink({ to, icon: Icon, label, statusDot }: NavItem) {
+function NavLink({ to, icon: Icon, label, statusDot, onNavigate }: NavItem) {
 	const collapsed = useAppStore((s) => s.sidebarCollapsed);
 	const dots = useSonarDots();
 
@@ -129,6 +136,7 @@ function NavLink({ to, icon: Icon, label, statusDot }: NavItem) {
 		<Link
 			to={to}
 			activeOptions={{ exact: to === "/" }}
+			onClick={() => onNavigate?.()}
 			className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-100"
 			activeProps={{
 				className:

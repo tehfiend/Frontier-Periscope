@@ -41,6 +41,7 @@ import type {
 	SolarSystem,
 	SonarChannelState,
 	SonarEvent,
+	SonarWatchItem,
 	SubscribedRegistry,
 	SyncMeta,
 	SystemClaimRecord,
@@ -128,6 +129,7 @@ class PeriscopeDB extends Dexie {
 	// Sonar
 	sonarEvents!: EntityTable<SonarEvent, "id">;
 	sonarState!: EntityTable<SonarChannelState, "channel">;
+	sonarWatchlist!: EntityTable<SonarWatchItem, "id">;
 
 	// Private Maps V2 (dual-mode: encrypted + cleartext standings)
 	manifestPrivateMapsV2!: EntityTable<ManifestPrivateMapV2, "id">;
@@ -541,6 +543,13 @@ class PeriscopeDB extends Dexie {
 		this.version(27).stores({
 			manifestPrivateMapsV2:
 				"id, name, creator, mode, registryId, tenant, cachedAt",
+		});
+
+		// V28: Sonar Watchlist + enriched sonarEvents with sender/tribeId
+		this.version(28).stores({
+			sonarWatchlist: "id, kind, characterId, suiAddress, tribeId, updatedAt",
+			sonarEvents:
+				"++id, [source+eventType], timestamp, characterId, assemblyId, sessionId, sender, tribeId",
 		});
 	}
 }

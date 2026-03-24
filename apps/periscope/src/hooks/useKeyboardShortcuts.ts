@@ -5,7 +5,6 @@ const VIEW_SHORTCUTS: Record<string, string> = {
 	"1": "/",
 	"2": "/map",
 	"3": "/intel",
-	"4": "/targets",
 	"5": "/deployables",
 	"6": "/sonar",
 	"7": "/killmails",

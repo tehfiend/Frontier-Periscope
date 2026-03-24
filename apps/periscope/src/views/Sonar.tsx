@@ -1,4 +1,5 @@
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
+import { ContactPicker } from "@/components/ContactPicker";
 import { GrantAccessView } from "@/components/GrantAccessView";
 import { LogEventRow } from "@/components/LogEventRow";
 import { StatCard } from "@/components/StatCard";
@@ -12,7 +13,19 @@ import {
 	TravelTab,
 } from "@/components/log-analyzer";
 import { db } from "@/db";
-import type { SonarChannelStatus, SonarEvent, SonarEventType } from "@/db/types";
+import type {
+	ManifestTribe,
+	SonarChannelStatus,
+	SonarEvent,
+	SonarEventType,
+	SonarWatchItem,
+} from "@/db/types";
+import {
+	addWatchItem,
+	removeWatchItem,
+	updateWatchItem,
+	useWatchlistFilter,
+} from "@/hooks/useSonarWatchlist";
 import { requestDirectoryAccess } from "@/lib/logFileAccess";
 import { useLogStore } from "@/stores/logStore";
 import { useSonarStore } from "@/stores/sonarStore";
@@ -25,19 +38,25 @@ import {
 	ChevronRight,
 	CircleOff,
 	Clock,
+	Eye,
+	EyeOff,
 	FolderOpen,
 	Landmark,
 	MessageSquare,
 	Navigation,
 	Pickaxe,
+	Plus,
 	Radio,
+	Search,
 	Settings,
 	Swords,
 	Trash2,
+	UserPlus,
+	Users,
 	Volume2,
 	VolumeX,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 // ── Event Type Color Badges ──────────────────────────────────────────────────
 
@@ -322,12 +341,13 @@ function ChannelToggle({
 
 // ── Tab Bar ──────────────────────────────────────────────────────────────────
 
-type SonarTab = "pings" | "logFeed" | "chainFeed";
+type SonarTab = "pings" | "logFeed" | "chainFeed" | "watchlist";
 
 const SONAR_TABS: { id: SonarTab; label: string }[] = [
 	{ id: "pings", label: "Pings" },
 	{ id: "logFeed", label: "Log Feed" },
 	{ id: "chainFeed", label: "Chain Feed" },
+	{ id: "watchlist", label: "Watchlist" },
 ];
 
 function SonarTabBar({
@@ -557,6 +577,7 @@ function PingsTab() {
 	const setPingEventTypes = useSonarStore((s) => s.setPingEventTypes);
 	const setPingAudioEnabled = useSonarStore((s) => s.setPingAudioEnabled);
 	const setPingNotifyEnabled = useSonarStore((s) => s.setPingNotifyEnabled);
+	const { matchesWatchlist, isOwnedEvent } = useWatchlistFilter();
 
 	const events = useLiveQuery(
 		() => db.sonarEvents.orderBy("id").reverse().limit(1000).toArray(),
@@ -566,8 +587,44 @@ function PingsTab() {
 	const filteredData = useMemo(() => {
 		if (!events) return [];
 		if (pingEventTypes.size === 0) return [];
-		return events.filter((e) => pingEventTypes.has(e.eventType));
-	}, [events, pingEventTypes]);
+		return events.filter((e) => {
+			const watchItem = matchesWatchlist(e);
+			if (watchItem) {
+				// Watched item with per-item overrides
+				if (watchItem.pingEventTypes) {
+					return watchItem.pingEnabled && watchItem.pingEventTypes.includes(e.eventType);
+				}
+				// Watched item using global defaults
+				return watchItem.pingEnabled && pingEventTypes.has(e.eventType);
+			}
+			// Owned entity or unattributed -- use global types
+			return pingEventTypes.has(e.eventType);
+		});
+	}, [events, pingEventTypes, matchesWatchlist]);
+
+	// Augment columns with a "Watchlist" badge for watched entities
+	const pingColumns = useMemo((): ColumnDef<SonarEvent, unknown>[] => {
+		const badgeCol: ColumnDef<SonarEvent, unknown> = {
+			id: "watchBadge",
+			header: "",
+			size: 60,
+			enableSorting: false,
+			enableColumnFilter: false,
+			cell: ({ row }) => {
+				const event = row.original;
+				const watched = matchesWatchlist(event);
+				if (watched) {
+					return (
+						<span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+							Watchlist
+						</span>
+					);
+				}
+				return null;
+			},
+		};
+		return [...columns, badgeCol];
+	}, [matchesWatchlist]);
 
 	function toggleEventType(type: SonarEventType) {
 		const next = new Set(pingEventTypes);
@@ -641,7 +698,7 @@ function PingsTab() {
 			{/* Filtered DataGrid */}
 			<div className="flex-1 overflow-hidden">
 				<DataGrid
-					columns={columns}
+					columns={pingColumns}
 					data={filteredData}
 					keyFn={(row) => String(row.id ?? 0)}
 					searchPlaceholder="Search pings..."
@@ -890,6 +947,321 @@ function LogFeedTab() {
 	);
 }
 
+// ── Tribe Picker ─────────────────────────────────────────────────────────────
+
+function TribePicker({ onSelect }: { onSelect: (tribe: ManifestTribe) => void }) {
+	const [query, setQuery] = useState("");
+
+	const results = useLiveQuery(async () => {
+		if (query.length < 2) return [];
+		const q = query.toLowerCase();
+		return db.manifestTribes
+			.filter((t) => t.name.toLowerCase().includes(q) || t.nameShort.toLowerCase().includes(q))
+			.limit(10)
+			.toArray();
+	}, [query]);
+
+	return (
+		<div className="relative">
+			<div className="relative">
+				<Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+				<input
+					type="text"
+					value={query}
+					onChange={(e) => setQuery(e.target.value)}
+					placeholder="Search tribes..."
+					className="w-full rounded-lg border border-zinc-700 bg-zinc-800 py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+				/>
+			</div>
+			{results && results.length > 0 && (
+				<div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
+					{results.map((tribe) => (
+						<button
+							key={tribe.id}
+							type="button"
+							onClick={() => {
+								onSelect(tribe);
+								setQuery("");
+							}}
+							className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-zinc-800"
+						>
+							<Users size={14} className="shrink-0 text-zinc-500" />
+							<span className="text-sm font-medium text-zinc-100">{tribe.name}</span>
+							{tribe.nameShort && (
+								<span className="text-xs text-zinc-500">[{tribe.nameShort}]</span>
+							)}
+						</button>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+// ── Watch Item Ping Settings ─────────────────────────────────────────────────
+
+function WatchItemPingSettings({ item }: { item: SonarWatchItem }) {
+	const useGlobalDefaults = !item.pingEventTypes;
+	const localTypes = useMemo(
+		() => new Set<SonarEventType>(item.pingEventTypes ?? []),
+		[item.pingEventTypes],
+	);
+
+	function handleToggleGlobal() {
+		if (useGlobalDefaults) {
+			// Switch to custom -- initialize with current global defaults
+			const globalTypes = useSonarStore.getState().pingEventTypes;
+			updateWatchItem(item.id, { pingEventTypes: [...globalTypes] });
+		} else {
+			// Switch back to global defaults
+			updateWatchItem(item.id, { pingEventTypes: undefined });
+		}
+	}
+
+	function handleToggleType(type: SonarEventType) {
+		const next = new Set(localTypes);
+		if (next.has(type)) next.delete(type);
+		else next.add(type);
+		updateWatchItem(item.id, { pingEventTypes: [...next] });
+	}
+
+	return (
+		<div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+			<label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
+				<input
+					type="checkbox"
+					checked={useGlobalDefaults}
+					onChange={handleToggleGlobal}
+					className="accent-teal-500"
+				/>
+				Use global defaults
+			</label>
+			{!useGlobalDefaults && (
+				<div className="mt-2">
+					<PingSettingsPanel pingEventTypes={localTypes} onToggle={handleToggleType} />
+				</div>
+			)}
+		</div>
+	);
+}
+
+// ── Watchlist Tab ────────────────────────────────────────────────────────────
+
+function WatchlistTab() {
+	const { items } = useWatchlistFilter();
+	const [showAddCharacter, setShowAddCharacter] = useState(false);
+	const [showAddTribe, setShowAddTribe] = useState(false);
+	const [expandedSettings, setExpandedSettings] = useState<Set<string>>(new Set());
+
+	const handleAddCharacter = useCallback(
+		(mc: { characterItemId: string; name: string; suiAddress: string; tribeId: number }) => {
+			addWatchItem({
+				kind: "character",
+				characterId: mc.characterItemId,
+				characterName: mc.name,
+				suiAddress: mc.suiAddress,
+				tribeId: mc.tribeId || undefined,
+				pingEnabled: true,
+			});
+			setShowAddCharacter(false);
+		},
+		[],
+	);
+
+	const handleAddTribe = useCallback((tribe: ManifestTribe) => {
+		addWatchItem({
+			kind: "tribe",
+			tribeId: tribe.id,
+			tribeName: tribe.name,
+			pingEnabled: true,
+		});
+		setShowAddTribe(false);
+	}, []);
+
+	function toggleSettings(id: string) {
+		setExpandedSettings((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	}
+
+	// Get last event timestamp for each watched item
+	const lastEventMap = useLiveQuery(async () => {
+		const map = new Map<string, string>();
+		for (const item of items) {
+			let event: SonarEvent | undefined;
+			if (item.kind === "character" && item.characterId) {
+				event = await db.sonarEvents
+					.where("characterId")
+					.equals(item.characterId)
+					.reverse()
+					.first();
+			} else if (item.kind === "tribe" && item.tribeId) {
+				event = await db.sonarEvents
+					.where("tribeId")
+					.equals(item.tribeId)
+					.reverse()
+					.first();
+			}
+			if (event) map.set(item.id, event.timestamp);
+		}
+		return map;
+	}, [items]);
+
+	return (
+		<div className="flex h-full flex-col gap-3">
+			{/* Action buttons */}
+			<div className="flex items-center gap-2">
+				<button
+					type="button"
+					onClick={() => {
+						setShowAddCharacter(!showAddCharacter);
+						setShowAddTribe(false);
+					}}
+					className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+						showAddCharacter
+							? "border-teal-500/40 bg-teal-500/10 text-teal-300"
+							: "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"
+					}`}
+				>
+					<UserPlus size={12} />
+					Add Character
+				</button>
+				<button
+					type="button"
+					onClick={() => {
+						setShowAddTribe(!showAddTribe);
+						setShowAddCharacter(false);
+					}}
+					className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+						showAddTribe
+							? "border-teal-500/40 bg-teal-500/10 text-teal-300"
+							: "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"
+					}`}
+				>
+					<Plus size={12} />
+					Add Tribe
+				</button>
+				<span className="ml-auto text-xs text-zinc-600">
+					{items.length} watched {items.length !== 1 ? "items" : "item"}
+				</span>
+			</div>
+
+			{/* Add character picker */}
+			{showAddCharacter && (
+				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+					<ContactPicker
+						onSelect={handleAddCharacter}
+						placeholder="Search characters to watch..."
+					/>
+				</div>
+			)}
+
+			{/* Add tribe picker */}
+			{showAddTribe && (
+				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+					<TribePicker onSelect={handleAddTribe} />
+				</div>
+			)}
+
+			{/* Watchlist items */}
+			<div className="flex-1 space-y-2 overflow-y-auto">
+				{items.length === 0 ? (
+					<div className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-12 text-center">
+						<p className="text-sm text-zinc-500">
+							No watched entities. Add characters or tribes to monitor their chain activity.
+						</p>
+					</div>
+				) : (
+					items.map((item) => {
+						const lastEvent = lastEventMap?.get(item.id);
+						return (
+							<div
+								key={item.id}
+								className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3"
+							>
+								<div className="flex items-center gap-3">
+									{/* Kind badge */}
+									<span
+										className={`rounded px-2 py-0.5 text-xs font-medium ${
+											item.kind === "character"
+												? "bg-cyan-500/15 text-cyan-400"
+												: "bg-purple-500/15 text-purple-400"
+										}`}
+									>
+										{item.kind === "character" ? "Character" : "Tribe"}
+									</span>
+
+									{/* Name */}
+									<div className="min-w-0 flex-1">
+										<span className="text-sm font-medium text-zinc-100">
+											{item.kind === "character"
+												? item.characterName || "Unknown"
+												: item.tribeName || `Tribe #${item.tribeId}`}
+										</span>
+										{item.notes && (
+											<p className="truncate text-xs text-zinc-500">{item.notes}</p>
+										)}
+									</div>
+
+									{/* Last event */}
+									{lastEvent && (
+										<span className="text-xs text-zinc-600" title="Last event">
+											<Clock size={10} className="mr-1 inline" />
+											{new Date(lastEvent).toLocaleString()}
+										</span>
+									)}
+
+									{/* Ping status toggle */}
+									<button
+										type="button"
+										onClick={() =>
+											updateWatchItem(item.id, { pingEnabled: !item.pingEnabled })
+										}
+										className={`rounded p-1 transition-colors ${
+											item.pingEnabled
+												? "text-teal-400 hover:text-teal-300"
+												: "text-zinc-600 hover:text-zinc-400"
+										}`}
+										title={item.pingEnabled ? "Pings enabled" : "Pings disabled"}
+									>
+										{item.pingEnabled ? <Eye size={14} /> : <EyeOff size={14} />}
+									</button>
+
+									{/* Settings toggle */}
+									<button
+										type="button"
+										onClick={() => toggleSettings(item.id)}
+										className="rounded p-1 text-zinc-600 transition-colors hover:text-zinc-400"
+										title="Ping settings"
+									>
+										<Settings size={14} />
+									</button>
+
+									{/* Remove */}
+									<button
+										type="button"
+										onClick={() => removeWatchItem(item.id)}
+										className="rounded p-1 text-zinc-600 transition-colors hover:text-red-400"
+										title="Remove"
+									>
+										<Trash2 size={14} />
+									</button>
+								</div>
+
+								{/* Collapsible per-item ping settings */}
+								{expandedSettings.has(item.id) && <WatchItemPingSettings item={item} />}
+							</div>
+						);
+					})
+				)}
+			</div>
+		</div>
+	);
+}
+
 // ── Chain Feed Tab ───────────────────────────────────────────────────────────
 
 function ChainFeedTab() {
@@ -897,14 +1269,48 @@ function ChainFeedTab() {
 		() => db.sonarEvents.where("source").equals("chain").reverse().limit(1000).toArray(),
 		[],
 	);
+	const { matchesWatchlist, isOwnedEvent } = useWatchlistFilter();
 
-	const data = useMemo(() => events ?? [], [events]);
+	const data = useMemo(() => {
+		if (!events) return [];
+		return events.filter((e) => {
+			if (matchesWatchlist(e) !== null) return true;
+			if (isOwnedEvent(e)) return true;
+			// No character/tribe attribution = global event, always show
+			if (!e.characterId && !e.tribeId) return true;
+			return false;
+		});
+	}, [events, matchesWatchlist, isOwnedEvent]);
+
+	// Augment columns with a "Source" badge column for watched items
+	const chainColumns = useMemo((): ColumnDef<SonarEvent, unknown>[] => {
+		const badgeCol: ColumnDef<SonarEvent, unknown> = {
+			id: "watchBadge",
+			header: "",
+			size: 60,
+			enableSorting: false,
+			enableColumnFilter: false,
+			cell: ({ row }) => {
+				const event = row.original;
+				const watched = matchesWatchlist(event);
+				if (watched) {
+					return (
+						<span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+							Watched
+						</span>
+					);
+				}
+				return null;
+			},
+		};
+		return [...columns, badgeCol];
+	}, [matchesWatchlist]);
 
 	return (
 		<div className="flex h-full flex-col gap-3">
 			<div className="flex-1 overflow-hidden">
 				<DataGrid
-					columns={columns}
+					columns={chainColumns}
 					data={data}
 					keyFn={(row) => String(row.id ?? 0)}
 					searchPlaceholder="Search chain events..."
@@ -964,6 +1370,7 @@ export function Sonar() {
 				{activeTab === "pings" && <PingsTab />}
 				{activeTab === "logFeed" && <LogFeedTab />}
 				{activeTab === "chainFeed" && <ChainFeedTab />}
+				{activeTab === "watchlist" && <WatchlistTab />}
 			</div>
 		</div>
 	);

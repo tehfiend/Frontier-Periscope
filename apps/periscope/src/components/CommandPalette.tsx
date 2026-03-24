@@ -35,7 +35,7 @@ const NAV_ITEMS: { path: string; label: string; icon: LucideIcon; keywords: stri
 	{ path: "/", label: "Dashboard", icon: LayoutDashboard, keywords: "home overview" },
 	{ path: "/map", label: "Star Map", icon: Map, keywords: "systems route 3d" },
 	{ path: "/intel", label: "Intel Channel", icon: Radio, keywords: "chat reports" },
-	{ path: "/targets", label: "Watchlist", icon: Target, keywords: "targets surveillance" },
+	{ path: "/sonar", label: "Watchlist", icon: Target, keywords: "targets surveillance watchlist" },
 	{ path: "/players", label: "Players", icon: Users, keywords: "characters threats" },
 	{ path: "/killmails", label: "Killmails", icon: Skull, keywords: "combat kills deaths" },
 	{

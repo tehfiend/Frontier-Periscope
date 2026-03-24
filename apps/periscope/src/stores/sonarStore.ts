@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { db } from "@/db";
 import type { SonarChannelStatus, SonarEventType } from "@/db/types";
 
-type SonarTab = "pings" | "logFeed" | "chainFeed";
+type SonarTab = "pings" | "logFeed" | "chainFeed" | "watchlist";
 
 interface SonarState {
 	localEnabled: boolean;
