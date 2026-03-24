@@ -1,5 +1,11 @@
 # Dispatch Log
 
+## 2026-03-23 -- private-map-standings
+- **Action:** CREATE
+- **File:** docs/plans/pending/14-private-map-standings.md
+- **Passes:** 4
+- **Result:** pending -- Dual-mode contract (encrypted invite-based + cleartext standings-gated maps). 3 open questions with recommendations. New contract + chain-shared + Periscope UI across 4 phases.
+
 ## 2026-03-23 -- hackathon-remaining-work (review)
 - **Action:** UPDATE
 - **File:** docs/plans/active/07-hackathon-remaining-work.md
@@ -270,3 +276,9 @@
 - **File:** docs/plans/archive/10-update-package-ids-v021.md
 - **Passes:** 1
 - **Result:** archive -- All 5 phases verified complete against codebase. Phase 0: Package IDs confirmed from Published.toml. Phase 1: periscope config.ts has worldPublishedAt for Utopia, ssu-dapp has WORLD_PUBLISHED_AT map, turret-priority manifest updated to v0.0.21. ssu-market-dapp uses getContractAddresses() (no world package ID constant needed -- plan corrected). Phase 2: world_utopia Move.toml has v0.0.21 published-at; all 6 git-dep contracts updated to rev v0.0.21; world_stillness unchanged (correct). Phase 3: chain-events-reference.md and world-contracts-reference.md both updated with v0.0.21 IDs and changelog. Phase 4: cycle5-api-reference.md memory file updated. Phase 5: implicitly verified via successful builds during Plans 22-25 execution. Plan moved from active/ to archive/.
+
+## 2026-03-23 -- market-standings
+- **Action:** CREATE
+- **File:** docs/plans/pending/13-market-standings.md
+- **Passes:** 2
+- **Result:** pending -- New plan for market_standings contract (big-bang replacement of market with standings-based authorization). 4 new contracts (market_standings, token_template_standings, ssu_market_standings x2), 2 new chain-shared files, 3 modified. 5 phases. 3 open questions: (1) world dependency vs caller-passes-IDs, (2) buying standing check, (3) bytecode patcher approach for registry ID.
