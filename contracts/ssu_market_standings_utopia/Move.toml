@@ -1,0 +1,12 @@
+[package]
+name = "ssu_market_standings"
+edition = "2024"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "testnet-v1.66.2" }
+world = { local = "../world_utopia" }
+market_standings = { local = "../market_standings" }
+standings_registry = { local = "../standings_registry" }
+
+[addresses]
+ssu_market_standings = "0x0"
