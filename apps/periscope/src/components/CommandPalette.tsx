@@ -1,27 +1,26 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { db, notDeleted } from "@/db";
 import { useNavigate } from "@tanstack/react-router";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, notDeleted } from "@/db";
 import {
-	Search,
-	Map,
-	Package,
 	Box,
+	LayoutDashboard,
+	type LucideIcon,
+	Map,
 	MapPin,
-	Target,
-	Users,
+	Package,
+	Puzzle,
+	Radio,
+	Search,
+	Settings,
+	Shield,
+	ShieldCheck,
 	Skull,
 	StickyNote,
-	LayoutDashboard,
-	Radio,
+	Target,
+	Users,
 	Wrench,
-	FileText,
-	Shield,
-	Puzzle,
-	ShieldCheck,
-	Settings,
-	type LucideIcon,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface SearchResult {
 	id: string;
@@ -39,13 +38,33 @@ const NAV_ITEMS: { path: string; label: string; icon: LucideIcon; keywords: stri
 	{ path: "/targets", label: "Watchlist", icon: Target, keywords: "targets surveillance" },
 	{ path: "/players", label: "Players", icon: Users, keywords: "characters threats" },
 	{ path: "/killmails", label: "Killmails", icon: Skull, keywords: "combat kills deaths" },
-	{ path: "/deployables", label: "Structures", icon: Package, keywords: "assemblies fuel owned deployables" },
+	{
+		path: "/deployables",
+		label: "Structures",
+		icon: Package,
+		keywords: "assemblies fuel owned deployables",
+	},
 	{ path: "/assemblies", label: "Assemblies", icon: Box, keywords: "tracked discovered" },
 	{ path: "/extensions", label: "Extensions", icon: Puzzle, keywords: "deploy authorize" },
-	{ path: "/permissions", label: "Permissions", icon: ShieldCheck, keywords: "groups policies acl" },
+	{
+		path: "/permissions",
+		label: "Permissions",
+		icon: ShieldCheck,
+		keywords: "groups policies acl",
+	},
 	{ path: "/locations", label: "Locations", icon: MapPin, keywords: "bookmarks poi" },
-	{ path: "/blueprints", label: "Blueprints", icon: Wrench, keywords: "manufacturing bom materials" },
-	{ path: "/logs", label: "Log Analyzer", icon: FileText, keywords: "mining combat travel chat" },
+	{
+		path: "/blueprints",
+		label: "Blueprints",
+		icon: Wrench,
+		keywords: "manufacturing bom materials",
+	},
+	{
+		path: "/sonar",
+		label: "Sonar",
+		icon: Radio,
+		keywords: "mining combat travel chat logs analyzer",
+	},
 	{ path: "/opsec", label: "OPSEC", icon: Shield, keywords: "security exposure risk" },
 	{ path: "/notes", label: "Notes", icon: StickyNote, keywords: "freeform intel" },
 	{ path: "/settings", label: "Settings", icon: Settings, keywords: "profile backup encryption" },
@@ -117,10 +136,7 @@ export function CommandPalette() {
 
 		// Nav items
 		for (const item of NAV_ITEMS) {
-			if (
-				item.label.toLowerCase().includes(q) ||
-				item.keywords.includes(q)
-			) {
+			if (item.label.toLowerCase().includes(q) || item.keywords.includes(q)) {
 				out.push({
 					id: `nav-${item.path}`,
 					category: "Pages",
@@ -152,10 +168,7 @@ export function CommandPalette() {
 		let playerCount = 0;
 		for (const p of players ?? []) {
 			if (playerCount >= 5) break;
-			if (
-				p.name.toLowerCase().includes(q) ||
-				p.address.toLowerCase().includes(q)
-			) {
+			if (p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)) {
 				playerCount++;
 				out.push({
 					id: `player-${p.id}`,
@@ -310,7 +323,9 @@ export function CommandPalette() {
 						placeholder="Search pages, systems, players, assemblies..."
 						className="flex-1 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
 					/>
-					<kbd className="rounded border border-zinc-700 px-1.5 py-0.5 text-xs text-zinc-500">Esc</kbd>
+					<kbd className="rounded border border-zinc-700 px-1.5 py-0.5 text-xs text-zinc-500">
+						Esc
+					</kbd>
 				</div>
 
 				{/* Results */}
@@ -353,9 +368,15 @@ export function CommandPalette() {
 
 				{/* Footer */}
 				<div className="flex items-center gap-4 border-t border-zinc-800 px-4 py-2 text-xs text-zinc-600">
-					<span><kbd className="rounded border border-zinc-700 px-1 py-0.5">↑↓</kbd> Navigate</span>
-					<span><kbd className="rounded border border-zinc-700 px-1 py-0.5">Enter</kbd> Select</span>
-					<span><kbd className="rounded border border-zinc-700 px-1 py-0.5">Esc</kbd> Close</span>
+					<span>
+						<kbd className="rounded border border-zinc-700 px-1 py-0.5">↑↓</kbd> Navigate
+					</span>
+					<span>
+						<kbd className="rounded border border-zinc-700 px-1 py-0.5">Enter</kbd> Select
+					</span>
+					<span>
+						<kbd className="rounded border border-zinc-700 px-1 py-0.5">Esc</kbd> Close
+					</span>
 				</div>
 			</div>
 		</>

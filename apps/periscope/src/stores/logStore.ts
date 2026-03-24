@@ -15,7 +15,7 @@ interface LogState {
 	dpsReceived: number;
 
 	// UI
-	activeTab: "sessions" | "mining" | "combat" | "travel" | "structures" | "chat";
+	activeTab: "activity" | "sessions" | "mining" | "combat" | "travel" | "structures" | "chat";
 	selectedSessionId: string | null;
 
 	// Callbacks registered by useLogWatcher (running at Layout level)
@@ -46,7 +46,7 @@ export const useLogStore = create<LogState>((set) => ({
 	miningOre: null,
 	dpsDealt: 0,
 	dpsReceived: 0,
-	activeTab: "sessions",
+	activeTab: "activity",
 	selectedSessionId: null,
 	grantAccess: null,
 	clearAndReimport: null,

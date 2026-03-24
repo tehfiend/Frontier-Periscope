@@ -1,18 +1,7 @@
-import { useLiveQuery } from "dexie-react-hooks";
 import { db, notDeleted } from "@/db";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
-import {
-	Map,
-	Package,
-	Target,
-	Users,
-	Radio,
-	Skull,
-	FileText,
-	Shield,
-	Database,
-	User,
-} from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { Database, Map, Package, Radio, Shield, Skull, Target, User, Users } from "lucide-react";
 
 function StatCard({
 	icon: Icon,
@@ -74,9 +63,24 @@ export function Dashboard() {
 				Star Map Data
 			</h2>
 			<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-				<StatCard icon={Map} label="Solar Systems" value={systemCount.toLocaleString()} color="text-cyan-500" />
-				<StatCard icon={Map} label="Regions" value={regionCount.toLocaleString()} color="text-blue-500" />
-				<StatCard icon={Map} label="Jump Connections" value={jumpCount.toLocaleString()} color="text-purple-500" />
+				<StatCard
+					icon={Map}
+					label="Solar Systems"
+					value={systemCount.toLocaleString()}
+					color="text-cyan-500"
+				/>
+				<StatCard
+					icon={Map}
+					label="Regions"
+					value={regionCount.toLocaleString()}
+					color="text-blue-500"
+				/>
+				<StatCard
+					icon={Map}
+					label="Jump Connections"
+					value={jumpCount.toLocaleString()}
+					color="text-purple-500"
+				/>
 			</div>
 
 			{/* Intel Summary */}
@@ -85,7 +89,12 @@ export function Dashboard() {
 				Intelligence
 			</h2>
 			<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-				<StatCard icon={Package} label="Deployables" value={deployableCount} color="text-emerald-500" />
+				<StatCard
+					icon={Package}
+					label="Deployables"
+					value={deployableCount}
+					color="text-emerald-500"
+				/>
 				<StatCard icon={Target} label="Targets" value={targetCount} color="text-orange-500" />
 				<StatCard icon={Users} label="Known Players" value={playerCount} color="text-yellow-500" />
 				<StatCard icon={Skull} label="Killmails" value={killmailCount} color="text-red-500" />
@@ -107,10 +116,10 @@ export function Dashboard() {
 					to="/intel"
 				/>
 				<QuickAction
-					icon={FileText}
-					title="Log Analyzer"
-					description="Parse mining, combat, and travel logs"
-					to="/logs"
+					icon={Radio}
+					title="Sonar"
+					description="Live event feeds with log analysis and chain monitoring"
+					to="/sonar"
 				/>
 			</div>
 		</div>

@@ -2,11 +2,20 @@ import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { GrantAccessView } from "@/components/GrantAccessView";
 import { LogEventRow } from "@/components/LogEventRow";
 import { StatCard } from "@/components/StatCard";
+import {
+	ChatTab,
+	CombatTab,
+	MiningTab,
+	SessionDetailView,
+	SessionsTab,
+	StructuresTab,
+	TravelTab,
+} from "@/components/log-analyzer";
 import { db } from "@/db";
 import type { SonarChannelStatus, SonarEvent, SonarEventType } from "@/db/types";
+import { requestDirectoryAccess } from "@/lib/logFileAccess";
 import { useLogStore } from "@/stores/logStore";
 import { useSonarStore } from "@/stores/sonarStore";
-import { Link } from "@tanstack/react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Activity,
@@ -14,10 +23,17 @@ import {
 	BellOff,
 	ChevronDown,
 	ChevronRight,
-	FileText,
+	CircleOff,
+	Clock,
+	FolderOpen,
+	Landmark,
+	MessageSquare,
+	Navigation,
 	Pickaxe,
+	Radio,
 	Settings,
 	Swords,
+	Trash2,
 	Volume2,
 	VolumeX,
 } from "lucide-react";
@@ -175,13 +191,18 @@ const columns: ColumnDef<SonarEvent, unknown>[] = [
 			const event = row.original;
 			if (event.source === "local" && event.sessionId) {
 				return (
-					<a
-						href={`/logs/detail?sessionId=${event.sessionId}`}
+					<button
+						type="button"
+						onClick={() => {
+							useSonarStore.getState().setActiveTab("logFeed");
+							useLogStore.getState().setActiveTab("sessions");
+							useLogStore.getState().setSelectedSessionId(event.sessionId ?? "");
+						}}
 						className="text-zinc-600 hover:text-cyan-400"
-						title="Open in Log Analyzer"
+						title="View session in Log Feed"
 					>
-						<FileText size={14} />
-					</a>
+						<Clock size={14} />
+					</button>
 				);
 			}
 			return null;
@@ -631,16 +652,31 @@ function PingsTab() {
 	);
 }
 
-// ── Log Feed Tab ─────────────────────────────────────────────────────────────
+// ── Log Feed Sub-Tab Bar ─────────────────────────────────────────────────────
 
-function LogFeedTab() {
-	const hasAccess = useLogStore((s) => s.hasAccess);
-	const miningRate = useLogStore((s) => s.miningRate);
-	const miningOre = useLogStore((s) => s.miningOre);
-	const dpsDealt = useLogStore((s) => s.dpsDealt);
-	const dpsReceived = useLogStore((s) => s.dpsReceived);
+type LogFeedSubTab =
+	| "activity"
+	| "sessions"
+	| "mining"
+	| "combat"
+	| "travel"
+	| "structures"
+	| "chat";
+
+const LOG_FEED_SUB_TABS: { id: LogFeedSubTab; label: string; icon: typeof Activity }[] = [
+	{ id: "activity", label: "Activity", icon: Activity },
+	{ id: "sessions", label: "Sessions", icon: Clock },
+	{ id: "mining", label: "Mining", icon: Pickaxe },
+	{ id: "combat", label: "Combat", icon: Swords },
+	{ id: "travel", label: "Travel", icon: Navigation },
+	{ id: "structures", label: "Structures", icon: Landmark },
+	{ id: "chat", label: "Chat", icon: MessageSquare },
+];
+
+// ── Activity Feed (default sub-tab content) ─────────────────────────────────
+
+function ActivityFeed() {
 	const activeSessionId = useLogStore((s) => s.activeSessionId);
-	const grantAccess = useLogStore((s) => s.grantAccess);
 	const clearAndReimport = useLogStore((s) => s.clearAndReimport);
 
 	const recentEvents = useLiveQuery(
@@ -650,6 +686,47 @@ function LogFeedTab() {
 				: [],
 		[activeSessionId],
 	);
+
+	return (
+		<div className="space-y-0.5 rounded-lg border border-zinc-800 bg-zinc-900/30 p-2">
+			{(!recentEvents || recentEvents.length === 0) && (
+				<div className="flex flex-col items-center gap-3 py-8">
+					<p className="text-sm text-zinc-600">
+						{activeSessionId ? "No events in this session yet." : "Waiting for game log events..."}
+					</p>
+					{clearAndReimport && (
+						<button
+							type="button"
+							onClick={clearAndReimport}
+							className="rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+						>
+							Reimport all logs
+						</button>
+					)}
+				</div>
+			)}
+			{recentEvents?.map((event) => (
+				<LogEventRow key={event.id} event={event} />
+			))}
+		</div>
+	);
+}
+
+// ── Log Feed Tab ─────────────────────────────────────────────────────────────
+
+function LogFeedTab() {
+	const hasAccess = useLogStore((s) => s.hasAccess);
+	const isWatching = useLogStore((s) => s.isWatching);
+	const miningRate = useLogStore((s) => s.miningRate);
+	const miningOre = useLogStore((s) => s.miningOre);
+	const dpsDealt = useLogStore((s) => s.dpsDealt);
+	const dpsReceived = useLogStore((s) => s.dpsReceived);
+	const activeSessionId = useLogStore((s) => s.activeSessionId);
+	const grantAccess = useLogStore((s) => s.grantAccess);
+	const clearAndReimport = useLogStore((s) => s.clearAndReimport);
+	const activeSubTab = useLogStore((s) => s.activeTab);
+	const setActiveSubTab = useLogStore((s) => s.setActiveTab);
+	const selectedSessionId = useLogStore((s) => s.selectedSessionId);
 
 	// Session totals
 	const sessionMining = useLiveQuery(
@@ -686,15 +763,26 @@ function LogFeedTab() {
 		if (!grantAccess) {
 			return (
 				<p className="py-8 text-center text-sm text-zinc-600">
-					Log watcher not initialized. Navigate to the Log Analyzer to grant access.
+					Log watcher not initialized. Grant access to your game log directory to enable log
+					analysis.
 				</p>
 			);
 		}
 		return <GrantAccessView onGrant={grantAccess} />;
 	}
 
+	// If a session is selected in SessionsTab, show the detail view
+	if (selectedSessionId) {
+		return <SessionDetailView />;
+	}
+
+	async function handleChangeDir() {
+		const handle = await requestDirectoryAccess();
+		if (handle && grantAccess) grantAccess(handle);
+	}
+
 	return (
-		<div className="space-y-4">
+		<div className="flex h-full flex-col gap-3">
 			{/* Live stat cards */}
 			<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
 				<StatCard
@@ -730,39 +818,73 @@ function LogFeedTab() {
 				/>
 			</div>
 
-			{/* Activity feed */}
+			{/* Header controls row */}
 			<div className="flex items-center justify-between">
-				<h3 className="text-sm font-medium text-zinc-400">Activity Feed</h3>
-				<Link
-					to="/logs/detail"
-					className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-				>
-					<FileText size={12} />
-					Open Analyzer
-				</Link>
+				<div className="flex items-center gap-2">
+					{clearAndReimport && (
+						<button
+							type="button"
+							onClick={clearAndReimport}
+							className="flex items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1 text-xs text-zinc-500 transition-colors hover:border-red-800 hover:text-red-400"
+							title="Clear all parsed data and reimport from logs"
+						>
+							<Trash2 size={12} />
+							Clear &amp; Reimport
+						</button>
+					)}
+					<button
+						type="button"
+						onClick={handleChangeDir}
+						className="flex items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1 text-xs text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-300"
+						title="Change log directory"
+					>
+						<FolderOpen size={12} />
+						Change Dir
+					</button>
+				</div>
+				<div className="flex items-center gap-2 text-xs">
+					{isWatching ? (
+						<>
+							<Radio size={14} className="animate-pulse text-green-500" />
+							<span className="text-green-400">Live</span>
+						</>
+					) : (
+						<>
+							<CircleOff size={14} className="text-zinc-600" />
+							<span className="text-zinc-500">Paused</span>
+						</>
+					)}
+				</div>
 			</div>
-			<div className="space-y-0.5 rounded-lg border border-zinc-800 bg-zinc-900/30 p-2">
-				{(!recentEvents || recentEvents.length === 0) && (
-					<div className="flex flex-col items-center gap-3 py-8">
-						<p className="text-sm text-zinc-600">
-							{activeSessionId
-								? "No events in this session yet."
-								: "Waiting for game log events..."}
-						</p>
-						{clearAndReimport && (
-							<button
-								type="button"
-								onClick={clearAndReimport}
-								className="rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-							>
-								Reimport all logs
-							</button>
-						)}
-					</div>
-				)}
-				{recentEvents?.map((event) => (
-					<LogEventRow key={event.id} event={event} />
+
+			{/* Sub-tab bar */}
+			<div className="flex border-b border-zinc-800">
+				{LOG_FEED_SUB_TABS.map(({ id, label, icon: Icon }) => (
+					<button
+						key={id}
+						type="button"
+						onClick={() => setActiveSubTab(id)}
+						className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+							activeSubTab === id
+								? "border-b-2 border-teal-500 text-teal-400"
+								: "text-zinc-500 hover:text-zinc-300"
+						}`}
+					>
+						<Icon size={14} />
+						{label}
+					</button>
 				))}
+			</div>
+
+			{/* Sub-tab content */}
+			<div className="flex-1 overflow-y-auto">
+				{activeSubTab === "activity" && <ActivityFeed />}
+				{activeSubTab === "sessions" && <SessionsTab />}
+				{activeSubTab === "mining" && <MiningTab />}
+				{activeSubTab === "combat" && <CombatTab />}
+				{activeSubTab === "travel" && <TravelTab />}
+				{activeSubTab === "structures" && <StructuresTab />}
+				{activeSubTab === "chat" && <ChatTab />}
 			</div>
 		</div>
 	);
@@ -831,13 +953,6 @@ export function Sonar() {
 						status={chainStatus}
 						onToggle={() => setChainEnabled(!chainEnabled)}
 					/>
-					<Link
-						to="/logs/detail"
-						className="ml-2 flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-					>
-						<FileText size={12} />
-						Open Analyzer
-					</Link>
 				</div>
 			</div>
 
