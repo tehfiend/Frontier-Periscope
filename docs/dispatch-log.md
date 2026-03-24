@@ -282,3 +282,9 @@
 - **File:** docs/plans/pending/13-market-standings.md
 - **Passes:** 2
 - **Result:** pending -- New plan for market_standings contract (big-bang replacement of market with standings-based authorization). 4 new contracts (market_standings, token_template_standings, ssu_market_standings x2), 2 new chain-shared files, 3 modified. 5 phases. 3 open questions: (1) world dependency vs caller-passes-IDs, (2) buying standing check, (3) bytecode patcher approach for registry ID.
+
+## 2026-03-23 -- market-standings (update)
+- **Action:** UPDATE
+- **File:** docs/plans/active/13-market-standings.md
+- **Passes:** 4
+- **Result:** active -- Resolved all 3 open questions: (1) No world dependency -- caller passes tribe_id/char_id (Option A). (2) Added min_buy threshold for buy_from_listing and post_buy_order (Option B) -- enables "sell cheap fuel without enemies benefiting." (3) Bake registry_id as 32-byte constant vector (Option A). Three-threshold model (min_mint, min_trade, min_buy) with sentinels 251/252/253. Added missing ssu-market-standings.ts to chain-shared file list. Removed buy_from_listing as standalone market function (check happens in ssu_market_standings via check_standing helper). Plan moved from pending/ to active/.
