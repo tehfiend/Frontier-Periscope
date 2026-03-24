@@ -56,19 +56,21 @@ PrivateMapV2 {
     id: UID,
     name: String,
     creator: address,
-    editors: vector<address>,        // addresses that can add/remove locations
+    editors: vector<address>,        // addresses that can add locations (both modes)
     mode: u8,                        // 0 = encrypted, 1 = cleartext_standings
-    // Encrypted mode fields (only meaningful when mode=0):
-    public_key: vector<u8>,          // X25519 public key (32 bytes), empty when cleartext
-    revoked: vector<address>,        // revoke list for encrypted mode
-    // Cleartext standings mode fields (only meaningful when mode=1):
-    registry_id: Option<ID>,         // StandingsRegistry to check
-    min_read_standing: u8,           // minimum standing to read locations (contract cannot enforce reads, but stored for client-side gating + social contract)
-    min_write_standing: u8,          // minimum standing to add locations
+    // Encrypted mode fields (populated when mode=0, empty/default when mode=1):
+    public_key: vector<u8>,          // X25519 public key (32 bytes); empty vector when mode=1
+    revoked: vector<address>,        // revoke list for encrypted mode; empty when mode=1
+    // Cleartext standings mode fields (populated when mode=1, default when mode=0):
+    registry_id: Option<ID>,         // StandingsRegistry to check; option::none() when mode=0
+    min_read_standing: u8,           // minimum standing to view (client-enforced); 0 when mode=0
+    min_write_standing: u8,          // minimum standing to add locations; 0 when mode=0
     // Shared
     next_location_id: u64,
 }
 ```
+
+**Note on editors vs invite holders:** The current `private_map` contract allows any invite holder to add locations. The new contract separates "can decrypt" (has invite) from "can write" (is editor or creator). For encrypted maps, the creator must explicitly add invite recipients to the editors list to grant write access. This gives map creators finer control -- they can share read-only access by inviting without adding to editors.
 
 **MapInviteV2** -- owned object for encrypted mode (identical to current MapInvite):
 ```
@@ -101,30 +103,43 @@ MapLocationV2 {
 - `MODE_CLEARTEXT_STANDINGS: u8 = 1`
 
 **Functions -- Map creation:**
-- `create_encrypted_map(name, public_key, self_invite_encrypted_key, ctx)` -- creates a mode=0 map. Creator auto-gets self-invite. Identical flow to current `create_map()`. Creator is auto-added to editors.
-- `create_standings_map(name, registry_id: ID, min_read_standing: u8, min_write_standing: u8, ctx)` -- creates a mode=1 cleartext map. Stores the registry_id for verification at write time. Validates standings 0-6. No encryption, no invite. Creator is auto-added to editors.
+- `create_encrypted_map(name: String, public_key: vector<u8>, self_invite_encrypted_key: vector<u8>, ctx: &mut TxContext)` -- `#[allow(lint(share_owned, self_transfer))]`. Creates mode=0 map. Validates 32-byte public key. Creator auto-added to editors. Self-invite MapInviteV2 transferred to creator. Map shared.
+- `create_standings_map(name: String, registry_id: ID, min_read_standing: u8, min_write_standing: u8, ctx: &mut TxContext)` -- `#[allow(lint(share_owned))]`. Creates mode=1 map. Validates standings 0-6. Stores registry_id as `option::some(registry_id)`. Creator auto-added to editors. Map shared. No invite created.
 
 **Functions -- Encrypted mode member management:**
-- `invite_member(map, recipient, encrypted_map_key, ctx)` -- creator-only, mode=0 only. Same as current.
-- `revoke_member(map, addr, ctx)` -- creator-only, mode=0 only. Same as current.
+- `invite_member(map: &PrivateMapV2, recipient: address, encrypted_map_key: vector<u8>, ctx: &mut TxContext)` -- `#[allow(lint(self_transfer))]`. Asserts mode=0 + sender is creator. Creates MapInviteV2 transferred to recipient.
+- `revoke_member(map: &mut PrivateMapV2, addr: address, ctx: &TxContext)` -- asserts mode=0 + sender is creator. Adds addr to revoked list. Asserts not already revoked.
 
 **Functions -- Editor management (both modes):**
-- `add_editor(map, addr, ctx)` -- creator-only. Adds an address to the editors list.
-- `remove_editor(map, addr, ctx)` -- creator-only. Removes an address from editors.
+- `add_editor(map: &mut PrivateMapV2, addr: address, ctx: &TxContext)` -- asserts sender is creator. Asserts addr not already in editors. Pushes addr to editors.
+- `remove_editor(map: &mut PrivateMapV2, addr: address, ctx: &TxContext)` -- asserts sender is creator. Asserts addr in editors. Removes addr from editors.
 
 **Functions -- Standings config (mode=1 only):**
-- `update_standings_config(map, registry_id: ID, min_read_standing: u8, min_write_standing: u8, ctx)` -- creator-only, mode=1 only. Updates the standings reference and thresholds. Validates standings 0-6.
+- `update_standings_config(map: &mut PrivateMapV2, registry_id: ID, min_read_standing: u8, min_write_standing: u8, ctx: &TxContext)` -- asserts mode=1 + sender is creator. Validates standings 0-6. Updates registry_id, min_read, min_write.
 
 **Functions -- Location management:**
-- `add_location_encrypted(map, invite, structure_id, encrypted_data, clock, ctx)` -- mode=0 only. Requires MapInviteV2 proof, sender not revoked, sender is editor or creator. Stores encrypted data.
-- `add_location_standings(map, registry: &StandingsRegistry, tribe_id: u32, char_id: u64, structure_id, data, clock, ctx)` -- mode=1 only. Verifies `object::id(registry) == map.registry_id`. Looks up standing via `standings_registry::get_standing(registry, tribe_id, char_id)`. Grants write if standing >= `min_write_standing` OR sender is editor/creator. Stores plaintext data.
-- `remove_location(map, location_id, ctx)` -- both modes. Creator or `added_by` address can remove.
+- `add_location_encrypted(map: &mut PrivateMapV2, invite: &MapInviteV2, structure_id: Option<ID>, encrypted_data: vector<u8>, clock: &Clock, ctx: &mut TxContext)` -- asserts mode=0, invite.map_id matches map ID, sender not revoked, sender is editor or creator. Increments next_location_id. Adds dynamic field.
+- `add_location_standings(map: &mut PrivateMapV2, registry: &StandingsRegistry, tribe_id: u32, char_id: u64, structure_id: Option<ID>, data: vector<u8>, clock: &Clock, ctx: &mut TxContext)` -- asserts mode=1, `option::is_some(&map.registry_id)`, `object::id(registry) == *option::borrow(&map.registry_id)`. Grants write if `get_standing(registry, tribe_id, char_id) >= map.min_write_standing` OR sender is editor/creator. Increments next_location_id. Adds dynamic field with plaintext data.
+- `remove_location(map: &mut PrivateMapV2, location_id: u64, ctx: &TxContext)` -- both modes. Asserts location exists. Asserts sender is creator or added_by. Removes dynamic field.
 
 **Functions -- Read accessors:**
 - Standard field accessors for all PrivateMapV2 fields, MapLocationV2 fields, MapInviteV2 fields.
 
 **Error codes:**
-- `ENotCreator` (0), `ELocationNotFound` (1), `ENotLocationOwner` (2), `EInviteNotForThisMap` (3), `EMemberRevoked` (4), `EAlreadyRevoked` (5), `EInvalidPublicKeyLength` (6), `EWrongMode` (7), `EAccessDenied` (8), `ERegistryMismatch` (9), `EInvalidStanding` (10), `EEditorAlreadyExists` (11), `EEditorNotFound` (12)
+- `ENotCreator` (0) -- caller is not the map creator (for admin-only ops)
+- `ELocationNotFound` (1) -- location_id does not exist on the map
+- `ENotLocationOwner` (2) -- caller is neither creator nor the address that added the location
+- `EInviteNotForThisMap` (3) -- MapInviteV2.map_id does not match the map's ID
+- `EMemberRevoked` (4) -- caller is in the revoked list (encrypted mode)
+- `EAlreadyRevoked` (5) -- address is already in the revoked list
+- `EInvalidPublicKeyLength` (6) -- public_key is not exactly 32 bytes
+- `EWrongMode` (7) -- function called on a map with incompatible mode
+- `EAccessDenied` (8) -- standing too low and not an editor/creator (standings mode write)
+- `ERegistryMismatch` (9) -- passed StandingsRegistry ID does not match map's registry_id
+- `EInvalidStanding` (10) -- standing value > 6
+- `EEditorAlreadyExists` (11) -- address is already in the editors list
+- `EEditorNotFound` (12) -- address is not in the editors list
+- `ENotEditor` (13) -- caller is not an editor or creator (encrypted mode write)
 
 **Events:**
 - `MapCreatedEvent { map_id, creator, name, mode }`
@@ -227,7 +242,7 @@ MapLocationV2 {
 2. Create `contracts/private_map_standings/sources/private_map_standings.move` with:
    - All structs: `PrivateMapV2`, `MapInviteV2`, `LocationKey`, `MapLocationV2`
    - Mode constants: `MODE_ENCRYPTED = 0`, `MODE_CLEARTEXT_STANDINGS = 1`
-   - Error codes (12 total as listed above)
+   - Error codes (14 total, codes 0-13 as listed above)
    - Events (8 event types as listed above)
    - `create_encrypted_map()` -- validates 32-byte public key, creates shared PrivateMapV2 with mode=0, creates self-invite MapInviteV2, emits events. Creator auto-added to editors.
    - `create_standings_map()` -- creates shared PrivateMapV2 with mode=1, stores registry_id (ID), min_read/min_write standings (0-6 validated). No encryption, no invite. Creator auto-added to editors.
@@ -239,21 +254,28 @@ MapLocationV2 {
    - `add_location_standings()` -- asserts mode=1, takes `&StandingsRegistry` + `tribe_id: u32` + `char_id: u64`. Verifies `object::id(registry) == map.registry_id`. Checks `get_standing() >= min_write_standing` OR sender is editor/creator. Stores plaintext data.
    - `remove_location()` -- both modes. Creator or added_by can remove.
    - Read accessors for all fields.
-3. Write comprehensive tests:
-   - `test_create_encrypted_map` -- creation, self-invite, mode=0 verification
-   - `test_create_standings_map` -- creation, mode=1 verification, registry_id set
-   - `test_encrypted_add_location` -- add/borrow with invite proof
-   - `test_standings_add_location` -- add with sufficient standing
-   - `test_standings_add_location_denied` -- add with insufficient standing
-   - `test_standings_add_location_as_editor` -- editor can add regardless of standing
-   - `test_invite_wrong_mode` -- invite on mode=1 map fails
-   - `test_standings_write_wrong_mode` -- standings write on mode=0 map fails
-   - `test_registry_mismatch` -- wrong registry passed to standings write
-   - `test_editor_management` -- add/remove editors
-   - `test_update_standings_config` -- change thresholds
+3. Write comprehensive tests (at least 16 test functions):
+   - `test_create_encrypted_map` -- creation, self-invite transferred to creator, mode=0, public_key length, next_location_id=0
+   - `test_create_standings_map` -- creation, mode=1, registry_id set, min_read/min_write stored, no invite created
+   - `test_encrypted_add_location` -- add location with valid invite proof, borrow and verify fields
+   - `test_encrypted_add_location_non_editor_fails` -- invite holder who is NOT an editor cannot add -> ENotEditor
+   - `test_standings_add_location` -- add location with sufficient standing, verify plaintext data stored
+   - `test_standings_add_location_denied` -- standing below min_write_standing, non-editor -> EAccessDenied
+   - `test_standings_add_location_as_editor` -- editor with low standing can still add (editor OR standing check)
+   - `test_standings_add_location_as_creator` -- creator can always add regardless of standing
+   - `test_invite_wrong_mode` -- calling invite_member on mode=1 map fails with EWrongMode
+   - `test_standings_write_wrong_mode` -- calling add_location_standings on mode=0 map fails with EWrongMode
+   - `test_registry_mismatch` -- wrong StandingsRegistry object passed to add_location_standings -> ERegistryMismatch
+   - `test_editor_management` -- add_editor, verify in list, remove_editor, verify removed
+   - `test_non_creator_cannot_add_editor` -- stranger calls add_editor -> ENotCreator
+   - `test_update_standings_config` -- change registry_id and thresholds, verify updated
+   - `test_update_standings_config_wrong_mode` -- update on mode=0 map -> EWrongMode
    - `test_remove_location_by_creator` -- creator removes any location
    - `test_remove_location_by_adder` -- adder removes own location
-   - `test_revoke_encrypted_member` -- revoked member cannot add
+   - `test_unauthorized_remove_location` -- stranger cannot remove -> ENotLocationOwner
+   - `test_revoke_encrypted_member` -- revoked member with invite cannot add location
+   - `test_multiple_locations` -- add 3 locations, remove middle, verify remaining
+   - `test_invalid_standing_values` -- min_read or min_write > 6 rejected at creation
 4. Build and run tests: `cd contracts/private_map_standings && sui move test`
 
 ### Phase 2: chain-shared Integration
