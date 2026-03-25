@@ -1,5 +1,14 @@
 import { create } from "zustand";
 
+export type LogActiveTab =
+	| "activity"
+	| "sessions"
+	| "mining"
+	| "combat"
+	| "travel"
+	| "structures"
+	| "chat";
+
 interface LogState {
 	// Directory access
 	hasAccess: boolean;
@@ -15,7 +24,7 @@ interface LogState {
 	dpsReceived: number;
 
 	// UI
-	activeTab: "activity" | "sessions" | "mining" | "combat" | "travel" | "structures" | "chat";
+	activeTab: LogActiveTab;
 	selectedSessionId: string | null;
 
 	// Callbacks registered by useLogWatcher (running at Layout level)

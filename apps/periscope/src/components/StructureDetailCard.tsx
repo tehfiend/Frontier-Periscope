@@ -1,8 +1,10 @@
 import { TENANTS } from "@/chain/config";
 import { type TenantId, classifyExtension } from "@/chain/config";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
+import { useStructureExtensionConfig } from "@/hooks/useStructureExtensions";
 import type { StructureRow } from "@/views/Deployables";
-import { AppWindow, ExternalLink, Fuel, MapPin } from "lucide-react";
+import { REGISTRY_STANDING_LABELS } from "@tehfrontier/chain-shared";
+import { AppWindow, ExternalLink, Fuel, MapPin, Settings2 } from "lucide-react";
 import { CopyAddress } from "./CopyAddress";
 import { EditableCell } from "./EditableCell";
 
@@ -28,16 +30,27 @@ function fuelColorClass(hours: number | null): string {
 	return "text-green-400";
 }
 
+function standingLabel(raw: number): string {
+	return REGISTRY_STANDING_LABELS.get(raw) ?? `${raw}`;
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 interface StructureDetailCardProps {
 	row: StructureRow | null;
 	systemNames: Map<number, string>;
 	onSaveNotes?: (row: StructureRow, notes: string) => void;
+	onConfigure?: (row: StructureRow) => void;
 }
 
-export function StructureDetailCard({ row, systemNames, onSaveNotes }: StructureDetailCardProps) {
+export function StructureDetailCard({
+	row,
+	systemNames,
+	onSaveNotes,
+	onConfigure,
+}: StructureDetailCardProps) {
 	const tenant = useActiveTenant();
+	const extConfig = useStructureExtensionConfig(row?.objectId ?? null);
 
 	if (!row) return null;
 
@@ -50,13 +63,17 @@ export function StructureDetailCard({ row, systemNames, onSaveNotes }: Structure
 
 	const extensionInfo = classifyExtension(row.extensionType, tenant as TenantId);
 
+	const tenantDapp =
+		TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
 	const dappHref = row.dappUrl
 		? row.dappUrl.startsWith("http")
 			? row.dappUrl
 			: `https://${row.dappUrl}`
 		: row.itemId
-			? `${TENANTS[tenant]?.dappUrl ?? `https://dapps.evefrontier.com/?tenant=${tenant}`}&itemId=${row.itemId}`
-			: null;
+			? `${tenantDapp}&itemId=${row.itemId}`
+			: row.ownership === "mine"
+				? tenantDapp
+				: null;
 
 	return (
 		<div className="mt-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
@@ -153,6 +170,74 @@ export function StructureDetailCard({ row, systemNames, onSaveNotes }: Structure
 										: "\u2014"}
 					</p>
 				</div>
+
+				{/* Standings Extension Details */}
+				{extConfig && (
+					<div className="col-span-2 rounded-lg border border-zinc-700/50 bg-zinc-800/30 p-3">
+						<div className="mb-2 flex items-center justify-between">
+							<span className="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+								<Settings2 size={12} className="text-cyan-500" />
+								Standings Config
+							</span>
+							{onConfigure && (
+								<button
+									type="button"
+									onClick={() => onConfigure(row)}
+									className="rounded px-2 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-900/30"
+								>
+									Configure
+								</button>
+							)}
+						</div>
+						<div className="grid grid-cols-2 gap-2 text-xs">
+							<div>
+								<span className="text-zinc-600">Registry</span>
+								<p className="text-zinc-300">{extConfig.registryName ?? "Unknown"}</p>
+							</div>
+							{extConfig.minAccess !== undefined && (
+								<div>
+									<span className="text-zinc-600">Min Access</span>
+									<p className="text-zinc-300">{standingLabel(extConfig.minAccess)}</p>
+								</div>
+							)}
+							{extConfig.freeAccess !== undefined && (
+								<div>
+									<span className="text-zinc-600">Free Access</span>
+									<p className="text-zinc-300">{standingLabel(extConfig.freeAccess)}</p>
+								</div>
+							)}
+							{extConfig.tollFee && extConfig.tollFee !== "0" && (
+								<div>
+									<span className="text-zinc-600">Toll</span>
+									<p className="text-zinc-300">{extConfig.tollFee} SUI</p>
+								</div>
+							)}
+							{extConfig.minDeposit !== undefined && (
+								<div>
+									<span className="text-zinc-600">Min Deposit</span>
+									<p className="text-zinc-300">{standingLabel(extConfig.minDeposit)}</p>
+								</div>
+							)}
+							{extConfig.minWithdraw !== undefined && (
+								<div>
+									<span className="text-zinc-600">Min Withdraw</span>
+									<p className="text-zinc-300">{standingLabel(extConfig.minWithdraw)}</p>
+								</div>
+							)}
+							{extConfig.marketId && (
+								<div>
+									<span className="text-zinc-600">Market</span>
+									<CopyAddress
+										address={extConfig.marketId}
+										sliceStart={8}
+										sliceEnd={4}
+										className="text-zinc-300"
+									/>
+								</div>
+							)}
+						</div>
+					</div>
+				)}
 
 				{/* Location */}
 				<div>

@@ -1,6 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
 import type {
-	ActivityIntel,
 	AssemblyIntel,
 	AssemblyPolicy,
 	BetrayalAlert,
@@ -15,10 +14,8 @@ import type {
 	ExtensionRecord,
 	GameType,
 	GroupMember,
-	InventoryDiff,
 	Jump,
 	KillmailIntel,
-	LocationIntel,
 	LogEvent,
 	LogOffset,
 	LogSession,
@@ -30,7 +27,6 @@ import type {
 	ManifestStandingEntry,
 	ManifestStandingsList,
 	ManifestTribe,
-	NoteIntel,
 	OrgTierMember,
 	OrganizationRecord,
 	PermissionGroup,
@@ -42,12 +38,9 @@ import type {
 	SonarChannelState,
 	SonarEvent,
 	SonarWatchItem,
+	StructureExtensionConfig,
 	SubscribedRegistry,
 	SyncMeta,
-	SystemClaimRecord,
-	SystemNickname,
-	TargetEvent,
-	TargetRecord,
 	TradeNodeRecord,
 } from "./types";
 
@@ -69,14 +62,8 @@ class PeriscopeDB extends Dexie {
 	deployables!: EntityTable<DeployableIntel, "id">;
 	assemblies!: EntityTable<AssemblyIntel, "id">;
 	players!: EntityTable<PlayerIntel, "id">;
-	locations!: EntityTable<LocationIntel, "id">;
 	killmails!: EntityTable<KillmailIntel, "id">;
-	notes!: EntityTable<NoteIntel, "id">;
-	activities!: EntityTable<ActivityIntel, "id">;
 	chatIntel!: EntityTable<ChatIntelEntry, "id">;
-	targets!: EntityTable<TargetRecord, "id">;
-	targetEvents!: EntityTable<TargetEvent, "id">;
-	inventoryDiffs!: EntityTable<InventoryDiff, "id">;
 
 	// App state
 	settings!: EntityTable<SettingsEntry, "key">;
@@ -90,7 +77,7 @@ class PeriscopeDB extends Dexie {
 	logEvents!: EntityTable<LogEvent, "id">;
 	logSessions!: EntityTable<LogSession, "id">;
 
-	// Permissions
+	// Permissions (tables dropped in V29 -- declarations kept for backward compat with consuming code)
 	permissionGroups!: EntityTable<PermissionGroup, "id">;
 	groupMembers!: EntityTable<GroupMember, "id">;
 	assemblyPolicies!: EntityTable<AssemblyPolicy, "id">;
@@ -119,8 +106,6 @@ class PeriscopeDB extends Dexie {
 	// Governance
 	organizations!: EntityTable<OrganizationRecord, "id">;
 	orgTierMembers!: EntityTable<OrgTierMember, "id">;
-	systemClaims!: EntityTable<SystemClaimRecord, "id">;
-	systemNicknames!: EntityTable<SystemNickname, "id">;
 	currencies!: EntityTable<CurrencyRecord, "id">;
 
 	// Trade
@@ -133,6 +118,9 @@ class PeriscopeDB extends Dexie {
 
 	// Private Maps V2 (dual-mode: encrypted + cleartext standings)
 	manifestPrivateMapsV2!: EntityTable<ManifestPrivateMapV2, "id">;
+
+	// Structure Extension Configs (standings-based)
+	structureExtensionConfigs!: EntityTable<StructureExtensionConfig, "id">;
 
 	constructor() {
 		super("frontier-periscope");
@@ -541,8 +529,7 @@ class PeriscopeDB extends Dexie {
 		});
 		// V27: Private Maps V2 -- dual-mode maps (encrypted + cleartext standings)
 		this.version(27).stores({
-			manifestPrivateMapsV2:
-				"id, name, creator, mode, registryId, tenant, cachedAt",
+			manifestPrivateMapsV2: "id, name, creator, mode, registryId, tenant, cachedAt",
 		});
 
 		// V28: Sonar Watchlist + enriched sonarEvents with sender/tribeId
@@ -551,10 +538,31 @@ class PeriscopeDB extends Dexie {
 			sonarEvents:
 				"++id, [source+eventType], timestamp, characterId, assemblyId, sessionId, sender, tribeId",
 		});
+
+		// V29: Structure extension configs (standings-based) + drop legacy permission tables
+		this.version(29).stores({
+			structureExtensionConfigs: "id, assemblyId, assemblyType, registryId",
+			// Drop deprecated tables
+			permissionGroups: null,
+			groupMembers: null,
+			assemblyPolicies: null,
+			betrayalAlerts: null,
+		});
 	}
 }
 
 export const db = new PeriscopeDB();
+
+// Ensure sonarState seed records exist (V16 migration only runs on upgrade, not fresh installs)
+db.on("ready", async () => {
+	const count = await db.sonarState.count();
+	if (count === 0) {
+		await db.sonarState.bulkAdd([
+			{ channel: "local", enabled: true, status: "off" },
+			{ channel: "chain", enabled: true, status: "off" },
+		]);
+	}
+});
 
 /** Filter predicate to exclude soft-deleted records from queries */
 export function notDeleted<T extends { _deleted?: boolean }>(record: T): boolean {

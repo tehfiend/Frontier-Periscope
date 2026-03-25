@@ -4,7 +4,11 @@ import {
 	getSsuMarketPreviousPackageIds,
 } from "@/lib/constants";
 import { useQuery } from "@tanstack/react-query";
-import { discoverSsuConfig, queryMarketDetails, querySsuConfig } from "@tehfrontier/chain-shared";
+import {
+	discoverSsuConfigStandings,
+	queryMarketStandingsDetails,
+	querySsuConfigStandings,
+} from "@tehfrontier/chain-shared";
 import { useSuiClient } from "./useSuiClient";
 
 export interface SsuConfigResult {
@@ -14,6 +18,8 @@ export interface SsuConfigResult {
 	marketId: string | null;
 	/** Coin type from the linked Market<T>, e.g. "0xabc::ISK_TOKEN::ISK_TOKEN" */
 	coinType: string | null;
+	/** StandingsRegistry object ID from the linked Market (needed for standings-gated trades). */
+	registryId: string | null;
 	/** SSU Market package ID (latest version for ssu_market calls). */
 	packageId: string;
 	isPublic: boolean;
@@ -43,7 +49,7 @@ export function useSsuConfig(
 			if (!ssuObjectId || !originalPkgId || !latestPkgId) return null;
 
 			// Step 1: Discover the SsuConfig object for this SSU
-			const ssuConfigId = await discoverSsuConfig(
+			const ssuConfigId = await discoverSsuConfigStandings(
 				client,
 				originalPkgId,
 				ssuObjectId,
@@ -52,14 +58,16 @@ export function useSsuConfig(
 			if (!ssuConfigId) return null;
 
 			// Step 2: Query the SsuConfig to get owner, delegates, marketId
-			const config = await querySsuConfig(client, ssuConfigId);
+			const config = await querySsuConfigStandings(client, ssuConfigId);
 			if (!config) return null;
 
-			// Step 3: If Market is linked, query it for the coin type
+			// Step 3: If Market is linked, query it for the coin type and registry ID
 			let coinType: string | null = null;
+			let registryId: string | null = null;
 			if (config.marketId) {
-				const market = await queryMarketDetails(client, config.marketId);
+				const market = await queryMarketStandingsDetails(client, config.marketId);
 				coinType = market?.coinType ?? null;
+				registryId = market?.registryId ?? null;
 			}
 
 			return {
@@ -68,6 +76,7 @@ export function useSsuConfig(
 				delegates: config.delegates,
 				marketId: config.marketId,
 				coinType,
+				registryId,
 				packageId: latestPkgId,
 				isPublic: config.isPublic,
 			};

@@ -1,5 +1,5 @@
 /**
- * Gate Standings -- Transaction builders for the
+ * Gate Standings -- Transaction builders and query helpers for the
  * gate_standings extension contract.
  *
  * GateStandingsConfig is a shared config object with per-gate rules
@@ -10,7 +10,9 @@
  * responsible for adding gas config and executing.
  */
 
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { Transaction } from "@mysten/sui/transactions";
+import { getDynamicFieldJson } from "./graphql-queries";
 
 // ── Gate Config Management (admin only) ─────────────────────────────────────
 
@@ -109,4 +111,45 @@ export function buildRemoveGateStandingsAdmin(params: {
 	});
 
 	return tx;
+}
+
+// ── Query Functions ─────────────────────────────────────────────────────────
+
+export interface GateStandingsConfigInfo {
+	registryId: string;
+	minAccess: number;
+	freeAccess: number;
+	tollFee: bigint;
+	tollRecipient: string;
+	permitDurationMs: bigint;
+}
+
+/**
+ * Read per-gate standings config from the shared GateStandingsConfig dynamic fields.
+ * Same pattern as queryTollConfig() in gate-toll.ts -- uses getDynamicFieldJson()
+ * with the gate ID as the dynamic field key.
+ */
+export async function queryGateStandingsConfig(
+	client: SuiGraphQLClient,
+	configObjectId: string,
+	gateId: string,
+): Promise<GateStandingsConfigInfo | null> {
+	try {
+		const fields = await getDynamicFieldJson(client, configObjectId, {
+			type: "0x2::object::ID",
+			value: gateId,
+		});
+		if (!fields) return null;
+
+		return {
+			registryId: String(fields.registry_id ?? ""),
+			minAccess: Number(fields.min_access ?? 0),
+			freeAccess: Number(fields.free_access ?? 0),
+			tollFee: BigInt(String(fields.toll_fee ?? 0)),
+			tollRecipient: String(fields.toll_recipient ?? ""),
+			permitDurationMs: BigInt(String(fields.permit_duration_ms ?? 600000)),
+		};
+	} catch {
+		return null;
+	}
 }

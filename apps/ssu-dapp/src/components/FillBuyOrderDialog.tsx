@@ -5,7 +5,7 @@ import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { getTenant, getWorldPublishedAt } from "@/lib/constants";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { buildPlayerFillBuyOrder, formatBaseUnits } from "@tehfrontier/chain-shared";
+import { buildPlayerFillBuyOrderStandings, formatBaseUnits } from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
 interface FillBuyOrderDialogProps {
@@ -55,7 +55,7 @@ export function FillBuyOrderDialog({
 		setSuccess(null);
 
 		try {
-			const tx = buildPlayerFillBuyOrder({
+			const tx = buildPlayerFillBuyOrderStandings({
 				packageId: ssuConfig.packageId,
 				ssuConfigId: ssuConfig.ssuConfigId,
 				marketId: ssuConfig.marketId,

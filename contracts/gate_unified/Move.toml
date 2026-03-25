@@ -1,9 +1,0 @@
-[package]
-name = "gate_unified"
-edition = "2024"
-
-[dependencies]
-world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "v0.0.21" }
-
-[addresses]
-gate_unified = "0x0"

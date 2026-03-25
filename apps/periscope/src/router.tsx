@@ -1,17 +1,9 @@
 import { Layout } from "@/components/Layout";
 import { Assets } from "@/views/Assets";
 import { Blueprints } from "@/views/Blueprints";
-import { Dashboard } from "@/views/Dashboard";
 import { Deployables } from "@/views/Deployables";
-import { Extensions } from "@/views/Extensions";
-import { Intel } from "@/views/Intel";
 import { JumpPlanner } from "@/views/JumpPlanner";
 import { Killmails } from "@/views/Killmails";
-import { Locations } from "@/views/Locations";
-import { Notes } from "@/views/Notes";
-import { OPSEC } from "@/views/OPSEC";
-import { Permissions } from "@/views/Permissions";
-import { Players } from "@/views/Players";
 import { Settings } from "@/views/Settings";
 import { Setup } from "@/views/Setup";
 import { Workers } from "@/views/Workers";
@@ -23,13 +15,7 @@ const LazyStarMap = lazy(() => import("@/views/StarMap").then((m) => ({ default:
 const LazySonar = lazy(() => import("@/views/Sonar").then((m) => ({ default: m.Sonar })));
 const LazyManifest = lazy(() => import("@/views/Manifest").then((m) => ({ default: m.Manifest })));
 const LazyWallet = lazy(() => import("@/views/Wallet").then((m) => ({ default: m.Wallet })));
-const LazyGovernanceTurrets = lazy(() =>
-	import("@/views/GovernanceTurrets").then((m) => ({ default: m.GovernanceTurrets })),
-);
-const LazyFinance = lazy(() => import("@/views/Finance").then((m) => ({ default: m.Finance })));
-const LazyGovernanceClaims = lazy(() =>
-	import("@/views/GovernanceClaims").then((m) => ({ default: m.GovernanceClaims })),
-);
+const LazyMarket = lazy(() => import("@/views/Market").then((m) => ({ default: m.Market })));
 const LazyPrivateMaps = lazy(() =>
 	import("@/views/PrivateMaps").then((m) => ({ default: m.PrivateMaps })),
 );
@@ -77,26 +63,10 @@ function WalletPage() {
 	);
 }
 
-function GovernanceTurretsPage() {
+function MarketPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
-			<LazyGovernanceTurrets />
-		</Suspense>
-	);
-}
-
-function FinancePage() {
-	return (
-		<Suspense fallback={<LoadingFallback />}>
-			<LazyFinance />
-		</Suspense>
-	);
-}
-
-function GovernanceClaimsPage() {
-	return (
-		<Suspense fallback={<LoadingFallback />}>
-			<LazyGovernanceClaims />
+			<LazyMarket />
 		</Suspense>
 	);
 }
@@ -124,7 +94,9 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/",
-	component: Dashboard,
+	beforeLoad: () => {
+		throw redirect({ to: "/sonar" });
+	},
 });
 
 const mapRoute = createRoute({
@@ -133,24 +105,34 @@ const mapRoute = createRoute({
 	component: StarMapPage,
 });
 
+const structuresRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/structures",
+	component: Deployables,
+});
+
 const deployablesRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/deployables",
-	component: Deployables,
+	beforeLoad: () => {
+		throw redirect({ to: "/structures" });
+	},
 });
 
 const assembliesRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/assemblies",
 	beforeLoad: () => {
-		throw redirect({ to: "/deployables" });
+		throw redirect({ to: "/structures" });
 	},
 });
 
 const locationsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/locations",
-	component: Locations,
+	beforeLoad: () => {
+		throw redirect({ to: "/structures" });
+	},
 });
 
 const targetsRoute = createRoute({
@@ -159,18 +141,6 @@ const targetsRoute = createRoute({
 	beforeLoad: () => {
 		throw redirect({ to: "/sonar" });
 	},
-});
-
-const intelRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/intel",
-	component: Intel,
-});
-
-const playersRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/players",
-	component: Players,
 });
 
 const killmailsRoute = createRoute({
@@ -199,64 +169,18 @@ const sonarRoute = createRoute({
 	component: SonarPage,
 });
 
-const opsecRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/opsec",
-	component: OPSEC,
-});
-
-const notesRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/notes",
-	component: Notes,
-});
-
-// Old routes — redirect to governance
 const extensionsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/extensions",
-	component: Extensions,
-});
-
-const permissionsRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/permissions",
-	component: Permissions,
-});
-
-const turretConfigRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/turret-config",
 	beforeLoad: () => {
-		throw redirect({ to: "/governance/turrets" });
+		throw redirect({ to: "/structures" });
 	},
 });
 
-// Governance routes
-const governanceRoute = createRoute({
+const marketsRoute = createRoute({
 	getParentRoute: () => rootRoute,
-	path: "/governance",
-	beforeLoad: () => {
-		throw redirect({ to: "/governance/finance" });
-	},
-});
-
-const governanceTurretsRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/governance/turrets",
-	component: GovernanceTurretsPage,
-});
-
-const governanceFinanceRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/governance/finance",
-	component: FinancePage,
-});
-
-const governanceClaimsRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/governance/claims",
-	component: GovernanceClaimsPage,
+	path: "/markets",
+	component: MarketPage,
 });
 
 const settingsRoute = createRoute({
@@ -316,25 +240,17 @@ const setupRoute = createRoute({
 const routeTree = rootRoute.addChildren([
 	indexRoute,
 	mapRoute,
+	structuresRoute,
 	deployablesRoute,
 	assembliesRoute,
 	locationsRoute,
 	targetsRoute,
-	intelRoute,
-	playersRoute,
 	killmailsRoute,
 	blueprintsRoute,
 	logsRoute,
 	sonarRoute,
-	opsecRoute,
-	notesRoute,
 	extensionsRoute,
-	permissionsRoute,
-	turretConfigRoute,
-	governanceRoute,
-	governanceTurretsRoute,
-	governanceFinanceRoute,
-	governanceClaimsRoute,
+	marketsRoute,
 	assetsRoute,
 	manifestRoute,
 	walletRoute,

@@ -20,6 +20,7 @@ import type {
 	SonarEventType,
 	SonarWatchItem,
 } from "@/db/types";
+import { useCharacterSessionIds } from "@/hooks/useCharacterSessionIds";
 import {
 	addWatchItem,
 	removeWatchItem,
@@ -27,7 +28,7 @@ import {
 	useWatchlistFilter,
 } from "@/hooks/useSonarWatchlist";
 import { requestDirectoryAccess } from "@/lib/logFileAccess";
-import { useLogStore } from "@/stores/logStore";
+import { type LogActiveTab, useLogStore } from "@/stores/logStore";
 import { useSonarStore } from "@/stores/sonarStore";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -73,6 +74,7 @@ function getEventBadgeColor(eventType: string): string {
 		case "jump":
 		case "gate_linked":
 		case "jump_permit_issued":
+		case "toll_collected":
 		case "access_granted":
 			return "bg-blue-500/15 text-blue-400";
 		// Green -- market / trade
@@ -86,7 +88,6 @@ function getEventBadgeColor(eventType: string): string {
 		case "ssu_market_sell_cancelled":
 		case "exchange_order_placed":
 		case "exchange_order_cancelled":
-		case "exchange_trade":
 			return "bg-green-500/15 text-green-400";
 		// Orange -- fuel / energy
 		case "fuel":
@@ -121,23 +122,67 @@ function getEventBadgeColor(eventType: string): string {
 	}
 }
 
-// ── Column Definitions ───────────────────────────────────────────────────────
+// ── Shared Column Helpers ────────────────────────────────────────────────────
+
+const timestampCol: ColumnDef<SonarEvent, unknown> = {
+	accessorKey: "timestamp",
+	header: "Timestamp",
+	size: 180,
+	cell: ({ getValue }) => {
+		const ts = getValue() as string;
+		try {
+			return new Date(ts).toLocaleString();
+		} catch {
+			return ts;
+		}
+	},
+	filterFn: excelFilterFn,
+};
+
+const eventTypeCol: ColumnDef<SonarEvent, unknown> = {
+	accessorKey: "eventType",
+	header: "Event",
+	size: 160,
+	cell: ({ getValue }) => {
+		const type = getValue() as string;
+		const badgeColor = getEventBadgeColor(type);
+		return (
+			<span className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${badgeColor}`}>
+				{type.replace(/_/g, " ")}
+			</span>
+		);
+	},
+	filterFn: excelFilterFn,
+};
+
+const characterCol: ColumnDef<SonarEvent, unknown> = {
+	accessorKey: "characterName",
+	header: "Character",
+	size: 140,
+	cell: ({ getValue }) => (getValue() as string) || "-",
+	filterFn: excelFilterFn,
+};
+
+function detailsAccessor(row: SonarEvent): string {
+	if (row.source === "local") {
+		return row.systemName ? `Entered ${row.systemName}` : (row.details ?? "-");
+	}
+	// Chain events -- prefer details field when present (new handler events)
+	if (row.details) return row.details;
+	// Fallback for inventory events with structured fields
+	const parts: string[] = [];
+	if (row.typeName) parts.push(row.typeName);
+	else if (row.typeId) parts.push(`type #${row.typeId}`);
+	if (row.quantity != null) parts.push(`x${row.quantity}`);
+	if (row.assemblyName) parts.push(`@ ${row.assemblyName}`);
+	else if (row.assemblyId) parts.push(`@ ${row.assemblyId.slice(0, 10)}...`);
+	return parts.length > 0 ? parts.join(" ") : "-";
+}
+
+// ── Column Definitions: Pings / All Events (includes Source) ────────────────
 
 const columns: ColumnDef<SonarEvent, unknown>[] = [
-	{
-		accessorKey: "timestamp",
-		header: "Timestamp",
-		size: 180,
-		cell: ({ getValue }) => {
-			const ts = getValue() as string;
-			try {
-				return new Date(ts).toLocaleString();
-			} catch {
-				return ts;
-			}
-		},
-		filterFn: excelFilterFn,
-	},
+	timestampCol,
 	{
 		accessorKey: "source",
 		header: "Source",
@@ -158,46 +203,12 @@ const columns: ColumnDef<SonarEvent, unknown>[] = [
 		},
 		filterFn: excelFilterFn,
 	},
-	{
-		accessorKey: "eventType",
-		header: "Type",
-		size: 160,
-		cell: ({ getValue }) => {
-			const type = getValue() as string;
-			const badgeColor = getEventBadgeColor(type);
-			return (
-				<span className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${badgeColor}`}>
-					{type.replace(/_/g, " ")}
-				</span>
-			);
-		},
-		filterFn: excelFilterFn,
-	},
-	{
-		accessorKey: "characterName",
-		header: "Character",
-		size: 140,
-		cell: ({ getValue }) => (getValue() as string) || "-",
-		filterFn: excelFilterFn,
-	},
+	eventTypeCol,
+	characterCol,
 	{
 		id: "details",
 		header: "Details",
-		accessorFn: (row) => {
-			if (row.source === "local") {
-				return row.systemName ? `Entered ${row.systemName}` : (row.details ?? "-");
-			}
-			// Chain events -- prefer details field when present (new handler events)
-			if (row.details) return row.details;
-			// Fallback for inventory events with structured fields
-			const parts: string[] = [];
-			if (row.typeName) parts.push(row.typeName);
-			else if (row.typeId) parts.push(`type #${row.typeId}`);
-			if (row.quantity != null) parts.push(`x${row.quantity}`);
-			if (row.assemblyName) parts.push(`@ ${row.assemblyName}`);
-			else if (row.assemblyId) parts.push(`@ ${row.assemblyId.slice(0, 10)}...`);
-			return parts.length > 0 ? parts.join(" ") : "-";
-		},
+		accessorFn: detailsAccessor,
 		filterFn: excelFilterFn,
 	},
 	{
@@ -226,6 +237,21 @@ const columns: ColumnDef<SonarEvent, unknown>[] = [
 			}
 			return null;
 		},
+	},
+];
+
+// ── Column Definitions: Chain Feed (no Source, no-wrap details) ──────────────
+
+const chainColumns: ColumnDef<SonarEvent, unknown>[] = [
+	timestampCol,
+	eventTypeCol,
+	characterCol,
+	{
+		id: "details",
+		header: "Details",
+		accessorFn: detailsAccessor,
+		cell: ({ getValue }) => <span className="whitespace-nowrap">{getValue() as string}</span>,
+		filterFn: excelFilterFn,
 	},
 ];
 
@@ -444,6 +470,9 @@ const PING_CATEGORIES: PingCategory[] = [
 			status_changed: "Status Changed",
 			metadata_changed: "Metadata Changed",
 			location_revealed: "Location Revealed",
+			extension_authorized: "Extension Authorized",
+			extension_removed: "Extension Removed",
+			extension_revoked: "Extension Revoked",
 		},
 	},
 	{
@@ -467,15 +496,9 @@ const PING_CATEGORIES: PingCategory[] = [
 			lease_cancelled: "Lease Cancelled",
 			exchange_order_placed: "Exchange Order Placed",
 			exchange_order_cancelled: "Exchange Order Cancelled",
-			exchange_trade: "Exchange Trade",
 		},
 	},
 ];
-
-/** Flat lookup of all sonar event type -> display label. */
-const _PING_TYPE_LABELS: Record<SonarEventType, string> = Object.fromEntries(
-	PING_CATEGORIES.flatMap((cat) => Object.entries(cat.types)),
-) as Record<SonarEventType, string>;
 
 // ── Ping Settings Panel (Collapsible Categories) ─────────────────────────────
 
@@ -859,16 +882,7 @@ function PingsTab() {
 
 // ── Log Feed Sub-Tab Bar ─────────────────────────────────────────────────────
 
-type LogFeedSubTab =
-	| "activity"
-	| "sessions"
-	| "mining"
-	| "combat"
-	| "travel"
-	| "structures"
-	| "chat";
-
-const LOG_FEED_SUB_TABS: { id: LogFeedSubTab; label: string; icon: typeof Activity }[] = [
+const LOG_FEED_SUB_TABS: { id: LogActiveTab; label: string; icon: typeof Activity }[] = [
 	{ id: "activity", label: "Activity", icon: Activity },
 	{ id: "sessions", label: "Sessions", icon: Clock },
 	{ id: "mining", label: "Mining", icon: Pickaxe },
@@ -963,7 +977,7 @@ function LogFeedTab() {
 							title="Clear all parsed data and reimport from logs"
 						>
 							<Trash2 size={12} />
-							Clear &amp; Reimport
+							Clear & Reimport
 						</button>
 					)}
 					<button
@@ -1404,11 +1418,12 @@ export function Sonar() {
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3">
+					<Radio size={20} className="shrink-0 text-zinc-400" />
+					<h1 className="text-lg font-semibold text-zinc-100">Sonar</h1>
 					<SonarPing
 						localActive={localStatus === "active"}
 						chainActive={chainStatus === "active"}
 					/>
-					<h1 className="text-lg font-semibold text-zinc-100">Sonar</h1>
 				</div>
 				<div className="flex items-center gap-2">
 					<ChannelToggle

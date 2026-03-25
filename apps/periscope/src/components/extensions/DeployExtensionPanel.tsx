@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { X, Loader2, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
-import { TemplateCard } from "./TemplateCard";
-import { ConfigForm, type ConfigValues } from "./ConfigForm";
-import { getTemplatesForAssemblyType, type ExtensionTemplate, type TenantId } from "@/chain/config";
-import { useExtensionDeploy, type DeployStatus } from "@/hooks/useExtensionDeploy";
+import { type ExtensionTemplate, type TenantId, getTemplatesForAssemblyType } from "@/chain/config";
 import type { OwnedAssembly } from "@/chain/queries";
+import { type DeployStatus, useExtensionDeploy } from "@/hooks/useExtensionDeploy";
+import { AlertCircle, CheckCircle2, ExternalLink, Loader2, X } from "lucide-react";
+import { useState } from "react";
+import { StandingsExtensionPanel } from "./StandingsExtensionPanel";
+import { TemplateCard } from "./TemplateCard";
 
 interface DeployExtensionPanelProps {
 	assembly: OwnedAssembly;
@@ -22,6 +22,16 @@ const statusMessages: Record<DeployStatus, string> = {
 	error: "Deployment failed",
 };
 
+/** IDs of standings-based templates that use StandingsExtensionPanel for config */
+const STANDINGS_TEMPLATE_IDS = new Set(["gate_standings", "ssu_unified", "turret_standings"]);
+
+/** Map assembly type to structure kind for StandingsExtensionPanel */
+function getStructureKind(assemblyType: string): "gate" | "ssu" | "turret" {
+	if (assemblyType === "gate") return "gate";
+	if (assemblyType === "turret") return "turret";
+	return "ssu";
+}
+
 export function DeployExtensionPanel({
 	assembly,
 	characterId,
@@ -30,10 +40,10 @@ export function DeployExtensionPanel({
 }: DeployExtensionPanelProps) {
 	const templates = getTemplatesForAssemblyType(assembly.type);
 	const [selected, setSelected] = useState<ExtensionTemplate | null>(null);
-	const [config, setConfig] = useState<ConfigValues>({});
 	const { deploy, reset, status, txDigest, error } = useExtensionDeploy();
 
 	const isDeploying = status === "building" || status === "signing" || status === "confirming";
+	const isStandingsTemplate = selected && STANDINGS_TEMPLATE_IDS.has(selected.id);
 
 	function handleDeploy() {
 		if (!selected || !assembly.ownerCapId) return;
@@ -45,17 +55,12 @@ export function DeployExtensionPanel({
 			characterId,
 			ownerCapId: assembly.ownerCapId,
 			tenant,
-			config: selected.hasConfig ? {
-				allowedTribes: config.allowedTribes,
-				permitDurationMs: config.permitDurationMs,
-			} : undefined,
 		});
 	}
 
 	function handleBack() {
 		reset();
 		setSelected(null);
-		setConfig({});
 	}
 
 	const packageAvailable = selected?.packageIds[tenant];
@@ -68,9 +73,7 @@ export function DeployExtensionPanel({
 			>
 				{/* Header */}
 				<div className="mb-6 flex items-center justify-between">
-					<h2 className="text-lg font-semibold text-zinc-100">
-						Deploy Extension
-					</h2>
+					<h2 className="text-lg font-semibold text-zinc-100">Deploy Extension</h2>
 					<button
 						type="button"
 						onClick={onClose}
@@ -89,20 +92,28 @@ export function DeployExtensionPanel({
 
 				{/* Status feedback */}
 				{status !== "idle" && (
-					<div className={`mb-6 rounded-lg border p-4 ${
-						status === "done"
-							? "border-green-900/50 bg-green-950/20"
-							: status === "error"
-								? "border-red-900/50 bg-red-950/20"
-								: "border-cyan-900/50 bg-cyan-950/20"
-					}`}>
+					<div
+						className={`mb-6 rounded-lg border p-4 ${
+							status === "done"
+								? "border-green-900/50 bg-green-950/20"
+								: status === "error"
+									? "border-red-900/50 bg-red-950/20"
+									: "border-cyan-900/50 bg-cyan-950/20"
+						}`}
+					>
 						<div className="flex items-center gap-2">
 							{status === "done" && <CheckCircle2 size={16} className="text-green-400" />}
 							{status === "error" && <AlertCircle size={16} className="text-red-400" />}
 							{isDeploying && <Loader2 size={16} className="animate-spin text-cyan-400" />}
-							<span className={`text-sm ${
-								status === "done" ? "text-green-300" : status === "error" ? "text-red-300" : "text-cyan-300"
-							}`}>
+							<span
+								className={`text-sm ${
+									status === "done"
+										? "text-green-300"
+										: status === "error"
+											? "text-red-300"
+											: "text-cyan-300"
+								}`}
+							>
 								{statusMessages[status]}
 							</span>
 						</div>
@@ -132,9 +143,7 @@ export function DeployExtensionPanel({
 				{/* Template selection */}
 				{!selected ? (
 					<div>
-						<h3 className="mb-3 text-sm font-medium text-zinc-400">
-							Available Templates
-						</h3>
+						<h3 className="mb-3 text-sm font-medium text-zinc-400">Available Templates</h3>
 						<div className="space-y-3">
 							{templates.map((template) => (
 								<TemplateCard
@@ -163,53 +172,55 @@ export function DeployExtensionPanel({
 
 						<TemplateCard template={selected} tenant={tenant} />
 
-						{/* Config form for configurable templates */}
-						{selected.hasConfig && (
+						{/* Standings-based config panel */}
+						{isStandingsTemplate && (
 							<div className="mt-4">
-								<h3 className="mb-3 text-sm font-medium text-zinc-400">
-									Configuration
-								</h3>
-								<ConfigForm
-									templateId={selected.id}
-									values={config}
-									onChange={setConfig}
+								<h3 className="mb-3 text-sm font-medium text-zinc-400">Standings Configuration</h3>
+								<StandingsExtensionPanel
+									assemblyId={assembly.objectId}
+									assemblyType={assembly.type}
+									structureKind={getStructureKind(assembly.type)}
+									tenant={tenant}
 								/>
 							</div>
 						)}
 
-						{/* Deploy button */}
-						<div className="mt-6">
-							{!packageAvailable ? (
-								<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
-									<p className="text-xs text-amber-400">
-										This extension has not been published to {tenant} yet.
-										Publish the Move contract first, then update the package ID in config.
-									</p>
-								</div>
-							) : !assembly.ownerCapId ? (
-								<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
-									<p className="text-xs text-amber-400">
-										Could not find OwnerCap for this assembly. It may be stored in your Character keychain.
-									</p>
-								</div>
-							) : (
-								<button
-									type="button"
-									onClick={handleDeploy}
-									disabled={isDeploying}
-									className="w-full rounded-lg bg-cyan-600 py-3 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-								>
-									{isDeploying ? (
-										<span className="flex items-center justify-center gap-2">
-											<Loader2 size={16} className="animate-spin" />
-											{statusMessages[status]}
-										</span>
-									) : (
-										"Authorize & Deploy"
-									)}
-								</button>
-							)}
-						</div>
+						{/* Deploy button (only for non-standings templates -- standings handles its own) */}
+						{!isStandingsTemplate && (
+							<div className="mt-6">
+								{!packageAvailable ? (
+									<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
+										<p className="text-xs text-amber-400">
+											This extension has not been published to {tenant} yet. Publish the Move
+											contract first, then update the package ID in config.
+										</p>
+									</div>
+								) : !assembly.ownerCapId ? (
+									<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
+										<p className="text-xs text-amber-400">
+											Could not find OwnerCap for this assembly. It may be stored in your Character
+											keychain.
+										</p>
+									</div>
+								) : (
+									<button
+										type="button"
+										onClick={handleDeploy}
+										disabled={isDeploying}
+										className="w-full rounded-lg bg-cyan-600 py-3 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+									>
+										{isDeploying ? (
+											<span className="flex items-center justify-center gap-2">
+												<Loader2 size={16} className="animate-spin" />
+												{statusMessages[status]}
+											</span>
+										) : (
+											"Authorize & Deploy"
+										)}
+									</button>
+								)}
+							</div>
+						)}
 					</div>
 				)}
 			</div>

@@ -451,11 +451,17 @@ export async function queryRegistryStandings(
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Decode a Move vector<u8> name/ticker field. GraphQL returns it as a JSON
- * number array; we convert to UTF-8 string.
+ * Decode a Move vector<u8> name/ticker field. Sui GraphQL returns vector<u8>
+ * as base64-encoded strings. Also handles number arrays as a fallback.
  */
 function decodeRegistryName(nameField: unknown): string {
-	if (typeof nameField === "string") return nameField;
+	if (typeof nameField === "string") {
+		try {
+			return new TextDecoder().decode(Uint8Array.from(atob(nameField), (c) => c.charCodeAt(0)));
+		} catch {
+			return nameField;
+		}
+	}
 	if (Array.isArray(nameField)) {
 		try {
 			return new TextDecoder().decode(new Uint8Array(nameField.map(Number)));

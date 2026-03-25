@@ -128,14 +128,20 @@ export function useChainSonar() {
 			};
 
 			// Remove CharacterCreated -- handled separately above
-			allEventTypes.CharacterCreated = undefined;
+			delete allEventTypes.CharacterCreated;
 
-			// Build list of {key, moveEventType} pairs that have handlers
+			// Build list of {key, moveEventType} pairs that have handlers,
+			// skipping categories that can't match any owned entities
 			const pollTasks: { key: string; moveEventType: string }[] = [];
 			for (const [key, moveEventType] of Object.entries(allEventTypes)) {
-				if (moveEventType && EVENT_HANDLER_REGISTRY[key]) {
-					pollTasks.push({ key, moveEventType });
-				}
+				if (!moveEventType) continue;
+				const handler = EVENT_HANDLER_REGISTRY[key];
+				if (!handler) continue;
+				// Skip owned-* handlers when no entities exist for that filter
+				if (handler.filter === "owned_ssu" && ssuObjectIds.size === 0) continue;
+				if (handler.filter === "owned_assembly" && ownedAssemblyIds.size === 0) continue;
+				if (handler.filter === "owned_address" && ownedAddresses.size === 0) continue;
+				pollTasks.push({ key, moveEventType });
 			}
 
 			// ── Poll in parallel batches of CONCURRENCY ────────────────
@@ -168,11 +174,13 @@ export function useChainSonar() {
 					}),
 				);
 
-				for (const result of results) {
+				for (let j = 0; j < results.length; j++) {
+					const result = results[j];
 					if (result.status === "fulfilled") {
 						sonarEntries.push(...result.value);
 					} else {
-						console.error("[ChainSonar] Batch query error:", result.reason);
+						const failedKey = batch[j].key;
+						console.error(`[ChainSonar] Error polling ${failedKey}:`, result.reason);
 					}
 				}
 			}
@@ -201,7 +209,7 @@ export function useChainSonar() {
 					status: "error",
 					lastError: err instanceof Error ? err.message : String(err),
 				})
-				.catch(() => {});
+				.catch((e) => console.error("[ChainSonar] Failed to persist error:", e));
 		}
 	}, [client, tenant, setChainStatus, pingChain]);
 
@@ -210,11 +218,17 @@ export function useChainSonar() {
 		if (!chainEnabled || initializedRef.current) return;
 
 		(async () => {
-			const state = await db.sonarState.get("chain");
-			if (state?.cursors) {
-				cursorsRef.current = { ...state.cursors };
+			try {
+				const state = await db.sonarState.get("chain");
+				if (state?.cursors) {
+					cursorsRef.current = { ...state.cursors };
+				}
+			} catch (err) {
+				console.error("[ChainSonar] Failed to load persisted cursors:", err);
+				// Continue without persisted cursors -- polling will start fresh
+			} finally {
+				initializedRef.current = true;
 			}
-			initializedRef.current = true;
 		})();
 	}, [chainEnabled]);
 
@@ -249,10 +263,14 @@ async function persistCursors(
 	cursorsRef: React.MutableRefObject<Record<string, string | null>>,
 	setChainStatus: (s: "active" | "off" | "error") => void,
 ) {
-	await db.sonarState.update("chain", {
-		status: "active",
-		cursors: cursorsRef.current as Record<string, string>,
-		lastPollAt: new Date().toISOString(),
-	});
+	await db.sonarState
+		.put({
+			channel: "chain",
+			enabled: true,
+			status: "active",
+			cursors: cursorsRef.current as Record<string, string>,
+			lastPollAt: new Date().toISOString(),
+		})
+		.catch((e) => console.error("[ChainSonar] Failed to persist cursors:", e));
 	setChainStatus("active");
 }

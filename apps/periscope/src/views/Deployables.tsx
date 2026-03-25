@@ -1,10 +1,10 @@
 import { discoverCharacterAndAssemblies } from "@/chain/queries";
-import { syncTargetAssemblies } from "@/chain/sync";
 import { buildRenameTx, isRenamableModule } from "@/chain/transactions";
 import { db, notDeleted } from "@/db";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { canRevokeExtension, useExtensionRevoke } from "@/hooks/useExtensionRevoke";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
+import { useStructureExtensions } from "@/hooks/useStructureExtensions";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -17,7 +17,10 @@ import {
 	classifyExtension,
 	getTemplate,
 } from "@/chain/config";
-import { crossReferencePrivateMapLocations } from "@/chain/manifest";
+import {
+	crossReferenceManifestLocations,
+	crossReferencePrivateMapLocations,
+} from "@/chain/manifest";
 import type { OwnedAssembly } from "@/chain/queries";
 import { CopyAddress } from "@/components/CopyAddress";
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
@@ -40,6 +43,7 @@ import {
 	Package,
 	Puzzle,
 	RefreshCw,
+	Settings2,
 	Telescope,
 	Trash2,
 	User,
@@ -111,6 +115,28 @@ function statusDotClass(status: string): string {
 			return "bg-zinc-700";
 	}
 }
+
+/** Friendly names for assembly kinds (from OwnedAssembly.type) */
+const ASSEMBLY_KIND_NAMES: Record<string, string> = {
+	storage_unit: "Heavy Storage",
+	smart_storage_unit: "Smart Storage Unit",
+	protocol_depot: "Protocol Depot",
+	gate: "Stargate",
+	turret: "Turret",
+	network_node: "Network Node",
+};
+
+/** Old generic type names that should be overwritten on re-sync */
+const AUTO_TYPE_NAMES = new Set([
+	"Smart Storage Unit",
+	"Gate",
+	"Turret",
+	"Assembly",
+	"Network Node",
+	"Manufacturing",
+	"Refinery",
+	"storage unit",
+]);
 
 /** Map OwnedAssembly.type to Move module name for rename PTB */
 function assemblyKindToModule(
@@ -196,6 +222,9 @@ export function Deployables() {
 	const chainAddress = activeCharacter?.suiAddress ?? activeSuiAddresses[0] ?? null;
 	const hasAddress = !!chainAddress;
 
+	// ── Structure Extension Configs ──────────────────────────────────────────
+	const { configMap: extensionConfigMap } = useStructureExtensions();
+
 	// ── DB Queries ───────────────────────────────────────────────────────────
 	const deployables = useLiveQuery(
 		() =>
@@ -208,7 +237,6 @@ export function Deployables() {
 	const assemblies = useLiveQuery(() => db.assemblies.filter(notDeleted).toArray(), []);
 
 	const players = useLiveQuery(() => db.players.filter(notDeleted).toArray(), []);
-	const targets = useLiveQuery(() => db.targets.filter(notDeleted).toArray(), []);
 	const extensions = useLiveQuery(() => db.extensions.filter(notDeleted).toArray(), []);
 	const lastSync = useLiveQuery(() => db.settings.get("lastChainSync"));
 
@@ -341,8 +369,18 @@ export function Deployables() {
 
 			for (const assembly of discovery.assemblies) {
 				const typeIdNum = assembly.typeId;
-				const typeName = ASSEMBLY_TYPE_IDS[typeIdNum] ?? assembly.type.replace("_", " ");
+				const typeName =
+					ASSEMBLY_TYPE_IDS[typeIdNum] ??
+					ASSEMBLY_KIND_NAMES[assembly.type] ??
+					assembly.type.replace("_", " ");
 				const existing = await db.deployables.where("objectId").equals(assembly.objectId).first();
+				// Update label if it was auto-generated (matches a known type or old generic name)
+				const isAutoLabel =
+					!existing?.label ||
+					existing.label === existing.assemblyType ||
+					Object.values(ASSEMBLY_TYPE_IDS).includes(existing.label) ||
+					AUTO_TYPE_NAMES.has(existing.label);
+				const label = isAutoLabel ? typeName : existing.label;
 
 				let fuelData: { fuelLevel?: number; fuelExpiresAt?: string } = {};
 				try {
@@ -357,7 +395,7 @@ export function Deployables() {
 					assemblyType: typeName,
 					owner: chainAddress,
 					status: assembly.status as DeployableIntel["status"],
-					label: existing?.label ?? typeName,
+					label,
 					systemId: existing?.systemId,
 					lPoint: existing?.lPoint,
 					fuelLevel: fuelData.fuelLevel ?? existing?.fuelLevel,
@@ -379,8 +417,12 @@ export function Deployables() {
 			}
 
 			setSyncStatus(`Synced ${totalCount} owned`);
-			// Cross-reference private map locations with structures
+			// Cross-reference locations with structures
 			await crossReferencePrivateMapLocations();
+			const allManifestLocIds = (await db.manifestLocations.toArray()).map((l) => l.id);
+			if (allManifestLocIds.length > 0) {
+				await crossReferenceManifestLocations(allManifestLocIds);
+			}
 			await db.settings.put({
 				key: "lastChainSync",
 				value: new Date().toISOString(),
@@ -392,35 +434,12 @@ export function Deployables() {
 		}
 	}, [chainAddress, syncing, client, tenant]);
 
-	// ── Sync Targets ─────────────────────────────────────────────────────────
-	const handleSyncTargets = useCallback(async () => {
-		if (syncing) return;
-		const activeTargets = targets?.filter((t) => t.watchStatus === "active") ?? [];
-		if (activeTargets.length === 0) {
-			setSyncStatus("No active targets to sync");
-			return;
-		}
-		setSyncing(true);
-		setSyncStatus(`Syncing ${activeTargets.length} targets...`);
-		try {
-			let total = 0;
-			for (const target of activeTargets) {
-				const count = await syncTargetAssemblies(target.address);
-				total += count;
-			}
-			setSyncStatus(`Found ${total} from ${activeTargets.length} targets`);
-		} catch (e) {
-			setSyncStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
-		} finally {
-			setSyncing(false);
-		}
-	}, [targets, syncing]);
-
 	// ── Parent Label Lookup ──────────────────────────────────────────────────
 	const parentLabels = useMemo(() => {
 		const map = new Map<string, string>();
 		for (const row of data) {
 			map.set(row.id, row.label);
+			map.set(row.objectId, row.label);
 		}
 		return map;
 	}, [data]);
@@ -671,30 +690,41 @@ export function Deployables() {
 			},
 			{
 				id: "extension",
-				accessorFn: (d) => classifyExtension(d.extensionType, tenant as TenantId).status,
+				accessorFn: (d) => {
+					const info = classifyExtension(d.extensionType, tenant as TenantId);
+					const extConfig = extensionConfigMap.get(d.objectId);
+					if (extConfig?.registryName) return `${info.status} (${extConfig.registryName})`;
+					return info.status;
+				},
 				header: "Extension",
-				size: 150,
+				size: 200,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
 					const info = classifyExtension(r.extensionType, tenant as TenantId);
+					const extConfig = extensionConfigMap.get(r.objectId);
 
 					const actionLabel =
 						info.status === "periscope-outdated"
 							? "Update"
 							: info.status === "periscope"
-								? "Change"
+								? "Configure"
 								: "Deploy";
 
 					return (
 						<div className="flex items-center gap-1.5">
-							{info.status === "default" && <span className="text-xs text-zinc-600">Default</span>}
+							{info.status === "default" && <span className="text-xs text-zinc-600">None</span>}
 							{info.status === "periscope" && (
 								<>
 									<Telescope size={14} className="text-cyan-500" />
 									<span className="text-xs text-cyan-400">
-										{info.template?.name ?? "Periscope"}
+										{info.template?.name ?? "Standings"}
 									</span>
+									{extConfig?.registryName && (
+										<span className="rounded bg-cyan-500/10 px-1 py-0.5 text-[10px] font-medium text-cyan-400">
+											{extConfig.registryName}
+										</span>
+									)}
 								</>
 							)}
 							{info.status === "periscope-outdated" && (
@@ -712,6 +742,17 @@ export function Deployables() {
 							)}
 							{r.ownership === "mine" && (
 								<div className="ml-auto flex items-center gap-1">
+									{/* Configure button for standings extensions */}
+									{info.status === "periscope" && extConfig && (
+										<button
+											type="button"
+											onClick={() => setDeployTarget(r)}
+											className="rounded px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+											title="Configure extension"
+										>
+											<Settings2 size={10} className="inline" />
+										</button>
+									)}
 									{info.status !== "default" &&
 										r.characterObjectId &&
 										r.ownerCapId &&
@@ -892,13 +933,18 @@ export function Deployables() {
 				enableSorting: false,
 				cell: ({ row }) => {
 					const r = row.original;
+					const tenantDapp =
+						TENANTS[tenant]?.dappUrl ??
+						`https://dapp.frontierperiscope.com/?tenant=${tenant}`;
 					const dappHref = r.dappUrl
 						? r.dappUrl.startsWith("http")
 							? r.dappUrl
 							: `https://${r.dappUrl}`
 						: r.itemId
-							? `${TENANTS[tenant]?.dappUrl ?? `https://dapps.evefrontier.com/?tenant=${tenant}`}&itemId=${r.itemId}`
-							: undefined;
+							? `${tenantDapp}&itemId=${r.itemId}`
+							: r.ownership === "mine"
+								? tenantDapp
+								: undefined;
 					return (
 						<div className="flex items-center gap-1">
 							{dappHref && (
@@ -948,7 +994,7 @@ export function Deployables() {
 			handleRevoke,
 			revokingId,
 			revokeConfirmId,
-			setDeployTarget,
+			extensionConfigMap,
 			data,
 			parentLabels,
 			systems,
@@ -1038,15 +1084,6 @@ export function Deployables() {
 						>
 							{syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
 							Sync Chain
-						</button>
-						<button
-							type="button"
-							onClick={handleSyncTargets}
-							disabled={syncing}
-							className="flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
-						>
-							{syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-							Sync Targets
 						</button>
 					</>
 				}
@@ -1347,7 +1384,9 @@ function ParentSelect({
 		);
 	}, [options, search]);
 
-	const selectedLabel = value ? (options.find((o) => o.id === value)?.label ?? "Unknown") : null;
+	const selectedLabel = value
+		? (options.find((o) => o.id === value || o.objectId === value)?.label ?? "Unknown")
+		: null;
 
 	if (!open) {
 		return (

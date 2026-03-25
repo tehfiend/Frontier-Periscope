@@ -1,9 +1,0 @@
-[package]
-name = "private_map"
-edition = "2024"
-
-[dependencies]
-Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "testnet-v1.66.2" }
-
-[addresses]
-private_map = "0x2be1058fa8b002b81d4f91fd33065f17e2a3bbd9799ea0d934b74aaff8160a17"

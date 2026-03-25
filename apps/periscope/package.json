@@ -19,7 +19,6 @@
     "@tanstack/react-table": "^8.21.2",
     "@tanstack/react-virtual": "^3.13.22",
     "@tehfrontier/chain-shared": "workspace:*",
-    "@tehfrontier/shared": "workspace:*",
     "@tehfrontier/sui-client": "workspace:*",
     "dexie": "^4.0.11",
     "dexie-react-hooks": "^1.1.7",

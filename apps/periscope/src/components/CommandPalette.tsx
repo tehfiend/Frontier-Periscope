@@ -3,21 +3,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Box,
-	LayoutDashboard,
 	type LucideIcon,
 	Map,
-	MapPin,
 	Package,
-	Puzzle,
 	Radio,
 	Search,
 	Settings,
-	Shield,
-	ShieldCheck,
 	Skull,
-	StickyNote,
-	Target,
-	Users,
 	Wrench,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -32,27 +24,15 @@ interface SearchResult {
 }
 
 const NAV_ITEMS: { path: string; label: string; icon: LucideIcon; keywords: string }[] = [
-	{ path: "/", label: "Dashboard", icon: LayoutDashboard, keywords: "home overview" },
 	{ path: "/map", label: "Star Map", icon: Map, keywords: "systems route 3d" },
-	{ path: "/intel", label: "Intel Channel", icon: Radio, keywords: "chat reports" },
-	{ path: "/sonar", label: "Watchlist", icon: Target, keywords: "targets surveillance watchlist" },
-	{ path: "/players", label: "Players", icon: Users, keywords: "characters threats" },
 	{ path: "/killmails", label: "Killmails", icon: Skull, keywords: "combat kills deaths" },
 	{
-		path: "/deployables",
+		path: "/structures",
 		label: "Structures",
 		icon: Package,
 		keywords: "assemblies fuel owned deployables",
 	},
 	{ path: "/assemblies", label: "Assemblies", icon: Box, keywords: "tracked discovered" },
-	{ path: "/extensions", label: "Extensions", icon: Puzzle, keywords: "deploy authorize" },
-	{
-		path: "/permissions",
-		label: "Permissions",
-		icon: ShieldCheck,
-		keywords: "groups policies acl",
-	},
-	{ path: "/locations", label: "Locations", icon: MapPin, keywords: "bookmarks poi" },
 	{
 		path: "/blueprints",
 		label: "Blueprints",
@@ -65,8 +45,6 @@ const NAV_ITEMS: { path: string; label: string; icon: LucideIcon; keywords: stri
 		icon: Radio,
 		keywords: "mining combat travel chat logs analyzer",
 	},
-	{ path: "/opsec", label: "OPSEC", icon: Shield, keywords: "security exposure risk" },
-	{ path: "/notes", label: "Notes", icon: StickyNote, keywords: "freeform intel" },
 	{ path: "/settings", label: "Settings", icon: Settings, keywords: "profile backup encryption" },
 ];
 
@@ -80,11 +58,8 @@ export function CommandPalette() {
 
 	// Load searchable data
 	const systems = useLiveQuery(() => db.solarSystems.toArray());
-	const players = useLiveQuery(() => db.players.filter(notDeleted).toArray());
 	const deployables = useLiveQuery(() => db.deployables.filter(notDeleted).toArray());
 	const assemblies = useLiveQuery(() => db.assemblies.filter(notDeleted).toArray());
-	const notes = useLiveQuery(() => db.notes.filter(notDeleted).toArray());
-	const locations = useLiveQuery(() => db.locations.filter(notDeleted).toArray());
 
 	// Keyboard shortcut to open
 	useEffect(() => {
@@ -164,23 +139,6 @@ export function CommandPalette() {
 			}
 		}
 
-		// Players (limit to 5)
-		let playerCount = 0;
-		for (const p of players ?? []) {
-			if (playerCount >= 5) break;
-			if (p.name.toLowerCase().includes(q) || p.address.toLowerCase().includes(q)) {
-				playerCount++;
-				out.push({
-					id: `player-${p.id}`,
-					category: "Players",
-					icon: Users,
-					label: p.name,
-					sublabel: p.address.startsWith("manual") ? "Manual entry" : `${p.address.slice(0, 8)}...`,
-					action: () => go("/players"),
-				});
-			}
-		}
-
 		// Deployables (limit to 5)
 		let depCount = 0;
 		for (const d of deployables ?? []) {
@@ -197,7 +155,7 @@ export function CommandPalette() {
 					icon: Package,
 					label: d.label,
 					sublabel: `${d.assemblyType} · ${d.status}`,
-					action: () => go("/deployables"),
+					action: () => go("/structures"),
 				});
 			}
 		}
@@ -223,41 +181,8 @@ export function CommandPalette() {
 			}
 		}
 
-		// Notes (limit to 5)
-		let noteCount = 0;
-		for (const n of notes ?? []) {
-			if (noteCount >= 5) break;
-			if (n.title.toLowerCase().includes(q)) {
-				noteCount++;
-				out.push({
-					id: `note-${n.id}`,
-					category: "Notes",
-					icon: StickyNote,
-					label: n.title,
-					action: () => go("/notes"),
-				});
-			}
-		}
-
-		// Locations (limit to 5)
-		let locCount = 0;
-		for (const loc of locations ?? []) {
-			if (locCount >= 5) break;
-			if (loc.name.toLowerCase().includes(q)) {
-				locCount++;
-				out.push({
-					id: `loc-${loc.id}`,
-					category: "Locations",
-					icon: MapPin,
-					label: loc.name,
-					sublabel: loc.category,
-					action: () => go("/locations"),
-				});
-			}
-		}
-
 		return out;
-	}, [query, systems, players, deployables, assemblies, notes, locations, go]);
+	}, [query, systems, deployables, assemblies, go]);
 
 	// Keyboard navigation
 	function onKeyDown(e: React.KeyboardEvent) {
@@ -320,7 +245,7 @@ export function CommandPalette() {
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
 						onKeyDown={onKeyDown}
-						placeholder="Search pages, systems, players, assemblies..."
+						placeholder="Search pages, systems, structures..."
 						className="flex-1 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
 					/>
 					<kbd className="rounded border border-zinc-700 px-1.5 py-0.5 text-xs text-zinc-500">

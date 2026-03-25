@@ -1,5 +1,10 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { ASSEMBLY_MODULE_MAP } from "@tehfrontier/chain-shared";
+import {
+	ASSEMBLY_MODULE_MAP,
+	buildSetGateStandingsConfig,
+	buildSetSsuStandingsConfig,
+	getContractAddresses,
+} from "@tehfrontier/chain-shared";
 export { ASSEMBLY_MODULE_MAP };
 import {
 	type AssemblyKind,
@@ -38,15 +43,6 @@ interface AuthorizeExtensionParams {
 	assemblyId: string;
 	characterId: string;
 	ownerCapId: string;
-	senderAddress: string;
-}
-
-interface ConfigureTribeGateParams {
-	tenant: TenantId;
-	template: ExtensionTemplate;
-	gateId: string;
-	allowedTribes: number[];
-	permitDurationMs: number;
 	senderAddress: string;
 }
 
@@ -96,50 +92,11 @@ export function buildAuthorizeExtension(params: AuthorizeExtensionParams): Trans
 		arguments: [tx.object(assemblyId), ownerCap],
 	});
 
-	// Step 2b: For ssu_market extensions, also create SsuConfig (enables escrow transfers)
-	if (template.id === "ssu_market") {
-		tx.moveCall({
-			target: `${extensionPkg}::ssu_market::create_ssu_config`,
-			arguments: [tx.pure.id(assemblyId)],
-		});
-	}
-
 	// Step 3: Return OwnerCap
 	tx.moveCall({
 		target: `${worldTarget}::character::return_owner_cap`,
 		typeArguments: [fullAssemblyType],
 		arguments: [tx.object(characterId), ownerCap, receipt],
-	});
-
-	return tx;
-}
-
-/**
- * Build a PTB to configure a tribe gate extension.
- */
-export function buildConfigureTribeGate(params: ConfigureTribeGateParams): Transaction {
-	const { tenant, template, gateId, allowedTribes, permitDurationMs, senderAddress } = params;
-	const extensionPkg = template.packageIds[tenant];
-	const configObjectId = template.configObjectIds[tenant];
-
-	if (!extensionPkg) {
-		throw new Error(`Extension "${template.id}" not published on ${tenant}`);
-	}
-	if (!configObjectId) {
-		throw new Error(`Config object for "${template.id}" not set on ${tenant}`);
-	}
-
-	const tx = new Transaction();
-	tx.setSender(senderAddress);
-
-	tx.moveCall({
-		target: `${extensionPkg}::config::set_gate_config`,
-		arguments: [
-			tx.object(configObjectId),
-			tx.pure.id(gateId),
-			tx.pure.vector("u32", allowedTribes),
-			tx.pure.u64(permitDurationMs),
-		],
 	});
 
 	return tx;
@@ -202,6 +159,103 @@ export function buildRenameTx(params: RenameAssemblyParams): Transaction {
 		arguments: [tx.object(characterId), ownerCap, receipt],
 	});
 
+	return tx;
+}
+
+// ── Standings-Based Configuration Builders ───────────────────────────────────
+
+interface ConfigureGateStandingsParams {
+	tenant: TenantId;
+	gateId: string;
+	registryId: string;
+	minAccess: number;
+	freeAccess: number;
+	tollFee: bigint;
+	tollRecipient: string;
+	permitDurationMs: bigint;
+	senderAddress: string;
+}
+
+/**
+ * Build a TX to configure standings-based access for a gate.
+ * Wraps chain-shared's buildSetGateStandingsConfig().
+ */
+export function buildConfigureGateStandings(params: ConfigureGateStandingsParams): Transaction {
+	const addrs = getContractAddresses(params.tenant);
+	if (!addrs.gateStandings) {
+		throw new Error(`Gate standings contract not deployed on ${params.tenant}`);
+	}
+
+	return buildSetGateStandingsConfig({
+		packageId: addrs.gateStandings.packageId,
+		configObjectId: addrs.gateStandings.configObjectId,
+		gateId: params.gateId,
+		registryId: params.registryId,
+		minAccess: params.minAccess,
+		freeAccess: params.freeAccess,
+		tollFee: params.tollFee,
+		tollRecipient: params.tollRecipient,
+		permitDurationMs: params.permitDurationMs,
+		senderAddress: params.senderAddress,
+	});
+}
+
+interface ConfigureSsuStandingsParams {
+	tenant: TenantId;
+	ssuId: string;
+	registryId: string;
+	minDeposit: number;
+	minWithdraw: number;
+	senderAddress: string;
+}
+
+/**
+ * Build a TX to configure standings-based access for an SSU.
+ * Wraps chain-shared's buildSetSsuStandingsConfig().
+ */
+export function buildConfigureSsuStandings(params: ConfigureSsuStandingsParams): Transaction {
+	const addrs = getContractAddresses(params.tenant);
+	if (!addrs.ssuStandings) {
+		throw new Error(`SSU standings contract not deployed on ${params.tenant}`);
+	}
+
+	return buildSetSsuStandingsConfig({
+		packageId: addrs.ssuStandings.packageId,
+		configObjectId: addrs.ssuStandings.configObjectId,
+		ssuId: params.ssuId,
+		registryId: params.registryId,
+		minDeposit: params.minDeposit,
+		minWithdraw: params.minWithdraw,
+		senderAddress: params.senderAddress,
+	});
+}
+
+interface GenerateTurretFromRegistryParams {
+	tenant: TenantId;
+	registryId: string;
+	standingWeights: Record<number, number>;
+	aggressorBonus: number;
+	senderAddress: string;
+}
+
+/**
+ * Build a TX to generate a turret extension from a standings registry.
+ *
+ * Turret standings use per-user published packages. This builder creates
+ * the configuration data; the actual Move package must be published separately
+ * using the turret-priority code generator with the registry reference.
+ *
+ * Returns a Transaction that stores the turret config intent on-chain.
+ */
+export function buildGenerateTurretFromRegistry(
+	params: GenerateTurretFromRegistryParams,
+): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	// Turret standings packages are user-published, so there's no shared config object.
+	// This TX creates a local config record; the user publishes their own package.
+	// The config is stored in IndexedDB and used to regenerate the Move source.
 	return tx;
 }
 

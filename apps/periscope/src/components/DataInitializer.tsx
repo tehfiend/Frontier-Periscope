@@ -81,7 +81,10 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 			loadSteps[index].status = "loading";
 			setSteps([...loadSteps]);
 
-			const data = await fetch(`/data/${file}`).then((r) => r.json());
+			const data = await fetch(`/data/${file}`).then((r) => {
+				if (!r.ok) throw new Error(`Failed to load ${file}: ${r.status}`);
+				return r.json();
+			});
 			await table.bulkPut(data);
 
 			loadSteps[index].status = "done";

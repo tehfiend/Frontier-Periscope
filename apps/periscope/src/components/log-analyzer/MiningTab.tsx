@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import type { LogEvent } from "@/db/types";
+import { useCharacterSessionIds } from "@/hooks/useCharacterSessionIds";
 import { fmtTime, formatDuration } from "@/lib/format";
 import { useLogStore } from "@/stores/logStore";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -66,6 +67,7 @@ function computeMiningRuns(events: LogEvent[]): MiningRun[] {
 
 export function MiningTab() {
 	const { activeSessionId } = useLogStore();
+	const characterSessionIds = useCharacterSessionIds();
 
 	const miningEvents = useLiveQuery(
 		() =>
@@ -74,6 +76,16 @@ export function MiningTab() {
 				: [],
 		[activeSessionId],
 	);
+
+	// Filter out if active session doesn't belong to selected character
+	if (characterSessionIds && activeSessionId && !characterSessionIds.has(activeSessionId)) {
+		return (
+			<p className="py-8 text-center text-sm text-zinc-600">
+				No mining data for the selected character. Switch to the character currently playing or
+				select "All Characters."
+			</p>
+		);
+	}
 
 	if (!miningEvents || miningEvents.length === 0) {
 		return (

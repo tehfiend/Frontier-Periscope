@@ -9,6 +9,8 @@
  *
  * All TX builders return a Transaction ready for signing. The caller is
  * responsible for adding gas config and executing.
+ *
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
  */
 
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
@@ -26,13 +28,17 @@ const CLOCK_REF = Inputs.SharedObjectRef({
 // ── SsuConfig Management ───────────────────────────────────────────────────
 // Identical to ssu-market.ts -- same SsuConfig pattern, different package target.
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface CreateSsuConfigStandingsParams {
 	packageId: string;
 	ssuId: string;
 	senderAddress: string;
 }
 
-/** Build a TX to create an SsuConfig for an SSU (standings variant). */
+/**
+ * Build a TX to create an SsuConfig for an SSU (standings variant).
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
+ */
 export function buildCreateSsuConfigStandings(
 	params: CreateSsuConfigStandingsParams,
 ): Transaction {
@@ -47,6 +53,7 @@ export function buildCreateSsuConfigStandings(
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface AddDelegateStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
@@ -54,7 +61,10 @@ export interface AddDelegateStandingsParams {
 	senderAddress: string;
 }
 
-/** Build a TX to add a delegate to an SsuConfig. Owner only. */
+/**
+ * Build a TX to add a delegate to an SsuConfig. Owner only.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
+ */
 export function buildAddDelegateStandings(
 	params: AddDelegateStandingsParams,
 ): Transaction {
@@ -69,6 +79,7 @@ export function buildAddDelegateStandings(
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface RemoveDelegateStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
@@ -76,7 +87,10 @@ export interface RemoveDelegateStandingsParams {
 	senderAddress: string;
 }
 
-/** Build a TX to remove a delegate from an SsuConfig. Owner only. */
+/**
+ * Build a TX to remove a delegate from an SsuConfig. Owner only.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
+ */
 export function buildRemoveDelegateStandings(
 	params: RemoveDelegateStandingsParams,
 ): Transaction {
@@ -91,6 +105,7 @@ export function buildRemoveDelegateStandings(
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface SetMarketStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
@@ -98,7 +113,10 @@ export interface SetMarketStandingsParams {
 	senderAddress: string;
 }
 
-/** Build a TX to link an SsuConfig to a standings-based Market. Owner only. */
+/**
+ * Build a TX to link an SsuConfig to a standings-based Market. Owner only.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
+ */
 export function buildSetMarketStandings(
 	params: SetMarketStandingsParams,
 ): Transaction {
@@ -113,13 +131,17 @@ export function buildSetMarketStandings(
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface RemoveMarketStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
 	senderAddress: string;
 }
 
-/** Build a TX to unlink the Market from an SsuConfig. Owner only. */
+/**
+ * Build a TX to unlink the Market from an SsuConfig. Owner only.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
+ */
 export function buildRemoveMarketStandings(
 	params: RemoveMarketStandingsParams,
 ): Transaction {
@@ -136,6 +158,7 @@ export function buildRemoveMarketStandings(
 
 // ── Trade Execution Builders (standings-gated) ──────────────────────────────
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface EscrowAndListStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
@@ -156,6 +179,7 @@ export interface EscrowAndListStandingsParams {
  * Build a PTB to escrow items and create a sell listing on the standings Market.
  * Registry is passed for the min_trade standings check.
  * Flow: borrow_owner_cap -> withdraw_by_owner -> escrow_and_list -> return_owner_cap
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
  */
 export function buildEscrowAndListStandings(
 	params: EscrowAndListStandingsParams,
@@ -212,6 +236,7 @@ export function buildEscrowAndListStandings(
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface PlayerEscrowAndListStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
@@ -234,6 +259,7 @@ export interface PlayerEscrowAndListStandingsParams {
 /**
  * Build a PTB for a player to escrow items from their storage and create
  * a sell listing on the standings Market. Adds registry param for min_trade check.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
  */
 export function buildPlayerEscrowAndListStandings(
 	params: PlayerEscrowAndListStandingsParams,
@@ -294,6 +320,7 @@ export function buildPlayerEscrowAndListStandings(
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface CancelListingStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
@@ -305,7 +332,10 @@ export interface CancelListingStandingsParams {
 	senderAddress: string;
 }
 
-/** Build a TX to cancel a sell listing (no standings check on cancel). */
+/**
+ * Build a TX to cancel a sell listing (no standings check on cancel).
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
+ */
 export function buildCancelListingStandings(
 	params: CancelListingStandingsParams,
 ): Transaction {
@@ -327,7 +357,10 @@ export function buildCancelListingStandings(
 	return tx;
 }
 
-/** Build a TX for a player to cancel their own sell listing. */
+/**
+ * Build a TX for a player to cancel their own sell listing.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
+ */
 export function buildPlayerCancelListingStandings(
 	params: CancelListingStandingsParams,
 ): Transaction {
@@ -349,6 +382,7 @@ export function buildPlayerCancelListingStandings(
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface BuyFromListingStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
@@ -367,6 +401,7 @@ export interface BuyFromListingStandingsParams {
  * Build a TX to buy items from a sell listing on a standings Market.
  * Adds registry param for min_buy standings check.
  * Merges all provided coins into one before passing to the contract.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
  */
 export function buildBuyFromListingStandings(
 	params: BuyFromListingStandingsParams,
@@ -411,6 +446,7 @@ export function buildBuyFromListingStandings(
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface PlayerFillBuyOrderStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
@@ -429,6 +465,7 @@ export interface PlayerFillBuyOrderStandingsParams {
 /**
  * Build a PTB for any player to fill a buy order from their own inventory.
  * No standings check needed -- buyer already passed min_buy when posting.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
  */
 export function buildPlayerFillBuyOrderStandings(
 	params: PlayerFillBuyOrderStandingsParams,
@@ -485,6 +522,7 @@ export function buildPlayerFillBuyOrderStandings(
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface FillBuyOrderStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
@@ -500,6 +538,7 @@ export interface FillBuyOrderStandingsParams {
 /**
  * Build a TX to fill a buy order by providing items from the SSU.
  * No standings check -- buyer passed min_buy when posting the order.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
  */
 export function buildFillBuyOrderStandings(
 	params: FillBuyOrderStandingsParams,
@@ -525,6 +564,7 @@ export function buildFillBuyOrderStandings(
 
 // ── Visibility Management ──────────────────────────────────────────────────
 
+/** @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module. */
 export interface SetVisibilityStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
@@ -532,7 +572,10 @@ export interface SetVisibilityStandingsParams {
 	senderAddress: string;
 }
 
-/** Build a TX to set the visibility of an SsuConfig. Owner only. */
+/**
+ * Build a TX to set the visibility of an SsuConfig. Owner only.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
+ */
 export function buildSetVisibilityStandings(
 	params: SetVisibilityStandingsParams,
 ): Transaction {
@@ -551,6 +594,7 @@ export function buildSetVisibilityStandings(
 
 /**
  * Fetch an SsuConfig by its object ID. Returns SsuConfigInfo or null.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
  */
 export async function querySsuConfigStandings(
 	client: SuiGraphQLClient,
@@ -597,6 +641,7 @@ function parseOptionId(raw: unknown): string | null {
 /**
  * Discover an SsuConfig for a given SSU (standings variant).
  * Accepts an optional list of previous original package IDs to search as fallback.
+ * @deprecated Use ssu-unified instead. SSU market standings functionality is now part of the unified SSU module.
  */
 export async function discoverSsuConfigStandings(
 	client: SuiGraphQLClient,

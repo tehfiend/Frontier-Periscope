@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { Wrench, Search, X, Clock, ArrowRight, Plus, Minus, Package } from "lucide-react";
+import { ArrowRight, Clock, Minus, Package, Plus, Search, Wrench, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 interface BlueprintInput {
 	typeID: number;
@@ -32,7 +32,10 @@ export function Blueprints() {
 	// Load blueprint data from bundled JSON
 	useEffect(() => {
 		fetch("/data/blueprints.json")
-			.then((res) => res.json())
+			.then((res) => {
+				if (!res.ok) throw new Error(`Failed to load blueprints: ${res.status}`);
+				return res.json();
+			})
 			.then((d: BlueprintData) => {
 				setData(d);
 				setLoading(false);
@@ -123,7 +126,11 @@ export function Blueprints() {
 						className="w-full rounded border border-zinc-700 bg-zinc-900 py-1 pl-7 pr-7 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-violet-600 focus:outline-none"
 					/>
 					{searchQuery && (
-						<button type="button" onClick={() => setSearchQuery("")} className="absolute right-5 top-4 text-zinc-500 hover:text-zinc-300">
+						<button
+							type="button"
+							onClick={() => setSearchQuery("")}
+							className="absolute right-5 top-4 text-zinc-500 hover:text-zinc-300"
+						>
 							<X size={12} />
 						</button>
 					)}
@@ -135,7 +142,10 @@ export function Blueprints() {
 						<button
 							key={bp.blueprintID}
 							type="button"
-							onClick={() => { setSelectedBp(bp); setRuns(1); }}
+							onClick={() => {
+								setSelectedBp(bp);
+								setRuns(1);
+							}}
 							className={`flex w-full flex-col border-b border-zinc-800/50 px-4 py-2.5 text-left transition-colors hover:bg-zinc-800/50 ${
 								selectedBp?.blueprintID === bp.blueprintID ? "bg-zinc-800/70" : ""
 							}`}
@@ -224,10 +234,15 @@ export function Blueprints() {
 									</thead>
 									<tbody>
 										{scaledMaterials.map((mat) => (
-											<tr key={mat.typeID} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+											<tr
+												key={mat.typeID}
+												className="border-b border-zinc-800/50 hover:bg-zinc-800/30"
+											>
 												<td className="px-4 py-2 text-zinc-200">{mat.typeName}</td>
 												<td className="px-4 py-2 text-right font-mono text-zinc-400">
-													{selectedBp.inputs.find((i) => i.typeID === mat.typeID)?.quantity.toLocaleString()}
+													{selectedBp.inputs
+														.find((i) => i.typeID === mat.typeID)
+														?.quantity.toLocaleString()}
 												</td>
 												{runs > 1 && (
 													<td className="px-4 py-2 text-right font-mono text-violet-300">
@@ -261,7 +276,9 @@ export function Blueprints() {
 											<tr key={out.typeID} className="border-b border-zinc-800/50">
 												<td className="px-4 py-2 font-medium text-green-300">{out.typeName}</td>
 												<td className="px-4 py-2 text-right font-mono text-zinc-400">
-													{selectedBp.outputs.find((o) => o.typeID === out.typeID)?.quantity.toLocaleString()}
+													{selectedBp.outputs
+														.find((o) => o.typeID === out.typeID)
+														?.quantity.toLocaleString()}
 												</td>
 												{runs > 1 && (
 													<td className="px-4 py-2 text-right font-mono text-green-300">

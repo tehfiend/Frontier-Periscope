@@ -1,5 +1,5 @@
 /**
- * Turret Priority — Move source code generator.
+ * Turret Priority -- Move source code generator.
  *
  * Generates a custom turret_priority Move module from a TurretPriorityConfig.
  * The generated source is a self-contained Move package that can be published
@@ -7,10 +7,13 @@
  *
  * Phase 1 approach: config is baked into module constants at compile time.
  * To change targeting rules, regenerate source, republish, and re-authorize.
+ *
+ * @deprecated Use turret-standings instead. Turret priority is now derived from StandingsRegistry entries.
  */
 
 // ── Ship class constants ────────────────────────────────────────────────────
 
+/** @deprecated Use turret-standings instead. Turret priority is now derived from StandingsRegistry entries. */
 export const SHIP_CLASSES = {
 	shuttle: { groupId: 31, label: "Shuttle" },
 	corvette: { groupId: 237, label: "Corvette" },
@@ -20,6 +23,7 @@ export const SHIP_CLASSES = {
 	combatBattlecruiser: { groupId: 419, label: "Combat Battlecruiser" },
 } as const;
 
+/** @deprecated Use turret-standings instead. Turret priority is now derived from StandingsRegistry entries. */
 export const TURRET_TYPES = {
 	autocannon: {
 		typeId: 92402,
@@ -36,6 +40,7 @@ export const TURRET_TYPES = {
 
 // ── Config interface ────────────────────────────────────────────────────────
 
+/** @deprecated Use turret-standings instead. Turret priority is now derived from StandingsRegistry entries. */
 export interface TurretPriorityConfig {
 	/** Module name for the published package (default: "turret_priority") */
 	moduleName?: string;
@@ -65,6 +70,7 @@ export interface TurretPriorityConfig {
 	effectiveClasses: number[];
 }
 
+/** @deprecated Use turret-standings instead. Turret priority is now derived from StandingsRegistry entries. */
 export const DEFAULT_TURRET_PRIORITY_CONFIG: TurretPriorityConfig = {
 	defaultWeight: 30,
 	kosWeight: 100,
@@ -91,6 +97,7 @@ function padSlots<T>(arr: T[], size: number, fill: T): T[] {
 /**
  * Generate Move source code for a custom turret priority extension.
  * The returned string is the complete contents of `turret_priority.move`.
+ * @deprecated Use turret-standings instead. Turret priority is now derived from StandingsRegistry entries.
  */
 export function generateTurretPrioritySource(config: TurretPriorityConfig): string {
 	const mod = config.moduleName ?? "turret_priority";
@@ -263,6 +270,7 @@ ${effectiveClasses.map((_, i) => `    (EFFECTIVE_CLASS_${i} != 0 && group_id == 
 
 /**
  * Generate the Move.toml manifest for the turret priority package.
+ * @deprecated Use turret-standings instead. Turret priority is now derived from StandingsRegistry entries.
  */
 export function generateTurretPriorityManifest(moduleName?: string): string {
 	const name = moduleName ?? "turret_priority";

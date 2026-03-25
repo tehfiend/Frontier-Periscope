@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import type { LogEvent } from "@/db/types";
+import { useCharacterSessionIds } from "@/hooks/useCharacterSessionIds";
 import { fmtTime, formatDuration } from "@/lib/format";
 import { useLogStore } from "@/stores/logStore";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -191,6 +192,7 @@ function EncountersList({
 
 export function CombatTab() {
 	const { activeSessionId } = useLogStore();
+	const characterSessionIds = useCharacterSessionIds();
 
 	const combatDealt = useLiveQuery(
 		() =>
@@ -229,6 +231,16 @@ export function CombatTab() {
 				: [],
 		[activeSessionId],
 	);
+
+	// Filter out if active session doesn't belong to selected character
+	if (characterSessionIds && activeSessionId && !characterSessionIds.has(activeSessionId)) {
+		return (
+			<p className="py-8 text-center text-sm text-zinc-600">
+				No combat data for the selected character. Switch to the character currently playing or
+				select "All Characters."
+			</p>
+		);
+	}
 
 	const totalDealt = combatDealt?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
 	const totalRecv = combatRecv?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;

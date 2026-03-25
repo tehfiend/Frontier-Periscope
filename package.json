@@ -1,5 +1,5 @@
 {
-  "name": "tehfrontier",
+  "name": "frontier-periscope",
   "private": true,
   "scripts": {
     "build": "turbo run build",
@@ -11,7 +11,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "turbo": "^2.4.4",
+    "turbo": "^2.8.16",
     "typescript": "^5.7.3"
   },
   "packageManager": "pnpm@9.15.4",

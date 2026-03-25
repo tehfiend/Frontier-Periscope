@@ -138,7 +138,7 @@ export function useLocalSonar() {
 					status: "error",
 					lastError: err instanceof Error ? err.message : String(err),
 				})
-				.catch(() => {});
+				.catch((e) => console.error("[LocalSonar] Failed to persist error:", e));
 		}
 	}, [setLocalStatus, pingLocal]);
 
@@ -152,7 +152,7 @@ export function useLocalSonar() {
 			return;
 		}
 
-		poll().catch(() => {});
+		poll().catch((e) => console.error("[LocalSonar] Failed to persist error:", e));
 		intervalRef.current = setInterval(poll, POLL_INTERVAL);
 
 		return () => {

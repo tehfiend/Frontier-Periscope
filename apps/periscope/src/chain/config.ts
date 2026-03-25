@@ -18,7 +18,7 @@ export const TENANTS = {
 		worldPackageId: "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c",
 		evePackageId: "0x2a66a89b5a735738ffa4423ac024d23571326163f324f9051557617319e59d60",
 		datahubUrl: "world-api-stillness.live.tech.evefrontier.com",
-		dappUrl: "https://dapps.evefrontier.com/?tenant=stillness",
+		dappUrl: "https://dapp.frontierperiscope.com/?tenant=stillness",
 	},
 	utopia: {
 		name: "Utopia",
@@ -26,7 +26,7 @@ export const TENANTS = {
 		worldPublishedAt: "0x07e6b810c2dff6df56ea7fbad9ff32f4d84cbee53e496267515887b712924bd1",
 		evePackageId: "0xf0446b93345c1118f21239d7ac58fb82d005219b2016e100f074e4d17162a465",
 		datahubUrl: "world-api-utopia.uat.pub.evefrontier.com",
-		dappUrl: "https://uat.dapps.evefrontier.com/?tenant=utopia",
+		dappUrl: "https://dapp.frontierperiscope.com/?tenant=utopia",
 	},
 } as const satisfies Record<string, TenantConfig>;
 
@@ -105,6 +105,15 @@ export function getEventTypes(tenant: TenantId) {
 
 		// ── Killmail ────────────────────────────────────────────────────────
 		KillmailCreated: `${pkg}::killmail::KillmailCreatedEvent`,
+
+		// ── Extension authorization ─────────────────────────────────────────
+		GateExtensionAuthorized: `${pkg}::gate::ExtensionAuthorizedEvent`,
+		GateExtensionRemoved: `${pkg}::gate::ExtensionRemovedEvent`,
+		GateExtensionRevoked: `${pkg}::gate::ExtensionRevokedEvent`,
+		StorageUnitExtensionAuthorized: `${pkg}::storage_unit::ExtensionAuthorizedEvent`,
+		StorageUnitExtensionRemoved: `${pkg}::storage_unit::ExtensionRemovedEvent`,
+		StorageUnitExtensionRevoked: `${pkg}::storage_unit::ExtensionRevokedEvent`,
+		TurretExtensionRevoked: `${pkg}::turret::ExtensionRevokedEvent`,
 	};
 }
 
@@ -155,7 +164,6 @@ export function getExtensionEventTypes(tenant: TenantId) {
 	if (exchangePkg) {
 		events.ExchangeOrderPlaced = `${exchangePkg}::exchange::OrderPlacedEvent`;
 		events.ExchangeOrderCancelled = `${exchangePkg}::exchange::OrderCancelledEvent`;
-		events.ExchangeTrade = `${exchangePkg}::exchange::TradeEvent`;
 	}
 
 	// ── Market ─────────────────────────────────────────────────────────
@@ -171,16 +179,10 @@ export function getExtensionEventTypes(tenant: TenantId) {
 	return events;
 }
 
-/** @deprecated Use getMoveTypes(tenant) instead */
-export const MOVE_TYPES = getMoveTypes("stillness");
-
-/** @deprecated Use getEventTypes(tenant) instead */
-export const EVENT_TYPES = getEventTypes("stillness");
-
 // ── Game Constants ──────────────────────────────────────────────────────────
 
 export const ASSEMBLY_TYPE_IDS: Record<number, string> = {
-	77917: "Smart Storage Unit",
+	77917: "Heavy Storage",
 	85249: "Protocol Depot",
 	83907: "Gatekeeper",
 	88092: "Network Node",
@@ -189,12 +191,12 @@ export const ASSEMBLY_TYPE_IDS: Record<number, string> = {
 	87566: "Portable Storage",
 	87160: "Refuge",
 	// Gates
-	88086: "Gate",
-	84955: "Gate",
+	88086: "Stargate",
+	84955: "Jumpgate",
 	// Turrets
-	92279: "Turret",
-	92401: "Turret",
-	92404: "Turret",
+	92279: "Light Turret",
+	92401: "Medium Turret",
+	92404: "Heavy Turret",
 };
 
 export const FUEL_TYPES: Record<number, { name: string; efficiency: number }> = {
@@ -222,7 +224,7 @@ export interface ExtensionTemplate {
 	description: string;
 	assemblyTypes: AssemblyKind[];
 	hasConfig: boolean;
-	/** Package ID per tenant — populated after publishing contracts */
+	/** Package ID per tenant -- populated after publishing contracts */
 	packageIds: Partial<Record<TenantId, string>>;
 	/** Config object ID per tenant (for templates with shared config) */
 	configObjectIds: Partial<Record<TenantId, string>>;
@@ -230,146 +232,54 @@ export interface ExtensionTemplate {
 	witnessType: string;
 }
 
-/**
- * Registry of pre-built extension templates.
- * Package IDs are filled in after publishing to each tenant.
- *
- * TODO: After publishing contracts, update packageIds and configObjectIds here.
- */
+/** Registry of pre-built extension templates (standings-based system). */
 export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
-	{
-		id: "turret_shoot_all",
-		name: "Shoot All",
-		description:
-			"Target all players equally regardless of tribe. Fixes the default starter-corp turret behaviour where same-tribe players are ignored.",
-		assemblyTypes: ["turret"],
-		hasConfig: false,
-		packageIds: {
-			stillness: "0x4ad1a19064c1d44dbb6844862f5de4e28fd4a38c3a1bc7531581e39b4f3294b9",
-			utopia: "0x4ad1a19064c1d44dbb6844862f5de4e28fd4a38c3a1bc7531581e39b4f3294b9",
-		},
-		configObjectIds: {},
-		witnessType: "turret_shoot_all::ShootAllAuth",
-	},
-	{
-		id: "gate_tribe",
-		name: "Tribe Gate",
-		description:
-			"Only allow characters from specified tribes to use the gate. Configure which tribe IDs are permitted and set the jump permit duration.",
-		assemblyTypes: ["gate"],
-		hasConfig: true,
-		packageIds: {
-			stillness: "0x7ce73cdc22d21410794818a31522bc85c25ef97c3685214796f7347d76fd3298",
-			utopia: "0x7ce73cdc22d21410794818a31522bc85c25ef97c3685214796f7347d76fd3298",
-		},
-		configObjectIds: {
-			stillness: "0x322baeaa93dab9802fb55d7875551c1e40dad88b402fa36a9f8aa8f1f6399816",
-			utopia: "0x322baeaa93dab9802fb55d7875551c1e40dad88b402fa36a9f8aa8f1f6399816",
-		},
-		witnessType: "tribe_gate::TribeGateAuth",
-	},
-	{
-		id: "gate_acl",
-		name: "Gate ACL",
-		description:
-			"Control gate access by character and tribe. Supports allowlist and denylist modes with multi-admin delegation.",
-		assemblyTypes: ["gate"],
-		hasConfig: true,
-		packageIds: {
-			stillness: "0x7e0ad0eff0aef4ea2b068209948c7036f2dbfcf51600029a0d27cd5bbf9ad44c",
-			utopia: "0x7e0ad0eff0aef4ea2b068209948c7036f2dbfcf51600029a0d27cd5bbf9ad44c",
-		},
-		configObjectIds: {
-			stillness: "0xa543f9158e517955b90dc864fc4c1fb00cca8f6fe688495f4a609335800f9dd6",
-			utopia: "0xa543f9158e517955b90dc864fc4c1fb00cca8f6fe688495f4a609335800f9dd6",
-		},
-		witnessType: "gate_acl::GateAclAuth",
-	},
-	{
-		id: "turret_priority",
-		name: "Turret Priority",
-		description:
-			"Configurable friend/foe targeting with KOS lists, aggressor focus, low-HP finishing, and ship class bonuses. Config baked at publish time.",
-		assemblyTypes: ["turret"],
-		hasConfig: false,
-		packageIds: {
-			stillness: "0xbbca3a051fd616da4ebb34b4f67bf6d7111a32904e7fc4da29acd9a9b2bbb5ef",
-			utopia: "0xbbca3a051fd616da4ebb34b4f67bf6d7111a32904e7fc4da29acd9a9b2bbb5ef",
-		},
-		configObjectIds: {},
-		witnessType: "turret_priority::TurretPriorityAuth",
-	},
-	{
-		id: "gate_unified",
-		name: "Unified Gate",
-		description:
-			"Group-based access control with optional toll. Create groups of tribes/characters, set allowlist/denylist per gate, and charge tolls with ally exemptions.",
-		assemblyTypes: ["gate"],
-		hasConfig: true,
-		packageIds: {
-			stillness: "0x364f68ad3272d9815f2fce74776a854af1e3cb8de58ad1a1d7a0e67ad436210f",
-			utopia: "0x364f68ad3272d9815f2fce74776a854af1e3cb8de58ad1a1d7a0e67ad436210f",
-		},
-		configObjectIds: {
-			stillness: "0x1b5bec5f6346ec165e66b5e5cb75665f4ff44ba9a1df5b318bbf755777daf01a",
-			utopia: "0x1b5bec5f6346ec165e66b5e5cb75665f4ff44ba9a1df5b318bbf755777daf01a",
-		},
-		witnessType: "gate_unified::GateUnifiedAuth",
-	},
-	{
-		id: "gate_toll",
-		name: "Toll Gate",
-		description:
-			"Require Coin<T> payment to jump through the gate. Allies can be configured for free passage.",
-		assemblyTypes: ["gate"],
-		hasConfig: true,
-		packageIds: {
-			stillness: "0xcef451bbe80afd7e495d5de87ace2989097731534ac100d0785f91a427e1f6a8",
-			utopia: "0xcef451bbe80afd7e495d5de87ace2989097731534ac100d0785f91a427e1f6a8",
-		},
-		configObjectIds: {
-			stillness: "0xb1f7ddda99a315704350b4f0a3d82626a4a62da4102afb20222c8a423657efd5",
-			utopia: "0xb1f7ddda99a315704350b4f0a3d82626a4a62da4102afb20222c8a423657efd5",
-		},
-		witnessType: "gate_toll::TollAuth",
-	},
-	{
-		id: "ssu_market",
-		name: "SSU Market",
-		description:
-			"Enable trading on this SSU. Allows stocking items for sale and receiving buy order deliveries.",
-		assemblyTypes: ["storage_unit", "smart_storage_unit", "protocol_depot"],
-		hasConfig: false,
-		packageIds: {
-			stillness: "0x3339a266b12a7829dc873813608151caff50c46466e13fab020acd6dfe2397a2",
-			utopia: "0x2796505934119806d4b8b057a00a1c0672769e9a17dbcf7df28df276e4afb74c",
-		},
-		configObjectIds: {},
-		witnessType: "ssu_market::MarketAuth",
-	},
 	{
 		id: "gate_standings",
 		name: "Gate Standings",
 		description:
-			"Control gate access based on a StandingsRegistry. Block, toll, or grant free passage based on character standing thresholds.",
+			"Control gate access via a StandingsRegistry. Block, toll, or grant free passage based on character/tribe standing thresholds.",
 		assemblyTypes: ["gate"],
 		hasConfig: true,
-		// TODO: populate after contract publish
-		packageIds: {},
-		configObjectIds: {},
+		packageIds: {
+			stillness: "0xef2cd2bc3a93cbb7286ed4bf9ebf7c49c6459f50db0a1d0c94d19810f2a62eb4",
+			utopia: "0xef2cd2bc3a93cbb7286ed4bf9ebf7c49c6459f50db0a1d0c94d19810f2a62eb4",
+		},
+		configObjectIds: {
+			stillness: "0x312a3ea9282b1b702da100c288c520aa452eced3dd325e718c06196b1b9db627",
+			utopia: "0x312a3ea9282b1b702da100c288c520aa452eced3dd325e718c06196b1b9db627",
+		},
 		witnessType: "gate_standings::GateStandingsAuth",
 	},
 	{
-		id: "ssu_standings",
-		name: "SSU Standings",
+		id: "ssu_unified",
+		name: "SSU Unified",
 		description:
-			"Restrict SSU inventory access based on a StandingsRegistry. Set minimum standing thresholds for deposit and withdraw operations.",
+			"Standings-based SSU access with optional market integration. Set deposit/withdraw thresholds, link a market, and manage delegates -- all via a StandingsRegistry.",
 		assemblyTypes: ["storage_unit", "smart_storage_unit", "protocol_depot"],
 		hasConfig: true,
-		// TODO: populate after contract publish
+		packageIds: {
+			stillness: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
+			utopia: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
+		},
+		configObjectIds: {
+			stillness: "0x87dc574e707930ffeaf337617c16eb8ec8bfee3e7a00f02cc0789ee7f9555c5a",
+			utopia: "0x87dc574e707930ffeaf337617c16eb8ec8bfee3e7a00f02cc0789ee7f9555c5a",
+		},
+		witnessType: "ssu_standings::SsuStandingsAuth",
+	},
+	{
+		id: "turret_standings",
+		name: "Turret Standings",
+		description:
+			"Standings-based turret targeting with configurable weight mappings. Uses a StandingsRegistry to prioritise or ignore targets by standing level. Per-user published packages.",
+		assemblyTypes: ["turret"],
+		hasConfig: true,
+		// Turret uses per-user published packages, so packageIds is empty.
+		// The user publishes their own turret package with baked-in config.
 		packageIds: {},
 		configObjectIds: {},
-		witnessType: "ssu_standings::SsuStandingsAuth",
+		witnessType: "turret_standings::TurretStandingsAuth",
 	},
 ];
 
@@ -393,7 +303,7 @@ export interface ExtensionInfo {
 /**
  * Classify an on-chain extension TypeName against known Periscope templates.
  *
- * The on-chain value looks like "0xabc123::turret_priority::TurretPriorityAuth".
+ * The on-chain value looks like "0xabc123::gate_standings::GateStandingsAuth".
  * We match the module::Type suffix against each template's witnessType, then
  * check whether the package ID prefix matches the current deployment for this tenant.
  */
@@ -404,7 +314,7 @@ export function classifyExtension(
 	if (!extensionType) return { status: "default" };
 
 	for (const template of EXTENSION_TEMPLATES) {
-		// Check if the witness type path matches (e.g. "turret_priority::TurretPriorityAuth")
+		// Check if the witness type path matches (e.g. "gate_standings::GateStandingsAuth")
 		if (!extensionType.includes(`::${template.witnessType}`)) continue;
 
 		const currentPkgId = template.packageIds[tenant];

@@ -9,6 +9,7 @@ import { CommandPalette } from "./CommandPalette";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { PWAPrompt } from "./PWAPrompt";
 import { Sidebar } from "./Sidebar";
+import { WhatsNew } from "./WhatsNew";
 
 export function Layout() {
 	useNotifications();
@@ -30,6 +31,7 @@ export function Layout() {
 			</div>
 			<CommandPalette />
 			<PWAPrompt />
+			<WhatsNew />
 		</div>
 	);
 }

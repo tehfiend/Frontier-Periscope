@@ -74,7 +74,6 @@ export interface SyncMeta {
 
 export type IntelSource = "chain" | "api" | "log" | "manual";
 export type ThreatLevel = "unknown" | "friendly" | "neutral" | "hostile" | "critical";
-export type WatchStatus = "active" | "paused" | "archived";
 export type AssemblyStatus =
 	| "online"
 	| "offline"
@@ -161,20 +160,6 @@ export interface KillmailIntel extends IntelBase {
 	systemId?: number;
 }
 
-export interface NoteIntel extends IntelBase {
-	title: string;
-	body: string;
-	linkedEntities: string[];
-}
-
-export interface ActivityIntel extends IntelBase {
-	activityType: "mining" | "combat" | "travel" | "other";
-	sessionId: string;
-	systemId: number;
-	metrics?: Record<string, number>;
-	rawLog?: string;
-}
-
 export interface ChatIntelEntry extends IntelBase {
 	channel: string;
 	reporter: string;
@@ -183,36 +168,6 @@ export interface ChatIntelEntry extends IntelBase {
 	reportedPlayers: string[];
 	severity: "low" | "medium" | "high";
 	expiresAt: string;
-}
-
-export interface TargetRecord extends SyncMeta {
-	id: string;
-	address: string;
-	name?: string;
-	watchStatus: WatchStatus;
-	pollInterval: number;
-	lastPolled?: string;
-	lastActivity?: string;
-	tags: string[];
-	notes?: string;
-}
-
-export interface TargetEvent extends SyncMeta {
-	id: string;
-	targetId: string;
-	timestamp: string;
-	event: string;
-	details?: string;
-	assemblyId?: string;
-}
-
-export interface InventoryDiff extends SyncMeta {
-	id: string;
-	targetId: string;
-	assemblyId: string;
-	timestamp: string;
-	typeId: number;
-	quantityDelta: number;
 }
 
 // ── Character Types ─────────────────────────────────────────────────────────
@@ -280,38 +235,66 @@ export interface ExtensionRecord extends SyncMeta {
 	updatedAt: string;
 }
 
-// ── Permission Group Types ─────────────────────────────────────────────────
+// ── Structure Extension Config (standings-based) ────────────────────────────
 
+export interface StructureExtensionConfig {
+	/** Primary key -- same as assemblyId */
+	id: string;
+	assemblyId: string;
+	assemblyType: string;
+	registryId: string;
+	registryName?: string;
+	// Gate-specific
+	minAccess?: number;
+	freeAccess?: number;
+	/** Toll fee stored as string (bigint serialised for IndexedDB) */
+	tollFee?: string;
+	tollRecipient?: string;
+	permitDurationMs?: number;
+	// SSU-specific
+	minDeposit?: number;
+	minWithdraw?: number;
+	marketId?: string;
+	// Turret-specific
+	standingWeights?: Record<number, number>;
+	aggressorBonus?: number;
+}
+
+// ── Permission Group Types (deprecated -- replaced by StandingsRegistry) ────
+
+/** @deprecated Use StandingsRegistry + contacts instead. Kept for DB migration. */
 export interface PermissionGroup extends SyncMeta {
-	id: string; // UUID, or "__self__" / "__everyone__" for built-ins
+	id: string;
 	name: string;
-	color: string; // Hex color for UI badges
+	color: string;
 	isBuiltin: boolean;
 	description?: string;
 	createdAt: string;
 	updatedAt: string;
 }
 
+/** @deprecated Use StandingsRegistry + contacts instead. */
 export type MemberKind = "character" | "tribe";
 
+/** @deprecated Use StandingsRegistry + contacts instead. Kept for DB migration. */
 export interface GroupMember extends SyncMeta {
-	id: string; // UUID
-	groupId: string; // FK → PermissionGroup.id
+	id: string;
+	groupId: string;
 	kind: MemberKind;
-	// Character fields (when kind === "character")
 	characterName?: string;
-	characterId?: number; // In-game ID (u32/u64 from chain)
-	suiAddress?: string; // 0x... wallet address
-	// Tribe fields (when kind === "tribe")
-	tribeId?: number; // u32 tribe ID
+	characterId?: number;
+	suiAddress?: string;
+	tribeId?: number;
 	tribeName?: string;
 	createdAt: string;
 }
 
-// ── Betrayal Alert Types ──────────────────────────────────────────────────
+// ── Betrayal Alert Types (deprecated -- removed in v29) ─────────────────────
 
+/** @deprecated Removed in v29. Kept for type reference during migration. */
 export type AlertStatus = "pending" | "acted" | "dismissed";
 
+/** @deprecated Removed in v29. Kept for type reference during migration. */
 export interface BetrayalAlert extends SyncMeta {
 	id: string;
 	attackerCharacterId?: number;
@@ -328,11 +311,14 @@ export interface BetrayalAlert extends SyncMeta {
 	updatedAt: string;
 }
 
+/** @deprecated Replaced by StandingsRegistry. */
 export type PolicyMode = "allowlist" | "denylist";
+/** @deprecated Replaced by StandingsRegistry. */
 export type SyncStatus = "draft" | "dirty" | "syncing" | "synced" | "error";
 
+/** @deprecated Replaced by StructureExtensionConfig. Kept for DB migration. */
 export interface AssemblyPolicy extends SyncMeta {
-	id: string; // Same as assemblyId (1:1)
+	id: string;
 	assemblyId: string;
 	assemblyType:
 		| "turret"
@@ -342,14 +328,11 @@ export interface AssemblyPolicy extends SyncMeta {
 		| "network_node"
 		| "protocol_depot";
 	mode: PolicyMode;
-	groupIds: string[]; // References to PermissionGroup.id
-	// Gate-specific
+	groupIds: string[];
 	permitDurationMs?: number;
-	// Turret-specific
 	defaultPriority?: number;
 	friendlyPriority?: number;
 	hostilePriority?: number;
-	// Sync state
 	syncStatus: SyncStatus;
 	lastSyncedAt?: string;
 	syncError?: string;
@@ -800,6 +783,10 @@ export type SonarEventType =
 	| "ssu_market_buy_filled"
 	| "ssu_market_transfer"
 	| "ssu_market_sell_cancelled"
+	// ── Extension authorization ─────────────────────────────────────────────
+	| "extension_authorized"
+	| "extension_removed"
+	| "extension_revoked"
 	// ── Gate extensions ─────────────────────────────────────────────────────
 	| "toll_collected"
 	| "access_granted"
@@ -809,8 +796,7 @@ export type SonarEventType =
 	| "lease_cancelled"
 	// ── Exchange ────────────────────────────────────────────────────────────
 	| "exchange_order_placed"
-	| "exchange_order_cancelled"
-	| "exchange_trade";
+	| "exchange_order_cancelled";
 
 export interface SonarEvent {
 	id?: number;

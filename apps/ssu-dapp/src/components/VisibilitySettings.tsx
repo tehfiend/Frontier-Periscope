@@ -2,7 +2,7 @@ import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { buildSetVisibility } from "@tehfrontier/chain-shared";
+import { buildSetVisibilityStandings } from "@tehfrontier/chain-shared";
 import { useState } from "react";
 
 interface VisibilitySettingsProps {
@@ -21,7 +21,7 @@ export function VisibilitySettings({ ssuConfig }: VisibilitySettingsProps) {
 		setSuccess(null);
 
 		try {
-			const tx = buildSetVisibility({
+			const tx = buildSetVisibilityStandings({
 				packageId: ssuConfig.packageId,
 				ssuConfigId: ssuConfig.ssuConfigId,
 				isPublic: !ssuConfig.isPublic,

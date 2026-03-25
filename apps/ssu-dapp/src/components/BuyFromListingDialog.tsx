@@ -5,7 +5,7 @@ import { useSuiClient } from "@/hooks/useSuiClient";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useQuery } from "@tanstack/react-query";
-import { buildBuyFromListing, formatBaseUnits, queryOwnedCoins } from "@tehfrontier/chain-shared";
+import { buildBuyFromListingStandings, formatBaseUnits, queryOwnedCoins } from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
 interface BuyFromListingDialogProps {
@@ -69,11 +69,12 @@ export function BuyFromListingDialog({
 		setSuccess(null);
 
 		try {
-			const tx = buildBuyFromListing({
+			const tx = buildBuyFromListingStandings({
 				packageId: ssuConfig.packageId,
 				ssuConfigId: ssuConfig.ssuConfigId,
 				marketId: ssuConfig.marketId,
 				coinType,
+				registryId: ssuConfig.registryId ?? "",
 				ssuObjectId,
 				characterObjectId,
 				listingId: listing.listingId,

@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { useCharacterSessionIds } from "@/hooks/useCharacterSessionIds";
 import { fmtDateTime } from "@/lib/format";
 import { useLiveQuery } from "dexie-react-hooks";
 import { MessageSquare, Search } from "lucide-react";
@@ -7,12 +8,19 @@ import { useState } from "react";
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function ChatTab() {
+	const characterSessionIds = useCharacterSessionIds();
 	const [channelFilter, setChannelFilter] = useState<string>("all");
 	const [searchQuery, setSearchQuery] = useState("");
 
-	// Get all chat events across all sessions
-	const chatEvents = useLiveQuery(() =>
-		db.logEvents.where("type").equals("chat").sortBy("timestamp"),
+	// Get chat events -- filtered by character when a character filter is active
+	const chatEvents = useLiveQuery(
+		() =>
+			db.logEvents
+				.where("type")
+				.equals("chat")
+				.filter((e) => !characterSessionIds || characterSessionIds.has(e.sessionId))
+				.sortBy("timestamp"),
+		[characterSessionIds],
 	);
 
 	const allEvents = chatEvents ?? [];

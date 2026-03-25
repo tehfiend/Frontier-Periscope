@@ -14,13 +14,13 @@ export function Setup() {
 	function handleContinue() {
 		if (allCharacters.length > 0) {
 			setProfileConfigured(true);
-			navigate({ to: "/" });
+			navigate({ to: "/sonar" });
 		}
 	}
 
 	function handleSkip() {
 		setProfileConfigured(true);
-		navigate({ to: "/" });
+		navigate({ to: "/sonar" });
 	}
 
 	return (

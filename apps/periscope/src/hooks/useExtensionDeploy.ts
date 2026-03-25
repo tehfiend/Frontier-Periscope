@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
-import { buildAuthorizeExtension, buildConfigureTribeGate } from "@/chain/transactions";
 import type { AssemblyKind, ExtensionTemplate, TenantId } from "@/chain/config";
+import { buildAuthorizeExtension } from "@/chain/transactions";
 import { db } from "@/db";
+import type { StructureExtensionConfig } from "@/db/types";
+import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
+import { useState } from "react";
 
 export type DeployStatus = "idle" | "building" | "signing" | "confirming" | "done" | "error";
 
@@ -24,10 +25,8 @@ export function useExtensionDeploy() {
 		characterId: string;
 		ownerCapId: string;
 		tenant: TenantId;
-		config?: {
-			allowedTribes?: number[];
-			permitDurationMs?: number;
-		};
+		/** Standings config for new-style extensions */
+		standingsConfig?: Partial<StructureExtensionConfig>;
 	}) {
 		if (!account) return;
 
@@ -49,24 +48,6 @@ export function useExtensionDeploy() {
 			setStatus("signing");
 			const authResult = await signAndExecute({ transaction: tx });
 
-			// If template has config, build and submit config transaction
-			if (params.template.hasConfig && params.config) {
-				if (params.template.id === "gate_tribe" && params.config.allowedTribes) {
-					setStatus("building");
-					const configTx = buildConfigureTribeGate({
-						tenant: params.tenant,
-						template: params.template,
-						gateId: params.assemblyId,
-						allowedTribes: params.config.allowedTribes,
-						permitDurationMs: params.config.permitDurationMs ?? 600_000,
-						senderAddress: account.address,
-					});
-
-					setStatus("signing");
-					await signAndExecute({ transaction: configTx });
-				}
-			}
-
 			setStatus("done");
 			const txDigest = authResult.Transaction?.digest ?? authResult.FailedTransaction?.digest ?? "";
 			setResult({ txDigest });
@@ -79,33 +60,24 @@ export function useExtensionDeploy() {
 				assemblyType: params.assemblyType,
 				templateId: params.template.id,
 				templateName: params.template.name,
-				status: params.template.hasConfig && params.config ? "configured" : "authorized",
+				status: "authorized",
 				txDigest,
-				configuration: params.config as Record<string, unknown> | undefined,
 				authorizedAt: now,
 				owner: account.address,
 				createdAt: now,
 				updatedAt: now,
 			});
 
-			// Auto-create permission policy for ACL extensions
-			const isAclTemplate = params.template.id === "gate_acl";
-			if (isAclTemplate) {
-				const existingPolicy = await db.assemblyPolicies.get(params.assemblyId);
-				if (!existingPolicy) {
-					await db.assemblyPolicies.put({
-						id: params.assemblyId,
-						assemblyId: params.assemblyId,
-						assemblyType: params.assemblyType,
-						mode: "allowlist",
-						groupIds: ["__self__"],
-						permitDurationMs: params.assemblyType === "gate" ? 600_000 : undefined,
-						syncStatus: "draft",
-						extensionTemplateId: params.template.id,
-						createdAt: now,
-						updatedAt: now,
-					});
-				}
+			// Write standings config to structureExtensionConfigs if provided
+			if (params.standingsConfig?.registryId) {
+				await db.structureExtensionConfigs.put({
+					id: params.assemblyId,
+					assemblyId: params.assemblyId,
+					assemblyType: params.assemblyType,
+					registryId: params.standingsConfig.registryId,
+					registryName: params.standingsConfig.registryName,
+					...params.standingsConfig,
+				} as StructureExtensionConfig);
 			}
 		} catch (err) {
 			setStatus("error");

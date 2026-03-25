@@ -5,6 +5,7 @@ node_modules/
 dist/
 .next/
 .turbo/
+*.tsbuildinfo
 
 # Environment
 .env
@@ -46,6 +47,5 @@ deploy_err.txt
 tmp/
 
 # Claude Code
-.claude/settings.local.json
-.claude/command-log.jsonl
-.claude/worktrees/
+.claude/
+CLAUDE.md

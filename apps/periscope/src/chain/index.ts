@@ -5,8 +5,6 @@ export {
 	moveType,
 	getMoveTypes,
 	getEventTypes,
-	MOVE_TYPES,
-	EVENT_TYPES,
 	ASSEMBLY_TYPE_IDS,
 	FUEL_TYPES,
 	type AssemblyKind,
@@ -30,8 +28,6 @@ export {
 } from "./client";
 export {
 	syncOwnedAssemblies,
-	syncTargetAssemblies,
-	syncCharacter,
 	syncKillmails,
 	fullSync,
 	type SyncResult,

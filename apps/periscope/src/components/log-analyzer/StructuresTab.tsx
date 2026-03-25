@@ -1,5 +1,6 @@
 import { LogEventRow } from "@/components/LogEventRow";
 import { db } from "@/db";
+import { useCharacterSessionIds } from "@/hooks/useCharacterSessionIds";
 import { useLogStore } from "@/stores/logStore";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
@@ -10,6 +11,7 @@ const STRUCTURE_TYPES = ["structure_departed", "gate_offline", "build_fail", "di
 
 export function StructuresTab() {
 	const { activeSessionId } = useLogStore();
+	const characterSessionIds = useCharacterSessionIds();
 	const [typeFilter, setTypeFilter] = useState<string>("all");
 
 	// All structure events for current session
@@ -25,14 +27,25 @@ export function StructuresTab() {
 		[activeSessionId],
 	);
 
-	// All structure events across all sessions
-	const allEvents = useLiveQuery(() =>
-		Promise.all(STRUCTURE_TYPES.map((t) => db.logEvents.where("type").equals(t).toArray())).then(
-			(arrays) => arrays.flat(),
-		),
+	// All structure events -- filtered by character when a character filter is active
+	const allEvents = useLiveQuery(
+		() =>
+			Promise.all(
+				STRUCTURE_TYPES.map((t) =>
+					db.logEvents
+						.where("type")
+						.equals(t)
+						.filter((e) => !characterSessionIds || characterSessionIds.has(e.sessionId))
+						.toArray(),
+				),
+			).then((arrays) => arrays.flat()),
+		[characterSessionIds],
 	);
 
-	const current = sessionEvents ?? [];
+	// Filter session-scoped data when active session doesn't belong to selected character
+	const sessionBelongsToChar =
+		!characterSessionIds || !activeSessionId || characterSessionIds.has(activeSessionId);
+	const current = sessionBelongsToChar ? (sessionEvents ?? []) : [];
 	const all = allEvents ?? [];
 
 	// Sort all events by timestamp descending

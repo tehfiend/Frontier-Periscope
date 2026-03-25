@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/db";
 import { useSonarStore } from "@/stores/sonarStore";
+import { useLiveQuery } from "dexie-react-hooks";
+import { useEffect, useRef } from "react";
 
 /**
  * Watches for new sonar events matching the user's ping preferences and
@@ -36,6 +36,14 @@ export function useSonarAlerts() {
 			audioRef.current = new Audio("/sounds/alert.mp3");
 			audioRef.current.volume = 0.3;
 		}
+
+		return () => {
+			if (audioRef.current) {
+				audioRef.current.pause();
+				audioRef.current.src = "";
+				audioRef.current = null;
+			}
+		};
 	}, [pingAudioEnabled]);
 
 	// Watch sonar events table for changes
@@ -78,6 +86,9 @@ export function useSonarAlerts() {
 					osc.start();
 					gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
 					osc.stop(ctx.currentTime + 0.3);
+					osc.onended = () => {
+						ctx.close().catch(() => {});
+					};
 				} catch {
 					// Web Audio not available either -- silently fail
 				}

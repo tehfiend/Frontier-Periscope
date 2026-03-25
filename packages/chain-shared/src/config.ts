@@ -12,20 +12,6 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0x364f68ad3272d9815f2fce74776a854af1e3cb8de58ad1a1d7a0e67ad436210f",
 			configObjectId: "0x1b5bec5f6346ec165e66b5e5cb75665f4ff44ba9a1df5b318bbf755777daf01a",
 		},
-		turretShootAll: {
-			packageId: "0x4ad1a19064c1d44dbb6844862f5de4e28fd4a38c3a1bc7531581e39b4f3294b9",
-		},
-		turretPriority: {
-			packageId: "0xbbca3a051fd616da4ebb34b4f67bf6d7111a32904e7fc4da29acd9a9b2bbb5ef",
-		},
-		gateAcl: {
-			packageId: "0x7e0ad0eff0aef4ea2b068209948c7036f2dbfcf51600029a0d27cd5bbf9ad44c",
-			configObjectId: "0xa543f9158e517955b90dc864fc4c1fb00cca8f6fe688495f4a609335800f9dd6",
-		},
-		gateTribe: {
-			packageId: "0x7ce73cdc22d21410794818a31522bc85c25ef97c3685214796f7347d76fd3298",
-			configObjectId: "0x322baeaa93dab9802fb55d7875551c1e40dad88b402fa36a9f8aa8f1f6399816",
-		},
 		gateToll: {
 			packageId: "0xcef451bbe80afd7e495d5de87ace2989097731534ac100d0785f91a427e1f6a8",
 			configObjectId: "0xb1f7ddda99a315704350b4f0a3d82626a4a62da4102afb20222c8a423657efd5",
@@ -54,9 +40,6 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0x8bef45b3006c3112cbc4aa930a6aa521fc586cc8609c89514c4e14f514a578cb",
 			claimsRegistryObjectId: "0xa443242e14ddcdbfa0b6ad63305df464ac110fb6abc59b2ed59db8a37f42082f",
 		},
-		aclRegistry: {
-			packageId: "0x3b1cdef2e8ddbd17618357a2ea8101073f881086442507e722cb02aa3ffc3b55",
-		},
 		market: {
 			packageId: "0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a",
 		},
@@ -65,34 +48,34 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		},
 		// TODO: populate after contract publish
 		standings: { packageId: "" },
-		// TODO: populate after standings_registry contract publish
-		standingsRegistry: { packageId: "" },
-		gateStandings: { packageId: "", configObjectId: "" },
-		ssuStandings: { packageId: "", configObjectId: "" },
-		// TODO: populate after market_standings contract publish
-		marketStandings: { packageId: "" },
-		tokenTemplateStandings: { packageId: "" },
-		ssuMarketStandings: { packageId: "" },
-		privateMapStandings: { packageId: "" },
+		standingsRegistry: {
+			packageId: "0x7d3864e7d1c1c0573cdbc044bffdb0711100f5461910c086777580d005c76341",
+		},
+		gateStandings: {
+			packageId: "0xef2cd2bc3a93cbb7286ed4bf9ebf7c49c6459f50db0a1d0c94d19810f2a62eb4",
+			configObjectId: "0x312a3ea9282b1b702da100c288c520aa452eced3dd325e718c06196b1b9db627",
+		},
+		ssuStandings: {
+			packageId: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
+			configObjectId: "0x87dc574e707930ffeaf337617c16eb8ec8bfee3e7a00f02cc0789ee7f9555c5a",
+		},
+		marketStandings: {
+			packageId: "0xbfaf85431b9f5dd9675b08dd483725d3c53b8433e6c7345c54e5023863a9c9f9",
+		},
+		tokenTemplateStandings: {
+			packageId: "0x130c8e9a4c58425497e30a8f1a1511c2532a2b387ada7e92d834c06898d55796",
+		},
+		ssuMarketStandings: {
+			packageId: "0xf0f602777ea2e90372e93fd9b1c534c123c974a5979e8cafcb2c111b80d4e3ca",
+		},
+		privateMapStandings: {
+			packageId: "0xade891ec8e8eca5f7594a16fc57ab78b8b20d62a1706218c334be8d7b59214ed",
+		},
 	},
 	utopia: {
 		gateUnified: {
 			packageId: "0x364f68ad3272d9815f2fce74776a854af1e3cb8de58ad1a1d7a0e67ad436210f",
 			configObjectId: "0x1b5bec5f6346ec165e66b5e5cb75665f4ff44ba9a1df5b318bbf755777daf01a",
-		},
-		turretShootAll: {
-			packageId: "0x4ad1a19064c1d44dbb6844862f5de4e28fd4a38c3a1bc7531581e39b4f3294b9",
-		},
-		turretPriority: {
-			packageId: "0xbbca3a051fd616da4ebb34b4f67bf6d7111a32904e7fc4da29acd9a9b2bbb5ef",
-		},
-		gateAcl: {
-			packageId: "0x44ff830c866ba3be10d42526b4d65b1f8dd2ba88acba66e847f6004543af4583",
-			configObjectId: "0x61abf5d57a9383640b772ec962dec3bac6b5c50e10f1b0e7fc2328cdb6aee8be",
-		},
-		gateTribe: {
-			packageId: "0x7ce73cdc22d21410794818a31522bc85c25ef97c3685214796f7347d76fd3298",
-			configObjectId: "0x322baeaa93dab9802fb55d7875551c1e40dad88b402fa36a9f8aa8f1f6399816",
 		},
 		gateToll: {
 			packageId: "0xcef451bbe80afd7e495d5de87ace2989097731534ac100d0785f91a427e1f6a8",
@@ -123,9 +106,6 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0x8bef45b3006c3112cbc4aa930a6aa521fc586cc8609c89514c4e14f514a578cb",
 			claimsRegistryObjectId: "0xa443242e14ddcdbfa0b6ad63305df464ac110fb6abc59b2ed59db8a37f42082f",
 		},
-		aclRegistry: {
-			packageId: "0x3b1cdef2e8ddbd17618357a2ea8101073f881086442507e722cb02aa3ffc3b55",
-		},
 		market: {
 			packageId: "0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a",
 		},
@@ -135,15 +115,29 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		standings: {
 			packageId: "0xb1e222afffd559191bb909784e139d4ec7c044f57f2be2a376548c63c5d35abd",
 		},
-		// TODO: populate after standings_registry contract publish
-		standingsRegistry: { packageId: "" },
-		gateStandings: { packageId: "", configObjectId: "" },
-		ssuStandings: { packageId: "", configObjectId: "" },
-		// TODO: populate after market_standings contract publish
-		marketStandings: { packageId: "" },
-		tokenTemplateStandings: { packageId: "" },
-		ssuMarketStandings: { packageId: "" },
-		privateMapStandings: { packageId: "" },
+		standingsRegistry: {
+			packageId: "0x7d3864e7d1c1c0573cdbc044bffdb0711100f5461910c086777580d005c76341",
+		},
+		gateStandings: {
+			packageId: "0xef2cd2bc3a93cbb7286ed4bf9ebf7c49c6459f50db0a1d0c94d19810f2a62eb4",
+			configObjectId: "0x312a3ea9282b1b702da100c288c520aa452eced3dd325e718c06196b1b9db627",
+		},
+		ssuStandings: {
+			packageId: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
+			configObjectId: "0x87dc574e707930ffeaf337617c16eb8ec8bfee3e7a00f02cc0789ee7f9555c5a",
+		},
+		marketStandings: {
+			packageId: "0xbfaf85431b9f5dd9675b08dd483725d3c53b8433e6c7345c54e5023863a9c9f9",
+		},
+		tokenTemplateStandings: {
+			packageId: "0x130c8e9a4c58425497e30a8f1a1511c2532a2b387ada7e92d834c06898d55796",
+		},
+		ssuMarketStandings: {
+			packageId: "0xd14b9cf232696fa471d0c6edd2fa8e3be6bdd64cffa26c57333f8bf6757ab917",
+		},
+		privateMapStandings: {
+			packageId: "0xade891ec8e8eca5f7594a16fc57ab78b8b20d62a1706218c334be8d7b59214ed",
+		},
 	},
 };
 

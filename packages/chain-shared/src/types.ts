@@ -1,18 +1,3 @@
-// ── Permission Types ────────────────────────────────────────────────────────
-
-export interface AclConfig {
-	isAllowlist: boolean;
-	tribeIds: number[];
-	characterIds: number[];
-	permitDurationMs: number;
-}
-
-export interface AdminConfig {
-	owner: string;
-	admins: string[];
-	adminTribes: number[];
-}
-
 // ── Exchange Types ──────────────────────────────────────────────────────────
 
 export interface OrderBookInfo {
@@ -108,16 +93,6 @@ export interface CrossMarketListing extends MarketSellListing {
 	ssuConfigId: string;
 }
 
-// ── Toll Types ──────────────────────────────────────────────────────────────
-
-export interface TollInfo {
-	fee: number;
-	feeRecipient: string;
-	permitDurationMs: number;
-	freeTribes: number[];
-	freeCharacters: number[];
-}
-
 // ── Bounty Types ────────────────────────────────────────────────────────────
 
 export interface BountyInfo {
@@ -150,40 +125,6 @@ export interface TokenInfo {
 	decimals: number;
 	treasuryCapId: string;
 	coinType: string;
-}
-
-// ── Turret Priority Types ──────────────────────────────────────────────────
-
-export interface TurretPriorityDeployment {
-	packageId: string;
-	turretObjectId: string;
-	config: {
-		friendlyTribes: number[];
-		friendlyCharacters: number[];
-		kosTribes: number[];
-		kosCharacters: number[];
-		defaultWeight: number;
-		kosWeight: number;
-		aggressorBonus: number;
-		betrayalBonus: number;
-		lowHpBonus: number;
-		lowHpThreshold: number;
-		classBonus: number;
-		effectiveClasses: number[];
-	};
-	publishedAt: string;
-}
-
-// ── Shared ACL Types ───────────────────────────────────────────────────────
-
-export interface SharedAclInfo {
-	objectId: string;
-	name: string;
-	creator: string;
-	admins: string[];
-	isAllowlist: boolean;
-	allowedTribes: number[];
-	allowedCharacters: number[];
 }
 
 // ── Private Map Types ───────────────────────────────────────────────────────
@@ -293,14 +234,60 @@ export interface RegistryStandingEntry {
 	standing: number;
 }
 
+// ── SSU Unified Config Types ──────────────────────────────────────────────
+
+export interface SsuUnifiedConfigInfo {
+	objectId: string;
+	owner: string;
+	ssuId: string;
+	delegates: string[];
+	marketId: string | null;
+	isPublic: boolean;
+	/** StandingsRegistry object ID for standings-gated access. */
+	registryId: string;
+	/** Minimum standing to deposit items (0-6). */
+	minDeposit: number;
+	/** Minimum standing to withdraw items (0-6). */
+	minWithdraw: number;
+}
+
+// ── Turret Standings Types ────────────────────────────────────────────────
+
+export interface TurretStandingsConfig {
+	/** Module name for the published package (default: "turret_priority") */
+	moduleName?: string;
+	/** Base weight for unlisted targets (default: 30) */
+	defaultWeight: number;
+	/** Weight for KOS targets (default: 100) */
+	kosWeight: number;
+	/** Bonus weight when target is actively attacking (default: 40) */
+	aggressorBonus: number;
+	/** Bonus for a "friendly" who is attacking -- traitor/spy gets maximum priority (default: 50) */
+	betrayalBonus: number;
+	/** Bonus weight when target HP is below threshold (default: 20) */
+	lowHpBonus: number;
+	/** HP threshold (0-100) for low HP bonus (default: 40) */
+	lowHpThreshold: number;
+	/** Bonus weight for effective ship class match (default: 25) */
+	classBonus: number;
+	/** Ship class group IDs this turret is effective against */
+	effectiveClasses: number[];
+	/** StandingsRegistry object ID used to derive friend/foe lists. */
+	registryId: string;
+	/** Mapping of standing thresholds to friendly/KOS classification.
+	 *  Standing >= friendlyThreshold -> friendly, standing <= kosThreshold -> KOS. */
+	standingThresholds: {
+		/** Minimum raw standing (0-6) to be classified as friendly. */
+		friendlyThreshold: number;
+		/** Maximum raw standing (0-6) to be classified as KOS. */
+		kosThreshold: number;
+	};
+}
+
 // ── Contract Addresses ──────────────────────────────────────────────────────
 
 export interface ContractAddresses {
 	gateUnified?: { packageId: string; configObjectId: string };
-	turretShootAll?: { packageId: string };
-	turretPriority?: { packageId: string };
-	gateAcl?: { packageId: string; configObjectId: string };
-	gateTribe?: { packageId: string; configObjectId: string };
 	gateToll?: { packageId: string; configObjectId: string };
 	exchange?: { packageId: string };
 	ssuMarket?: {
@@ -312,7 +299,6 @@ export interface ContractAddresses {
 	lease?: { packageId: string; registryObjectId: string };
 	tokenTemplate?: { packageId: string };
 	governance?: { packageId: string; claimsRegistryObjectId: string };
-	aclRegistry?: { packageId: string };
 	market?: { packageId: string };
 	privateMap?: { packageId: string };
 	standings?: { packageId: string };
@@ -327,4 +313,9 @@ export interface ContractAddresses {
 		previousOriginalPackageIds?: string[];
 	};
 	privateMapStandings?: { packageId: string };
+	ssuUnified?: {
+		packageId: string;
+		originalPackageId?: string;
+		previousOriginalPackageIds?: string[];
+	};
 }

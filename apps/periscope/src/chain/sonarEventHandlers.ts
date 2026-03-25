@@ -7,6 +7,7 @@
  * SonarEvent rows ready for DB insertion.
  */
 
+import { ASSEMBLY_TYPE_IDS } from "@/chain/config";
 import type { SonarEvent, SonarEventType } from "@/db/types";
 
 // ── Context passed to every handler ─────────────────────────────────────────
@@ -251,20 +252,18 @@ const bountyPostedHandler: EventHandler = {
 
 const ssuMarketBuyOrderFilledHandler: EventHandler = {
 	sonarType: "ssu_market_buy_filled",
-	filter: "owned_ssu",
+	filter: "global",
 	parse(event, ctx) {
 		const p = event.parsedJson;
 		const ssuId = p.ssu_id as string | undefined;
-		if (!ssuId || !ctx.ssuObjectIds.has(ssuId)) return [];
-
 		const typeId = Number(p.type_id ?? 0);
 		const quantity = Number(p.quantity ?? 0);
 		const totalPaid = Number(p.total_paid ?? 0);
 		const seller = p.seller as string | undefined;
-		const _buyer = p.buyer as string | undefined;
+		const typeName = resolveTypeName(typeId, ctx);
 		const details =
-			`Buy order filled: ${quantity}x type#${typeId} ` +
-			`for ${totalPaid} (seller: ${seller?.slice(0, 10) ?? "?"})`;
+			`${quantity}x ${typeName ?? `type#${typeId}`} ` +
+			`for ${totalPaid} EVE (seller: ${seller?.slice(0, 10) ?? "?"})`;
 
 		return [
 			{
@@ -272,7 +271,7 @@ const ssuMarketBuyOrderFilledHandler: EventHandler = {
 				assemblyId: ssuId,
 				assemblyName: resolveAssemblyName(ssuId, ctx),
 				typeId: Number.isNaN(typeId) ? undefined : typeId,
-				typeName: resolveTypeName(typeId, ctx),
+				typeName,
 				quantity,
 				details,
 			},
@@ -311,21 +310,16 @@ const fuelHandler: EventHandler = {
 
 const gateLinkedHandler: EventHandler = {
 	sonarType: "gate_linked",
-	filter: "owned_assembly",
+	filter: "global",
 	parse(event, ctx) {
 		const p = event.parsedJson;
 		const srcId = p.source_gate_id as string | undefined;
 		const dstId = p.destination_gate_id as string | undefined;
-		// Show if either gate is owned
-		if (
-			(!srcId || !ctx.ownedAssemblyIds.has(srcId)) &&
-			(!dstId || !ctx.ownedAssemblyIds.has(dstId))
-		)
-			return [];
-
 		const srcName = resolveAssemblyName(srcId, ctx);
 		const dstName = resolveAssemblyName(dstId, ctx);
-		const details = `Gate linked: ${srcName ?? srcId?.slice(0, 10) ?? "?"} <-> ${dstName ?? dstId?.slice(0, 10) ?? "?"}`;
+		const details =
+			`${srcName ?? srcId?.slice(0, 10) ?? "?"} <-> ` +
+			`${dstName ?? dstId?.slice(0, 10) ?? "?"}`;
 
 		return [
 			{
@@ -437,15 +431,15 @@ const marketBuyOrderCancelledHandler: EventHandler = {
 
 const tollCollectedHandler: EventHandler = {
 	sonarType: "toll_collected",
-	filter: "owned_assembly",
+	filter: "global",
 	parse(event, ctx) {
 		const p = event.parsedJson;
 		const gateId = p.gate_id as string | undefined;
-		if (!gateId || !ctx.ownedAssemblyIds.has(gateId)) return [];
-
 		const amount = Number(p.amount ?? 0);
 		const payer = p.payer as string | undefined;
-		const details = `Toll ${amount} from ${payer?.slice(0, 10) ?? "?"}`;
+		const payerName = payer ? ctx.charNameMap.get(payer) : undefined;
+		const details =
+			`Toll ${amount} EVE from ${payerName ?? payer?.slice(0, 10) ?? "?"}`;
 
 		return [
 			{
@@ -460,16 +454,16 @@ const tollCollectedHandler: EventHandler = {
 
 const accessGrantedHandler: EventHandler = {
 	sonarType: "access_granted",
-	filter: "owned_assembly",
+	filter: "global",
 	parse(event, ctx) {
 		const p = event.parsedJson;
 		const gateId = p.gate_id as string | undefined;
-		if (!gateId || !ctx.ownedAssemblyIds.has(gateId)) return [];
-
 		const charId = String(p.character_id ?? "");
 		const charName = ctx.charNameMap.get(charId);
 		const tollPaid = Number(p.toll_paid ?? 0);
-		const details = `Access granted to ${charName ?? charId.slice(0, 10) ?? "?"}${tollPaid ? ` (toll: ${tollPaid})` : ""}`;
+		const details =
+			`Access to ${charName ?? charId.slice(0, 10) ?? "?"}` +
+			`${tollPaid ? ` (toll: ${tollPaid} EVE)` : ""}`;
 
 		return [
 			{
@@ -500,7 +494,8 @@ function structureCreatedHandler(sonarType: SonarEventType): EventHandler {
 				(p.turret_id as string) ??
 				(p.network_node_id as string);
 			const typeId = Number(p.type_id ?? 0);
-			const details = `${sonarType.replace(/_/g, " ")} (type: ${typeId})`;
+			const structName = ASSEMBLY_TYPE_IDS[typeId] ?? `type#${typeId}`;
+			const details = `New ${structName} deployed`;
 
 			return [
 				{
@@ -508,6 +503,7 @@ function structureCreatedHandler(sonarType: SonarEventType): EventHandler {
 					assemblyId,
 					assemblyName: resolveAssemblyName(assemblyId, ctx),
 					typeId: Number.isNaN(typeId) ? undefined : typeId,
+					typeName: structName,
 					details,
 				},
 			];
@@ -545,7 +541,8 @@ const locationRevealedHandler: EventHandler = {
 		const assemblyId = p.assembly_id as string | undefined;
 		const solarSystem = Number(p.solarsystem ?? 0);
 		const typeId = Number(p.type_id ?? 0);
-		const details = `Location revealed in system ${solarSystem} (type: ${typeId})`;
+		const structName = ASSEMBLY_TYPE_IDS[typeId] ?? `type#${typeId}`;
+		const details = `${structName} revealed in system ${solarSystem}`;
 
 		return [
 			{
@@ -590,7 +587,7 @@ const jumpPermitIssuedHandler: EventHandler = {
 function energyHandler(sonarType: SonarEventType): EventHandler {
 	return {
 		sonarType,
-		filter: "owned_assembly",
+		filter: "owned_address",
 		parse(event, ctx) {
 			const p = event.parsedJson;
 			const energySourceId = p.energy_source_id as string | undefined;
@@ -604,6 +601,37 @@ function energyHandler(sonarType: SonarEventType): EventHandler {
 				{
 					...baseEntry(event, sonarType),
 					assemblyId: energySourceId,
+					details,
+				},
+			];
+		},
+	};
+}
+
+// ── Extension Authorization Handlers ─────────────────────────────────────────
+
+function extensionHandler(sonarType: SonarEventType): EventHandler {
+	return {
+		sonarType,
+		filter: "owned_assembly",
+		parse(event, ctx) {
+			const p = event.parsedJson;
+			const assemblyId = extractId(p.assembly_id) ?? extractId(p.assembly_key);
+			if (!assemblyId || !ctx.ownedAssemblyIds.has(assemblyId)) return [];
+
+			const rawExtType = p.extension_type;
+			const extensionType = typeof rawExtType === "string" ? rawExtType : undefined;
+			const action = sonarType.replace("extension_", "");
+			const extLabel = extensionType
+				? extensionType.split("::").slice(-1)[0]
+				: "unknown";
+			const details = `Extension ${action}: ${extLabel}`;
+
+			return [
+				{
+					...baseEntry(event, sonarType),
+					assemblyId,
+					assemblyName: resolveAssemblyName(assemblyId, ctx),
 					details,
 				},
 			];
@@ -824,23 +852,7 @@ const exchangeOrderCancelledHandler: EventHandler = {
 	},
 };
 
-const exchangeTradeHandler: EventHandler = {
-	sonarType: "exchange_trade",
-	filter: "global",
-	parse(event, _ctx) {
-		const p = event.parsedJson;
-		const price = Number(p.price ?? 0);
-		const amount = Number(p.amount ?? 0);
-		const details = `Exchange trade: ${amount} @ ${price}`;
 
-		return [
-			{
-				...baseEntry(event, "exchange_trade"),
-				details,
-			},
-		];
-	},
-};
 
 // ── Registry: maps event key -> handler ─────────────────────────────────────
 
@@ -886,6 +898,15 @@ export const EVENT_HANDLER_REGISTRY: Record<string, EventHandler> = {
 	TurretCreated: structureCreatedHandler("turret_created"),
 	NetworkNodeCreated: structureCreatedHandler("network_node_created"),
 
+	// ── Extension authorization ─────────────────────────────────────────
+	GateExtensionAuthorized: extensionHandler("extension_authorized"),
+	GateExtensionRemoved: extensionHandler("extension_removed"),
+	GateExtensionRevoked: extensionHandler("extension_revoked"),
+	StorageUnitExtensionAuthorized: extensionHandler("extension_authorized"),
+	StorageUnitExtensionRemoved: extensionHandler("extension_removed"),
+	StorageUnitExtensionRevoked: extensionHandler("extension_revoked"),
+	TurretExtensionRevoked: extensionHandler("extension_revoked"),
+
 	// ── SSU Market (extension) ──────────────────────────────────────────
 	SsuMarketBuyOrderFilled: ssuMarketBuyOrderFilledHandler,
 	SsuMarketTransfer: ssuMarketTransferHandler,
@@ -911,5 +932,4 @@ export const EVENT_HANDLER_REGISTRY: Record<string, EventHandler> = {
 	// ── Exchange ────────────────────────────────────────────────────────
 	ExchangeOrderPlaced: exchangeOrderPlacedHandler,
 	ExchangeOrderCancelled: exchangeOrderCancelledHandler,
-	ExchangeTrade: exchangeTradeHandler,
 };

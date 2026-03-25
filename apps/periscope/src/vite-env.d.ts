@@ -25,3 +25,5 @@ interface Window {
 		startIn?: "desktop" | "documents" | "downloads" | "music" | "pictures" | "videos";
 	}): Promise<FileSystemDirectoryHandle>;
 }
+
+declare const __APP_VERSION__: string;

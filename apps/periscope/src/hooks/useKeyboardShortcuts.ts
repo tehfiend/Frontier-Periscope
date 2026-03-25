@@ -2,14 +2,11 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 const VIEW_SHORTCUTS: Record<string, string> = {
-	"1": "/",
 	"2": "/map",
-	"3": "/intel",
-	"5": "/deployables",
+	"5": "/structures",
 	"6": "/sonar",
 	"7": "/killmails",
 	"8": "/blueprints",
-	"9": "/notes",
 	"0": "/settings",
 };
 

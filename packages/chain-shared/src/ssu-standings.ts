@@ -8,12 +8,15 @@
  *
  * All TX builders return a Transaction ready for signing. The caller is
  * responsible for adding gas config and executing.
+ *
+ * @deprecated Use ssu-unified instead. SSU standings functionality is now part of the unified SSU module.
  */
 
 import { Transaction } from "@mysten/sui/transactions";
 
 // ── SSU Config Management (admin only) ──────────────────────────────────────
 
+/** @deprecated Use ssu-unified instead. SSU standings functionality is now part of the unified SSU module. */
 export interface SetSsuStandingsConfigParams {
 	packageId: string;
 	configObjectId: string;
@@ -28,6 +31,7 @@ export interface SetSsuStandingsConfigParams {
  * Build a TX to set standings-based config for an SSU.
  * Defines which registry to check and the standing thresholds.
  * Admin only.
+ * @deprecated Use ssu-unified instead. SSU standings functionality is now part of the unified SSU module.
  */
 export function buildSetSsuStandingsConfig(params: SetSsuStandingsConfigParams): Transaction {
 	const tx = new Transaction();
@@ -47,6 +51,7 @@ export function buildSetSsuStandingsConfig(params: SetSsuStandingsConfigParams):
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU standings functionality is now part of the unified SSU module. */
 export interface RemoveSsuStandingsConfigParams {
 	packageId: string;
 	configObjectId: string;
@@ -54,7 +59,10 @@ export interface RemoveSsuStandingsConfigParams {
 	senderAddress: string;
 }
 
-/** Build a TX to remove standings config from an SSU. Admin only. */
+/**
+ * Build a TX to remove standings config from an SSU. Admin only.
+ * @deprecated Use ssu-unified instead. SSU standings functionality is now part of the unified SSU module.
+ */
 export function buildRemoveSsuStandingsConfig(params: RemoveSsuStandingsConfigParams): Transaction {
 	const tx = new Transaction();
 	tx.setSender(params.senderAddress);
@@ -69,6 +77,7 @@ export function buildRemoveSsuStandingsConfig(params: RemoveSsuStandingsConfigPa
 
 // ── Deposit / Withdraw with Standings Check ─────────────────────────────────
 
+/** @deprecated Use ssu-unified instead. SSU standings functionality is now part of the unified SSU module. */
 export interface DepositWithStandingsParams {
 	packageId: string;
 	configObjectId: string;
@@ -84,6 +93,7 @@ export interface DepositWithStandingsParams {
 /**
  * Build a TX to deposit an item into an SSU with standings check.
  * The character's standing in the registry must be >= the SSU's min_deposit.
+ * @deprecated Use ssu-unified instead. SSU standings functionality is now part of the unified SSU module.
  */
 export function buildDepositWithStandings(params: DepositWithStandingsParams): Transaction {
 	const tx = new Transaction();
@@ -103,6 +113,7 @@ export function buildDepositWithStandings(params: DepositWithStandingsParams): T
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU standings functionality is now part of the unified SSU module. */
 export interface WithdrawWithStandingsParams {
 	packageId: string;
 	configObjectId: string;
@@ -119,6 +130,7 @@ export interface WithdrawWithStandingsParams {
  * Build a TX to withdraw items from an SSU with standings check.
  * The character's standing in the registry must be >= the SSU's min_withdraw.
  * Returns the withdrawn Item.
+ * @deprecated Use ssu-unified instead. SSU standings functionality is now part of the unified SSU module.
  */
 export function buildWithdrawWithStandings(params: WithdrawWithStandingsParams): Transaction {
 	const tx = new Transaction();
@@ -141,6 +153,7 @@ export function buildWithdrawWithStandings(params: WithdrawWithStandingsParams):
 
 // ── Admin Management (owner only) ───────────────────────────────────────────
 
+/** @deprecated Use ssu-unified instead. SSU standings functionality is now part of the unified SSU module. */
 export function buildAddSsuStandingsAdmin(params: {
 	packageId: string;
 	configObjectId: string;
@@ -158,6 +171,7 @@ export function buildAddSsuStandingsAdmin(params: {
 	return tx;
 }
 
+/** @deprecated Use ssu-unified instead. SSU standings functionality is now part of the unified SSU module. */
 export function buildRemoveSsuStandingsAdmin(params: {
 	packageId: string;
 	configObjectId: string;

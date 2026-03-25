@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import type { LogEvent } from "@/db/types";
+import { useCharacterSessionIds } from "@/hooks/useCharacterSessionIds";
 import { fmtDateTime, formatDuration } from "@/lib/format";
 import { useLogStore } from "@/stores/logStore";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -42,6 +43,7 @@ function computeDwellTimes(events: LogEvent[]): DwellTime[] {
 
 export function TravelTab() {
 	const { activeSessionId } = useLogStore();
+	const characterSessionIds = useCharacterSessionIds();
 
 	const systemChanges = useLiveQuery(
 		() =>
@@ -54,12 +56,21 @@ export function TravelTab() {
 		[activeSessionId],
 	);
 
-	// All system changes across all sessions for history view
-	const allSystemChanges = useLiveQuery(() =>
-		db.logEvents.where("type").equals("system_change").sortBy("timestamp"),
+	// All system changes -- filtered by character when a character filter is active
+	const allSystemChanges = useLiveQuery(
+		() =>
+			db.logEvents
+				.where("type")
+				.equals("system_change")
+				.filter((e) => !characterSessionIds || characterSessionIds.has(e.sessionId))
+				.sortBy("timestamp"),
+		[characterSessionIds],
 	);
 
-	const currentSession = systemChanges ?? [];
+	// Filter session-scoped data when active session doesn't belong to selected character
+	const sessionBelongsToChar =
+		!characterSessionIds || !activeSessionId || characterSessionIds.has(activeSessionId);
+	const currentSession = sessionBelongsToChar ? (systemChanges ?? []) : [];
 	const allHistory = allSystemChanges ?? [];
 
 	// Compute per-system dwell times for current session

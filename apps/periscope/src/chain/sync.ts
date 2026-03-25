@@ -7,13 +7,11 @@ import type {
 	AssemblyStatus,
 	DeployableIntel,
 	KillmailIntel,
-	PlayerIntel,
 } from "@/db/types";
 import {
 	extractFields,
 	extractObjectId,
 	extractType,
-	getCharacters,
 	getOwnedAssemblies,
 	queryEvents,
 } from "./client";
@@ -116,96 +114,6 @@ export async function syncOwnedAssemblies(
 	return count;
 }
 
-// ── Target Assembly Discovery ───────────────────────────────────────────────
-
-/** Discover and sync assemblies for a target address. */
-export async function syncTargetAssemblies(
-	targetAddress: string,
-	tenant: TenantId = "stillness",
-): Promise<number> {
-	const objects = await getOwnedAssemblies(targetAddress, tenant);
-	const now = new Date().toISOString();
-	let count = 0;
-
-	for (const obj of objects) {
-		const objectId = extractObjectId(obj);
-		const fields = extractFields(obj);
-		const moveType = extractType(obj);
-		if (!objectId || !fields) continue;
-
-		const assemblyType = moveType ? classifyAssemblyType(moveType) : "Assembly";
-		const status = parseAssemblyStatus(fields);
-
-		const existing = await db.assemblies.where("objectId").equals(objectId).first();
-
-		// Extract extension type from on-chain data
-		const extensionType = fields.extension ? String(fields.extension) : undefined;
-
-		const assembly: AssemblyIntel = {
-			id: existing?.id ?? crypto.randomUUID(),
-			objectId,
-			assemblyType,
-			owner: targetAddress,
-			status,
-			label: existing?.label,
-			systemId: existing?.systemId,
-			lPoint: existing?.lPoint,
-			notes: existing?.notes,
-			parentId: existing?.parentId,
-			extensionType,
-			tags: existing?.tags ?? [],
-			source: "chain",
-			createdAt: existing?.createdAt ?? now,
-			updatedAt: now,
-		};
-
-		await db.assemblies.put(assembly);
-		count++;
-	}
-
-	// Update target record (avoid clearing lastActivity when count is 0)
-	const targetUpdate: Record<string, string> = { lastPolled: now };
-	if (count > 0) targetUpdate.lastActivity = now;
-	await db.targets.where("address").equals(targetAddress).modify(targetUpdate);
-
-	return count;
-}
-
-// ── Character Sync ──────────────────────────────────────────────────────────
-
-/** Look up a character by wallet address and store as player intel. */
-export async function syncCharacter(
-	address: string,
-	tenant: TenantId = "stillness",
-): Promise<PlayerIntel | null> {
-	const chars = await getCharacters(address, tenant);
-	if (chars.length === 0) return null;
-
-	const fields = extractFields(chars[0]);
-	if (!fields) return null;
-
-	const now = new Date().toISOString();
-	const name = (fields.name as string) ?? "Unknown";
-
-	const existing = await db.players.where("address").equals(address).first();
-
-	const player: PlayerIntel = {
-		id: existing?.id ?? crypto.randomUUID(),
-		address,
-		name,
-		threat: existing?.threat ?? "unknown",
-		tribe: (fields.tribe as string) ?? existing?.tribe,
-		notes: existing?.notes,
-		tags: existing?.tags ?? [],
-		source: "chain",
-		createdAt: existing?.createdAt ?? now,
-		updatedAt: now,
-	};
-
-	await db.players.put(player);
-	return player;
-}
-
 // ── Killmail Sync ───────────────────────────────────────────────────────────
 
 /** Fetch and store recent killmails. */
@@ -291,13 +199,12 @@ export async function syncKillmails(limit = 50, tenant: TenantId = "stillness"):
 export interface SyncResult {
 	deployables: number;
 	killmails: number;
-	targets: number;
 	errors: string[];
 }
 
 /** Run a full sync cycle. Accepts a single address or syncs all linked characters. */
 export async function fullSync(address?: string): Promise<SyncResult> {
-	const result: SyncResult = { deployables: 0, killmails: 0, targets: 0, errors: [] };
+	const result: SyncResult = { deployables: 0, killmails: 0, errors: [] };
 
 	// Determine addresses to sync
 	let addresses: string[];
@@ -324,34 +231,6 @@ export async function fullSync(address?: string): Promise<SyncResult> {
 		result.killmails = await syncKillmails();
 	} catch (e) {
 		result.errors.push(`Killmails: ${e instanceof Error ? e.message : String(e)}`);
-	}
-
-	// Sync active targets (parallel with concurrency limit)
-	try {
-		const activeTargets = await db.targets.where("watchStatus").equals("active").toArray();
-		const dueTargets = activeTargets.filter((t) => {
-			const lastPolled = t.lastPolled ? new Date(t.lastPolled).getTime() : 0;
-			const pollInterval = (t.pollInterval ?? 60) * 1000;
-			return Date.now() - lastPolled >= pollInterval;
-		});
-
-		const CONCURRENCY = 4;
-		for (let i = 0; i < dueTargets.length; i += CONCURRENCY) {
-			const batch = dueTargets.slice(i, i + CONCURRENCY);
-			const results = await Promise.allSettled(batch.map((t) => syncTargetAssemblies(t.address)));
-			for (let j = 0; j < results.length; j++) {
-				const r = results[j];
-				if (r.status === "fulfilled") {
-					result.targets += r.value;
-				} else {
-					result.errors.push(
-						`Target ${batch[j].address.slice(0, 10)}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
-					);
-				}
-			}
-		}
-	} catch (e) {
-		result.errors.push(`Targets: ${e instanceof Error ? e.message : String(e)}`);
 	}
 
 	// Update last sync timestamp
