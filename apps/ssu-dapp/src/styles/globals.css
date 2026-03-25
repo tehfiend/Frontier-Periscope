@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+	height: 100%;
+}
+
+/* Responsive text sizing for in-game browser (limited width) */
+@media (max-width: 480px) {
+	html {
+		font-size: 14px;
+	}
+}
+
+/* Compact mode for very small viewports (embedded browser) */
+@media (max-width: 360px) {
+	html {
+		font-size: 13px;
+	}
+}
+
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--color-zinc-700);
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--color-zinc-600);
+}
+
+/* Ensure tables scroll horizontally on narrow viewports */
+.overflow-x-auto {
+	-webkit-overflow-scrolling: touch;
+}

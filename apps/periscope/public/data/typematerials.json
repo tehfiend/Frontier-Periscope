@@ -1,0 +1,82 @@
+{
+  "87434": {
+    "materials": [
+      {
+        "materialTypeID": 77801,
+        "quantity": 82
+      },
+      {
+        "materialTypeID": 77802,
+        "quantity": 7
+      },
+      {
+        "materialTypeID": 77803,
+        "quantity": 43
+      },
+      {
+        "materialTypeID": 78423,
+        "quantity": 26
+      }
+    ]
+  },
+  "84181": {
+    "materials": [
+      {
+        "materialTypeID": 77803,
+        "quantity": 10
+      },
+      {
+        "materialTypeID": 78423,
+        "quantity": 10
+      }
+    ]
+  },
+  "87375": {
+    "materials": [
+      {
+        "materialTypeID": 77801,
+        "quantity": 166
+      },
+      {
+        "materialTypeID": 77802,
+        "quantity": 14
+      },
+      {
+        "materialTypeID": 77803,
+        "quantity": 86
+      },
+      {
+        "materialTypeID": 78423,
+        "quantity": 52
+      }
+    ]
+  },
+  "87435": {
+    "materials": [
+      {
+        "materialTypeID": 77801,
+        "quantity": 82
+      },
+      {
+        "materialTypeID": 77802,
+        "quantity": 7
+      },
+      {
+        "materialTypeID": 77803,
+        "quantity": 43
+      },
+      {
+        "materialTypeID": 78423,
+        "quantity": 26
+      }
+    ]
+  },
+  "87595": {
+    "materials": [
+      {
+        "materialTypeID": 83894,
+        "quantity": 14
+      }
+    ]
+  }
+}

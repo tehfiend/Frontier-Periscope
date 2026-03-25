@@ -1,0 +1,21 @@
+{
+  "name": "@tehfrontier/sui-client",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@mysten/sui": "^2.7.0"
+  },
+  "devDependencies": {
+    "@tehfrontier/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.3"
+  }
+}

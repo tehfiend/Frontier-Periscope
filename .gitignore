@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Move/Sui contracts
+contracts/*/build/
+
+# Sui wallet keys
+*.key
+.sui-deploy-wallet*
+
+# Drizzle
+drizzle/meta/
+
+# Docker volumes
+docker/data/
+
+# Logs
+*.log
+
+# Gas station runtime
+published-tokens.json
+
+# Temp deploy artifacts
+deploy_out.txt
+deploy_err.txt
+tmp/
+
+# Claude Code
+.claude/
+CLAUDE.md

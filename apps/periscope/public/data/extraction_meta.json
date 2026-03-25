@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "source": "EVE Frontier Client ResFiles (build 3251859)",
+  "extractedAt": "2026-03-18T18:48:15Z",
+  "counts": {
+    "regions": 284,
+    "constellations": 2213,
+    "solarSystems": 24426,
+    "jumpEdges": 4116,
+    "labels": 26923
+  },
+  "namesResolved": {
+    "regions": 284,
+    "constellations": 2213,
+    "systems": 24426
+  }
+}
