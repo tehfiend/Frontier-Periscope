@@ -1,3 +1,9 @@
+## 2026-03-26 -- standings-ux
+- **Action:** CREATE
+- **File:** plans/active/02-standings-ux.md
+- **Passes:** 3
+- **Result:** active -- Remove wallet gate from My Registries read-only view (use stored character address), add dismissible contextual help explaining Contacts vs Registries distinction. Single open question resolved during refinement.
+
 ## 2026-03-26 -- app-versioning (update)
 - **Action:** UPDATE
 - **File:** plans/active/01-app-versioning.md
