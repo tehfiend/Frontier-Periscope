@@ -23,3 +23,9 @@
 - **File:** docs/plans/pending/07-dashboard-landing.md
 - **Passes:** 4 (3 with changes, pass 4 no changes)
 - **Result:** pending -- 2-phase plan: Phase 1 creates a Dashboard landing page at `/` with module cards (characters, private maps, standings, markets, structures) replacing the sonar redirect; Phase 2 adds "Add to map" links in Deployables for structures without locations. 3 open questions remain. Key findings: NavLink hardcodes `activeOptions={{ exact: false }}` requiring modification for Home link; neither Deployables.tsx nor StructureDetailCard.tsx imports TanStack Router Link.
+
+## 2026-03-26 -- extension-fixes
+- **Action:** CREATE
+- **File:** docs/plans/pending/06-extension-fixes.md
+- **Passes:** 4 (4 with changes)
+- **Result:** pending -- 3-phase plan fixing turret deploy bug (false success without TX), adding turret staleness detection, and documenting gate toll SUI-only limitation. 5 open questions remain. Key findings: turret config UI model mismatches generator (weights vs. thresholds), witness type mismatch between template and generated source, gates read registry at runtime (no staleness issue), gate toll contract only supports SUI.
