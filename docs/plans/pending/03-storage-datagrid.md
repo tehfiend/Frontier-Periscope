@@ -51,8 +51,8 @@ The target state introduces `SYSTEM NAME (P#L#)` location formatting throughout 
 - The manifest already has `manifestLocations` (db/index.ts L89) keyed by assembly objectId, with `solarsystem`, `lPoint`, `typeId`.
 - Cross-referencing happens in `manifest.ts` L824-849 (`crossReferenceManifestLocations`) and L857-882 (`crossReferencePrivateMapLocations`), but only populates systemId/lPoint on existing deployable/assembly records.
 - Sonar events reference assemblies via `assemblyId` field (db/types.ts L808). `sonarWatchlist` tracks character/tribe IDs but not assembly IDs directly.
-- `registryStandings` (db/types.ts L649-660) track character/tribe standings per registry, but there is no direct link from registries to structures. The link is indirect: structures have an owner (Sui address) -> manifest characters have suiAddress and tribeId -> registry standings map characterId/tribeId to standing values.
-- `structureExtensionConfigs` (db/index.ts L123) stores `registryId` per assembly, creating a link from structures to registries.
+- `registryStandings` (db/types.ts L649-660) track character/tribe standings per registry.
+- `structureExtensionConfigs` (db/index.ts L123, L544) stores `registryId` per assembly, creating a direct link from structures to registries. This is the primary join path for "structures in a standings registry."
 - `SubscribedRegistry` records are in `db.subscribedRegistries` (db/index.ts L103).
 
 ## Target State
@@ -90,7 +90,7 @@ Replace the raw text input in `SsuStandingsConfig` with a `MarketSelector` dropd
 The datagrid shifts from querying `db.deployables` / `db.assemblies` directly to reading from a combined view that includes:
 - **Owned structures:** `db.deployables` where `owner` matches active character's addresses (unchanged)
 - **Sonar-targeted structures:** assemblies/deployables whose `objectId` appears in recent `sonarEvents` (join on `assemblyId`)
-- **Registry structures:** structures whose owner has a standing in a subscribed registry. This is an indirect join: structures -> owner suiAddress -> manifestCharacters -> characterId/tribeId -> registryStandings. Only structures from registries linked to the user's subscribed registries are included.
+- **Registry structures:** structures configured with a standings extension that references a subscribed registry. The join: `structureExtensionConfigs.registryId` -> `subscribedRegistries.id`. Any structure whose `structureExtensionConfigs` entry uses a registry the user has subscribed to is included.
 
 The existing `assemblies` table continues to hold watched structures. The key change is the filter: instead of showing all assemblies, only show those that match the three criteria above. A new `useStructureRows()` hook encapsulates the query logic.
 
@@ -106,7 +106,7 @@ The existing `assemblies` table continues to hold watched structures. The key ch
 | Market data source | `db.currencies` where `marketId` is non-null | Already synced from chain; no new queries needed |
 | Filtered datagrid approach | Computed in `useMemo` from existing live queries | Avoids complex Dexie joins; data sets are small enough for in-memory filtering |
 | Sonar-targeted detection | Query recent `sonarEvents` for distinct `assemblyId` values | Direct DB index on `assemblyId` exists |
-| Registry structure detection | Join structures -> owners -> manifest chars -> registry standings | Only viable path; no direct structure-to-registry link exists |
+| Registry structure detection | Join `structureExtensionConfigs.registryId` -> `subscribedRegistries.id` | Direct path via extension config; no need for owner->character->standing chain |
 
 ## Implementation Phases
 
@@ -126,20 +126,23 @@ The existing `assemblies` table continues to hold watched structures. The key ch
 
 ### Phase 2: Move Extension Reset to Detail Card
 
-1. Add `onReset?: (row: StructureRow) => void` prop to `StructureDetailCard` interface (L39-44)
-2. Add a "Reset Extension" button in the Extension section of `StructureDetailCard` (after L170), with confirm flow:
-   - Button shows "Reset to Default" when `extensionType` is non-default
-   - On click, enters confirm state (local state in card)
+1. Add `onReset?: (row: StructureRow) => void` and `isResetting?: boolean` props to `StructureDetailCard` interface (L39-44)
+2. Import `canRevokeExtension` from `@/hooks/useExtensionRevoke` in `StructureDetailCard.tsx`
+3. Add a "Reset Extension" button in the Extension section of `StructureDetailCard` (after L170), with confirm flow:
+   - Only render when `extensionInfo.status !== "default"` AND `row.ownership === "mine"` AND `canRevokeExtension(row.assemblyModule ?? "")` AND `row.ownerCapId` AND `row.characterObjectId`
+   - Button shows "Reset to Default" initially
+   - On click, enters confirm state (local `useState` in card)
    - On confirm, calls `onReset(row)`
-3. Remove the Reset button, confirm flow, and `revokeConfirmId` logic from the Extension column cell in `Deployables.tsx` (L787-824)
-4. Pass `onReset={handleRevoke}` (or a wrapper) from `Deployables` to `StructureDetailCard`
-5. Keep `revokingId` state for showing a loading indicator; pass it as a prop or use a status callback
+   - Show loading spinner when `isResetting` is true
+4. Remove the Reset button, confirm flow, and `revokeConfirmId` state from the Extension column cell in `Deployables.tsx` (L787-824, plus L388 state declaration)
+5. Pass `onReset={handleRevoke}` and `isResetting={revokingId === selectedRow?.objectId}` from `Deployables` to `StructureDetailCard`
+6. Remove `revokeConfirmId` state (L388) -- confirm flow now lives in the card
 
 ### Phase 3: Market ID Picker
 
 1. Create `apps/periscope/src/components/extensions/MarketSelector.tsx`:
-   - Props: `value: string`, `onChange: (marketId: string) => void`, `tenant?: string`
-   - Query `db.currencies` for records with non-null `marketId`, optionally filtered by tenant
+   - Props: `value: string`, `onChange: (marketId: string) => void`
+   - Query `db.currencies` for records with non-null `marketId` (note: `CurrencyRecord` has no `tenant` field -- all synced markets are shown)
    - Dropdown UI matching `RegistrySelector` pattern: search, item list, clear option
    - Display each market as `SYMBOL -- truncated marketId`
 2. Replace the `<input type="text">` in `SsuStandingsConfig` (`StandingsExtensionPanel.tsx` L160-174) with `<MarketSelector>`
@@ -150,12 +153,11 @@ The existing `assemblies` table continues to hold watched structures. The key ch
 
 1. Create `apps/periscope/src/hooks/useStructureRows.ts`:
    - Accept active character address(es), tenant
-   - Query `db.deployables` for owned structures (existing logic)
+   - Query `db.deployables` for owned structures (existing logic from Deployables.tsx L230-234)
    - Query `db.sonarEvents` for distinct `assemblyId` values from recent events (last 7 days or configurable)
-   - Query `db.assemblies` for entries matching those assemblyIds
-   - Query `db.subscribedRegistries` + `db.registryStandings` + `db.manifestCharacters` to find structure owners who appear in a subscribed registry
-   - Query `db.assemblies` / `db.deployables` matching those owner addresses
-   - Deduplicate by `objectId`
+   - Query `db.assemblies` / `db.deployables` for entries matching those sonar assemblyIds
+   - Query `db.structureExtensionConfigs` -> collect `registryId` values -> check against `db.subscribedRegistries` -> include structures whose configs reference a subscribed registry
+   - Deduplicate by `objectId` (owned structures take priority for richer data)
    - Return merged `StructureRow[]`
 2. Replace the inline data-merging logic in `Deployables.tsx` (L296-360 and surrounding state) with `useStructureRows()` hook
 3. Keep quick-filter logic (`all` / `mine` / `friendly` / `hostile`) -- it stacks on top of the base filter
