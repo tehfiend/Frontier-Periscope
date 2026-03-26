@@ -1,5 +1,5 @@
 # Plan: Standings Page UX Improvements
-**Status:** Draft
+**Status:** Active
 **Created:** 2026-03-26
 **Module:** periscope
 
@@ -81,18 +81,23 @@ This resolves an address from the locally-stored character first, falling back t
 6. Compute `queryAddress = chainAddress ?? walletAddress ?? null` for the registry filter query.
 7. Remove the `if (!walletAddress)` full-page `EmptyState` gate (lines 547-555).
 8. Replace it with a check on `queryAddress`: if neither `chainAddress` nor `walletAddress` is available, show an `EmptyState` with message: "Add a character with a linked Sui address to view your registries, or connect your wallet."
-9. Update `handleRefresh` (lines 516-531) to filter using `queryAddress` instead of `walletAddress`.
-10. Update `isOwner` check (line 545) to use `walletAddress` (still needed -- ownership actions require signing).
-11. Gate transaction buttons (`Create Registry` at line 574, `Set Standing` at line 701, `Add Admin` at line 710, `Remove Admin` at line 669) on `walletAddress` presence. Where `walletAddress` is absent, show a small "Connect Wallet" text or the `ConnectWalletButton` component (`apps/periscope/src/components/WalletConnect.tsx` line 62).
-12. Update dialog guards (lines 738, 747, 758) to continue requiring `walletAddress`.
+9. Update `handleRefresh` (lines 516-531) to filter using `queryAddress` instead of `walletAddress`. Also update the `useCallback` dependency array (line 531) from `walletAddress` to `queryAddress`.
+10. Update `fetchedRef` logic (lines 533-539) -- currently tracks `walletAddress` to avoid re-fetching for the same address. Change to track `queryAddress` instead.
+11. Update `isOwner` check (line 545) to keep using `walletAddress` -- ownership actions require signing, so this must remain wallet-gated.
+12. Update the "owner" badge display (line 625): change `registry.owner === walletAddress` to `registry.owner === queryAddress` so the badge shows even without wallet connected (it's a read-only visual indicator).
+13. Gate transaction buttons (`Create Registry` at line 574, `Set Standing` at line 701, `Add Admin` at line 710, `Remove Admin` at line 669) on `walletAddress` presence. Where `walletAddress` is absent, show a small "Connect Wallet" text or the `ConnectWalletButton` component (`apps/periscope/src/components/WalletConnect.tsx` line 62). Import `ConnectWalletButton` from `@/components/WalletConnect`.
+14. Update dialog guards (lines 738, 747, 758) to continue requiring `walletAddress`.
+15. Update `RegistryStandingsManagement` (line 850-858): change `walletAddress: string` to `walletAddress?: string` in props. The component's `handleRemove` function (line 931) already guards on `if (!packageId || !walletAddress) return;` so this is safe. Hide the per-entry remove button (Trash2 icon, line 1001-1008) when `!walletAddress`.
+16. In the parent JSX that renders `RegistryStandingsManagement` (line 723-728), pass `walletAddress={walletAddress}` (which may be undefined when wallet is not connected).
 
 ### Phase 2: Add contextual help
 
 1. Add `Info` to the lucide-react imports in `Standings.tsx`.
 2. Create a `StandingsHelp` component within `Standings.tsx` that renders a dismissible info banner:
-   - Check `localStorage.getItem("periscope:standings-help-dismissed")`.
-   - If not dismissed, render a bordered info panel with two short bullet points explaining Contacts and Registries.
-   - Include a close/dismiss button that sets the `localStorage` key.
+   - Use `useState(() => localStorage.getItem("periscope:standings-help-dismissed") === "1")` to init dismiss state.
+   - If not dismissed, render a bordered info panel (zinc-800 border, zinc-900/50 bg) with `Info` icon and two short bullet points explaining Contacts and Registries.
+   - Include a close/dismiss button (`X` icon) that sets the `localStorage` key to `"1"` and updates state.
+   - Return `null` when dismissed.
 3. Place `<StandingsHelp />` between the page subtitle (line 121) and the tabs (line 124).
 4. Add per-tab description text -- a single `<p>` element rendered between the tab bar and the tab content, keyed on `activeTab`:
    - "contacts": "Your private standings for characters and tribes, stored locally."
@@ -104,17 +109,18 @@ This resolves an address from the locally-stored character first, falling back t
 | File | Action | Description |
 |------|--------|-------------|
 | `apps/periscope/src/views/Standings.tsx` (line 96-151) | Modify | Update `Standings()` to destructure `useActiveCharacter()`, compute `chainAddress`, pass to `MyRegistriesTab` |
-| `apps/periscope/src/views/Standings.tsx` (line 494-769) | Modify | Update `MyRegistriesTab` props, remove wallet gate, use `queryAddress`, gate transaction buttons on `walletAddress` |
-| `apps/periscope/src/views/Standings.tsx` (line 4-17) | Modify | Add `Info` to lucide-react imports |
+| `apps/periscope/src/views/Standings.tsx` (line 494-769) | Modify | Update `MyRegistriesTab` props, remove wallet gate, use `queryAddress`, gate transaction buttons on `walletAddress`, update owner badge |
+| `apps/periscope/src/views/Standings.tsx` (line 850-858) | Modify | Make `walletAddress` optional in `RegistryStandingsManagement`, hide remove buttons when wallet not connected |
+| `apps/periscope/src/views/Standings.tsx` (line 4-17) | Modify | Add `Info` and `X` to lucide-react imports (for info banner and dismiss button) |
+| `apps/periscope/src/views/Standings.tsx` (line 20) | Modify | Add `import { ConnectWalletButton } from "@/components/WalletConnect"` |
 | `apps/periscope/src/views/Standings.tsx` (new section after line 92) | Add | `StandingsHelp` dismissible info banner component |
 | `apps/periscope/src/views/Standings.tsx` (line 110-151) | Modify | Insert `StandingsHelp` and per-tab descriptions into the JSX |
 
 ## Open Questions
 
-1. **Should the "My Registries" tab show a combined address indicator when using a stored address vs connected wallet?**
-   - **Option A: Show nothing** -- Pros: Simpler UI, less visual noise. Cons: User may not realize which address is being queried.
-   - **Option B: Show a small address chip below the tab bar** -- Pros: Transparency about which address is being used. Cons: Adds visual complexity; the CharacterSwitcher in the sidebar already shows the active character.
-   - **Recommendation:** Option A. The active character is already visible in the sidebar's CharacterSwitcher. Adding redundant address info to the tab content area adds clutter without meaningful benefit.
+None -- all resolved.
+
+**Resolved:** Should the "My Registries" tab show a combined address indicator when using a stored address vs connected wallet? **Decision: No.** The active character is already visible in the sidebar's CharacterSwitcher, and the Deployables view uses the same pattern without any address indicator. Adding one here would be inconsistent and add visual clutter.
 
 ## Deferred
 
