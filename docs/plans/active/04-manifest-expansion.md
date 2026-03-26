@@ -1,6 +1,6 @@
 # Plan: Manifest Expansion -- Comprehensive On-Chain Entity Cache
 
-**Status:** Draft
+**Status:** Ready
 **Created:** 2026-03-26
 **Module:** periscope
 
@@ -95,7 +95,7 @@ Add three new Dexie tables (V30):
    - Primary key: `id` (Market object ID)
    - Indexes: `coinType, creator, cachedAt`
    - Fields: `id, packageId, creator, authorized, feeBps, feeRecipient, nextSellId, nextBuyId, coinType, totalSupply, cachedAt`
-   - Note: no `tenant` field -- market packageId is shared across tenants (see Open Question 2)
+   - Note: no `tenant` field -- market packageId is shared across tenants (resolved: global scoping)
 
 2. **`manifestRegistries`** -- cache of all `StandingsRegistry` objects
    - Primary key: `id` (StandingsRegistry object ID)
@@ -198,10 +198,12 @@ Update views to read from manifest cache instead of ad-hoc queries:
 | Separate table for manifest registries vs. reuse subscribedRegistries | New `manifestRegistries` table | `subscribedRegistries` is user-scoped (only subscribed ones); manifest registries is the global cache of all registries on chain. |
 | Private map location -> manifestLocation merge strategy | Synthetic ManifestLocation entries with `source` field | Avoids duplicating resolution logic in every consumer. One table, one query. Private map entries are distinguishable by `source` field. |
 | Global private map index vs. user-scoped only | Lightweight global index (`manifestPrivateMapIndex`) | The global index enables views to show "all known maps" without decryption keys. User-specific tables remain for invite/key storage. |
-| Market/registry tenant scoping | Global (no tenant field) | market.packageId and standingsRegistry.packageId are identical across stillness/utopia (config.ts L44=L110, L52=L119). Querying once covers both tenants. Avoids duplicates. |
+| Market/registry tenant scoping | Global (no tenant field) | market.packageId and standingsRegistry.packageId are identical across stillness/utopia (config.ts L44=L110, L52=L119). The chain data itself is shared -- markets and registries are published to the shared Sui testnet, not tenant-specific. Querying once covers both tenants. Avoids duplicates. |
 | Sync timing -- eager vs. lazy | Eager on startup (background) | Markets and registries are small (~50-200 objects each). Cost of one GQL query on startup is minimal compared to UX benefit of instant data. |
 | DB migration approach | Single V30 migration with new tables only | No data migration needed -- new tables are empty until first sync. Existing tables untouched. |
 | ManifestLocation.source field | Optional field, no index | Only used for display differentiation. Not queried by index. |
+| Private map location visual distinction | Visual indicator (lock icon or "Private" badge) | Users care about data provenance -- knowing whether a location is public knowledge or private intel is valuable. Low UI effort, high information value. |
+| Refresh strategy | Startup sync + manual refresh button | Markets and registries change infrequently. Startup sync covers normal use; a manual "Refresh" button in the Manifest UI handles long sessions. Periodic/event-driven refresh deferred. |
 
 ## Implementation Phases
 
@@ -291,13 +293,15 @@ Update views to read from manifest cache instead of ad-hoc queries:
 ### Phase 7: Consumer Migration + Manifest UI
 
 1. **Market.tsx**: Replace `queryMarkets()` direct call (L106-128) with `useLiveQuery(() => db.manifestMarkets.toArray())` (no tenant filter). The existing filter logic that shows only markets where user is creator/authorized (L117-126) remains in the component -- the manifest provides the full cache, the view filters for display. Add a "Refresh Markets" button that triggers `discoverMarkets()` via task worker.
-2. **Standings.tsx**: Replace `queryAllRegistries()` calls at L378 and L582 with `useLiveQuery(() => db.manifestRegistries.toArray())` (no tenant filter). Add refresh button.
+2. **Standings.tsx**: Replace `queryAllRegistries()` calls at L378 and L582 with `useLiveQuery(() => db.manifestRegistries.toArray())` (no tenant filter). Add a "Refresh Registries" button that triggers `discoverRegistries()` via task worker.
 3. **Manifest.tsx**: Add new tabs to the tab bar (L510-541):
-   - "Markets ({count})" tab -- DataGrid showing `manifestMarkets` with columns: coinType, creator, feeBps, totalSupply, cachedAt
-   - "Registries ({count})" tab -- DataGrid showing `manifestRegistries` with columns: name, ticker, owner, defaultStanding, cachedAt
+   - "Markets ({count})" tab -- DataGrid showing `manifestMarkets` with columns: coinType, creator, feeBps, totalSupply, cachedAt. Add a "Refresh" button that triggers `discoverMarkets()`.
+   - "Registries ({count})" tab -- DataGrid showing `manifestRegistries` with columns: name, ticker, owner, defaultStanding, cachedAt. Add a "Refresh" button that triggers `discoverRegistries()`.
    - "Private Maps ({count})" tab -- DataGrid showing `manifestPrivateMapIndex` with columns: name, creator, version, mode, cachedAt
    - Update the discover button to call the appropriate sync function per tab
    - Update the stats line (L469-471) to include market/registry/map counts
+4. **Manifest.tsx (Locations tab)**: Add a visual indicator for private-map-sourced locations. In the existing Locations DataGrid, add conditional rendering based on the `source` field: entries where `source === "private-map"` should display a lock icon (from Lucide, e.g. `<Lock size={14} />`) or a "Private" badge next to the location name/ID. This lets users distinguish between publicly revealed locations and private intel from encrypted maps.
+5. **Deployables views**: Where deployable/assembly locations are displayed, check if the resolved location came from a private map source (by looking up `manifestLocations` for the assembly ID and checking `source === "private-map"`). If so, show the same lock icon or "Private" badge. This applies to any DataGrid cell or detail card that renders location info for deployables.
 
 ## File Summary
 
@@ -311,23 +315,13 @@ Update views to read from manifest cache instead of ad-hoc queries:
 | `apps/periscope/src/views/Market.tsx` | Modify | Replace ad-hoc `queryMarkets()` with `useLiveQuery` on `db.manifestMarkets` |
 | `apps/periscope/src/views/Standings.tsx` | Modify | Replace ad-hoc `queryAllRegistries()` with `useLiveQuery` on `db.manifestRegistries` |
 
-## Open Questions
+## Resolved Decisions
 
-1. **Should the private-map-sourced ManifestLocation entries be distinguishable in the UI?**
-   - **Option A: Visual indicator** -- Show a lock icon or "Private" badge next to locations sourced from private maps in the Manifest locations tab and Deployables grid. Pros: transparency about data provenance. Cons: minor UI complexity.
-   - **Option B: No distinction** -- Treat all locations identically in the UI. Pros: simpler. Cons: user can't tell if a location is public knowledge or private intel.
-   - **Recommendation:** Option A -- users care about provenance. A small badge or icon is low effort and high value.
+1. **Private map location visual distinction** -- **Option A: Visual indicator.** Show a lock icon (Lucide `<Lock>`) or "Private" badge next to locations sourced from private maps in the Manifest Locations tab, Deployables grid, and any other view that renders resolved location data. Users care about data provenance -- knowing whether a location is public knowledge or private intel is high value. Implemented in Phase 7, steps 4-5.
 
-2. **Should manifest market/registry sync be tenant-scoped or global?**
-   - **Option A: Tenant-scoped** -- Store `tenant` on each manifest entry, filter by active tenant in queries. Sync runs per-tenant in the auto-sync loop. Pros: consistent with existing manifest pattern (characters/tribes/locations all have tenant). Cons: market and registry package IDs are identical across both tenants (config.ts L44 = L110 = `0xf9c4...`, L52 = L119 = `0x7d38...`), so `queryMarkets()` / `queryAllRegistries()` return the same objects regardless of tenant. This would create duplicate entries.
-   - **Option B: Global (no tenant)** -- Markets and registries are published to the shared Sui testnet, not tenant-specific. Store without tenant, sync once (not per-tenant). Pros: avoids duplicates; single query covers both tenants. Cons: breaks the existing manifest pattern where everything has a tenant field; consumers need to query without tenant filter.
-   - **Recommendation:** Option B -- since the package IDs are identical across tenants, running `queryMarkets()` twice yields the exact same results. Store globally without tenant. The sync runs once in auto-sync (not per-tenant). Consumer queries use `db.manifestMarkets.toArray()` instead of filtering by tenant. This is a pragmatic deviation from the tenant-scoped pattern used by characters/tribes/locations, which genuinely differ per tenant (different world packages).
+2. **Market/registry tenant scoping** -- **Option B: Global (no tenant).** Markets and registries are published to the shared Sui testnet. The market.packageId and standingsRegistry.packageId are identical across stillness/utopia tenants (config.ts L44=L110, L52=L119), confirming that the markets and registries themselves are scoped to tenants at the chain level but the package addresses are shared, so `queryMarkets()` / `queryAllRegistries()` return the same objects regardless of which tenant config is used. Storing globally without a tenant field avoids duplicates. Sync runs once in auto-sync (not per-tenant). Consumer queries use `db.manifestMarkets.toArray()` / `db.manifestRegistries.toArray()` without tenant filter.
 
-3. **How aggressively should stale manifest market/registry entries be refreshed?**
-   - **Option A: Startup only** -- Sync on app startup, no periodic refresh. Manual "Refresh" button in Manifest UI. Pros: simplest. Cons: data goes stale during long sessions.
-   - **Option B: Periodic background refresh** -- Re-sync every 30 minutes via a timer in useManifestAutoSync. Pros: fresh data. Cons: adds background network traffic; complexity.
-   - **Option C: Startup + event-driven** -- Sync on startup. Chain Sonar already monitors market events (market_sell_posted, etc.) -- when Sonar detects new market activity, trigger a manifest market refresh. Pros: efficient, only refreshes when needed. Cons: requires wiring Sonar events to manifest refresh.
-   - **Recommendation:** Option A for initial implementation. Markets and registries change infrequently. A manual refresh button is sufficient. Periodic/event-driven refresh can be added later.
+3. **Refresh strategy** -- **Option A: Startup sync + manual refresh button.** Markets and registries change infrequently. Sync on app startup via `useManifestAutoSync`; manual "Refresh" buttons in the Manifest UI, Market view, and Standings view handle long sessions. Periodic background refresh and Chain Sonar -> manifest wiring are deferred for future implementation.
 
 ## Cross-Plan Dependencies
 
