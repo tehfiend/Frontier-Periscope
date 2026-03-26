@@ -157,7 +157,7 @@ Add three new sync functions following the existing cursor/pagination patterns:
 
 2. **`discoverRegistries()`** -- query all `StandingsRegistry` objects via `queryAllRegistries()` from chain-shared, cache in `manifestRegistries`. Same pagination pattern.
 
-3. **`discoverPrivateMapIndex()`** -- lightweight enumeration of known maps. For user-scoped maps: merge from existing `manifestPrivateMaps` and `manifestPrivateMapsV2` tables. For global standings maps (mode=1): use `queryStandingsMaps()` then `queryPrivateMapV2()` to fetch metadata. Cache in `manifestPrivateMapIndex`.
+3. **`syncPrivateMapIndex()`** -- lightweight enumeration of known maps. For user-scoped maps: merge from existing `manifestPrivateMaps` and `manifestPrivateMapsV2` tables. For global standings maps (mode=1): use `queryStandingsMaps()` then `queryPrivateMapV2()` to fetch metadata. Cache in `manifestPrivateMapIndex`.
 
 ### Private Map -> Manifest Location Integration
 
@@ -168,7 +168,7 @@ Add a new function `mergePrivateMapLocationsIntoManifest()` that:
 3. If not, creates a synthetic `ManifestLocation` entry with `solarsystem` from the map location, `lPoint` from `P{planet}-L{lPoint}`, and a special marker field (e.g. `source: "private-map"`) indicating the data came from a private map rather than a public `LocationRevealedEvent`
 4. This makes private map locations visible in the same unified `manifestLocations` table that Deployables, Star Map, and Market views already query
 
-This requires adding an optional `source` field to `ManifestLocation` (`"public" | "private-map"`) and updating the `manifestLocations` index accordingly.
+This requires adding an optional `source` field to `ManifestLocation` (`"public" | "private-map"`). No index needed -- `source` is only used for UI display differentiation, not queried by index.
 
 ### Auto-Sync Expansion (hooks/useManifestAutoSync.ts)
 
@@ -176,7 +176,7 @@ Extend the initial sync to also run:
 
 - `discoverMarkets(client)` once (not per-tenant -- market packageId is shared)
 - `discoverRegistries(client)` once (not per-tenant -- standingsRegistry packageId is shared)
-- `syncPrivateMapIndex(tenantId)` per tenant (privateMapStandings packageId differs per tenant for some tenants)
+- `syncPrivateMapIndex(client, tenantId)` per tenant (private maps are discovered via user-scoped invites, which are per-tenant)
 - `mergePrivateMapLocationsIntoManifest(tenantId)` per tenant (after private map data is synced)
 
 These run after the existing character + tribe sync, as low-priority background tasks.
@@ -284,7 +284,7 @@ Update views to read from manifest cache instead of ad-hoc queries:
 1. Update `useManifestAutoSync.ts` to include:
    - After the per-tenant character + tribe loop: call `discoverMarkets(client)` once (shared packageId)
    - After markets: call `discoverRegistries(client)` once (shared packageId)
-   - Then per-tenant: call `syncPrivateMapIndex(tenantId)` (lightweight, no decryption)
+   - Then per-tenant: call `syncPrivateMapIndex(client, tenantId)` (lightweight, no decryption)
    - Then per-tenant: call `mergePrivateMapLocationsIntoManifest(tenantId)`
 2. Add `discoverMarkets`, `discoverRegistries`, `syncPrivateMapIndex`, `mergePrivateMapLocationsIntoManifest` to the imports from `@/chain/manifest`
 
