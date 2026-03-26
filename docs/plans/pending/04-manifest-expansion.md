@@ -93,13 +93,15 @@ Add three new Dexie tables (V30):
 
 1. **`manifestMarkets`** -- cache of all `Market<T>` objects discovered on chain
    - Primary key: `id` (Market object ID)
-   - Indexes: `coinType, creator, tenant, cachedAt`
-   - Fields: `id, packageId, creator, authorized, feeBps, feeRecipient, nextSellId, nextBuyId, coinType, totalSupply, tenant, cachedAt`
+   - Indexes: `coinType, creator, cachedAt`
+   - Fields: `id, packageId, creator, authorized, feeBps, feeRecipient, nextSellId, nextBuyId, coinType, totalSupply, cachedAt`
+   - Note: no `tenant` field -- market packageId is shared across tenants (see Open Question 2)
 
 2. **`manifestRegistries`** -- cache of all `StandingsRegistry` objects
    - Primary key: `id` (StandingsRegistry object ID)
-   - Indexes: `owner, name, ticker, tenant, cachedAt`
-   - Fields: `id, owner, admins, name, ticker, defaultStanding, tenant, cachedAt`
+   - Indexes: `owner, name, ticker, cachedAt`
+   - Fields: `id, owner, admins, name, ticker, defaultStanding, cachedAt`
+   - Note: no `tenant` field -- standingsRegistry packageId is shared across tenants
 
 3. **`manifestPrivateMapIndex`** -- lightweight global index of known private maps (both V1 and V2), separate from user-specific `manifestPrivateMaps`/`manifestPrivateMapsV2` which contain decryption keys
    - Primary key: `id` (map object ID)
@@ -120,8 +122,8 @@ export interface ManifestMarket {
     nextBuyId: number;
     coinType: string;           // Full coin type string
     totalSupply?: number;
-    tenant: string;
     cachedAt: string;
+    // No tenant -- market packageId is shared across tenants
 }
 
 export interface ManifestRegistry {
@@ -131,8 +133,8 @@ export interface ManifestRegistry {
     name: string;
     ticker: string;
     defaultStanding: number;    // Raw u8 (0-6)
-    tenant: string;
     cachedAt: string;
+    // No tenant -- standingsRegistry packageId is shared across tenants
 }
 
 export interface ManifestPrivateMapIndex {
@@ -172,9 +174,10 @@ This requires adding an optional `source` field to `ManifestLocation` (`"public"
 
 Extend the initial sync to also run:
 
-- `discoverMarkets()` for both tenants
-- `discoverRegistries()` for both tenants
-- `mergePrivateMapLocationsIntoManifest()` (after private map data is synced)
+- `discoverMarkets(client)` once (not per-tenant -- market packageId is shared)
+- `discoverRegistries(client)` once (not per-tenant -- standingsRegistry packageId is shared)
+- `syncPrivateMapIndex(tenantId)` per tenant (privateMapStandings packageId differs per tenant for some tenants)
+- `mergePrivateMapLocationsIntoManifest(tenantId)` per tenant (after private map data is synced)
 
 These run after the existing character + tribe sync, as low-priority background tasks.
 
@@ -182,8 +185,8 @@ These run after the existing character + tribe sync, as low-priority background 
 
 Update views to read from manifest cache instead of ad-hoc queries:
 
-- **Market.tsx** -- replace `queryMarkets()` call with `useLiveQuery(() => db.manifestMarkets.where("tenant").equals(tenant).toArray())`
-- **Standings.tsx** -- replace `queryAllRegistries()` calls with `useLiveQuery(() => db.manifestRegistries.where("tenant").equals(tenant).toArray())`
+- **Market.tsx** -- replace `queryMarkets()` call with `useLiveQuery(() => db.manifestMarkets.toArray())` (no tenant filter -- markets are global)
+- **Standings.tsx** -- replace `queryAllRegistries()` calls with `useLiveQuery(() => db.manifestRegistries.toArray())` (no tenant filter -- registries are global)
 - **StandingsExtensionPanel.tsx (Market Picker)** -- read from `db.manifestMarkets` (enables Plan 03's market picker dropdown)
 - **Manifest.tsx** -- add new tabs for Markets, Registries, Private Maps
 
@@ -195,7 +198,8 @@ Update views to read from manifest cache instead of ad-hoc queries:
 | Separate table for manifest registries vs. reuse subscribedRegistries | New `manifestRegistries` table | `subscribedRegistries` is user-scoped (only subscribed ones); manifest registries is the global cache of all registries on chain. |
 | Private map location -> manifestLocation merge strategy | Synthetic ManifestLocation entries with `source` field | Avoids duplicating resolution logic in every consumer. One table, one query. Private map entries are distinguishable by `source` field. |
 | Global private map index vs. user-scoped only | Lightweight global index (`manifestPrivateMapIndex`) | The global index enables views to show "all known maps" without decryption keys. User-specific tables remain for invite/key storage. |
-| Sync timing -- eager vs. lazy | Eager on startup (background) | Markets and registries are small (~50-200 objects each). Cost of one GQL query per tenant on startup is minimal compared to UX benefit of instant data. |
+| Market/registry tenant scoping | Global (no tenant field) | market.packageId and standingsRegistry.packageId are identical across stillness/utopia (config.ts L44=L110, L52=L119). Querying once covers both tenants. Avoids duplicates. |
+| Sync timing -- eager vs. lazy | Eager on startup (background) | Markets and registries are small (~50-200 objects each). Cost of one GQL query on startup is minimal compared to UX benefit of instant data. |
 | DB migration approach | Single V30 migration with new tables only | No data migration needed -- new tables are empty until first sync. Existing tables untouched. |
 | ManifestLocation.source field | Optional field, no index | Only used for display differentiation. Not queried by index. |
 
@@ -209,31 +213,32 @@ Update views to read from manifest cache instead of ad-hoc queries:
 4. Add V30 migration to `db/index.ts` (after V29, ~L550):
    ```
    this.version(30).stores({
-       manifestMarkets: "id, coinType, creator, tenant, cachedAt",
-       manifestRegistries: "id, owner, name, ticker, tenant, cachedAt",
+       manifestMarkets: "id, coinType, creator, cachedAt",
+       manifestRegistries: "id, owner, name, ticker, cachedAt",
        manifestPrivateMapIndex: "id, creator, tenant, cachedAt",
    });
    ```
+   Note: `manifestMarkets` and `manifestRegistries` omit tenant index (shared across tenants). `manifestPrivateMapIndex` retains tenant because private maps are discovered via user-scoped invites and subscribed registries, which are per-tenant in the existing data model.
 5. Update the imports in `db/index.ts` to include the new types
 
 ### Phase 2: Market Sync
 
 1. Add `discoverMarkets()` function to `chain/manifest.ts`:
-   - Accept `client: SuiGraphQLClient`, `tenant: TenantId`, `ctx?: TaskContext`
-   - Get `market.packageId` from `getContractAddresses(tenant)`
-   - Call `queryMarkets(client, packageId)` from chain-shared (already exported)
-   - Map each `MarketInfo` to `ManifestMarket` with `tenant` and `cachedAt`
+   - Accept `client: SuiGraphQLClient`, `ctx?: TaskContext`
+   - Get `market.packageId` from `getContractAddresses("stillness")` (identical across tenants -- `0xf9c4...`)
+   - Call `queryMarkets(client, packageId)` from chain-shared (already exported via index.ts L8)
+   - Map each `MarketInfo` to `ManifestMarket` with `cachedAt` (no tenant field)
    - Bulk put into `db.manifestMarkets`
    - Return count of markets synced
-2. Import `queryMarkets` from `@tehfrontier/chain-shared` in `manifest.ts` (it is already re-exported from chain-shared/src/index.ts via market.ts)
+2. Import `queryMarkets` from `@tehfrontier/chain-shared` in `manifest.ts`
 
 ### Phase 3: Registry Sync
 
 1. Add `discoverRegistries()` function to `chain/manifest.ts`:
-   - Accept `client: SuiGraphQLClient`, `tenant: TenantId`, `ctx?: TaskContext`
-   - Get `standingsRegistry.packageId` from `getContractAddresses(tenant)`
-   - Call `queryAllRegistries(client, packageId)` from chain-shared (already exported)
-   - Map each `StandingsRegistryInfo` to `ManifestRegistry` with `tenant` and `cachedAt`
+   - Accept `client: SuiGraphQLClient`, `ctx?: TaskContext`
+   - Get `standingsRegistry.packageId` from `getContractAddresses("stillness")` (identical across tenants -- `0x7d38...`)
+   - Call `queryAllRegistries(client, packageId)` from chain-shared (already exported via index.ts L13)
+   - Map each `StandingsRegistryInfo` to `ManifestRegistry` with `cachedAt` (no tenant field)
    - Bulk put into `db.manifestRegistries`
    - Return count of registries synced
 2. Import `queryAllRegistries` from `@tehfrontier/chain-shared` in `manifest.ts`
@@ -271,16 +276,16 @@ Update views to read from manifest cache instead of ad-hoc queries:
 ### Phase 6: Auto-Sync Expansion
 
 1. Update `useManifestAutoSync.ts` to include:
-   - After tribe sync: call `discoverMarkets(client, tenantId)` per tenant
-   - After market sync: call `discoverRegistries(client, tenantId)` per tenant
-   - After registry sync: call `syncPrivateMapIndex(client, tenantId)` per tenant (lightweight, no decryption)
-   - After private map index: call `mergePrivateMapLocationsIntoManifest(tenantId)` per tenant
+   - After the per-tenant character + tribe loop: call `discoverMarkets(client)` once (shared packageId)
+   - After markets: call `discoverRegistries(client)` once (shared packageId)
+   - Then per-tenant: call `syncPrivateMapIndex(tenantId)` (lightweight, no decryption)
+   - Then per-tenant: call `mergePrivateMapLocationsIntoManifest(tenantId)`
 2. Add `discoverMarkets`, `discoverRegistries`, `syncPrivateMapIndex`, `mergePrivateMapLocationsIntoManifest` to the imports from `@/chain/manifest`
 
 ### Phase 7: Consumer Migration + Manifest UI
 
-1. **Market.tsx**: Replace `queryMarkets()` direct call with `useLiveQuery(() => db.manifestMarkets.where("tenant").equals(tenant).toArray())`. Add a "Refresh Markets" button that triggers `discoverMarkets()` via task worker.
-2. **Standings.tsx**: Replace `queryAllRegistries()` calls at L378 and L582 with `useLiveQuery(() => db.manifestRegistries.where("tenant").equals(tenant).toArray())`. Add refresh button.
+1. **Market.tsx**: Replace `queryMarkets()` direct call with `useLiveQuery(() => db.manifestMarkets.toArray())` (no tenant filter). Add a "Refresh Markets" button that triggers `discoverMarkets()` via task worker.
+2. **Standings.tsx**: Replace `queryAllRegistries()` calls at L378 and L582 with `useLiveQuery(() => db.manifestRegistries.toArray())` (no tenant filter). Add refresh button.
 3. **Manifest.tsx**: Add new tabs to the tab bar (L510-541):
    - "Markets ({count})" tab -- DataGrid showing `manifestMarkets` with columns: coinType, creator, feeBps, totalSupply, cachedAt
    - "Registries ({count})" tab -- DataGrid showing `manifestRegistries` with columns: name, ticker, owner, defaultStanding, cachedAt
@@ -308,9 +313,9 @@ Update views to read from manifest cache instead of ad-hoc queries:
    - **Recommendation:** Option A -- users care about provenance. A small badge or icon is low effort and high value.
 
 2. **Should manifest market/registry sync be tenant-scoped or global?**
-   - **Option A: Tenant-scoped** -- Store `tenant` on each manifest entry, filter by active tenant in queries. Sync runs per-tenant in the auto-sync loop. Pros: consistent with existing manifest pattern (characters/tribes/locations all have tenant). Cons: same Market or Registry object may appear in both tenants since contracts are shared across tenants.
-   - **Option B: Global (no tenant)** -- Markets and registries are published to the shared Sui testnet, not tenant-specific. Store them without tenant. Pros: avoids duplicates. Cons: breaks the existing manifest pattern; complicates auto-sync loop.
-   - **Recommendation:** Option A -- even though the objects are shared, the contract package IDs differ per tenant (see config.ts L44 vs L110 for market). Tenant-scoping keeps the pattern consistent and avoids confusion. If a market appears in both tenants, it gets two cache entries (same object ID, different tenant) which is fine.
+   - **Option A: Tenant-scoped** -- Store `tenant` on each manifest entry, filter by active tenant in queries. Sync runs per-tenant in the auto-sync loop. Pros: consistent with existing manifest pattern (characters/tribes/locations all have tenant). Cons: market and registry package IDs are identical across both tenants (config.ts L44 = L110 = `0xf9c4...`, L52 = L119 = `0x7d38...`), so `queryMarkets()` / `queryAllRegistries()` return the same objects regardless of tenant. This would create duplicate entries.
+   - **Option B: Global (no tenant)** -- Markets and registries are published to the shared Sui testnet, not tenant-specific. Store without tenant, sync once (not per-tenant). Pros: avoids duplicates; single query covers both tenants. Cons: breaks the existing manifest pattern where everything has a tenant field; consumers need to query without tenant filter.
+   - **Recommendation:** Option B -- since the package IDs are identical across tenants, running `queryMarkets()` twice yields the exact same results. Store globally without tenant. The sync runs once in auto-sync (not per-tenant). Consumer queries use `db.manifestMarkets.toArray()` instead of filtering by tenant. This is a pragmatic deviation from the tenant-scoped pattern used by characters/tribes/locations, which genuinely differ per tenant (different world packages).
 
 3. **How aggressively should stale manifest market/registry entries be refreshed?**
    - **Option A: Startup only** -- Sync on app startup, no periodic refresh. Manual "Refresh" button in Manifest UI. Pros: simplest. Cons: data goes stale during long sessions.
