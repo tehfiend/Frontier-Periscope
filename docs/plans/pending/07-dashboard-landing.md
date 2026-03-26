@@ -38,13 +38,13 @@ The sidebar has four nav groups -- Intel, Navigation, Assets, System -- with no 
 - Contacts: `db.contacts.toArray()` via `useContacts()` (useContacts.ts L20)
 - Subscribed registries: `db.subscribedRegistries.where("tenant").equals(tenant).toArray()` via `useSubscribedRegistries(tenant)` (useRegistrySubscriptions.ts L19-29)
 - Currencies/markets: `db.currencies.filter(notDeleted).toArray()` (Market.tsx L80)
-- Deployables: `db.deployables.where("owner").equals(chainAddress).filter(notDeleted).toArray()` (Deployables.tsx L230-236)
+- Deployables (owned): `db.deployables.where("owner").equals(chainAddress).filter(notDeleted).toArray()` (Deployables.tsx L230-236) -- scoped by active character's Sui address. The dashboard should similarly scope by owned addresses to show "your" structure count.
 
 ### Structure Location Link -- Current State
 
-The Deployables datagrid renders a `LocationEditor` component (L853-858) for each row in the location column. This editor lets the user pick a system/planet/L-point combo and saves it locally. The `StructureDetailCard` (StructureDetailCard.tsx L243-249) also shows the location but has no link to private maps.
+The Deployables datagrid renders a `LocationEditor` component (L853, defined at L1239) for each row in the location column. This editor lets the user pick a system/planet/L-point combo and saves it locally. When closed with no location, it renders a button showing an em-dash (L1333-1349). The `StructureDetailCard` (StructureDetailCard.tsx L243-249) also shows the location but has no link to private maps.
 
-When a structure has no location, the cell is empty (empty string accessor at L845). There is no indication that private maps could provide this data, and no link to navigate there.
+When a structure has no location, the cell shows an em-dash button (LocationEditor L1346). There is no indication that private maps could provide this data, and no link to navigate there. Neither Deployables.tsx nor StructureDetailCard.tsx imports `Link` from `@tanstack/react-router` -- both will need a new import.
 
 ### UI Patterns
 
@@ -75,7 +75,7 @@ Each card with existing items shows a concise summary + "View all ->" link. Each
 
 In the Deployables view, when a structure has no location (no systemId):
 
-1. **DataGrid location cell** -- show a "Add to map" link (small, muted) that navigates to `/private-maps` (where the user can select a map and add the location). The link passes the structure's objectId as a search param so the Private Maps view can pre-fill it (deferred -- see Deferred section).
+1. **DataGrid location cell** -- show a "Add to map" link (small, muted) that navigates to `/private-maps` where the user can select a map and add the location. Initially a plain navigation link; pre-filling the structure in the add-location dialog is deferred (see Deferred section).
 2. **StructureDetailCard** -- in the Location section, when locationStr is the em-dash fallback, show a small "Add via Private Map" link that navigates to `/private-maps`.
 
 ## Design Decisions
@@ -97,7 +97,16 @@ In the Deployables view, when a structure has no location (no systemId):
 
 1. Create `apps/periscope/src/views/Dashboard.tsx` with the Dashboard component:
    - Import `useLiveQuery` from `dexie-react-hooks`, `db` and `notDeleted` from `@/db`, `useActiveCharacter` from `@/hooks/useActiveCharacter`, `useContacts` from `@/hooks/useContacts`, `useSubscribedRegistries` from `@/hooks/useRegistrySubscriptions`, `useActiveTenant` from `@/hooks/useOwnedAssemblies`
-   - Query: characters (from `useActiveCharacter`), private maps V1 count + V2 count (via `useLiveQuery`), contacts (from `useContacts`), subscribed registries (from `useSubscribedRegistries`), currencies (via `useLiveQuery` on `db.currencies.filter(notDeleted)`), deployables (via `useLiveQuery` on `db.deployables.filter(notDeleted)`)
+   - Queries (all reactive via `useLiveQuery` or existing hooks):
+     - Characters: `useActiveCharacter()` -> `allCharacters`, `activeCharacter`
+     - Private maps V1: `db.manifestPrivateMaps.where("tenant").equals(tenant).count()`
+     - Private maps V2: `db.manifestPrivateMapsV2.where("tenant").equals(tenant).count()`
+     - Map locations: `db.manifestMapLocations.where("tenant").equals(tenant).count()` (total across all maps)
+     - Contacts: `useContacts()` -> `.length`
+     - Subscribed registries: `useSubscribedRegistries(tenant)` -> `.length`
+     - Currencies: `db.currencies.filter(notDeleted).count()`
+     - Owned deployables: `activeSuiAddresses.length > 0 ? db.deployables.where("owner").anyOf(activeSuiAddresses).filter(notDeleted).toArray() : []` (need full records for fuel calculation; guard empty array for `anyOf`)
+   - Note: use `.count()` where only a number is needed (lighter than `.toArray()`) except for deployables where fuel status requires iterating records
    - Render page header with Telescope icon + "Frontier Periscope" title + "Dashboard" subtitle
    - Render responsive grid: `grid grid-cols-1 md:grid-cols-2 gap-4`
    - Each card: bordered container (`rounded-lg border border-zinc-800 bg-zinc-900/50 p-5`) with icon + title row, then conditional content
@@ -107,12 +116,12 @@ In the Deployables view, when a structure has no location (no systemId):
    - Renders the card shell with a `Link` (from `@tanstack/react-router`) wrapping the header that navigates to the detail view
    - Footer: small "View all ->" link in cyan
 
-3. Card content implementations:
-   - **Characters card**: show active character name + tribe, total character count. Empty: "Add a character to get started. Characters link your in-game identity to on-chain data, enabling structure sync, sonar tracking, and private maps." + link to `/settings`
-   - **Private Maps card**: show `{v1Count + v2Count} maps, {locationCount} locations`. Empty: "Private maps store encrypted structure locations that only invited members can see. Use them to share intel with allies without revealing positions publicly." + link to `/private-maps`
-   - **Standings card**: show `{contactCount} contacts, {registryCount} registries`. Empty: "Standings control who can interact with your structures -- gate access, SSU deposits, turret targeting. Create a registry to define friend/foe rules, or add contacts for private tracking." + link to `/standings`
-   - **Markets card**: show `{currencyCount} currencies`. Empty: "Governance markets let you publish custom tokens and manage buy/sell orders. Create a token to power your organization's economy." + link to `/markets`
-   - **Structures card**: show total count + fuel summary (critical/warning/healthy counts using FUEL_CRITICAL_HOURS and FUEL_WARNING_HOURS constants from `@/lib/constants`). Empty: "Sync your structures from the blockchain to track fuel levels, manage extensions, and monitor locations." + link to `/structures`
+3. Card content implementations (use same icons as Sidebar for consistency):
+   - **Characters card** (icon: `User`, to: `/settings`): show active character name + tribe, total character count. Empty: "Add a character to get started. Characters link your in-game identity to on-chain data, enabling structure sync, sonar tracking, and private maps."
+   - **Private Maps card** (icon: `Lock`, to: `/private-maps`): show `{v1Count + v2Count} maps, {locationCount} locations`. Empty: "Private maps store encrypted structure locations that only invited members can see. Use them to share intel with allies without revealing positions publicly."
+   - **Standings card** (icon: `BookUser`, to: `/standings`): show `{contactCount} contacts, {registryCount} registries`. Empty: "Standings control who can interact with your structures -- gate access, SSU deposits, turret targeting. Create a registry to define friend/foe rules, or add contacts for private tracking."
+   - **Markets card** (icon: `Coins`, to: `/markets`): show `{currencyCount} currencies`. Empty: "Governance markets let you publish custom tokens and manage buy/sell orders. Create a token to power your organization's economy."
+   - **Structures card** (icon: `Package`, to: `/structures`): show total count + fuel summary (critical/warning/healthy counts using FUEL_CRITICAL_HOURS and FUEL_WARNING_HOURS constants from `@/lib/constants`). Empty: "Sync your structures from the blockchain to track fuel levels, manage extensions, and monitor locations."
 
 4. Update `apps/periscope/src/router.tsx`:
    - Add lazy import: `const LazyDashboard = lazy(() => import("@/views/Dashboard").then((m) => ({ default: m.Dashboard })));`
@@ -121,19 +130,32 @@ In the Deployables view, when a structure has no location (no systemId):
    - Remove the `redirect` import if no longer used by indexRoute (check other routes -- deployablesRoute, assembliesRoute, locationsRoute, targetsRoute, logsRoute, extensionsRoute all still use it, so keep the import)
 
 5. Update `apps/periscope/src/components/Sidebar.tsx`:
-   - Add `LayoutDashboard` to the lucide-react import
-   - Add a standalone "Home" link before the nav groups: `<NavLink to="/" icon={LayoutDashboard} label="Home" />` with `activeOptions={{ exact: true }}` to avoid highlighting on all routes
-   - This link sits above the first group header, visually separated
+   - Add `LayoutDashboard` to the lucide-react import (L6-23)
+   - The existing `NavLink` component (L98-132) hardcodes `activeOptions={{ exact: false }}` on the underlying `<Link>` (L105). Since `/` would match every route with prefix matching, the Home link needs special handling. Two approaches:
+     - **Approach A (recommended):** Add an optional `exact` prop to `NavLink`, and when truthy set `activeOptions={{ exact: true }}` instead. Minimal change.
+     - **Approach B:** Render a separate `<Link>` for the Home item outside the `NavLink` component.
+   - Add the Home link in the `<nav>` element (L181) before the `navGroups.map(...)` loop. Use `<NavLink to="/" icon={LayoutDashboard} label="Home" exact />` (with approach A) or a standalone `<Link>` (with approach B).
+   - Visually: add a small bottom margin or divider between the Home link and the first group.
 
 ### Phase 2: Structure Location Link
 
-1. Update `apps/periscope/src/views/Deployables.tsx` -- location column cell (L850-860):
-   - In the `LocationEditor` component (defined at ~L1234), when `displayText` is empty (no systemId and no lPoint), render an additional small link below the picker trigger: `<Link to="/private-maps" className="text-[10px] text-zinc-500 hover:text-cyan-400">Add to map</Link>`
-   - Import `Link` from `@tanstack/react-router` (already imported indirectly via components, but add explicit import if needed)
+1. Update `apps/periscope/src/views/Deployables.tsx`:
+   - Add `import { Link } from "@tanstack/react-router"` (not currently imported in this file)
+   - In the `LocationEditor` component (defined at L1239), modify the closed state (L1333-1349). Currently it returns a single `<button>`. When `displayText` is empty (no location), wrap the return in a `<div className="flex items-center gap-2">` containing both the existing em-dash button and a new `<Link>`:
+     ```
+     <div className="flex items-center gap-2">
+       <button ...>{/* existing em-dash */}</button>
+       <Link to="/private-maps" className="text-[10px] text-zinc-500 hover:text-cyan-400">
+         Add to map
+       </Link>
+     </div>
+     ```
+   - When `displayText` is non-empty (location exists), keep the existing button-only return unchanged
+   - Note: a `<Link>` cannot be nested inside a `<button>` (invalid HTML), so they must be siblings
 
-2. Update `apps/periscope/src/components/StructureDetailCard.tsx` -- location display (L243-249):
-   - When `locationStr` equals the em-dash (`"\u2014"`) fallback, render a small link after the location text: `<Link to="/private-maps" className="text-[10px] text-zinc-500 hover:text-cyan-400">Add via Private Map</Link>`
-   - Import `Link` from `@tanstack/react-router`
+2. Update `apps/periscope/src/components/StructureDetailCard.tsx`:
+   - Add `import { Link } from "@tanstack/react-router"` (not currently imported in this file)
+   - In the Location section (L243-249), when `!systemName && !row.lPoint` (i.e., locationStr is the em-dash fallback), render an additional link after the em-dash span: `<Link to="/private-maps" className="ml-2 text-[10px] text-zinc-500 hover:text-cyan-400">Add via Private Map</Link>`
 
 ## File Summary
 
@@ -155,12 +177,20 @@ In the Deployables view, when a structure has no location (no systemId):
 2. **Should the Sidebar "Home" link use exact matching or prefix matching?**
    - **Option A: Exact match (`activeOptions: { exact: true }`)** -- Pros: only highlights when actually on `/`. Cons: requires overriding NavLink's default `exact: false`.
    - **Option B: Prefix match (default)** -- Pros: consistent with other nav items. Cons: would highlight on every route since all routes start with `/`.
-   - **Recommendation:** Option A. The Home link must use exact matching or it will appear active on every page. The NavLink component already accepts `activeOptions` via the underlying TanStack `Link` -- the Home link will need a separate rendering or the `NavLink` component needs an `activeOptions` prop override.
+   - **Recommendation:** Option A. The Home link must use exact matching or it will appear active on every page. The NavLink component currently hardcodes `activeOptions={{ exact: false }}` at L105 -- it needs either (a) an optional `exact` prop added, or (b) the Home link rendered separately from NavLink. Option (a) is simpler and keeps the Home link visually consistent with other nav items.
 
 3. **Dependency on Plan 04 (Manifest Expansion) for market/registry counts?**
    - **Option A: Use existing data sources (db.currencies, db.subscribedRegistries)** -- Pros: works now, no dependency. Cons: currencies only include markets the user has interacted with (sync'd from Market view), not all markets they could access.
    - **Option B: Wait for Plan 04 to cache all markets/registries in manifest** -- Pros: accurate counts. Cons: blocks this plan.
    - **Recommendation:** Option A. The dashboard shows what the user has configured locally, not what exists on-chain. The existing queries accurately reflect "your stuff." Plan 04 can enhance this later.
+
+## Cross-Plan Dependencies
+
+- **Plan 03 (Storage Datagrid)** modifies `Deployables.tsx` (location formatting, extension column, data source refactor) and `StructureDetailCard.tsx` (formatLocation, reset button). This plan's location link changes touch different sections (LocationEditor closed state, StructureDetailCard location display) but line numbers may shift. Execute Phase 2 of this plan after Plan 03's Deployables changes are merged, or verify line numbers at execution time.
+- **Plan 04 (Manifest Expansion)** is an optional enhancement for dashboard data accuracy. Dashboard works without it using existing local data. Plan 04 could later enrich the dashboard with globally-cached market/registry counts.
+- **Plan 05 (Misc Fixes)** modifies `Deployables.tsx` (category column, actions reorder, notes placeholder). Independent from this plan's location link changes.
+- **Plan 06 (Extension Fixes)** modifies both `Deployables.tsx` and `StructureDetailCard.tsx` (stale turret indicators). Independent from this plan's changes but adds more content to the same detail card file.
+- **No plan conflicts with Phase 1** (Dashboard view + route + sidebar) -- these files are not touched by other plans.
 
 ## Deferred
 
