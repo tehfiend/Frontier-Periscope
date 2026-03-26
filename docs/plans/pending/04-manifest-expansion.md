@@ -246,21 +246,24 @@ Update views to read from manifest cache instead of ad-hoc queries:
 ### Phase 4: Private Map Index Sync
 
 1. Add `syncPrivateMapIndex()` function to `chain/manifest.ts`:
-   - Read all `manifestPrivateMaps` (V1) and `manifestPrivateMapsV2` (V2) entries for the tenant
-   - Merge into `manifestPrivateMapIndex` entries with version, name, creator, mode
-   - For V2 mode=1 maps: also discover via `queryStandingsMaps()` (already used in `syncPrivateMapsV2ForUser`)
+   - Accept `client: SuiGraphQLClient`, `tenant: TenantId`, `ctx?: TaskContext`
+   - Read all `manifestPrivateMaps` (V1) entries for the tenant -> create index entries with `version: 1, mode: 0`
+   - Read all `manifestPrivateMapsV2` (V2) entries for the tenant -> create index entries with `version: 2, mode: mapV2.mode`
+   - For V2 mode=1 maps: also discover globally via `queryStandingsMaps(client, packageId)` (already used in `syncPrivateMapsV2ForUser` at L1405), fetching map metadata for any not yet indexed
    - Bulk put into `db.manifestPrivateMapIndex`
    - Return count of maps indexed
 
 ### Phase 5: Private Map -> Manifest Location Merge
 
 1. Add `mergePrivateMapLocationsIntoManifest()` function to `chain/manifest.ts`:
-   - Read all `manifestMapLocations` entries with non-null `structureId`
+   - Accept `tenant: TenantId` (no client needed -- reads from local cache only)
+   - Read all `manifestMapLocations` entries with non-null `structureId` for the given tenant
    - For each, check if `db.manifestLocations.get(structureId)` already exists
-   - If not, create a `ManifestLocation` entry:
+   - If a public entry already exists (from LocationRevealedEvent), **skip it** -- public data has precise x/y/z coords; private map only has solarsystem/planet/lpoint. Do not overwrite.
+   - If no entry exists, create a synthetic `ManifestLocation`:
      - `id`: structureId
-     - `assemblyItemId`: "" (unknown from map data)
-     - `typeId`: 0 (unknown from map data)
+     - `assemblyItemId`: "" (unknown from private map data)
+     - `typeId`: 0 (unknown from private map data)
      - `ownerCapId`: "" (unknown)
      - `solarsystem`: loc.solarSystemId
      - `x`, `y`, `z`: "0" (private maps don't store exact coords)
@@ -269,9 +272,12 @@ Update views to read from manifest cache instead of ad-hoc queries:
      - `source`: "private-map"
      - `revealedAt`: new Date(loc.addedAtMs).toISOString()
      - `cachedAt`: now
-   - Put into `db.manifestLocations`
-   - Call `crossReferenceManifestLocations()` for newly created IDs
-2. Wire this function to run after private map location syncs (in `syncMapLocations` and `syncMapLocationsV2`)
+   - Put new entries into `db.manifestLocations`
+   - Call `crossReferenceManifestLocations(newIds)` for newly created IDs to populate deployable/assembly systemId+lPoint
+   - Return count of new entries created
+2. Wire this function to run after private map location syncs:
+   - In `syncMapLocations()` (L1012-1098): call `mergePrivateMapLocationsIntoManifest(tenant)` after the cross-reference step at L1091
+   - In `syncMapLocationsV2()` (L1450-1531): call `mergePrivateMapLocationsIntoManifest(tenant)` at the end
 
 ### Phase 6: Auto-Sync Expansion
 
@@ -284,7 +290,7 @@ Update views to read from manifest cache instead of ad-hoc queries:
 
 ### Phase 7: Consumer Migration + Manifest UI
 
-1. **Market.tsx**: Replace `queryMarkets()` direct call with `useLiveQuery(() => db.manifestMarkets.toArray())` (no tenant filter). Add a "Refresh Markets" button that triggers `discoverMarkets()` via task worker.
+1. **Market.tsx**: Replace `queryMarkets()` direct call (L106-128) with `useLiveQuery(() => db.manifestMarkets.toArray())` (no tenant filter). The existing filter logic that shows only markets where user is creator/authorized (L117-126) remains in the component -- the manifest provides the full cache, the view filters for display. Add a "Refresh Markets" button that triggers `discoverMarkets()` via task worker.
 2. **Standings.tsx**: Replace `queryAllRegistries()` calls at L378 and L582 with `useLiveQuery(() => db.manifestRegistries.toArray())` (no tenant filter). Add refresh button.
 3. **Manifest.tsx**: Add new tabs to the tab bar (L510-541):
    - "Markets ({count})" tab -- DataGrid showing `manifestMarkets` with columns: coinType, creator, feeBps, totalSupply, cachedAt
