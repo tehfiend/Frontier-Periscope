@@ -1,5 +1,5 @@
 # Plan: Misc Fixes -- Standings, Structure Columns, Entity Deletion
-**Status:** Draft
+**Status:** Pending
 **Created:** 2026-03-26
 **Module:** periscope
 
@@ -79,15 +79,20 @@ These items are grouped because they're all small-to-medium scope, span the same
 ### Phase 1: Bug Fixes -- Standings Reactivity, Notes Placeholder, Actions Reorder
 
 **Standings reactivity fix:**
-1. In `apps/periscope/src/views/Standings.tsx`, investigate the `AddContactDialog` flow. The `onClose()` call at line 1203 runs after `await onAdd(...)`. Test whether the issue is a race condition or a stale reference.
-2. Add a small delay or force a re-query after adding. If `useLiveQuery` doesn't react, consider adding a `contactsVersion` counter in a Zustand store that increments on add/update/delete, and pass it as a dependency to `useLiveQuery`.
-3. Alternatively, verify that `db.contacts.add()` triggers Dexie's observation hooks. If the issue is that `useLiveQuery` fires but the component doesn't re-render, add a `key` prop or force-update mechanism.
-4. Most likely fix: ensure the `AddContactDialog` `onClose` doesn't interfere with the parent component's re-render cycle. Consider calling `onClose` in a `requestAnimationFrame` or `setTimeout(0)` after the add completes.
+1. **Root cause analysis:** In `apps/periscope/src/views/Standings.tsx` line 1182-1208, the `handleAdd` flow is: `await onAdd(...)` -> `onClose()` -> `setIsPending(false)` in `finally`. The `onClose()` calls `setShowAddDialog(false)` which unmounts the dialog. The `finally` block then calls `setIsPending(false)` on an unmounted component (harmless in React 19 but a sign of lifecycle confusion). The `ContactsTab` parent remains mounted and has `useLiveQuery(() => db.contacts.toArray())` at line 216.
+
+   The likely cause: `db.contacts.add()` completes (IDB transaction commits), then `onClose()` triggers a synchronous React re-render. Dexie's observation system fires the `useLiveQuery` callback asynchronously (via microtask or IDB event). If React 19 batches the `setShowAddDialog(false)` re-render and processes it before Dexie's notification arrives, the first render after dialog close still has stale data. The Dexie notification then triggers a second re-render -- but depending on React's scheduling, this may be deferred or lost.
+
+2. **Fix approach:** In `AddContactDialog.handleAdd()` (line 1182), wrap `onClose()` in a `queueMicrotask()` or `setTimeout(() => onClose(), 0)` to let Dexie's observation fire before the dialog unmounts. This gives `useLiveQuery` a chance to process the IDB change notification before the React tree re-renders.
+
+3. **Alternative fix (if microtask doesn't help):** Move the contact list to a Zustand store with manual `set()` calls, making it synchronously reactive. This is heavier but guaranteed to work. Only do this if approach 2 fails.
+
+4. **Cleanup:** Move `setIsPending(false)` before `onClose()` to avoid setting state on unmounted component.
 
 **Notes placeholder fix:**
 5. In `apps/periscope/src/views/Deployables.tsx` line 992, change `placeholder="\u2014"` to `placeholder=""` (empty string) so blank notes show nothing.
 6. In `apps/periscope/src/components/EditableCell.tsx` line 29, change the default placeholder from `"\u2014"` to `""`.
-7. For cells where the em dash placeholder IS desired (like the Name column on line 704 -- `{r.label || "\u2014"}`), those use `children` prop which bypasses the placeholder mechanism, so they're unaffected.
+7. Other `EditableCell` usages are unaffected: the Name column (Deployables.tsx line 698) uses `children` prop which bypasses the placeholder mechanism; `StructureDetailCard.tsx` line 277 uses a custom `placeholder="Click to add notes..."`. Neither is impacted by changing the default.
 
 **Actions column reorder:**
 8. In `apps/periscope/src/views/Deployables.tsx`, move the `actions` column definition (lines 1009-1063) from the end of the `columns` array to the beginning (before the `status` column definition at line 647).
@@ -100,14 +105,14 @@ These items are grouped because they're all small-to-medium scope, span the same
 ### Phase 2: Structure Columns -- Category Column, Parent Self-Reference
 
 **Category column:**
-1. In `apps/periscope/src/views/Deployables.tsx`, add a `CATEGORY_MAP` constant that maps assembly type names to category strings:
+1. In `apps/periscope/src/views/Deployables.tsx`, add a `CATEGORY_MAP` constant that maps assembly type names to category strings. Must cover values from `ASSEMBLY_TYPE_IDS` (config.ts:184-200), `ASSEMBLY_KIND_NAMES` (Deployables.tsx:121-128), and fallback strings from `assembly.type.replace("_", " ")`:
    ```
    const CATEGORY_MAP: Record<string, string> = {
+     // From ASSEMBLY_TYPE_IDS
      "Heavy Storage": "Storage",
      "Protocol Depot": "Storage",
      "Portable Storage": "Storage",
      "Gatekeeper": "Storage",
-     "Smart Storage Unit": "Storage",
      "Stargate": "Gate",
      "Jumpgate": "Gate",
      "Light Turret": "Turret",
@@ -117,6 +122,21 @@ These items are grouped because they're all small-to-medium scope, span the same
      "Portable Refinery": "Production",
      "Portable Printer": "Production",
      "Refuge": "Habitat",
+     // From ASSEMBLY_KIND_NAMES (fallback when type ID not in ASSEMBLY_TYPE_IDS)
+     "Smart Storage Unit": "Storage",
+     "Turret": "Turret",
+     // From assembly.type.replace("_", " ") fallback
+     "storage unit": "Storage",
+     "smart storage unit": "Storage",
+     "gate": "Gate",
+     "turret": "Turret",
+     "network node": "Node",
+     "protocol depot": "Storage",
+     // Legacy/other names from AUTO_TYPE_NAMES
+     "Gate": "Gate",
+     "Assembly": "Other",
+     "Manufacturing": "Production",
+     "Refinery": "Production",
    };
    ```
 2. Add a new column definition after the "type" column:
@@ -131,8 +151,8 @@ These items are grouped because they're all small-to-medium scope, span the same
    ```
 
 **Parent self-reference:**
-3. In the "parent" column `accessorFn` (line 864), modify the logic so that when `parentId` is undefined, network nodes (check `assemblyModule === "network_node"` or `assemblyType` contains "Node") return their own label.
-4. In the `ParentSelect` cell renderer, update to show the structure's own label when it's a node without an explicit parent.
+3. In the "parent" column `accessorFn` (line 864), modify the logic so that when `parentId` is undefined, network nodes return their own label. Check via `CATEGORY_MAP[d.assemblyType] === "Node"` (not `assemblyModule` since that field is absent on watched assemblies from the `assemblies` table -- see Deployables.tsx lines 339-356 where watched rows omit `assemblyModule`).
+4. In the `ParentSelect` cell renderer, update to show the structure's own label when it's a node without an explicit parent. When the category is "Node" and `parentId` is undefined, render the node's own label instead of the em dash.
 
 **Files changed:**
 - `apps/periscope/src/views/Deployables.tsx` -- category map, category column, parent self-reference logic
@@ -140,40 +160,46 @@ These items are grouped because they're all small-to-medium scope, span the same
 ### Phase 3: Entity Archival -- Local Hidden Flag
 
 **DB schema:**
-1. In `apps/periscope/src/db/index.ts`, add a new version (V30) that adds an `_archived` index to:
-   - `currencies` table
-   - `subscribedRegistries` table
-   - `manifestPrivateMaps` table
-   - `manifestPrivateMapsV2` table
-2. In `apps/periscope/src/db/types.ts`, add `_archived?: boolean` field to `CurrencyRecord`, `SubscribedRegistry`, `ManifestPrivateMap`, and `ManifestPrivateMapV2` types.
+1. In `apps/periscope/src/db/index.ts`, add V30 after V29 (line 550). Re-declare each table's schema with `_archived` added:
+   ```
+   this.version(30).stores({
+     currencies: "id, symbol, coinType, packageId, marketId, _archived",
+     subscribedRegistries: "id, name, ticker, creator, tenant, subscribedAt, _archived",
+     manifestPrivateMaps: "id, name, creator, tenant, cachedAt, _archived",
+     manifestPrivateMapsV2: "id, name, creator, mode, registryId, tenant, cachedAt, _archived",
+   });
+   ```
+2. In `apps/periscope/src/db/types.ts`, add `_archived?: boolean` field to `CurrencyRecord` (line 717), `SubscribedRegistry` (line 633), `ManifestPrivateMap` (line 472), and `ManifestPrivateMapV2` (line 522).
 
 **Hook / helper:**
 3. Create a `useArchive` hook (or add functions to existing hooks) that sets `_archived = true` on a record.
 4. Add a `notArchived` filter predicate similar to `notDeleted` in `db/index.ts`.
 
 **UI integration:**
-5. In the Market view (currencies list), add an "Archive" action button and a "Show Archived" toggle.
-6. In the Standings view (subscribed registries), add an "Archive" action and toggle.
-7. In the Private Maps management UI, add archive support.
+5. In `apps/periscope/src/views/Market.tsx` (currencies list), add an "Archive" action button and a "Show Archived" toggle.
+6. In `apps/periscope/src/views/Standings.tsx` (subscribed registries in `RegistriesTab`), add an "Archive" action and toggle.
+7. In `apps/periscope/src/views/PrivateMaps.tsx` (private maps management), add archive support for both V1 and V2 maps.
 
 **Files changed:**
 - `apps/periscope/src/db/index.ts` -- V30 migration adding `_archived` indexes
 - `apps/periscope/src/db/types.ts` -- add `_archived` field to 4 interfaces
 - `apps/periscope/src/views/Market.tsx` -- archive button + filter toggle for currencies
 - `apps/periscope/src/views/Standings.tsx` -- archive button for subscribed registries
-- `apps/periscope/src/hooks/useRegistrySubscriptions.ts` -- archive function (if subscribed registries are managed here)
+- `apps/periscope/src/views/PrivateMaps.tsx` -- archive button for V1 and V2 private maps
+- `apps/periscope/src/hooks/useRegistrySubscriptions.ts` -- archive function for subscribed registries
 
 ## File Summary
 
 | File | Action | Description |
 |------|--------|-------------|
-| `apps/periscope/src/views/Standings.tsx` | Modify | Fix add-contact reactivity; add archive for subscribed registries |
-| `apps/periscope/src/views/Deployables.tsx` | Modify | Add category column; fix notes placeholder; reorder actions column; parent self-ref |
-| `apps/periscope/src/components/EditableCell.tsx` | Modify | Change default placeholder from em dash to empty string |
-| `apps/periscope/src/db/index.ts` | Modify | V30 migration for `_archived` indexes |
-| `apps/periscope/src/db/types.ts` | Modify | Add `_archived` to CurrencyRecord, SubscribedRegistry, ManifestPrivateMap, ManifestPrivateMapV2 |
-| `apps/periscope/src/views/Market.tsx` | Modify | Archive/unarchive currencies, show/hide toggle |
-| `apps/periscope/src/hooks/useRegistrySubscriptions.ts` | Modify | Add archive function for subscribed registries |
+| `apps/periscope/src/views/Standings.tsx` | Modify | Fix add-contact reactivity (Phase 1); add archive for subscribed registries (Phase 3) |
+| `apps/periscope/src/views/Deployables.tsx` | Modify | Add category column + parent self-ref (Phase 2); fix notes placeholder + reorder actions column (Phase 1) |
+| `apps/periscope/src/components/EditableCell.tsx` | Modify | Change default placeholder from em dash to empty string (Phase 1) |
+| `apps/periscope/src/db/index.ts` | Modify | V30 migration for `_archived` indexes (Phase 3) |
+| `apps/periscope/src/db/types.ts` | Modify | Add `_archived` to CurrencyRecord, SubscribedRegistry, ManifestPrivateMap, ManifestPrivateMapV2 (Phase 3) |
+| `apps/periscope/src/views/Market.tsx` | Modify | Archive/unarchive currencies, show/hide toggle (Phase 3) |
+| `apps/periscope/src/views/PrivateMaps.tsx` | Modify | Archive/unarchive private maps V1 + V2, show/hide toggle (Phase 3) |
+| `apps/periscope/src/hooks/useRegistrySubscriptions.ts` | Modify | Add archive function for subscribed registries (Phase 3) |
 
 ## Open Questions
 
@@ -203,3 +229,8 @@ These items are grouped because they're all small-to-medium scope, span the same
 - **On-chain destruction of shared objects** -- Not possible in Sui's current object model. If EVE Frontier adds a `deactivate` or `disable` entry point to their contracts in future cycles, we can revisit. For now, local archival is the only option.
 - **Bulk archive/unarchive** -- Could add "Archive All" functionality later if the list gets long.
 - **Category column icons** -- Could add per-category icons (turret icon, gate icon, etc.) to the category cells. Low priority, purely cosmetic.
+
+## Coordination Notes
+
+- **Plan 03 (Storage Datagrid)** also modifies `Deployables.tsx` (location formatting, extension column, datagrid data source). This plan's changes (category column, actions reorder, notes fix) are independent but must be merged carefully. Execute Phase 1 + 2 of this plan either before or after Plan 03's Deployables changes, not concurrently.
+- **Plan 04 (Manifest Expansion)** also modifies `db/index.ts` and `db/types.ts`. Phase 3 of this plan (V30 migration) must be sequenced after Plan 04's DB version additions, or the version numbers must be coordinated by the coordinator.
