@@ -6,6 +6,7 @@ import {
 	BookUser,
 	Filter,
 	Globe,
+	Info,
 	Loader2,
 	Pencil,
 	Plus,
@@ -14,12 +15,14 @@ import {
 	Star,
 	Trash2,
 	UserPlus,
+	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ContactPicker } from "@/components/ContactPicker";
 import { CopyAddress } from "@/components/CopyAddress";
 import { StandingBadge } from "@/components/StandingBadge";
+import { ConnectWalletButton } from "@/components/WalletConnect";
 import { db } from "@/db";
 import type { Contact, RegistryStanding } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
@@ -91,13 +94,60 @@ function StandingSelect({
 	);
 }
 
+// ── Contextual Help ─────────────────────────────────────────────────────────
+
+function StandingsHelp() {
+	const [dismissed, setDismissed] = useState(
+		() => localStorage.getItem("periscope:standings-help-dismissed") === "1",
+	);
+
+	if (dismissed) return null;
+
+	return (
+		<div className="mb-4 flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3">
+			<Info size={16} className="mt-0.5 shrink-0 text-cyan-500" />
+			<div className="flex-1 text-xs text-zinc-400">
+				<ul className="list-inside list-disc space-y-1">
+					<li>
+						<strong className="text-zinc-300">Contacts</strong> -- private standings stored locally
+						on your device. Only you can see them.
+					</li>
+					<li>
+						<strong className="text-zinc-300">Registries</strong> -- on-chain standings published to
+						the blockchain. Used by smart assemblies (SSUs, gates, turrets) to control access.
+					</li>
+				</ul>
+			</div>
+			<button
+				type="button"
+				onClick={() => {
+					localStorage.setItem("periscope:standings-help-dismissed", "1");
+					setDismissed(true);
+				}}
+				className="shrink-0 rounded p-0.5 text-zinc-600 transition-colors hover:text-zinc-400"
+				title="Dismiss"
+			>
+				<X size={14} />
+			</button>
+		</div>
+	);
+}
+
+const TAB_DESCRIPTIONS: Record<StandingsTab, string> = {
+	contacts: "Your private standings for characters and tribes, stored locally.",
+	registries: "On-chain standings registries published by other players. Subscribe to track them.",
+	"my-registries":
+		"Registries you own or admin. Used by your smart assemblies to set access rules.",
+};
+
 // ── Main Component ──────────────────────────────────────────────────────────
 
 export function Standings() {
 	const account = useCurrentAccount();
-	useActiveCharacter();
+	const { activeCharacter, activeSuiAddresses } = useActiveCharacter();
 	const tenant = useActiveTenant();
 	const walletAddress = account?.address;
+	const chainAddress = activeCharacter?.suiAddress ?? activeSuiAddresses[0] ?? null;
 
 	const [activeTab, setActiveTab] = useState<StandingsTab>("contacts");
 
@@ -110,7 +160,7 @@ export function Standings() {
 	return (
 		<div className="mx-auto max-w-4xl p-6">
 			{/* Header */}
-			<div className="mb-6">
+			<div className="mb-4">
 				<h1 className="flex items-center gap-2 text-2xl font-bold text-zinc-100">
 					<Shield size={24} />
 					Standings
@@ -120,8 +170,10 @@ export function Standings() {
 				</p>
 			</div>
 
+			<StandingsHelp />
+
 			{/* Tabs */}
-			<div className="mb-6 flex gap-1 border-b border-zinc-800">
+			<div className="mb-2 flex gap-1 border-b border-zinc-800">
 				{tabs.map((tab) => (
 					<button
 						key={tab.id}
@@ -139,13 +191,20 @@ export function Standings() {
 				))}
 			</div>
 
+			{/* Tab Description */}
+			<p className="mb-4 text-xs text-zinc-500">{TAB_DESCRIPTIONS[activeTab]}</p>
+
 			{/* Tab Content */}
 			{activeTab === "contacts" && <ContactsTab />}
 			{activeTab === "registries" && (
 				<RegistriesTab tenant={tenant} walletAddress={walletAddress} />
 			)}
 			{activeTab === "my-registries" && (
-				<MyRegistriesTab tenant={tenant} walletAddress={walletAddress} />
+				<MyRegistriesTab
+					tenant={tenant}
+					chainAddress={chainAddress}
+					walletAddress={walletAddress}
+				/>
 			)}
 		</div>
 	);
@@ -494,13 +553,16 @@ function RegistriesTab({
 
 function MyRegistriesTab({
 	tenant,
+	chainAddress,
 	walletAddress,
 }: {
 	tenant: string;
+	chainAddress?: string | null;
 	walletAddress?: string;
 }) {
 	const client = useSuiClient();
 	const dAppKit = useDAppKit();
+	const queryAddress = chainAddress ?? walletAddress ?? null;
 
 	const [myRegistries, setMyRegistries] = useState<StandingsRegistryInfo[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
@@ -512,31 +574,29 @@ function MyRegistriesTab({
 	const addresses = getContractAddresses(tenant as TenantId);
 	const packageId = addresses.standingsRegistry?.packageId;
 
-	// Fetch registries owned by wallet
+	// Fetch registries owned by or administered by current address
 	const handleRefresh = useCallback(async () => {
-		if (!packageId) return;
+		if (!packageId || !queryAddress) return;
 		setIsLoading(true);
 		try {
 			const all = await queryAllRegistries(client, packageId);
 			// Show registries where user is owner or admin
-			const mine = walletAddress
-				? all.filter((r) => r.owner === walletAddress || r.admins.includes(walletAddress))
-				: [];
+			const mine = all.filter((r) => r.owner === queryAddress || r.admins.includes(queryAddress));
 			setMyRegistries(mine);
 		} catch {
 			// Fetch error
 		} finally {
 			setIsLoading(false);
 		}
-	}, [client, packageId, walletAddress]);
+	}, [client, packageId, queryAddress]);
 
 	const fetchedRef = useRef<string | null>(null);
 	useEffect(() => {
-		if (packageId && walletAddress && fetchedRef.current !== walletAddress) {
-			fetchedRef.current = walletAddress;
+		if (packageId && queryAddress && fetchedRef.current !== queryAddress) {
+			fetchedRef.current = queryAddress;
 			handleRefresh();
 		}
-	}, [packageId, walletAddress, handleRefresh]);
+	}, [packageId, queryAddress, handleRefresh]);
 
 	const selectedRegistry = selectedRegistryId
 		? (myRegistries.find((r) => r.objectId === selectedRegistryId) ?? null)
@@ -544,12 +604,12 @@ function MyRegistriesTab({
 
 	const isOwner = !!(walletAddress && selectedRegistry?.owner === walletAddress);
 
-	if (!walletAddress) {
+	if (!queryAddress) {
 		return (
 			<EmptyState
 				icon={<Star size={48} className="text-zinc-700" />}
-				title="Connect wallet"
-				description="Connect your wallet to create and manage standings registries."
+				title="No address available"
+				description="Add a character with a linked Sui address to view your registries, or connect your wallet."
 			/>
 		);
 	}
@@ -571,7 +631,7 @@ function MyRegistriesTab({
 						<RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
 						Refresh
 					</button>
-					{packageId && (
+					{packageId && walletAddress ? (
 						<button
 							type="button"
 							onClick={() => setShowCreateDialog(true)}
@@ -580,7 +640,9 @@ function MyRegistriesTab({
 							<Plus size={14} />
 							Create Registry
 						</button>
-					)}
+					) : packageId ? (
+						<ConnectWalletButton className="text-xs" />
+					) : null}
 				</div>
 			</div>
 
@@ -622,7 +684,7 @@ function MyRegistriesTab({
 										<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400">
 											{registry.ticker}
 										</span>
-										{registry.owner === walletAddress && (
+										{registry.owner === queryAddress && (
 											<span className="rounded bg-cyan-900/30 px-1.5 py-0.5 text-[10px] text-cyan-400">
 												owner
 											</span>
@@ -697,7 +759,7 @@ function MyRegistriesTab({
 
 										{/* Actions */}
 										<div className="flex items-center gap-2">
-											{packageId && (
+											{packageId && walletAddress ? (
 												<button
 													type="button"
 													onClick={() => setShowSetStandingDialog(true)}
@@ -706,7 +768,9 @@ function MyRegistriesTab({
 													<Plus size={12} />
 													Set Standing
 												</button>
-											)}
+											) : packageId ? (
+												<ConnectWalletButton className="text-xs" />
+											) : null}
 											{isOwner && packageId && (
 												<button
 													type="button"
@@ -854,7 +918,7 @@ function RegistryStandingsManagement({
 }: {
 	registry: StandingsRegistryInfo;
 	packageId: string;
-	walletAddress: string;
+	walletAddress?: string;
 	onRefresh: () => void;
 }) {
 	const client = useSuiClient();
@@ -998,14 +1062,16 @@ function RegistryStandingsManagement({
 								</div>
 								<div className="flex items-center gap-2">
 									<StandingBadge standing={standingToDisplay(entry.standing)} />
-									<button
-										type="button"
-										onClick={() => handleRemove(entry.kind, entry.id)}
-										title="Remove standing"
-										className="rounded p-1 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-red-400"
-									>
-										<Trash2 size={12} />
-									</button>
+									{walletAddress && (
+										<button
+											type="button"
+											onClick={() => handleRemove(entry.kind, entry.id)}
+											title="Remove standing"
+											className="rounded p-1 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-red-400"
+										>
+											<Trash2 size={12} />
+										</button>
+									)}
 								</div>
 							</div>
 						);
