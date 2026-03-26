@@ -1,0 +1,102 @@
+Frontier Periscope License
+Version 1.0, March 2026
+
+Copyright (c) 2026 TehFiend
+https://github.com/tehfiend/Frontier-Periscope
+
+
+1. DEFINITIONS
+
+"Software" means the Frontier Periscope source code, documentation, and
+associated files in this repository.
+
+"Derivative Work" means any work that modifies, extends, or builds upon
+the Software in whole or in part.
+
+"Commercial Use" means any use primarily intended for or directed toward
+commercial advantage or monetary compensation. This includes, but is not
+limited to, selling the Software, offering it as a paid service, or
+embedding it in a product or service that is sold.
+
+"Personal Use" means use by an individual for private, non-commercial
+purposes including learning, experimentation, and personal projects.
+
+"Community Use" means use within free, publicly accessible community
+tools, services, or projects that do not charge users or generate revenue.
+
+
+2. GRANT OF RIGHTS
+
+Subject to the terms of this license, you are granted a worldwide,
+royalty-free, non-exclusive right to:
+
+  a. Use the Software for Personal Use or Community Use.
+  b. Copy and distribute the Software, provided this license and
+     copyright notice are included in all copies.
+  c. Modify the Software and create Derivative Works, subject to
+     Section 3.
+
+
+3. CONDITIONS ON DERIVATIVE WORKS
+
+If you create a Derivative Work, you must:
+
+  a. Make the complete source code of the Derivative Work publicly
+     available under this same license.
+  b. Clearly identify the changes made from the original Software.
+  c. Retain this license and the original copyright notice in all
+     copies and Derivative Works.
+  d. Not impose any additional restrictions beyond those in this
+     license.
+
+
+4. NON-COMMERCIAL RESTRICTION
+
+Commercial Use of the Software or any Derivative Work is prohibited
+without prior written permission from the copyright holder. To request
+a commercial license, contact the copyright holder via the repository
+listed above.
+
+
+5. CONTRIBUTIONS
+
+By submitting a contribution (pull request, patch, or other modification)
+to this repository, you agree to license your contribution under the same
+terms as this license.
+
+
+6. NO TRADEMARK RIGHTS
+
+This license does not grant permission to use the names, trademarks, or
+logos of the copyright holder or the Software, except as required for
+reasonable attribution in accordance with Section 3(c).
+
+
+7. DISCLAIMER OF WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+
+8. LIMITATION OF LIABILITY
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES,
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+
+9. TERMINATION
+
+This license terminates automatically if you violate any of its terms.
+Upon termination, you must destroy all copies of the Software and
+Derivative Works in your possession.
+
+
+10. MISCELLANEOUS
+
+If any provision of this license is held to be unenforceable, the
+remaining provisions remain in effect. This license constitutes the
+entire agreement regarding the Software and supersedes any prior
+agreements.
