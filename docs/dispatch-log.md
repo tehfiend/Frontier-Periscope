@@ -17,3 +17,9 @@
 - **File:** docs/plans/pending/05-misc-fixes.md
 - **Passes:** 4 (3 with changes, pass 4 no changes)
 - **Result:** pending -- 3-phase plan covering standings reactivity bug fix, deployables datagrid improvements (category column, parent self-ref, notes placeholder, actions reorder), and local entity archival for on-chain objects. 4 open questions remain. Key finding: Sui shared objects cannot be destroyed; local-only _archived flag is the only viable approach.
+
+## 2026-03-26 -- dashboard-landing
+- **Action:** CREATE
+- **File:** docs/plans/pending/07-dashboard-landing.md
+- **Passes:** 4 (3 with changes, pass 4 no changes)
+- **Result:** pending -- 2-phase plan: Phase 1 creates a Dashboard landing page at `/` with module cards (characters, private maps, standings, markets, structures) replacing the sonar redirect; Phase 2 adds "Add to map" links in Deployables for structures without locations. 3 open questions remain. Key findings: NavLink hardcodes `activeOptions={{ exact: false }}` requiring modification for Home link; neither Deployables.tsx nor StructureDetailCard.tsx imports TanStack Router Link.
