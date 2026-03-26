@@ -51,8 +51,8 @@ The target state introduces `SYSTEM NAME (P#L#)` location formatting throughout 
 - The manifest already has `manifestLocations` (db/index.ts L89) keyed by assembly objectId, with `solarsystem`, `lPoint`, `typeId`.
 - Cross-referencing happens in `manifest.ts` L824-849 (`crossReferenceManifestLocations`) and L857-882 (`crossReferencePrivateMapLocations`), but only populates systemId/lPoint on existing deployable/assembly records.
 - Sonar events reference assemblies via `assemblyId` field (db/types.ts L808). `sonarWatchlist` tracks character/tribe IDs but not assembly IDs directly.
-- `registryStandings` (db/types.ts L649-660) track character/tribe standings per registry.
-- `structureExtensionConfigs` (db/index.ts L123, L544) stores `registryId` per assembly, creating a direct link from structures to registries. This is the primary join path for "structures in a standings registry."
+- `registryStandings` (db/types.ts L649-660) track character/tribe standings per registry. To find structures "in a standings registry," we must join: registryStandings -> characterId/tribeId -> manifestCharacters.suiAddress -> deployables/assemblies.owner.
+- `structureExtensionConfigs` (db/index.ts L123, L544) stores `registryId` per assembly but only for the user's own configured structures -- not useful for discovering external structures.
 - `SubscribedRegistry` records are in `db.subscribedRegistries` (db/index.ts L103).
 
 ## Target State
@@ -90,7 +90,7 @@ Replace the raw text input in `SsuStandingsConfig` with a `MarketSelector` dropd
 The datagrid shifts from querying `db.deployables` / `db.assemblies` directly to reading from a combined view that includes:
 - **Owned structures:** `db.deployables` where `owner` matches active character's addresses (unchanged)
 - **Sonar-targeted structures:** assemblies/deployables whose `objectId` appears in recent `sonarEvents` (join on `assemblyId`)
-- **Registry structures:** structures configured with a standings extension that references a subscribed registry. The join: `structureExtensionConfigs.registryId` -> `subscribedRegistries.id`. Any structure whose `structureExtensionConfigs` entry uses a registry the user has subscribed to is included.
+- **Registry structures:** structures whose owner appears in a subscribed registry's standings. The join path: `db.assemblies`/`db.deployables` -> `owner` (Sui address) -> `db.manifestCharacters` (suiAddress -> characterId, tribeId) -> `db.registryStandings` (characterId or tribeId). Any structure whose owner (resolved to characterId/tribeId via manifest) has an entry in any subscribed registry is included. Note: `structureExtensionConfigs` only stores configs for the user's own structures, so it cannot be used for this purpose.
 
 The existing `assemblies` table continues to hold watched structures. The key change is the filter: instead of showing all assemblies, only show those that match the three criteria above. A new `useStructureRows()` hook encapsulates the query logic.
 
@@ -104,9 +104,9 @@ The existing `assemblies` table continues to hold watched structures. The key ch
 | Reset button placement | StructureDetailCard only | Reduces datagrid clutter; destructive actions belong in detail views |
 | Market selector component | New `MarketSelector.tsx` in `components/extensions/` | Follows same pattern as `RegistrySelector` |
 | Market data source | `db.currencies` where `marketId` is non-null | Already synced from chain; no new queries needed |
-| Filtered datagrid approach | Computed in `useMemo` from existing live queries | Avoids complex Dexie joins; data sets are small enough for in-memory filtering |
+| Filtered datagrid approach | Computed in `useMemo` from existing live queries | Avoids complex Dexie joins; data sets are small (hundreds, not thousands) for in-memory filtering |
 | Sonar-targeted detection | Query recent `sonarEvents` for distinct `assemblyId` values | Direct DB index on `assemblyId` exists |
-| Registry structure detection | Join `structureExtensionConfigs.registryId` -> `subscribedRegistries.id` | Direct path via extension config; no need for owner->character->standing chain |
+| Registry structure detection | Join structure owner -> manifest char -> registry standings | Indirect but only viable path; `structureExtensionConfigs` only has user's own structures |
 
 ## Implementation Phases
 
@@ -153,13 +153,14 @@ The existing `assemblies` table continues to hold watched structures. The key ch
 
 1. Create `apps/periscope/src/hooks/useStructureRows.ts`:
    - Accept active character address(es), tenant
+   - Use `useLiveQuery()` (from `dexie-react-hooks`) for all DB queries to maintain reactivity
    - Query `db.deployables` for owned structures (existing logic from Deployables.tsx L230-234)
-   - Query `db.sonarEvents` for distinct `assemblyId` values from recent events (last 7 days or configurable)
-   - Query `db.assemblies` / `db.deployables` for entries matching those sonar assemblyIds
-   - Query `db.structureExtensionConfigs` -> collect `registryId` values -> check against `db.subscribedRegistries` -> include structures whose configs reference a subscribed registry
-   - Deduplicate by `objectId` (owned structures take priority for richer data)
-   - Return merged `StructureRow[]`
-2. Replace the inline data-merging logic in `Deployables.tsx` (L296-360 and surrounding state) with `useStructureRows()` hook
+   - Query `db.sonarEvents` for distinct `assemblyId` values from recent events (last 7 days or configurable), then query `db.assemblies`/`db.deployables` for matching entries
+   - Build a `registryOwnerAddresses: Set<string>` in a `useMemo`: load `db.registryStandings` -> collect characterIds/tribeIds -> look up `db.manifestCharacters` to resolve to Sui addresses. Then query `db.assemblies`/`db.deployables` where `owner` is in that set.
+   - Merge and deduplicate by `objectId` in a final `useMemo` (owned structures take priority for richer data)
+   - Return `StructureRow[]` and any needed lookup maps (ownerNames, extensionByAssembly)
+   - Note: the owner name lookup, extension lookup, and contacts lookup currently in Deployables.tsx L254-293 should either move into this hook or remain in the view -- the hook returns raw rows and the view enriches them
+2. Replace the inline data-merging logic in `Deployables.tsx` (L296-360 and surrounding queries at L230-241) with `useStructureRows()` hook
 3. Keep quick-filter logic (`all` / `mine` / `friendly` / `hostile`) -- it stacks on top of the base filter
 4. Remove standalone `db.assemblies.filter(notDeleted).toArray()` query (L238) -- now handled by hook
 5. Ensure the "Sync Chain" button still populates `db.deployables` the same way
@@ -201,3 +202,4 @@ The existing `assemblies` table continues to hold watched structures. The key ch
 - **Manifest structure table** -- A dedicated `manifestStructures` table that caches all on-chain structures (not just locations) would be the ideal foundation for Phase 4. Deferred because the current approach (filtering existing tables) works without a schema migration.
 - **Location auto-resolution on sync** -- When syncing owned structures, auto-query `manifestLocations` to populate systemId/lPoint. Currently relies on separate manifest sync. Could be made more seamless but is a separate concern.
 - **Turret/Gate market support** -- The market picker is SSU-specific. Other assembly types might need market links in the future.
+- **PrivateMaps location formatting** -- `PrivateMaps.tsx` L782 uses `P{loc.planet}-L{loc.lPoint}` with numeric lPoint values (number, not string). Different data shape than `formatLocation` expects; would need a separate adapter or overload.
