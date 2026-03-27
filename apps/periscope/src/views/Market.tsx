@@ -3,6 +3,8 @@ import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	AlertCircle,
+	Archive,
+	ArchiveRestore,
 	ChevronDown,
 	Flame,
 	Loader2,
@@ -78,6 +80,11 @@ export function Market() {
 	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
 	const currencies = useLiveQuery(() => db.currencies.filter(notDeleted).toArray());
+	const [showArchived, setShowArchived] = useState(false);
+	const filteredCurrencies = useMemo(
+		() => (currencies ?? []).filter((c) => !c._archived || showArchived),
+		[currencies, showArchived],
+	);
 
 	const [creating, setCreating] = useState(false);
 	const [symbol, setSymbol] = useState("");
@@ -88,14 +95,14 @@ export function Market() {
 	const [buildError, setBuildError] = useState("");
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 
-	// Auto-select first market when list loads and nothing is selected.
-	// Only re-run when currencies changes -- omit selectedId to avoid a set/dep loop.
+	// Auto-select first non-archived market when list loads and nothing is selected.
+	// Only re-run when filteredCurrencies changes -- omit selectedId to avoid a set/dep loop.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: selectedId intentionally omitted to prevent infinite loop
 	useEffect(() => {
-		if (!selectedId && currencies && currencies.length > 0) {
-			setSelectedId(currencies[0].id);
+		if (!selectedId && filteredCurrencies.length > 0) {
+			setSelectedId(filteredCurrencies[0].id);
 		}
-	}, [currencies]);
+	}, [filteredCurrencies]);
 
 	const suiClient = useSuiClient();
 
@@ -280,7 +287,12 @@ export function Market() {
 		}
 	}
 
-	const selectedCurrency = currencies?.find((c) => c.id === selectedId);
+	const selectedCurrency = filteredCurrencies.find((c) => c.id === selectedId);
+
+	const handleArchiveCurrency = async (id: string, archived: boolean) => {
+		await db.currencies.update(id, { _archived: archived });
+		if (archived && selectedId === id) setSelectedId(null);
+	};
 
 	return (
 		<div className="flex h-full flex-col gap-4 p-4">
@@ -294,10 +306,11 @@ export function Market() {
 						className="w-full appearance-none rounded-lg border border-zinc-700 bg-zinc-800 py-2 pl-3 pr-8 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
 					>
 						<option value="">Select a market...</option>
-						{(currencies ?? []).map((c) => (
+						{filteredCurrencies.map((c) => (
 							<option key={c.id} value={c.id}>
 								{c.symbol} -- {c.name}
 								{c.marketId ? "" : " (no market)"}
+								{c._archived ? " (archived)" : ""}
 							</option>
 						))}
 					</select>
@@ -306,6 +319,32 @@ export function Market() {
 						className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500"
 					/>
 				</div>
+
+				{/* Archive toggle */}
+				<button
+					type="button"
+					onClick={() => setShowArchived(!showArchived)}
+					title={showArchived ? "Hide archived" : "Show archived"}
+					className={`shrink-0 rounded-lg p-2 text-xs transition-colors ${
+						showArchived
+							? "bg-amber-900/30 text-amber-400"
+							: "text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
+					}`}
+				>
+					<Archive size={14} />
+				</button>
+
+				{/* Archive / Unarchive selected currency */}
+				{selectedCurrency && (
+					<button
+						type="button"
+						onClick={() => handleArchiveCurrency(selectedCurrency.id, !selectedCurrency._archived)}
+						title={selectedCurrency._archived ? "Unarchive" : "Archive"}
+						className="shrink-0 rounded-lg p-2 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-400"
+					>
+						{selectedCurrency._archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+					</button>
+				)}
 
 				{/* Create button / form toggle */}
 				{creating ? (

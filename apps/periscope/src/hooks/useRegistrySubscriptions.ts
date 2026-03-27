@@ -58,6 +58,13 @@ export function useUnsubscribeRegistry() {
 	}, []);
 }
 
+/** Returns a hook to archive/unarchive a subscribed registry. */
+export function useArchiveRegistry() {
+	return useCallback(async (registryId: string, archived = true) => {
+		await db.subscribedRegistries.update(registryId, { _archived: archived });
+	}, []);
+}
+
 /**
  * Returns a hook to sync standings from chain for a subscribed registry.
  * Fetches all dynamic fields and caches them locally.
