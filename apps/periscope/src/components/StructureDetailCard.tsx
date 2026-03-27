@@ -1,10 +1,14 @@
 import { TENANTS } from "@/chain/config";
 import { type TenantId, classifyExtension } from "@/chain/config";
+import { canRevokeExtension } from "@/hooks/useExtensionRevoke";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useStructureExtensionConfig } from "@/hooks/useStructureExtensions";
+import { formatLocation } from "@/lib/format";
 import type { StructureRow } from "@/views/Deployables";
+import { Link } from "@tanstack/react-router";
 import { REGISTRY_STANDING_LABELS } from "@tehfrontier/chain-shared";
-import { AppWindow, ExternalLink, Fuel, MapPin, Settings2 } from "lucide-react";
+import { AppWindow, ExternalLink, Fuel, Loader2, MapPin, Settings2 } from "lucide-react";
+import { useState } from "react";
 import { CopyAddress } from "./CopyAddress";
 import { EditableCell } from "./EditableCell";
 
@@ -41,6 +45,8 @@ interface StructureDetailCardProps {
 	systemNames: Map<number, string>;
 	onSaveNotes?: (row: StructureRow, notes: string) => void;
 	onConfigure?: (row: StructureRow) => void;
+	onReset?: (row: StructureRow) => void;
+	isResetting?: boolean;
 }
 
 export function StructureDetailCard({
@@ -48,18 +54,18 @@ export function StructureDetailCard({
 	systemNames,
 	onSaveNotes,
 	onConfigure,
+	onReset,
+	isResetting,
 }: StructureDetailCardProps) {
 	const tenant = useActiveTenant();
 	const extConfig = useStructureExtensionConfig(row?.objectId ?? null);
+	const [resetConfirm, setResetConfirm] = useState(false);
 
 	if (!row) return null;
 
 	const hours = fuelHoursRemaining(row);
 	const systemName = row.systemId ? (systemNames.get(row.systemId) ?? `#${row.systemId}`) : null;
-	const locationStr =
-		systemName && row.lPoint
-			? `${systemName} -- ${row.lPoint}`
-			: (systemName ?? row.lPoint ?? "\u2014");
+	const locationStr = formatLocation(systemName ?? undefined, row.lPoint) || "\u2014";
 
 	const extensionInfo = classifyExtension(row.extensionType, tenant as TenantId);
 
@@ -158,17 +164,59 @@ export function StructureDetailCard({
 				{/* Extension Type */}
 				<div>
 					<span className="text-zinc-500">Extension</span>
-					<p className="mt-0.5 text-zinc-300">
-						{extensionInfo.status === "default"
-							? "Default"
-							: extensionInfo.status === "periscope"
-								? (extensionInfo.template?.name ?? "Periscope")
-								: extensionInfo.status === "periscope-outdated"
-									? `${extensionInfo.template?.name ?? "Periscope"} (outdated)`
-									: extensionInfo.status === "unknown"
-										? "Custom"
-										: "\u2014"}
-					</p>
+					<div className="mt-0.5 flex items-center gap-2">
+						<span className="text-zinc-300">
+							{extensionInfo.status === "default"
+								? "Default"
+								: extensionInfo.status === "periscope"
+									? (extensionInfo.template?.name ?? "Periscope")
+									: extensionInfo.status === "periscope-outdated"
+										? `${extensionInfo.template?.name ?? "Periscope"} (outdated)`
+										: extensionInfo.status === "unknown"
+											? "Custom"
+											: "\u2014"}
+						</span>
+						{onReset &&
+							extensionInfo.status !== "default" &&
+							row.ownership === "mine" &&
+							row.characterObjectId &&
+							row.ownerCapId &&
+							canRevokeExtension(row.assemblyModule ?? "") &&
+							(isResetting ? (
+								<span className="flex items-center gap-1 text-[10px] text-zinc-400">
+									<Loader2 size={10} className="animate-spin" /> Resetting...
+								</span>
+							) : resetConfirm ? (
+								<span className="flex items-center gap-1">
+									<button
+										type="button"
+										onClick={() => {
+											setResetConfirm(false);
+											onReset(row);
+										}}
+										className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-400 hover:bg-red-900/30"
+									>
+										Confirm
+									</button>
+									<button
+										type="button"
+										onClick={() => setResetConfirm(false)}
+										className="text-[10px] text-zinc-500 hover:text-zinc-300"
+									>
+										Cancel
+									</button>
+								</span>
+							) : (
+								<button
+									type="button"
+									onClick={() => setResetConfirm(true)}
+									className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-400 hover:bg-red-900/30"
+									title="Remove extension (reset to default)"
+								>
+									Reset
+								</button>
+							))}
+					</div>
 				</div>
 
 				{/* Standings Extension Details */}
@@ -245,6 +293,14 @@ export function StructureDetailCard({
 					<div className="mt-0.5 flex items-center gap-1 text-zinc-300">
 						{systemName && <MapPin size={12} className="shrink-0 text-cyan-500" />}
 						<span>{locationStr}</span>
+						{locationStr === "\u2014" && (
+							<Link
+								to="/private-maps"
+								className="ml-1 text-[10px] text-cyan-500 hover:text-cyan-400"
+							>
+								Add via Private Map
+							</Link>
+						)}
 					</div>
 				</div>
 
