@@ -13,6 +13,18 @@ export function fmtTime(iso: string): string {
 	});
 }
 
+/**
+ * Format a location string from system name and L-point.
+ * Strips the hyphen from lPoint: "P2-L3" -> "P2L3".
+ */
+export function formatLocation(systemName?: string, lPoint?: string): string {
+	const compactLPoint = lPoint?.replace("-", "");
+	if (systemName && compactLPoint) return `${systemName} (${compactLPoint})`;
+	if (systemName) return systemName;
+	if (compactLPoint) return compactLPoint;
+	return "";
+}
+
 /** Format a millisecond duration as "Xm Ys" or "Ys". */
 export function formatDuration(ms: number): string {
 	const totalSec = Math.round(ms / 1000);

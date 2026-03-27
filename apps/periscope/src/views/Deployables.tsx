@@ -1,23 +1,18 @@
 import { discoverCharacterAndAssemblies } from "@/chain/queries";
 import { buildRenameTx, isRenamableModule } from "@/chain/transactions";
-import { db, notDeleted } from "@/db";
+import { db } from "@/db";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useContacts } from "@/hooks/useContacts";
-import { canRevokeExtension, useExtensionRevoke } from "@/hooks/useExtensionRevoke";
+import { useExtensionRevoke } from "@/hooks/useExtensionRevoke";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useStructureExtensions } from "@/hooks/useStructureExtensions";
+import { useStructureRows } from "@/hooks/useStructureRows";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import {
-	ASSEMBLY_TYPE_IDS,
-	TENANTS,
-	type TenantId,
-	classifyExtension,
-	getTemplate,
-} from "@/chain/config";
+import { ASSEMBLY_TYPE_IDS, TENANTS, type TenantId, classifyExtension } from "@/chain/config";
 import {
 	crossReferenceManifestLocations,
 	crossReferencePrivateMapLocations,
@@ -32,7 +27,9 @@ import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPan
 import type { AssemblyStatus, Celestial, DeployableIntel, SolarSystem } from "@/db/types";
 import { PLANET_TYPE_NAMES, ensureCelestialsLoaded } from "@/lib/celestials";
 import { FUEL_CRITICAL_HOURS, FUEL_WARNING_HOURS } from "@/lib/constants";
+import { formatLocation } from "@/lib/format";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import { Link } from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	AppWindow,
@@ -248,19 +245,16 @@ export function Deployables() {
 	// ── Structure Extension Configs ──────────────────────────────────────────
 	const { configMap: extensionConfigMap } = useStructureExtensions();
 
-	// ── DB Queries ───────────────────────────────────────────────────────────
-	const deployables = useLiveQuery(
-		() =>
-			chainAddress
-				? db.deployables.where("owner").equals(chainAddress).filter(notDeleted).toArray()
-				: db.deployables.filter(notDeleted).toArray(),
-		[chainAddress],
-	);
+	// ── Show All Toggle ──────────────────────────────────────────────────────
+	const [showAll, setShowAll] = useState(false);
 
-	const assemblies = useLiveQuery(() => db.assemblies.filter(notDeleted).toArray(), []);
+	// ── Structure Rows (filtered or unfiltered) ──────────────────────────────
+	const { data } = useStructureRows({
+		activeAddresses: activeSuiAddresses,
+		tenant,
+		showAll,
+	});
 
-	const players = useLiveQuery(() => db.players.filter(notDeleted).toArray(), []);
-	const extensions = useLiveQuery(() => db.extensions.filter(notDeleted).toArray(), []);
 	const lastSync = useLiveQuery(() => db.settings.get("lastChainSync"));
 
 	// ── Category Lookup (from gameTypes DB) ─────────────────────────────────
@@ -288,36 +282,6 @@ export function Deployables() {
 		return map;
 	}, [systems]);
 
-	// ── Owner Name Lookup (players + manifest characters) ─────────────────
-	const manifestChars = useLiveQuery(() => db.manifestCharacters.toArray()) ?? [];
-
-	const ownerNames = useMemo(() => {
-		const map = new Map<string, string>();
-		// Manifest characters first (lower priority)
-		for (const mc of manifestChars) {
-			if (mc.name && mc.suiAddress) map.set(mc.suiAddress, mc.name);
-		}
-		// Players override (higher priority)
-		for (const p of players ?? []) {
-			map.set(p.address, p.name);
-		}
-		return map;
-	}, [players, manifestChars]);
-
-	// ── Extension Lookup (from local deploy records) ────────────────────────
-	const extensionByAssembly = useMemo(() => {
-		const map = new Map<string, string>();
-		for (const ext of extensions ?? []) {
-			const tmpl = getTemplate(ext.templateId);
-			if (!tmpl) continue;
-			const pkgId = tmpl.packageIds[tenant as TenantId];
-			if (pkgId) {
-				map.set(ext.assemblyId, `${pkgId}::${tmpl.witnessType}`);
-			}
-		}
-		return map;
-	}, [extensions, tenant]);
-
 	// ── Contacts / Standings ─────────────────────────────────────────────────
 	const contacts = useContacts();
 
@@ -328,73 +292,6 @@ export function Deployables() {
 		}
 		return m;
 	}, [contacts]);
-
-	// ── Merge Rows ───────────────────────────────────────────────────────────
-	const data: StructureRow[] = useMemo(() => {
-		const seenObjectIds = new Set<string>();
-		const rows: StructureRow[] = [];
-
-		// Owned deployables first (they have richer data)
-		for (const d of deployables ?? []) {
-			seenObjectIds.add(d.objectId);
-			rows.push({
-				id: d.id,
-				objectId: d.objectId,
-				ownership: "mine",
-				assemblyType: d.assemblyType,
-				status: d.status,
-				label: d.label || d.assemblyType,
-				owner: d.owner ?? chainAddress ?? "",
-				ownerName: d.owner ? ownerNames.get(d.owner) : undefined,
-				systemId: d.systemId,
-				lPoint: d.lPoint,
-				fuelLevel: d.fuelLevel,
-				fuelExpiresAt: d.fuelExpiresAt,
-				notes: d.notes,
-				tags: d.tags,
-				source: "deployables",
-				itemId: d.itemId,
-				dappUrl: d.dappUrl,
-				ownerCapId: d.ownerCapId,
-				assemblyModule: d.assemblyModule,
-				characterObjectId: d.characterObjectId,
-				parentId: d.parentId,
-				extensionType: extensionByAssembly.get(d.objectId) ?? d.extensionType,
-				updatedAt: d.updatedAt,
-			});
-		}
-
-		// Watched assemblies (skip duplicates already in deployables)
-		for (const a of assemblies ?? []) {
-			if (seenObjectIds.has(a.objectId)) continue;
-			seenObjectIds.add(a.objectId);
-
-			// Determine ownership: if the owner matches our addresses, mark as "mine"
-			const isMine =
-				chainAddress && a.owner === chainAddress ? true : activeSuiAddresses.includes(a.owner);
-
-			rows.push({
-				id: a.id,
-				objectId: a.objectId,
-				ownership: isMine ? "mine" : "watched",
-				assemblyType: a.assemblyType,
-				status: a.status,
-				label: a.label || a.assemblyType,
-				owner: a.owner,
-				ownerName: ownerNames.get(a.owner),
-				systemId: a.systemId,
-				lPoint: a.lPoint,
-				notes: a.notes,
-				tags: a.tags,
-				source: "assemblies",
-				parentId: a.parentId,
-				extensionType: extensionByAssembly.get(a.objectId) ?? a.extensionType,
-				updatedAt: a.updatedAt,
-			});
-		}
-
-		return rows;
-	}, [deployables, assemblies, chainAddress, activeSuiAddresses, ownerNames, extensionByAssembly]);
 
 	// ── Quick Filter ─────────────────────────────────────────────────────────
 	const [quickFilter, setQuickFilter] = useState<"all" | "mine" | "friendly" | "hostile">("all");
@@ -422,7 +319,6 @@ export function Deployables() {
 	const [deployTarget, setDeployTarget] = useState<StructureRow | null>(null);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [revokingId, setRevokingId] = useState<string | null>(null);
-	const [revokeConfirmId, setRevokeConfirmId] = useState<string | null>(null);
 	const { revoke: executeRevoke } = useExtensionRevoke();
 
 	// ── Sync Own Structures ──────────────────────────────────────────────────
@@ -659,7 +555,6 @@ export function Deployables() {
 				setSyncStatus(`Revoke failed: ${e instanceof Error ? e.message : String(e)}`);
 			} finally {
 				setRevokingId(null);
-				setRevokeConfirmId(null);
 			}
 		},
 		[account, tenant, isValidTenant, executeRevoke],
@@ -884,44 +779,6 @@ export function Deployables() {
 											<Settings2 size={10} className="inline" />
 										</button>
 									)}
-									{info.status !== "default" &&
-										r.characterObjectId &&
-										r.ownerCapId &&
-										canRevokeExtension(r.assemblyModule ?? "") &&
-										(revokingId === r.objectId ? (
-											<span className="text-[10px] text-zinc-400">
-												<Loader2 size={10} className="inline animate-spin" /> Revoking...
-											</span>
-										) : revokeConfirmId === r.objectId ? (
-											<>
-												<button
-													type="button"
-													onClick={() => {
-														setRevokeConfirmId(null);
-														handleRevoke(r);
-													}}
-													className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-400 hover:bg-red-900/30"
-												>
-													Confirm
-												</button>
-												<button
-													type="button"
-													onClick={() => setRevokeConfirmId(null)}
-													className="text-[10px] text-zinc-500 hover:text-zinc-300"
-												>
-													Cancel
-												</button>
-											</>
-										) : (
-											<button
-												type="button"
-												onClick={() => setRevokeConfirmId(r.objectId)}
-												className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-400 hover:bg-red-900/30"
-												title="Remove extension (reset to default)"
-											>
-												Reset
-											</button>
-										))}
 									<button
 										type="button"
 										onClick={() => setDeployTarget(r)}
@@ -939,10 +796,7 @@ export function Deployables() {
 				id: "location",
 				accessorFn: (d) => {
 					const sysName = d.systemId ? (systemNames.get(d.systemId) ?? "") : "";
-					if (sysName && d.lPoint) return `${sysName} -- ${d.lPoint}`;
-					if (sysName) return sysName;
-					if (d.lPoint) return d.lPoint;
-					return "";
+					return formatLocation(sysName || undefined, d.lPoint);
 				},
 				header: "Location",
 				size: 200,
@@ -1127,9 +981,6 @@ export function Deployables() {
 			handleSaveLocation,
 			handleSaveParent,
 			handleRemove,
-			handleRevoke,
-			revokingId,
-			revokeConfirmId,
 			extensionConfigMap,
 			data,
 			parentLabels,
@@ -1234,6 +1085,18 @@ export function Deployables() {
 						{syncStatus && <span className="text-xs text-zinc-500">{syncStatus}</span>}
 						<button
 							type="button"
+							onClick={() => setShowAll(!showAll)}
+							className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+								showAll
+									? "border-cyan-600 bg-cyan-600/10 text-cyan-400"
+									: "border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
+							}`}
+						>
+							<Telescope size={14} />
+							{showAll ? "Show All" : "Filtered"}
+						</button>
+						<button
+							type="button"
 							onClick={handleSyncOwn}
 							disabled={syncing}
 							className="flex shrink-0 items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
@@ -1250,6 +1113,10 @@ export function Deployables() {
 				row={data.find((d) => d.id === selectedId) ?? null}
 				systemNames={systemNames}
 				onSaveNotes={handleSaveNotes}
+				onReset={handleRevoke}
+				isResetting={
+					revokingId != null && revokingId === data.find((d) => d.id === selectedId)?.objectId
+				}
 			/>
 
 			{typeof lastSync?.value === "string" && (
@@ -1345,8 +1212,7 @@ function LocationEditor({
 
 	// Build display text
 	const sysName = row.systemId ? (systemNames.get(row.systemId) ?? "") : "";
-	const displayText =
-		sysName && row.lPoint ? `${sysName} -- ${row.lPoint}` : sysName || row.lPoint || "";
+	const displayText = formatLocation(sysName || undefined, row.lPoint);
 
 	function handleSystemChange(id: number | null) {
 		setSelectedSystem(id);
@@ -1388,21 +1254,28 @@ function LocationEditor({
 	}
 
 	if (!open) {
-		return (
+		return displayText ? (
 			<button
 				type="button"
 				onClick={() => setOpen(true)}
 				className="flex w-full items-center gap-1.5 text-left text-xs text-zinc-400 hover:text-zinc-200"
 			>
-				{displayText ? (
-					<>
-						<MapPin size={12} className="shrink-0 text-cyan-500" />
-						<span className="truncate">{displayText}</span>
-					</>
-				) : (
-					<span className="text-zinc-600">{"\u2014"}</span>
-				)}
+				<MapPin size={12} className="shrink-0 text-cyan-500" />
+				<span className="truncate">{displayText}</span>
 			</button>
+		) : (
+			<div className="flex items-center gap-2">
+				<button
+					type="button"
+					onClick={() => setOpen(true)}
+					className="text-xs text-zinc-600 hover:text-zinc-400"
+				>
+					{"\u2014"}
+				</button>
+				<Link to="/private-maps" className="text-[10px] text-cyan-500 hover:text-cyan-400">
+					Add to map
+				</Link>
+			</div>
 		);
 	}
 

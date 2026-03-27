@@ -6,6 +6,7 @@ import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { REGISTRY_STANDING_LABELS, standingToDisplay } from "@tehfrontier/chain-shared";
 import { AlertCircle, CheckCircle2, Loader2, Settings2 } from "lucide-react";
 import { useState } from "react";
+import { MarketSelector } from "./MarketSelector";
 import { RegistrySelector } from "./RegistrySelector";
 import { TurretPublishFlow } from "./TurretPublishFlow";
 
@@ -166,12 +167,9 @@ function SsuStandingsConfig({
 				<label className="mb-1.5 block text-xs font-medium text-zinc-400">
 					Market ID (optional)
 				</label>
-				<input
-					type="text"
+				<MarketSelector
 					value={values.marketId}
-					onChange={(e) => onChange({ ...values, marketId: e.target.value })}
-					placeholder="0x... (leave blank for no market link)"
-					className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+					onChange={(marketId) => onChange({ ...values, marketId })}
 				/>
 				<p className="mt-1 text-xs text-zinc-600">
 					Link a Market object to enable trading on this SSU.
