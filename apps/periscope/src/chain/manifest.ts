@@ -11,8 +11,11 @@ import type {
 	ManifestCharacter,
 	ManifestLocation,
 	ManifestMapLocation,
+	ManifestMarket,
 	ManifestPrivateMap,
+	ManifestPrivateMapIndex,
 	ManifestPrivateMapV2,
+	ManifestRegistry,
 	ManifestStandingEntry,
 	ManifestStandingsList,
 	ManifestTribe,
@@ -32,11 +35,13 @@ import {
 	getContractAddresses,
 	getObjectJson,
 	hexToBytes,
+	queryAllRegistries,
 	queryEventsGql,
 	queryMapInvitesForUser,
 	queryMapInvitesV2ForUser,
 	queryMapLocations,
 	queryMapLocationsV2,
+	queryMarkets,
 	queryPrivateMap,
 	queryPrivateMapV2,
 	queryStandingEntries,
@@ -1089,6 +1094,7 @@ export async function syncMapLocations(
 		// Cross-reference any newly decrypted locations with structures
 		if (newCount > 0) {
 			await crossReferencePrivateMapLocations();
+			await mergePrivateMapLocationsIntoManifest(tenant);
 		}
 	} catch (err) {
 		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -1523,6 +1529,11 @@ export async function syncMapLocationsV2(
 		}
 
 		ctx?.setProgress(`Synced ${newCount} V2 locations`);
+
+		// Merge private map locations into unified manifest
+		if (newCount > 0) {
+			await mergePrivateMapLocationsIntoManifest(tenant);
+		}
 	} catch (err) {
 		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
 	}
@@ -1562,4 +1573,243 @@ export async function addMapV2ById(
 	} catch {
 		return null;
 	}
+}
+
+// ── Market Cache ────────────────────────────────────────────────────────
+
+/**
+ * Discover all Market<T> objects on-chain and cache in manifestMarkets.
+ * Global -- market packageId is shared across tenants, so we query once.
+ */
+export async function discoverMarkets(
+	client: SuiGraphQLClient,
+	ctx?: TaskContext,
+): Promise<number> {
+	const addresses = getContractAddresses("stillness");
+	const marketPkg = addresses.market?.packageId;
+	if (!marketPkg) return 0;
+
+	let count = 0;
+	const now = new Date().toISOString();
+
+	try {
+		ctx?.setProgress("Discovering markets...");
+		const markets = await queryMarkets(client, marketPkg);
+
+		for (const market of markets) {
+			const entry: ManifestMarket = {
+				id: market.objectId,
+				packageId: market.packageId,
+				creator: market.creator,
+				authorized: market.authorized,
+				feeBps: market.feeBps,
+				feeRecipient: market.feeRecipient,
+				nextSellId: market.nextSellId,
+				nextBuyId: market.nextBuyId,
+				coinType: market.coinType,
+				totalSupply: market.totalSupply,
+				cachedAt: now,
+			};
+			await db.manifestMarkets.put(entry);
+			count++;
+		}
+
+		ctx?.setProgress(`Done: ${count} markets cached`);
+	} catch (err) {
+		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return count;
+}
+
+// ── Registry Cache ──────────────────────────────────────────────────────
+
+/**
+ * Discover all StandingsRegistry objects on-chain and cache in manifestRegistries.
+ * Global -- standingsRegistry packageId is shared across tenants, so we query once.
+ */
+export async function discoverRegistries(
+	client: SuiGraphQLClient,
+	ctx?: TaskContext,
+): Promise<number> {
+	const addresses = getContractAddresses("stillness");
+	const registryPkg = addresses.standingsRegistry?.packageId;
+	if (!registryPkg) return 0;
+
+	let count = 0;
+	const now = new Date().toISOString();
+
+	try {
+		ctx?.setProgress("Discovering registries...");
+		const registries = await queryAllRegistries(client, registryPkg);
+
+		for (const registry of registries) {
+			const entry: ManifestRegistry = {
+				id: registry.objectId,
+				owner: registry.owner,
+				admins: registry.admins,
+				name: registry.name,
+				ticker: registry.ticker,
+				defaultStanding: registry.defaultStanding,
+				cachedAt: now,
+			};
+			await db.manifestRegistries.put(entry);
+			count++;
+		}
+
+		ctx?.setProgress(`Done: ${count} registries cached`);
+	} catch (err) {
+		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return count;
+}
+
+// ── Private Map Index ───────────────────────────────────────────────────
+
+/**
+ * Build a lightweight index of known private maps (V1 + V2) for a tenant.
+ * Sources: existing manifestPrivateMaps (V1), manifestPrivateMapsV2 (V2),
+ * and globally discoverable standings maps (V2 mode=1).
+ */
+export async function syncPrivateMapIndex(
+	client: SuiGraphQLClient,
+	tenant: TenantId,
+	ctx?: TaskContext,
+): Promise<number> {
+	let count = 0;
+	const now = new Date().toISOString();
+
+	try {
+		ctx?.setProgress("Indexing V1 private maps...");
+
+		// V1 maps from existing cache
+		const v1Maps = await db.manifestPrivateMaps.where("tenant").equals(tenant).toArray();
+		for (const map of v1Maps) {
+			const entry: ManifestPrivateMapIndex = {
+				id: map.id,
+				version: 1,
+				name: map.name,
+				creator: map.creator,
+				mode: 0, // V1 is always encrypted
+				tenant,
+				cachedAt: now,
+			};
+			await db.manifestPrivateMapIndex.put(entry);
+			count++;
+		}
+
+		ctx?.setProgress("Indexing V2 private maps...");
+
+		// V2 maps from existing cache
+		const v2Maps = await db.manifestPrivateMapsV2.where("tenant").equals(tenant).toArray();
+		for (const map of v2Maps) {
+			const entry: ManifestPrivateMapIndex = {
+				id: map.id,
+				version: 2,
+				name: map.name,
+				creator: map.creator,
+				mode: map.mode,
+				registryId: map.registryId,
+				tenant,
+				cachedAt: now,
+			};
+			await db.manifestPrivateMapIndex.put(entry);
+			count++;
+		}
+
+		// Discover globally visible standings maps (V2 mode=1)
+		const addresses = getContractAddresses(tenant);
+		const pmsPkg = addresses.privateMapStandings?.packageId;
+		if (pmsPkg) {
+			ctx?.setProgress("Discovering global standings maps...");
+			try {
+				const standingsMapIds = await queryStandingsMaps(client, pmsPkg);
+				for (const mapId of standingsMapIds) {
+					// Skip if already indexed
+					const existing = await db.manifestPrivateMapIndex.get(mapId);
+					if (existing) continue;
+
+					const mapInfo = await queryPrivateMapV2(client, mapId);
+					if (!mapInfo || mapInfo.mode !== 1) continue;
+
+					const entry: ManifestPrivateMapIndex = {
+						id: mapId,
+						version: 2,
+						name: mapInfo.name,
+						creator: mapInfo.creator,
+						mode: 1,
+						registryId: mapInfo.registryId,
+						tenant,
+						cachedAt: now,
+					};
+					await db.manifestPrivateMapIndex.put(entry);
+					count++;
+				}
+			} catch {
+				// Non-fatal -- global discovery is best-effort
+			}
+		}
+
+		ctx?.setProgress(`Done: ${count} maps indexed`);
+	} catch (err) {
+		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return count;
+}
+
+// ── Private Map -> Manifest Location Merge ──────────────────────────────
+
+/**
+ * Merge private map locations into the unified manifestLocations table.
+ * Creates synthetic ManifestLocation entries for private map locations
+ * that have a structureId but no existing public location entry.
+ * Public entries (from LocationRevealedEvent) are never overwritten.
+ */
+export async function mergePrivateMapLocationsIntoManifest(
+	tenant: TenantId,
+): Promise<number> {
+	const mapLocations = await db.manifestMapLocations
+		.filter((loc) => loc.structureId != null && loc.tenant === tenant)
+		.toArray();
+
+	let newCount = 0;
+	const newIds: string[] = [];
+	const now = new Date().toISOString();
+
+	for (const loc of mapLocations) {
+		if (!loc.structureId) continue;
+
+		// Skip if a public location already exists for this structure
+		const existing = await db.manifestLocations.get(loc.structureId);
+		if (existing) continue;
+
+		const entry: ManifestLocation = {
+			id: loc.structureId,
+			assemblyItemId: "",
+			typeId: 0,
+			ownerCapId: "",
+			solarsystem: loc.solarSystemId,
+			x: "0",
+			y: "0",
+			z: "0",
+			lPoint: `P${loc.planet}-L${loc.lPoint}`,
+			tenant: loc.tenant,
+			source: "private-map",
+			revealedAt: new Date(loc.addedAtMs).toISOString(),
+			cachedAt: now,
+		};
+
+		await db.manifestLocations.put(entry);
+		newIds.push(loc.structureId);
+		newCount++;
+	}
+
+	// Cross-reference newly created entries with deployables/assemblies
+	if (newIds.length > 0) {
+		await crossReferenceManifestLocations(newIds);
+	}
+
+	return newCount;
 }
