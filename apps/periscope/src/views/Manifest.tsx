@@ -2,25 +2,40 @@ import { ASSEMBLY_TYPE_IDS, TENANTS } from "@/chain/config";
 import {
 	discoverCharactersFromEvents,
 	discoverLocationsFromEvents,
+	discoverMarkets,
+	discoverRegistries,
 	discoverTribes,
 	fetchCharacterByAddress,
+	syncPrivateMapIndex,
 } from "@/chain/manifest";
 import { CopyAddress } from "@/components/CopyAddress";
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { db } from "@/db";
-import type { ManifestCharacter, ManifestLocation, ManifestTribe } from "@/db/types";
+import type {
+	ManifestCharacter,
+	ManifestLocation,
+	ManifestMarket,
+	ManifestPrivateMapIndex,
+	ManifestRegistry,
+	ManifestTribe,
+} from "@/db/types";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useTaskWorker } from "@/hooks/useTaskWorker";
 import { enqueueTask } from "@/lib/taskWorker";
+import { REGISTRY_STANDING_LABELS, standingToDisplay } from "@tehfrontier/chain-shared";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Clock,
 	Database,
 	ExternalLink,
 	Loader2,
+	Lock,
+	Map as MapIcon,
 	MapPin,
 	Search,
+	Shield,
+	Store,
 	UserPlus,
 	Users,
 } from "lucide-react";
@@ -73,7 +88,7 @@ function makeCharacterColumns(
 				const name = tribeMap[row.original.tribeId];
 				return (
 					<span className="text-xs text-zinc-400">
-						{name ?? (row.original.tribeId ? `#${row.original.tribeId}` : "—")}
+						{name ?? (row.original.tribeId ? `#${row.original.tribeId}` : "--")}
 					</span>
 				);
 			},
@@ -129,7 +144,7 @@ function makeCharacterColumns(
 				<span className="text-xs text-zinc-500">
 					{row.original.createdOnChain
 						? new Date(row.original.createdOnChain).toLocaleString()
-						: "—"}
+						: "--"}
 				</span>
 			),
 		},
@@ -186,7 +201,7 @@ const tribeColumns: ColumnDef<ManifestTribe, unknown>[] = [
 		filterFn: excelFilterFn,
 		cell: ({ row }) => (
 			<span className="text-xs text-zinc-500 truncate max-w-[300px] block">
-				{row.original.description || "—"}
+				{row.original.description || "--"}
 			</span>
 		),
 	},
@@ -218,7 +233,7 @@ const tribeColumns: ColumnDef<ManifestTribe, unknown>[] = [
 					<ExternalLink size={10} /> Link
 				</a>
 			) : (
-				<span className="text-xs text-zinc-700">—</span>
+				<span className="text-xs text-zinc-700">--</span>
 			),
 	},
 	{
@@ -231,7 +246,7 @@ const tribeColumns: ColumnDef<ManifestTribe, unknown>[] = [
 			<span className="text-xs text-zinc-500">
 				{row.original.createdOnChain
 					? new Date(row.original.createdOnChain).toLocaleDateString()
-					: "—"}
+					: "--"}
 			</span>
 		),
 	},
@@ -256,6 +271,22 @@ function makeLocationColumns(
 	systemNames: Map<number, string>,
 ): ColumnDef<ManifestLocation, unknown>[] {
 	return [
+		{
+			id: "source",
+			accessorFn: (loc) => loc.source ?? "public",
+			header: "Source",
+			size: 80,
+			filterFn: excelFilterFn,
+			cell: ({ row }) =>
+				row.original.source === "private-map" ? (
+					<span className="flex items-center gap-1 text-xs text-amber-400" title="From private map">
+						<Lock size={12} />
+						Private
+					</span>
+				) : (
+					<span className="text-xs text-zinc-500">Public</span>
+				),
+		},
 		{
 			id: "assemblyType",
 			accessorFn: (loc) => ASSEMBLY_TYPE_IDS[loc.typeId] ?? String(loc.typeId),
@@ -332,9 +363,256 @@ function makeLocationColumns(
 	];
 }
 
+// ── Market Columns ──────────────────────────────────────────────────────────
+
+const marketColumns: ColumnDef<ManifestMarket, unknown>[] = [
+	{
+		id: "coinType",
+		accessorFn: (m) => {
+			const parts = m.coinType.split("::");
+			return parts.length >= 3 ? parts[2] : m.coinType;
+		},
+		header: "Token",
+		filterFn: excelFilterFn,
+		cell: ({ row }) => {
+			const parts = row.original.coinType.split("::");
+			const short = parts.length >= 3 ? parts[2] : row.original.coinType;
+			return <span className="font-medium text-zinc-100">{short}</span>;
+		},
+	},
+	{
+		id: "creator",
+		accessorKey: "creator",
+		header: "Creator",
+		size: 150,
+		filterFn: excelFilterFn,
+		cell: ({ row }) => (
+			<CopyAddress
+				address={row.original.creator}
+				explorerUrl={`https://suiscan.xyz/testnet/account/${row.original.creator}`}
+				className="text-xs text-zinc-500"
+			/>
+		),
+	},
+	{
+		id: "feeBps",
+		accessorKey: "feeBps",
+		header: "Fee (bps)",
+		size: 90,
+		enableColumnFilter: false,
+		cell: ({ row }) => (
+			<span className="font-mono text-xs text-zinc-400">{row.original.feeBps}</span>
+		),
+	},
+	{
+		id: "totalSupply",
+		accessorFn: (m) => m.totalSupply ?? 0,
+		header: "Supply",
+		size: 110,
+		enableColumnFilter: false,
+		cell: ({ row }) => (
+			<span className="font-mono text-xs text-zinc-400">
+				{row.original.totalSupply != null ? row.original.totalSupply.toLocaleString() : "--"}
+			</span>
+		),
+	},
+	{
+		id: "id",
+		accessorKey: "id",
+		header: "Market ID",
+		size: 150,
+		enableColumnFilter: false,
+		cell: ({ row }) => (
+			<CopyAddress
+				address={row.original.id}
+				explorerUrl={`https://suiscan.xyz/testnet/object/${row.original.id}`}
+				className="text-xs text-zinc-600"
+			/>
+		),
+	},
+	{
+		id: "cachedAt",
+		accessorKey: "cachedAt",
+		header: "Cached",
+		size: 100,
+		enableColumnFilter: false,
+		cell: ({ row }) => (
+			<div className="flex items-center gap-1 text-xs text-zinc-600">
+				<Clock size={10} />
+				{formatAge(row.original.cachedAt)}
+			</div>
+		),
+	},
+];
+
+// ── Registry Columns ────────────────────────────────────────────────────────
+
+const registryColumns: ColumnDef<ManifestRegistry, unknown>[] = [
+	{
+		id: "name",
+		accessorKey: "name",
+		header: "Name",
+		filterFn: excelFilterFn,
+		cell: ({ row }) => <span className="font-medium text-zinc-100">{row.original.name}</span>,
+	},
+	{
+		id: "ticker",
+		accessorKey: "ticker",
+		header: "Ticker",
+		size: 80,
+		filterFn: excelFilterFn,
+		cell: ({ row }) => (
+			<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs font-mono text-cyan-400">
+				{row.original.ticker}
+			</span>
+		),
+	},
+	{
+		id: "owner",
+		accessorKey: "owner",
+		header: "Owner",
+		size: 150,
+		filterFn: excelFilterFn,
+		cell: ({ row }) => (
+			<CopyAddress
+				address={row.original.owner}
+				explorerUrl={`https://suiscan.xyz/testnet/account/${row.original.owner}`}
+				className="text-xs text-zinc-500"
+			/>
+		),
+	},
+	{
+		id: "defaultStanding",
+		accessorFn: (r) => standingToDisplay(r.defaultStanding),
+		header: "Default",
+		size: 100,
+		enableColumnFilter: false,
+		cell: ({ row }) => {
+			const display = standingToDisplay(row.original.defaultStanding);
+			const label = REGISTRY_STANDING_LABELS.get(row.original.defaultStanding) ?? "Unknown";
+			return (
+				<span className="text-xs text-zinc-400">
+					{display > 0 ? `+${display}` : display} {label}
+				</span>
+			);
+		},
+	},
+	{
+		id: "id",
+		accessorKey: "id",
+		header: "Registry ID",
+		size: 150,
+		enableColumnFilter: false,
+		cell: ({ row }) => (
+			<CopyAddress
+				address={row.original.id}
+				explorerUrl={`https://suiscan.xyz/testnet/object/${row.original.id}`}
+				className="text-xs text-zinc-600"
+			/>
+		),
+	},
+	{
+		id: "cachedAt",
+		accessorKey: "cachedAt",
+		header: "Cached",
+		size: 100,
+		enableColumnFilter: false,
+		cell: ({ row }) => (
+			<div className="flex items-center gap-1 text-xs text-zinc-600">
+				<Clock size={10} />
+				{formatAge(row.original.cachedAt)}
+			</div>
+		),
+	},
+];
+
+// ── Private Map Index Columns ───────────────────────────────────────────────
+
+const privateMapColumns: ColumnDef<ManifestPrivateMapIndex, unknown>[] = [
+	{
+		id: "name",
+		accessorKey: "name",
+		header: "Name",
+		filterFn: excelFilterFn,
+		cell: ({ row }) => <span className="font-medium text-zinc-100">{row.original.name}</span>,
+	},
+	{
+		id: "creator",
+		accessorKey: "creator",
+		header: "Creator",
+		size: 150,
+		filterFn: excelFilterFn,
+		cell: ({ row }) => (
+			<CopyAddress
+				address={row.original.creator}
+				explorerUrl={`https://suiscan.xyz/testnet/account/${row.original.creator}`}
+				className="text-xs text-zinc-500"
+			/>
+		),
+	},
+	{
+		id: "version",
+		accessorFn: (m) => `V${m.version}`,
+		header: "Version",
+		size: 70,
+		filterFn: excelFilterFn,
+		cell: ({ row }) => (
+			<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs font-mono text-zinc-400">
+				V{row.original.version}
+			</span>
+		),
+	},
+	{
+		id: "mode",
+		accessorFn: (m) => (m.mode === 0 ? "Encrypted" : "Standings"),
+		header: "Mode",
+		size: 100,
+		filterFn: excelFilterFn,
+		cell: ({ row }) =>
+			row.original.mode === 0 ? (
+				<span className="flex items-center gap-1 text-xs text-amber-400">
+					<Lock size={12} />
+					Encrypted
+				</span>
+			) : (
+				<span className="flex items-center gap-1 text-xs text-green-400">
+					<Shield size={12} />
+					Standings
+				</span>
+			),
+	},
+	{
+		id: "id",
+		accessorKey: "id",
+		header: "Map ID",
+		size: 150,
+		enableColumnFilter: false,
+		cell: ({ row }) => (
+			<CopyAddress
+				address={row.original.id}
+				explorerUrl={`https://suiscan.xyz/testnet/object/${row.original.id}`}
+				className="text-xs text-zinc-600"
+			/>
+		),
+	},
+	{
+		id: "cachedAt",
+		accessorKey: "cachedAt",
+		header: "Cached",
+		size: 100,
+		enableColumnFilter: false,
+		cell: ({ row }) => (
+			<div className="flex items-center gap-1 text-xs text-zinc-600">
+				<Clock size={10} />
+				{formatAge(row.original.cachedAt)}
+			</div>
+		),
+	},
+];
+
 // ── Component ───────────────────────────────────────────────────────────────
 
-type Tab = "characters" | "tribes" | "locations";
+type Tab = "characters" | "tribes" | "locations" | "markets" | "registries" | "private-maps";
 
 export function Manifest() {
 	const client = useSuiClient();
@@ -383,6 +661,19 @@ export function Manifest() {
 
 	const locationColumns = useMemo(() => makeLocationColumns(systemNames), [systemNames]);
 
+	// Markets (global -- no tenant filter)
+	const markets = useLiveQuery(() => db.manifestMarkets.toArray()) ?? [];
+
+	// Registries (global -- no tenant filter)
+	const registries = useLiveQuery(() => db.manifestRegistries.toArray()) ?? [];
+
+	// Private map index (per-tenant)
+	const allPrivateMaps = useLiveQuery(() => db.manifestPrivateMapIndex.toArray()) ?? [];
+	const privateMaps = useMemo(
+		() => allPrivateMaps.filter((m) => m.tenant === tenant),
+		[allPrivateMaps, tenant],
+	);
+
 	// Lookup by address
 	const [lookupAddress, setLookupAddress] = useState("");
 	const [lookupLoading, setLookupLoading] = useState(false);
@@ -402,14 +693,14 @@ export function Manifest() {
 				}
 				await discoverCharactersFromEvents(client, tenant, worldPkg, 50000, ctx);
 			});
-			setSyncStatus("Full resync queued — check Workers page");
+			setSyncStatus("Full resync queued -- check Workers page");
 		} else if (tab === "locations") {
 			enqueueTask(`Full Location Resync (${tenant})`, async (ctx) => {
 				const cursorKey = `manifestLocCursor:${worldPkg}`;
 				await db.settings.delete(cursorKey);
 				await discoverLocationsFromEvents(client, tenant, worldPkg, 50000, ctx);
 			});
-			setSyncStatus("Full resync queued — check Workers page");
+			setSyncStatus("Full resync queued -- check Workers page");
 		}
 	}, [tab, client, tenant, worldPkg]);
 
@@ -418,17 +709,32 @@ export function Manifest() {
 			enqueueTask(`Discover Characters (${tenant})`, async (ctx) => {
 				await discoverCharactersFromEvents(client, tenant, worldPkg, 5000, ctx);
 			});
-			setSyncStatus("Character discovery queued — check Workers page");
+			setSyncStatus("Character discovery queued -- check Workers page");
 		} else if (tab === "tribes") {
 			enqueueTask(`Fetch Tribes (${tenant})`, async (ctx) => {
 				await discoverTribes(tenant, ctx);
 			});
-			setSyncStatus("Tribe fetch queued — check Workers page");
+			setSyncStatus("Tribe fetch queued -- check Workers page");
 		} else if (tab === "locations") {
 			enqueueTask(`Discover Locations (${tenant})`, async (ctx) => {
 				await discoverLocationsFromEvents(client, tenant, worldPkg, 5000, ctx);
 			});
-			setSyncStatus("Location discovery queued — check Workers page");
+			setSyncStatus("Location discovery queued -- check Workers page");
+		} else if (tab === "markets") {
+			enqueueTask("Refresh Markets", async (ctx) => {
+				await discoverMarkets(client, ctx);
+			});
+			setSyncStatus("Market refresh queued -- check Workers page");
+		} else if (tab === "registries") {
+			enqueueTask("Refresh Registries", async (ctx) => {
+				await discoverRegistries(client, ctx);
+			});
+			setSyncStatus("Registry refresh queued -- check Workers page");
+		} else if (tab === "private-maps") {
+			enqueueTask(`Refresh Private Maps (${tenant})`, async (ctx) => {
+				await syncPrivateMapIndex(client, tenant, ctx);
+			});
+			setSyncStatus("Private map refresh queued -- check Workers page");
 		}
 	}, [tab, client, tenant, worldPkg]);
 
@@ -455,6 +761,23 @@ export function Manifest() {
 		[characters],
 	);
 
+	const discoverLabel = useMemo(() => {
+		switch (tab) {
+			case "characters":
+				return "Discover";
+			case "tribes":
+				return "Fetch Tribes";
+			case "locations":
+				return "Discover Locations";
+			case "markets":
+				return "Refresh Markets";
+			case "registries":
+				return "Refresh Registries";
+			case "private-maps":
+				return "Refresh Maps";
+		}
+	}, [tab]);
+
 	return (
 		<div className="p-6">
 			{/* Header */}
@@ -467,7 +790,9 @@ export function Manifest() {
 						</h1>
 						<p className="mt-1 text-sm text-zinc-500">
 							{characters.length} characters &middot; {tribes.length} tribes &middot;{" "}
-							{locations.length} locations &middot; {tribeCounts} unique tribes in characters
+							{locations.length} locations &middot; {markets.length} markets &middot;{" "}
+							{registries.length} registries &middot; {privateMaps.length} maps &middot;{" "}
+							{tribeCounts} unique tribes
 						</p>
 					</div>
 				</div>
@@ -497,11 +822,7 @@ export function Manifest() {
 						) : (
 							<Search size={14} />
 						)}
-						{tab === "characters"
-							? "Discover"
-							: tab === "tribes"
-								? "Fetch Tribes"
-								: "Discover Locations"}
+						{discoverLabel}
 					</button>
 				</div>
 			</div>
@@ -537,6 +858,38 @@ export function Manifest() {
 				>
 					<MapPin size={14} />
 					Locations ({locations.length})
+				</button>
+				<button
+					type="button"
+					onClick={() => setTab("markets")}
+					className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+						tab === "markets" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+					}`}
+				>
+					<Store size={14} />
+					Markets ({markets.length})
+				</button>
+				<button
+					type="button"
+					onClick={() => setTab("registries")}
+					className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+						tab === "registries" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+					}`}
+				>
+					<Shield size={14} />
+					Registries ({registries.length})
+				</button>
+				<button
+					type="button"
+					onClick={() => setTab("private-maps")}
+					className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+						tab === "private-maps"
+							? "bg-zinc-800 text-zinc-100"
+							: "text-zinc-500 hover:text-zinc-300"
+					}`}
+				>
+					<MapIcon size={14} />
+					Private Maps ({privateMaps.length})
 				</button>
 			</div>
 
@@ -585,13 +938,37 @@ export function Manifest() {
 					searchPlaceholder="Search tribe names, tags, descriptions..."
 					emptyMessage='No tribes cached yet. Click "Fetch Tribes" to load from the World API.'
 				/>
-			) : (
+			) : tab === "locations" ? (
 				<DataGrid
 					columns={locationColumns}
 					data={locations}
 					keyFn={(l) => l.id}
 					searchPlaceholder="Search assembly types, systems, L-points..."
 					emptyMessage='No locations cached yet. Click "Discover Locations" to scan revealed locations.'
+				/>
+			) : tab === "markets" ? (
+				<DataGrid
+					columns={marketColumns}
+					data={markets}
+					keyFn={(m) => m.id}
+					searchPlaceholder="Search token names, creators..."
+					emptyMessage='No markets cached yet. Click "Refresh Markets" to scan chain.'
+				/>
+			) : tab === "registries" ? (
+				<DataGrid
+					columns={registryColumns}
+					data={registries}
+					keyFn={(r) => r.id}
+					searchPlaceholder="Search registry names, tickers, owners..."
+					emptyMessage='No registries cached yet. Click "Refresh Registries" to scan chain.'
+				/>
+			) : (
+				<DataGrid
+					columns={privateMapColumns}
+					data={privateMaps}
+					keyFn={(m) => m.id}
+					searchPlaceholder="Search map names, creators..."
+					emptyMessage='No private maps indexed yet. Click "Refresh Maps" to scan.'
 				/>
 			)}
 		</div>
