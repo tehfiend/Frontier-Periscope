@@ -19,6 +19,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { TenantId } from "@/chain/config";
+import { discoverMarkets } from "@/chain/manifest";
 import { CopyAddress } from "@/components/CopyAddress";
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { db, notDeleted } from "@/db";
@@ -102,16 +103,16 @@ export function Market() {
 	const isProcessing =
 		buildStatus === "building" || buildStatus === "minting" || buildStatus === "burning";
 
-	// Sync currencies from chain -- discovers tokens via Market<T> objects
+	// Sync currencies from manifest cache -- reads cached Market<T> objects
 	const syncMarkets = useCallback(async () => {
 		if (!suiAddress) return;
 
-		const addresses = getContractAddresses(tenant);
-		const marketPkg = addresses.market?.packageId;
-		if (!marketPkg) return;
-
 		try {
-			const markets = await queryMarkets(suiClient, marketPkg);
+			// Refresh manifest cache first
+			await discoverMarkets(suiClient);
+
+			// Read from cached manifest
+			const markets = await db.manifestMarkets.toArray();
 			const validMarketIds = new Set<string>();
 
 			for (const market of markets) {
@@ -125,13 +126,13 @@ export function Market() {
 					continue;
 				}
 
-				validMarketIds.add(market.objectId);
+				validMarketIds.add(market.id);
 
 				const existing = await db.currencies.where("coinType").equals(market.coinType).first();
 				if (existing) {
 					if (!existing.marketId) {
 						await db.currencies.update(existing.id, {
-							marketId: market.objectId,
+							marketId: market.id,
 						});
 					}
 					continue;
@@ -160,7 +161,7 @@ export function Market() {
 					moduleName,
 					coinType: market.coinType,
 					packageId,
-					marketId: market.objectId,
+					marketId: market.id,
 					decimals: coinDecimals,
 					createdAt: now,
 					updatedAt: now,
@@ -177,7 +178,7 @@ export function Market() {
 		} catch {
 			// Silent -- sync is best-effort
 		}
-	}, [suiAddress, suiClient, tenant, account?.address]);
+	}, [suiAddress, suiClient, account?.address]);
 
 	useEffect(() => {
 		syncMarkets();

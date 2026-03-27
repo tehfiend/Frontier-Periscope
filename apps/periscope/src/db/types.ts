@@ -463,6 +463,60 @@ export interface ManifestLocation {
 	tenant: string;
 	/** When this location was revealed on-chain (from event tx timestamp) */
 	revealedAt: string;
+	/** Data source: "public" for LocationRevealedEvent, "private-map" for private map merge */
+	source?: "public" | "private-map";
+	/** When this entry was last cached */
+	cachedAt: string;
+}
+
+export interface ManifestMarket {
+	/** Market<T> object ID */
+	id: string;
+	/** Package that defined this Market<T> */
+	packageId: string;
+	/** Creator Sui address */
+	creator: string;
+	/** Authorized minter addresses */
+	authorized: string[];
+	feeBps: number;
+	feeRecipient: string;
+	nextSellId: number;
+	nextBuyId: number;
+	/** Full coin type string */
+	coinType: string;
+	totalSupply?: number;
+	/** When this entry was last cached */
+	cachedAt: string;
+	// No tenant -- market packageId is shared across tenants
+}
+
+export interface ManifestRegistry {
+	/** StandingsRegistry object ID */
+	id: string;
+	/** Owner Sui address */
+	owner: string;
+	admins: string[];
+	name: string;
+	ticker: string;
+	/** Raw u8 standing (0-6) */
+	defaultStanding: number;
+	/** When this entry was last cached */
+	cachedAt: string;
+	// No tenant -- standingsRegistry packageId is shared across tenants
+}
+
+export interface ManifestPrivateMapIndex {
+	/** Map object ID */
+	id: string;
+	/** V1 or V2 */
+	version: 1 | 2;
+	name: string;
+	creator: string;
+	/** 0=encrypted, 1=cleartext standings (V2 only; V1 always 0) */
+	mode: number;
+	/** StandingsRegistry ID (V2 mode=1 only) */
+	registryId?: string;
+	tenant: string;
 	/** When this entry was last cached */
 	cachedAt: string;
 }
