@@ -45,7 +45,7 @@ The target state introduces `SYSTEM NAME (P#L#)` location formatting throughout 
 
 ### Structure Data in Manifest + Filtered Datagrid
 
-- Currently `Deployables.tsx` L230-234 queries `db.deployables` filtered by owner, and L238 queries all `db.assemblies`.
+- Currently `Deployables.tsx` L230-236 queries `db.deployables` filtered by owner, and L238 queries all `db.assemblies`.
 - These tables are populated by `discoverCharacterAndAssemblies()` in `chain/queries.ts` (individual GraphQL calls per structure).
 - `handleSyncOwn` (`Deployables.tsx` L392-466) calls the same discovery function and writes to `db.deployables`.
 - The manifest already has `manifestLocations` (db/index.ts L89) keyed by assembly objectId, with `solarsystem`, `lPoint`, `typeId`.
@@ -116,7 +116,7 @@ A "Show All" toggle (defaulting to off/filtered) lets users bypass the filter an
 
 ### Phase 1: Location Formatting
 
-1. Create `apps/periscope/src/lib/format.ts` with `formatLocation(systemName?: string, lPoint?: string): string` helper
+1. Add `formatLocation(systemName?: string, lPoint?: string): string` helper to the existing `apps/periscope/src/lib/format.ts` (which already contains `fmtDateTime`, `fmtTime`, `formatDuration`)
    - Strip hyphen from lPoint: `"P2-L3"` -> `"P2L3"`
    - Return `"${systemName} (${compactLPoint})"` when both present
    - Return `systemName` when only system
@@ -132,7 +132,7 @@ A "Show All" toggle (defaulting to off/filtered) lets users bypass the filter an
 
 1. Add `onReset?: (row: StructureRow) => void` and `isResetting?: boolean` props to `StructureDetailCard` interface (L39-44)
 2. Import `canRevokeExtension` from `@/hooks/useExtensionRevoke` in `StructureDetailCard.tsx`
-3. Add a "Reset Extension" button in the Extension section of `StructureDetailCard` (after L170), with confirm flow:
+3. Add a "Reset Extension" button in the Extension section of `StructureDetailCard` (after L172, between the Extension Type display and the Standings Config section), with confirm flow:
    - Only render when `extensionInfo.status !== "default"` AND `row.ownership === "mine"` AND `canRevokeExtension(row.assemblyModule ?? "")` AND `row.ownerCapId` AND `row.characterObjectId`
    - Button shows "Reset to Default" initially
    - On click, enters confirm state (local `useState` in card)
@@ -140,7 +140,6 @@ A "Show All" toggle (defaulting to off/filtered) lets users bypass the filter an
    - Show loading spinner when `isResetting` is true
 4. Remove the Reset button, confirm flow, and `revokeConfirmId` state from the Extension column cell in `Deployables.tsx` (L787-824, plus L388 state declaration)
 5. Pass `onReset={handleRevoke}` and `isResetting={revokingId === selectedRow?.objectId}` from `Deployables` to `StructureDetailCard`
-6. Remove `revokeConfirmId` state (L388) -- confirm flow now lives in the card
 
 ### Phase 3: Market ID Picker
 
@@ -150,7 +149,7 @@ A "Show All" toggle (defaulting to off/filtered) lets users bypass the filter an
    - Query `db.manifestCharacters` and `db.manifestTribes` for admin name resolution
    - Build a `charNameMap: Map<string, string>` from `manifestCharacters` (suiAddress -> name), same pattern as Market.tsx L453-459
    - Build a `tribeLookup: Map<number, string>` from `manifestTribes` (id -> name/nameShort) for tribe affiliation display
-   - For each currency with a `marketId`, resolve the admin info: the `creator` address is not stored on `CurrencyRecord`, so the selector must fetch `MarketInfo` for each market at mount time via `queryMarketById()` (chain-shared `market.ts` L462-467). Cache the results in local state. This is a small number of markets (typically <10) so the fetch overhead is negligible.
+   - For each currency with a `marketId`, resolve the admin info: the `creator` address is not stored on `CurrencyRecord`, so the selector must fetch `MarketInfo` for each market at mount time via `queryMarketDetails()` (chain-shared `market.ts` L464-467). Cache the results in local state. This is a small number of markets (typically <10) so the fetch overhead is negligible.
    - Dropdown UI matching `RegistrySelector` pattern: search, item list, clear option
    - Display each market as: `SYMBOL -- AdminName [TribeName] -- 0xabcd...1234`
      - `AdminName` = character name from `charNameMap.get(marketInfo.creator)`, fallback to truncated address
@@ -159,7 +158,7 @@ A "Show All" toggle (defaulting to off/filtered) lets users bypass the filter an
    - Search filters on symbol, admin name, tribe name, and marketId
    - Allows clearing the selection (optional field)
 2. Replace the `<input type="text">` in `SsuStandingsConfig` (`StandingsExtensionPanel.tsx` L160-174) with `<MarketSelector>`
-   - Pass `suiClient` from context so `MarketSelector` can call `queryMarketById()`
+   - `MarketSelector` calls `useSuiClient()` hook internally to fetch `MarketInfo` via `queryMarketDetails()` (same pattern used throughout the codebase)
 3. Add a "Paste custom ID" fallback toggle for advanced users who need to enter an ID not in the list
 4. No changes to `SsuConfigValues` type -- still stores `marketId: string`
 
@@ -170,7 +169,7 @@ A "Show All" toggle (defaulting to off/filtered) lets users bypass the filter an
    - Use `useLiveQuery()` (from `dexie-react-hooks`) for all DB queries to maintain reactivity
    - When `showAll` is true: return all structures from `db.deployables` and `db.assemblies` (unfiltered, same as current behavior)
    - When `showAll` is false (default): apply the three-criteria filter:
-     - Query `db.deployables` for owned structures (existing logic from Deployables.tsx L230-234)
+     - Query `db.deployables` for owned structures (existing logic from Deployables.tsx L230-236)
      - Query `db.sonarEvents` for distinct `assemblyId` values from ALL events (no time window), then query `db.assemblies`/`db.deployables` for matching entries
      - Build a `registryOwnerAddresses: Set<string>` in a `useMemo`: load `db.registryStandings` -> collect characterIds/tribeIds -> look up `db.manifestCharacters` to resolve to Sui addresses. Then query `db.assemblies`/`db.deployables` where `owner` is in that set.
    - Merge and deduplicate by `objectId` in a final `useMemo` (owned structures take priority for richer data)
@@ -190,7 +189,7 @@ A "Show All" toggle (defaulting to off/filtered) lets users bypass the filter an
 
 | File | Action | Description |
 |------|--------|-------------|
-| `apps/periscope/src/lib/format.ts` | CREATE | Shared `formatLocation()` helper |
+| `apps/periscope/src/lib/format.ts` | MODIFY | Add shared `formatLocation()` helper to existing formatting module |
 | `apps/periscope/src/views/Deployables.tsx` | MODIFY | Use formatLocation, remove Reset from Extension column, replace inline data merge with useStructureRows hook, add Show All toggle |
 | `apps/periscope/src/components/StructureDetailCard.tsx` | MODIFY | Use formatLocation, add onReset prop and Reset button with confirm flow |
 | `apps/periscope/src/components/extensions/MarketSelector.tsx` | CREATE | Dropdown selector for Market objects from db.currencies, with admin character+tribe info |
