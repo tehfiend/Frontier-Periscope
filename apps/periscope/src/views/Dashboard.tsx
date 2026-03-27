@@ -3,7 +3,6 @@ import type { DeployableIntel } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useContacts } from "@/hooks/useContacts";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
-import { useSubscribedRegistries } from "@/hooks/useRegistrySubscriptions";
 import { FUEL_CRITICAL_HOURS, FUEL_WARNING_HOURS } from "@/lib/constants";
 import { Link } from "@tanstack/react-router";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -94,7 +93,7 @@ export function Dashboard() {
 	const tenant = useActiveTenant();
 	const { activeCharacter, allCharacters, activeSuiAddresses } = useActiveCharacter();
 	const contacts = useContacts();
-	const subscribedRegistries = useSubscribedRegistries(tenant);
+
 
 	// Private maps
 	const privateMapsV1Count =
@@ -113,8 +112,9 @@ export function Dashboard() {
 			[tenant],
 		) ?? 0;
 
-	// Markets -- use currencies table as data source
-	const marketCount = useLiveQuery(() => db.currencies.filter(notDeleted).count()) ?? 0;
+	// Markets & registries -- from manifest cache (Plan 04)
+	const marketCount = useLiveQuery(() => db.manifestMarkets.count()) ?? 0;
+	const registryCount = useLiveQuery(() => db.manifestRegistries.count()) ?? 0;
 
 	// Owned deployables (need full records for fuel calculation)
 	const ownedDeployables =
@@ -128,8 +128,7 @@ export function Dashboard() {
 
 	const totalMaps = privateMapsV1Count + privateMapsV2Count;
 	const contactCount = contacts.length;
-	const registryCount = subscribedRegistries.length;
-	const fuel = computeFuelSummary(ownedDeployables);
+const fuel = computeFuelSummary(ownedDeployables);
 
 	return (
 		<div className="flex h-full flex-col overflow-y-auto">
