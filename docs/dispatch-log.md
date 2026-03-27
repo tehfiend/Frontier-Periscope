@@ -77,3 +77,9 @@
 - **File:** plans/active/08-gate-toll-treasury.md
 - **Passes:** 3
 - **Result:** active -- resolved 5 open questions, added coin creation UI migration from Market to Treasury
+
+## 2026-03-27 -- branding-refresh (update)
+- **Action:** UPDATE
+- **File:** plans/active/09-branding-refresh.md
+- **Passes:** 3
+- **Result:** active -- resolved 5 questions, added philosophy section, treasury is implemented not coming soon
