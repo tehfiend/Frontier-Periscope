@@ -635,12 +635,12 @@ export async function queryAllListingsForCurrency(
 	}
 
 	// Step 3: Resolve SsuConfig for each unique SSU
-	const { discoverSsuConfigStandings } = await import("./ssu-market-standings");
+	const { discoverSsuUnifiedConfig } = await import("./ssu-unified");
 	const ssuIds = [...new Set(allListings.map((l) => l.ssuId))];
 	const ssuConfigMap = new Map<string, string>();
 
 	for (const ssuId of ssuIds) {
-		const configId = await discoverSsuConfigStandings(
+		const configId = await discoverSsuUnifiedConfig(
 			client,
 			ssuMarketPackageId,
 			ssuId,
