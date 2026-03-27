@@ -85,16 +85,7 @@ export async function buildPublishTokenStandings(
 	params: CreateTokenStandingsParams,
 	marketStandingsPackageId: string,
 ): Promise<Transaction> {
-	const {
-		symbol,
-		name,
-		description,
-		decimals = 9,
-		registryId,
-		minMint,
-		minTrade,
-		minBuy,
-	} = params;
+	const { symbol, name, description, decimals = 9, registryId, minMint, minTrade, minBuy } = params;
 
 	const mod = await ensureWasmReady();
 
@@ -114,22 +105,12 @@ export async function buildPublishTokenStandings(
 	// 2. Update string constants one at a time (BCS-encoded vector<u8>)
 	// Symbol: "TMPL" -> user symbol
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			bcsBytes(symbol.toUpperCase()),
-			bcsBytes("TMPL"),
-			"Vector(U8)",
-		),
+		mod.update_constants(bytecodes, bcsBytes(symbol.toUpperCase()), bcsBytes("TMPL"), "Vector(U8)"),
 	);
 
 	// Name: "Template Token" -> user name
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			bcsBytes(name),
-			bcsBytes("Template Token"),
-			"Vector(U8)",
-		),
+		mod.update_constants(bytecodes, bcsBytes(name), bcsBytes("Template Token"), "Vector(U8)"),
 	);
 
 	// Description: "A faction token" -> user description
@@ -143,9 +124,7 @@ export async function buildPublishTokenStandings(
 	);
 
 	// 3. Update REGISTRY_ID_BYTES: 32-byte sentinel -> actual registry ID bytes
-	const registryIdHex = registryId.startsWith("0x")
-		? registryId.slice(2)
-		: registryId;
+	const registryIdHex = registryId.startsWith("0x") ? registryId.slice(2) : registryId;
 	const registryIdBytes = new Uint8Array(
 		registryIdHex.match(/.{2}/g)!.map((b) => Number.parseInt(b, 16)),
 	);
@@ -166,43 +145,23 @@ export async function buildPublishTokenStandings(
 	// Only patch DECIMALS if non-default
 	if (decimals !== 9) {
 		bytecodes = new Uint8Array(
-			mod.update_constants(
-				bytecodes,
-				new Uint8Array([decimals]),
-				new Uint8Array([9]),
-				"U8",
-			),
+			mod.update_constants(bytecodes, new Uint8Array([decimals]), new Uint8Array([9]), "U8"),
 		);
 	}
 
 	// MIN_MINT: sentinel 251 -> actual value
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			new Uint8Array([minMint]),
-			new Uint8Array([251]),
-			"U8",
-		),
+		mod.update_constants(bytecodes, new Uint8Array([minMint]), new Uint8Array([251]), "U8"),
 	);
 
 	// MIN_TRADE: sentinel 252 -> actual value
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			new Uint8Array([minTrade]),
-			new Uint8Array([252]),
-			"U8",
-		),
+		mod.update_constants(bytecodes, new Uint8Array([minTrade]), new Uint8Array([252]), "U8"),
 	);
 
 	// MIN_BUY: sentinel 253 -> actual value
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			new Uint8Array([minBuy]),
-			new Uint8Array([253]),
-			"U8",
-		),
+		mod.update_constants(bytecodes, new Uint8Array([minBuy]), new Uint8Array([253]), "U8"),
 	);
 
 	const tx = new Transaction();
@@ -251,17 +210,12 @@ export function parsePublishStandingsResult(
 	for (const change of objectChanges) {
 		if (change.type === "published" && change.packageId) {
 			packageId = change.packageId;
-			const modules = (change as Record<string, unknown>).modules as
-				| string[]
-				| undefined;
+			const modules = (change as Record<string, unknown>).modules as string[] | undefined;
 			if (modules?.[0]) {
 				moduleName = modules[0];
 			}
 		}
-		if (
-			change.type === "created" &&
-			change.objectType?.includes("::market_standings::Market<")
-		) {
+		if (change.type === "created" && change.objectType?.includes("::market_standings::Market<")) {
 			marketId = change.objectId ?? "";
 			const match = change.objectType.match(/Market<(.+)>/);
 			if (match) {

@@ -282,9 +282,9 @@ export function TurretPublishFlow({
 					<AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-400" />
 					<p className="text-xs text-amber-300">
 						This is a simplified weights-only turret configuration. Standings-based targeting
-						(friend/foe lists derived from your registry) requires runtime config support in
-						the world contracts, which is not yet available. We've submitted a feature request
-						to CCP for this capability.
+						(friend/foe lists derived from your registry) requires runtime config support in the
+						world contracts, which is not yet available. We've submitted a feature request to CCP
+						for this capability.
 					</p>
 				</div>
 			</div>
@@ -343,8 +343,7 @@ export function TurretPublishFlow({
 							Effective Ship Classes
 						</label>
 						<p className="mb-2 text-[10px] text-zinc-600">
-							Ship classes this turret is effective against. Matched targets get the class
-							bonus.
+							Ship classes this turret is effective against. Matched targets get the class bonus.
 						</p>
 						<div className="space-y-2">
 							<select

@@ -685,9 +685,7 @@ export function Manifest() {
 				const cursorKey = `manifestCharCursor:${worldPkg}`;
 				await db.settings.delete(cursorKey);
 				// Clear soft-delete flags so they get re-evaluated
-				const deleted = await db.manifestCharacters
-					.filter((c) => !!c.deletedAt)
-					.toArray();
+				const deleted = await db.manifestCharacters.filter((c) => !!c.deletedAt).toArray();
 				for (const c of deleted) {
 					await db.manifestCharacters.update(c.id, { deletedAt: undefined, name: "" });
 				}

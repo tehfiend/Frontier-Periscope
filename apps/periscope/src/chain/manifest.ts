@@ -45,8 +45,8 @@ import {
 	queryPrivateMap,
 	queryPrivateMapV2,
 	queryStandingEntries,
-	queryStandingsList,
 	queryStandingsInvitesForUser,
+	queryStandingsList,
 	queryStandingsMaps,
 	queryTransactionsByObject,
 	unsealWithKey,
@@ -1163,8 +1163,7 @@ export async function syncStandingsListsForUser(
 			console.log("[syncStandingsLists] list info for", invite.listId, ":", listInfo);
 			if (!listInfo) continue;
 
-			const isEditor =
-				listInfo.creator === userAddress || listInfo.editors.includes(userAddress);
+			const isEditor = listInfo.creator === userAddress || listInfo.editors.includes(userAddress);
 
 			const entry: ManifestStandingsList = {
 				id: invite.listId,
@@ -1183,13 +1182,7 @@ export async function syncStandingsListsForUser(
 
 			await db.manifestStandingsLists.put(entry);
 			newCount++;
-			console.log(
-				"[syncStandingsLists] cached list:",
-				entry.name,
-				entry.id,
-				"tenant:",
-				tenant,
-			);
+			console.log("[syncStandingsLists] cached list:", entry.name, entry.id, "tenant:", tenant);
 		}
 
 		console.log("[syncStandingsLists] synced", newCount, "lists");
@@ -1401,10 +1394,7 @@ export async function syncPrivateMapsV2ForUser(
 
 		// Phase 2: Discover standings maps (mode=1) via events + registry filtering
 		ctx?.setProgress("Discovering standings maps...");
-		const subscribedRegs = await db.subscribedRegistries
-			.where("tenant")
-			.equals(tenant)
-			.toArray();
+		const subscribedRegs = await db.subscribedRegistries.where("tenant").equals(tenant).toArray();
 		const subscribedRegIds = new Set(subscribedRegs.map((r) => r.id));
 
 		if (subscribedRegIds.size > 0) {
@@ -1421,8 +1411,7 @@ export async function syncPrivateMapsV2ForUser(
 				if (!mapInfo || mapInfo.mode !== 1) continue;
 
 				// Only include maps referencing a subscribed registry
-				if (!mapInfo.registryId || !subscribedRegIds.has(mapInfo.registryId))
-					continue;
+				if (!mapInfo.registryId || !subscribedRegIds.has(mapInfo.registryId)) continue;
 
 				const entry: ManifestPrivateMapV2 = {
 					id: mapId,
@@ -1489,11 +1478,7 @@ export async function syncMapLocationsV2(
 					const mapPublicKey = hexToBytes(mapPublicKeyHex);
 					const mapSecretKey = hexToBytes(decryptedMapKey);
 					const encryptedBytes = hexToBytes(loc.data);
-					const plaintext = unsealWithKey(
-						encryptedBytes,
-						mapPublicKey,
-						mapSecretKey,
-					);
+					const plaintext = unsealWithKey(encryptedBytes, mapPublicKey, mapSecretKey);
 					data = decodeLocationData(plaintext);
 				} else {
 					// Cleartext standings mode -- parse JSON directly
@@ -1520,11 +1505,7 @@ export async function syncMapLocationsV2(
 				await db.manifestMapLocations.put(entry);
 				newCount++;
 			} catch (err) {
-				console.error(
-					"[syncMapLocationsV2] failed for loc",
-					loc.locationId,
-					err,
-				);
+				console.error("[syncMapLocationsV2] failed for loc", loc.locationId, err);
 			}
 		}
 
@@ -1767,9 +1748,7 @@ export async function syncPrivateMapIndex(
  * that have a structureId but no existing public location entry.
  * Public entries (from LocationRevealedEvent) are never overwritten.
  */
-export async function mergePrivateMapLocationsIntoManifest(
-	tenant: TenantId,
-): Promise<number> {
+export async function mergePrivateMapLocationsIntoManifest(tenant: TenantId): Promise<number> {
 	const mapLocations = await db.manifestMapLocations
 		.filter((loc) => loc.structureId != null && loc.tenant === tenant)
 		.toArray();

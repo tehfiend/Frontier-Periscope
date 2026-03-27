@@ -38,11 +38,7 @@ export function useManifestAutoSync() {
 
 					// Characters -- full catch-up from last cursor
 					try {
-						const count = await discoverCharactersFromEvents(
-							client,
-							tenantId,
-							worldPkg,
-						);
+						const count = await discoverCharactersFromEvents(client, tenantId, worldPkg);
 						if (count > 0) {
 							console.log(`[manifest-sync] ${tenantId}: ${count} new characters`);
 						}
@@ -97,7 +93,9 @@ export function useManifestAutoSync() {
 					try {
 						const count = await mergePrivateMapLocationsIntoManifest(tenantId);
 						if (count > 0) {
-							console.log(`[manifest-sync] ${tenantId}: ${count} locations merged from private maps`);
+							console.log(
+								`[manifest-sync] ${tenantId}: ${count} locations merged from private maps`,
+							);
 						}
 					} catch (err) {
 						console.warn(`[manifest-sync] ${tenantId} location merge:`, err);

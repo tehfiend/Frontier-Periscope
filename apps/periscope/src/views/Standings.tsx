@@ -21,12 +21,14 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { discoverRegistries } from "@/chain/manifest";
 import { ContactPicker } from "@/components/ContactPicker";
 import { CopyAddress } from "@/components/CopyAddress";
 import { StandingBadge } from "@/components/StandingBadge";
 import { ConnectWalletButton } from "@/components/WalletConnect";
 import { db } from "@/db";
 import type { Contact, RegistryStanding } from "@/db/types";
+import type { ManifestRegistry } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import {
 	useAddContact,
@@ -44,8 +46,6 @@ import {
 	useUnsubscribeRegistry,
 } from "@/hooks/useRegistrySubscriptions";
 import { useSuiClient } from "@/hooks/useSuiClient";
-import { discoverRegistries } from "@/chain/manifest";
-import type { ManifestRegistry } from "@/db/types";
 import {
 	REGISTRY_STANDING_LABELS,
 	type StandingsRegistryInfo,
@@ -381,10 +381,7 @@ function RegistriesTab({
 	const syncStandings = useSyncRegistryStandings();
 
 	const cachedRegistries = useLiveQuery(() => db.manifestRegistries.toArray()) ?? [];
-	const allRegistries = useMemo(
-		() => cachedRegistries.map(toRegistryInfo),
-		[cachedRegistries],
-	);
+	const allRegistries = useMemo(() => cachedRegistries.map(toRegistryInfo), [cachedRegistries]);
 	const [isLoading, setIsLoading] = useState(false);
 	const [selectedRegistryId, setSelectedRegistryId] = useState<string | null>(null);
 	const [showArchived, setShowArchived] = useState(false);

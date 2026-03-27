@@ -50,10 +50,7 @@ function DashboardCard({
 				<h3 className="text-sm font-medium text-zinc-200">{title}</h3>
 			</div>
 			<div className="mb-4 min-h-[3rem] text-sm text-zinc-400">{children}</div>
-			<Link
-				to={to}
-				className="text-xs text-cyan-400 transition-colors hover:text-cyan-300"
-			>
+			<Link to={to} className="text-xs text-cyan-400 transition-colors hover:text-cyan-300">
 				View all &rarr;
 			</Link>
 		</div>
@@ -94,23 +91,16 @@ export function Dashboard() {
 	const { activeCharacter, allCharacters, activeSuiAddresses } = useActiveCharacter();
 	const contacts = useContacts();
 
-
 	// Private maps
 	const privateMapsV1Count =
-		useLiveQuery(
-			() => db.manifestPrivateMaps.where("tenant").equals(tenant).count(),
-			[tenant],
-		) ?? 0;
+		useLiveQuery(() => db.manifestPrivateMaps.where("tenant").equals(tenant).count(), [tenant]) ??
+		0;
 	const privateMapsV2Count =
-		useLiveQuery(
-			() => db.manifestPrivateMapsV2.where("tenant").equals(tenant).count(),
-			[tenant],
-		) ?? 0;
+		useLiveQuery(() => db.manifestPrivateMapsV2.where("tenant").equals(tenant).count(), [tenant]) ??
+		0;
 	const mapLocationCount =
-		useLiveQuery(
-			() => db.manifestMapLocations.where("tenant").equals(tenant).count(),
-			[tenant],
-		) ?? 0;
+		useLiveQuery(() => db.manifestMapLocations.where("tenant").equals(tenant).count(), [tenant]) ??
+		0;
 
 	// Markets & registries -- from manifest cache (Plan 04)
 	const marketCount = useLiveQuery(() => db.manifestMarkets.count()) ?? 0;
@@ -128,7 +118,7 @@ export function Dashboard() {
 
 	const totalMaps = privateMapsV1Count + privateMapsV2Count;
 	const contactCount = contacts.length;
-const fuel = computeFuelSummary(ownedDeployables);
+	const fuel = computeFuelSummary(ownedDeployables);
 
 	return (
 		<div className="flex h-full flex-col overflow-y-auto">
@@ -168,23 +158,20 @@ const fuel = computeFuelSummary(ownedDeployables);
 									<p className="text-zinc-200">
 										{activeCharacter.characterName}
 										{activeCharacter.tribe && (
-											<span className="ml-1.5 text-zinc-500">
-												[{activeCharacter.tribe}]
-											</span>
+											<span className="ml-1.5 text-zinc-500">[{activeCharacter.tribe}]</span>
 										)}
 									</p>
 								) : (
 									<p className="text-zinc-200">All characters</p>
 								)}
 								<p className="mt-1 text-xs text-zinc-500">
-									{allCharacters.length} character{allCharacters.length !== 1 && "s"}{" "}
-									configured
+									{allCharacters.length} character{allCharacters.length !== 1 && "s"} configured
 								</p>
 							</div>
 						) : (
 							<p>
-								Add a character to get started. Characters link your in-game identity to
-								on-chain data, enabling structure sync, sonar tracking, and private maps.
+								Add a character to get started. Characters link your in-game identity to on-chain
+								data, enabling structure sync, sonar tracking, and private maps.
 							</p>
 						)}
 					</DashboardCard>
@@ -203,9 +190,8 @@ const fuel = computeFuelSummary(ownedDeployables);
 							</p>
 						) : (
 							<p>
-								Private maps store encrypted structure locations that only invited members
-								can see. Use them to share intel with allies without revealing positions
-								publicly.
+								Private maps store encrypted structure locations that only invited members can see.
+								Use them to share intel with allies without revealing positions publicly.
 							</p>
 						)}
 					</DashboardCard>
@@ -225,8 +211,8 @@ const fuel = computeFuelSummary(ownedDeployables);
 						) : (
 							<p>
 								Standings control who can interact with your structures -- gate access, SSU
-								deposits, turret targeting. Create a registry to define friend/foe rules, or
-								add contacts for private tracking.
+								deposits, turret targeting. Create a registry to define friend/foe rules, or add
+								contacts for private tracking.
 							</p>
 						)}
 					</DashboardCard>
@@ -241,8 +227,8 @@ const fuel = computeFuelSummary(ownedDeployables);
 							</p>
 						) : (
 							<p>
-								Governance markets let you publish custom tokens and manage buy/sell orders.
-								Create a token to power your organization's economy.
+								Governance markets let you publish custom tokens and manage buy/sell orders. Create
+								a token to power your organization's economy.
 							</p>
 						)}
 					</DashboardCard>
@@ -257,31 +243,21 @@ const fuel = computeFuelSummary(ownedDeployables);
 								</p>
 								<div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
 									{fuel.critical > 0 && (
-										<span className="text-red-400">
-											{fuel.critical} critical
-										</span>
+										<span className="text-red-400">{fuel.critical} critical</span>
 									)}
 									{fuel.warning > 0 && (
-										<span className="text-amber-400">
-											{fuel.warning} warning
-										</span>
+										<span className="text-amber-400">{fuel.warning} warning</span>
 									)}
 									{fuel.healthy > 0 && (
-										<span className="text-green-400">
-											{fuel.healthy} healthy
-										</span>
+										<span className="text-green-400">{fuel.healthy} healthy</span>
 									)}
-									{fuel.noFuel > 0 && (
-										<span className="text-zinc-500">
-											{fuel.noFuel} no data
-										</span>
-									)}
+									{fuel.noFuel > 0 && <span className="text-zinc-500">{fuel.noFuel} no data</span>}
 								</div>
 							</div>
 						) : (
 							<p>
-								Sync your structures from the blockchain to track fuel levels, manage
-								extensions, and monitor locations.
+								Sync your structures from the blockchain to track fuel levels, manage extensions,
+								and monitor locations.
 							</p>
 						)}
 					</DashboardCard>

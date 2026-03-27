@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
 import { Pencil } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface EditableCellProps {
 	value: string;

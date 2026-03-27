@@ -34,8 +34,6 @@ import { useSuiClient } from "@/hooks/useSuiClient";
 import {
 	type TenantId,
 	buildAddLocation,
-	buildAddLocationEncrypted,
-	buildAddLocationStandings,
 	buildCreateEncryptedMap,
 	buildCreateMap,
 	buildCreateStandingsMap,
