@@ -27,6 +27,8 @@ export interface HandlerContext {
 	charNameMap: Map<string, string>;
 	/** Character ID (string) -> tribe ID */
 	charTribeMap: Map<string, number>;
+	/** Coin type (string) -> currency symbol (for toll display) */
+	currencySymbolMap: Map<string, string>;
 }
 
 // ── Handler interface ───────────────────────────────────────────────────────
@@ -318,8 +320,7 @@ const gateLinkedHandler: EventHandler = {
 		const srcName = resolveAssemblyName(srcId, ctx);
 		const dstName = resolveAssemblyName(dstId, ctx);
 		const details =
-			`${srcName ?? srcId?.slice(0, 10) ?? "?"} <-> ` +
-			`${dstName ?? dstId?.slice(0, 10) ?? "?"}`;
+			`${srcName ?? srcId?.slice(0, 10) ?? "?"} <-> ` + `${dstName ?? dstId?.slice(0, 10) ?? "?"}`;
 
 		return [
 			{
@@ -438,8 +439,10 @@ const tollCollectedHandler: EventHandler = {
 		const amount = Number(p.amount ?? 0);
 		const payer = p.payer as string | undefined;
 		const payerName = payer ? ctx.charNameMap.get(payer) : undefined;
-		const details =
-			`Toll ${amount} EVE from ${payerName ?? payer?.slice(0, 10) ?? "?"}`;
+		// Resolve currency symbol from coin_type field if present
+		const coinType = p.coin_type as string | undefined;
+		const currencySymbol = coinType ? (ctx.currencySymbolMap.get(coinType) ?? "SUI") : "SUI";
+		const details = `Toll ${amount} ${currencySymbol} from ${payerName ?? payer?.slice(0, 10) ?? "?"}`;
 
 		return [
 			{
@@ -461,9 +464,12 @@ const accessGrantedHandler: EventHandler = {
 		const charId = String(p.character_id ?? "");
 		const charName = ctx.charNameMap.get(charId);
 		const tollPaid = Number(p.toll_paid ?? 0);
+		// Resolve currency symbol from coin_type field if present
+		const coinType = p.coin_type as string | undefined;
+		const currencySymbol = coinType ? (ctx.currencySymbolMap.get(coinType) ?? "SUI") : "SUI";
 		const details =
 			`Access to ${charName ?? charId.slice(0, 10) ?? "?"}` +
-			`${tollPaid ? ` (toll: ${tollPaid} EVE)` : ""}`;
+			`${tollPaid ? ` (toll: ${tollPaid} ${currencySymbol})` : ""}`;
 
 		return [
 			{
@@ -622,9 +628,7 @@ function extensionHandler(sonarType: SonarEventType): EventHandler {
 			const rawExtType = p.extension_type;
 			const extensionType = typeof rawExtType === "string" ? rawExtType : undefined;
 			const action = sonarType.replace("extension_", "");
-			const extLabel = extensionType
-				? extensionType.split("::").slice(-1)[0]
-				: "unknown";
+			const extLabel = extensionType ? extensionType.split("::").slice(-1)[0] : "unknown";
 			const details = `Extension ${action}: ${extLabel}`;
 
 			return [
@@ -851,8 +855,6 @@ const exchangeOrderCancelledHandler: EventHandler = {
 		];
 	},
 };
-
-
 
 // ── Registry: maps event key -> handler ─────────────────────────────────────
 
