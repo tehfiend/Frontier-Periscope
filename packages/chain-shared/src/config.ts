@@ -74,6 +74,8 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		ssuUnified: {
 			packageId: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
 		},
+		treasury: { packageId: "" },
+		gateTollCustom: { packageId: "", configObjectId: "" },
 	},
 	utopia: {
 		gateUnified: {
@@ -144,6 +146,8 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		ssuUnified: {
 			packageId: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
 		},
+		treasury: { packageId: "" },
+		gateTollCustom: { packageId: "", configObjectId: "" },
 	},
 };
 

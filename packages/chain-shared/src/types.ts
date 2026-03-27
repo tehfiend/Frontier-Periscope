@@ -284,6 +284,33 @@ export interface TurretStandingsConfig {
 	};
 }
 
+// ── Treasury Types ─────────────────────────────────────────────────────────
+
+export interface TreasuryInfo {
+	objectId: string;
+	owner: string;
+	admins: string[];
+	name: string;
+}
+
+export interface TreasuryBalance {
+	coinType: string;
+	amount: bigint;
+}
+
+// ── Gate Toll Custom Currency Types ────────────────────────────────────────
+
+export interface GateTollCustomConfigInfo {
+	gateId: string;
+	registryId: string;
+	minAccess: number;
+	freeAccess: number;
+	tollAmount: bigint;
+	tollCoinType: string;
+	tollRecipient: string;
+	permitDurationMs: bigint;
+}
+
 // ── Contract Addresses ──────────────────────────────────────────────────────
 
 export interface ContractAddresses {
@@ -318,4 +345,6 @@ export interface ContractAddresses {
 		originalPackageId?: string;
 		previousOriginalPackageIds?: string[];
 	};
+	treasury?: { packageId: string };
+	gateTollCustom?: { packageId: string; configObjectId: string };
 }
