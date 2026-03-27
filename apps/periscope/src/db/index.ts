@@ -22,8 +22,11 @@ import type {
 	ManifestCharacter,
 	ManifestLocation,
 	ManifestMapLocation,
+	ManifestMarket,
 	ManifestPrivateMap,
+	ManifestPrivateMapIndex,
 	ManifestPrivateMapV2,
+	ManifestRegistry,
 	ManifestStandingEntry,
 	ManifestStandingsList,
 	ManifestTribe,
@@ -87,6 +90,9 @@ class PeriscopeDB extends Dexie {
 	manifestCharacters!: EntityTable<ManifestCharacter, "id">;
 	manifestTribes!: EntityTable<ManifestTribe, "id">;
 	manifestLocations!: EntityTable<ManifestLocation, "id">;
+	manifestMarkets!: EntityTable<ManifestMarket, "id">;
+	manifestRegistries!: EntityTable<ManifestRegistry, "id">;
+	manifestPrivateMapIndex!: EntityTable<ManifestPrivateMapIndex, "id">;
 
 	// Private Maps (encrypted location sharing cache)
 	manifestPrivateMaps!: EntityTable<ManifestPrivateMap, "id">;
@@ -547,6 +553,13 @@ class PeriscopeDB extends Dexie {
 			groupMembers: null,
 			assemblyPolicies: null,
 			betrayalAlerts: null,
+		});
+
+		// V30: Manifest expansion -- markets, registries, private map index
+		this.version(30).stores({
+			manifestMarkets: "id, coinType, creator, cachedAt",
+			manifestRegistries: "id, owner, name, ticker, cachedAt",
+			manifestPrivateMapIndex: "id, creator, tenant, cachedAt",
 		});
 	}
 }

@@ -1,5 +1,12 @@
 import { TENANTS, type TenantId } from "@/chain/config";
-import { discoverCharactersFromEvents, discoverTribes } from "@/chain/manifest";
+import {
+	discoverCharactersFromEvents,
+	discoverMarkets,
+	discoverRegistries,
+	discoverTribes,
+	mergePrivateMapLocationsIntoManifest,
+	syncPrivateMapIndex,
+} from "@/chain/manifest";
 import { db } from "@/db";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useEffect, useRef } from "react";
@@ -9,6 +16,8 @@ import { useEffect, useRef } from "react";
  *
  * - Catches up on all characters created while offline (both tenants)
  * - Fetches tribes from World API
+ * - Discovers all Market<T> and StandingsRegistry objects (global, once)
+ * - Builds private map index and merges locations (per-tenant)
  * - Hands off cursors to sonarState so Chain Sonar picks up ongoing monitoring
  *
  * Ongoing real-time monitoring is handled by Chain Sonar (useChainSonar),
@@ -27,7 +36,7 @@ export function useManifestAutoSync() {
 				for (const tenantId of Object.keys(TENANTS) as TenantId[]) {
 					const worldPkg = TENANTS[tenantId].worldPackageId;
 
-					// Characters — full catch-up from last cursor
+					// Characters -- full catch-up from last cursor
 					try {
 						const count = await discoverCharactersFromEvents(
 							client,
@@ -43,7 +52,7 @@ export function useManifestAutoSync() {
 						console.warn(`[manifest-sync] ${tenantId} characters:`, err);
 					}
 
-					// Tribes — from World API
+					// Tribes -- from World API
 					try {
 						const count = await discoverTribes(tenantId);
 						if (count > 0) {
@@ -51,6 +60,47 @@ export function useManifestAutoSync() {
 						}
 					} catch (err) {
 						console.warn(`[manifest-sync] ${tenantId} tribes:`, err);
+					}
+				}
+
+				// Markets -- global (shared packageId across tenants), run once
+				try {
+					const count = await discoverMarkets(client);
+					if (count > 0) {
+						console.log(`[manifest-sync] ${count} markets cached`);
+					}
+				} catch (err) {
+					console.warn("[manifest-sync] markets:", err);
+				}
+
+				// Registries -- global (shared packageId across tenants), run once
+				try {
+					const count = await discoverRegistries(client);
+					if (count > 0) {
+						console.log(`[manifest-sync] ${count} registries cached`);
+					}
+				} catch (err) {
+					console.warn("[manifest-sync] registries:", err);
+				}
+
+				// Private map index + location merge -- per-tenant
+				for (const tenantId of Object.keys(TENANTS) as TenantId[]) {
+					try {
+						const count = await syncPrivateMapIndex(client, tenantId);
+						if (count > 0) {
+							console.log(`[manifest-sync] ${tenantId}: ${count} maps indexed`);
+						}
+					} catch (err) {
+						console.warn(`[manifest-sync] ${tenantId} map index:`, err);
+					}
+
+					try {
+						const count = await mergePrivateMapLocationsIntoManifest(tenantId);
+						if (count > 0) {
+							console.log(`[manifest-sync] ${tenantId}: ${count} locations merged from private maps`);
+						}
+					} catch (err) {
+						console.warn(`[manifest-sync] ${tenantId} location merge:`, err);
 					}
 				}
 			} catch (err) {

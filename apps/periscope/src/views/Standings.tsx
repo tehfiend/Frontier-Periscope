@@ -38,6 +38,8 @@ import {
 	useUnsubscribeRegistry,
 } from "@/hooks/useRegistrySubscriptions";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { discoverRegistries } from "@/chain/manifest";
+import type { ManifestRegistry } from "@/db/types";
 import {
 	REGISTRY_STANDING_LABELS,
 	type StandingsRegistryInfo,
@@ -51,7 +53,6 @@ import {
 	buildSetTribeStanding,
 	displayToStanding,
 	getContractAddresses,
-	queryAllRegistries,
 	standingToDisplay,
 } from "@tehfrontier/chain-shared";
 
@@ -292,6 +293,18 @@ function ContactsTab() {
 
 // ── Registries Tab ──────────────────────────────────────────────────────────
 
+/** Convert ManifestRegistry to StandingsRegistryInfo for UI compatibility */
+function toRegistryInfo(r: ManifestRegistry): StandingsRegistryInfo {
+	return {
+		objectId: r.id,
+		owner: r.owner,
+		admins: r.admins,
+		name: r.name,
+		ticker: r.ticker,
+		defaultStanding: r.defaultStanding,
+	};
+}
+
 function RegistriesTab({
 	tenant,
 }: {
@@ -304,35 +317,29 @@ function RegistriesTab({
 	const unsubscribe = useUnsubscribeRegistry();
 	const syncStandings = useSyncRegistryStandings();
 
-	const [allRegistries, setAllRegistries] = useState<StandingsRegistryInfo[]>([]);
+	const cachedRegistries = useLiveQuery(() => db.manifestRegistries.toArray()) ?? [];
+	const allRegistries = useMemo(
+		() => cachedRegistries.map(toRegistryInfo),
+		[cachedRegistries],
+	);
 	const [isLoading, setIsLoading] = useState(false);
 	const [selectedRegistryId, setSelectedRegistryId] = useState<string | null>(null);
 
 	const addresses = getContractAddresses(tenant as TenantId);
 	const packageId = addresses.standingsRegistry?.packageId;
 
-	// Fetch all registries from chain
+	// Refresh registries from chain into manifest cache
 	const handleBrowse = useCallback(async () => {
 		if (!packageId) return;
 		setIsLoading(true);
 		try {
-			const registries = await queryAllRegistries(client, packageId);
-			setAllRegistries(registries);
+			await discoverRegistries(client);
 		} catch {
 			// Fetch error
 		} finally {
 			setIsLoading(false);
 		}
 	}, [client, packageId]);
-
-	// Auto-fetch on mount
-	const fetchedRef = useRef(false);
-	useEffect(() => {
-		if (packageId && !fetchedRef.current) {
-			fetchedRef.current = true;
-			handleBrowse();
-		}
-	}, [packageId, handleBrowse]);
 
 	const subscribedIds = useMemo(() => new Set(subscribed.map((s) => s.id)), [subscribed]);
 
@@ -502,7 +509,6 @@ function MyRegistriesTab({
 	const client = useSuiClient();
 	const dAppKit = useDAppKit();
 
-	const [myRegistries, setMyRegistries] = useState<StandingsRegistryInfo[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
 	const [showCreateDialog, setShowCreateDialog] = useState(false);
 	const [selectedRegistryId, setSelectedRegistryId] = useState<string | null>(null);
@@ -512,23 +518,27 @@ function MyRegistriesTab({
 	const addresses = getContractAddresses(tenant as TenantId);
 	const packageId = addresses.standingsRegistry?.packageId;
 
-	// Fetch registries owned by wallet
+	// Read from manifest cache, filter to user's owned/admin registries
+	const cachedRegistries = useLiveQuery(() => db.manifestRegistries.toArray()) ?? [];
+	const myRegistries = useMemo(() => {
+		const all = cachedRegistries.map(toRegistryInfo);
+		return walletAddress
+			? all.filter((r) => r.owner === walletAddress || r.admins.includes(walletAddress))
+			: [];
+	}, [cachedRegistries, walletAddress]);
+
+	// Refresh registries from chain into manifest cache
 	const handleRefresh = useCallback(async () => {
 		if (!packageId) return;
 		setIsLoading(true);
 		try {
-			const all = await queryAllRegistries(client, packageId);
-			// Show registries where user is owner or admin
-			const mine = walletAddress
-				? all.filter((r) => r.owner === walletAddress || r.admins.includes(walletAddress))
-				: [];
-			setMyRegistries(mine);
+			await discoverRegistries(client);
 		} catch {
 			// Fetch error
 		} finally {
 			setIsLoading(false);
 		}
-	}, [client, packageId, walletAddress]);
+	}, [client, packageId]);
 
 	const fetchedRef = useRef<string | null>(null);
 	useEffect(() => {
