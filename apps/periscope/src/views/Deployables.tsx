@@ -268,6 +268,16 @@ export function Deployables() {
 			return map;
 		}) ?? new Map<string, string>();
 
+	// ── Currency Ticker Lookup (marketId → symbol) ─────────────────────────
+	const currencies = useLiveQuery(() => db.currencies.toArray()) ?? [];
+	const currencyByMarketId = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const c of currencies) {
+			if (c.marketId && c.symbol) map.set(c.marketId, c.symbol);
+		}
+		return map;
+	}, [currencies]);
+
 	// ── Solar System Lookup ──────────────────────────────────────────────────
 	const systems = useLiveQuery(() => db.solarSystems.toArray()) ?? [];
 	const systemNames = useMemo(() => {
@@ -716,8 +726,13 @@ export function Deployables() {
 				accessorFn: (d) => {
 					const info = classifyExtension(d.extensionType, tenant as TenantId);
 					const extConfig = extensionConfigMap.get(d.objectId);
-					if (extConfig?.registryName) return `${info.status} (${extConfig.registryName})`;
-					return info.status;
+					let label: string = info.status;
+					if (extConfig?.registryName) label += ` ${extConfig.registryName}`;
+					if (extConfig?.marketId) {
+						const ticker = currencyByMarketId.get(extConfig.marketId);
+						if (ticker) label += ` ${ticker}`;
+					}
+					return label;
 				},
 				header: "Extension",
 				size: 200,
@@ -726,6 +741,9 @@ export function Deployables() {
 					const r = row.original;
 					const info = classifyExtension(r.extensionType, tenant as TenantId);
 					const extConfig = extensionConfigMap.get(r.objectId);
+					const ticker = extConfig?.marketId
+						? currencyByMarketId.get(extConfig.marketId)
+						: undefined;
 
 					const actionLabel =
 						info.status === "periscope-outdated"
@@ -746,6 +764,11 @@ export function Deployables() {
 									{extConfig?.registryName && (
 										<span className="rounded bg-cyan-500/10 px-1 py-0.5 text-[10px] font-medium text-cyan-400">
 											{extConfig.registryName}
+										</span>
+									)}
+									{ticker && (
+										<span className="rounded bg-emerald-500/10 px-1 py-0.5 text-[10px] font-medium text-emerald-400">
+											{ticker}
 										</span>
 									)}
 								</>

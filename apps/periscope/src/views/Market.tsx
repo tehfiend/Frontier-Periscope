@@ -801,7 +801,7 @@ function MarketDetail({
 				packageId: marketPkg,
 				marketId: currency.marketId,
 				coinType: currency.coinType,
-				amount: Number(amount),
+				amount,
 				recipient,
 				senderAddress: suiAddress,
 			});
