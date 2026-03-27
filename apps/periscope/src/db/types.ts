@@ -255,6 +255,8 @@ export interface StructureExtensionConfig {
 	minDeposit?: number;
 	minWithdraw?: number;
 	marketId?: string;
+	/** Per-SSU SsuUnifiedConfig object ID (created on first config, reused on updates) */
+	ssuConfigId?: string;
 	// Turret weight fields
 	defaultWeight?: number;
 	kosWeight?: number;

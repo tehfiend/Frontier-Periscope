@@ -1,8 +1,9 @@
 import { Transaction } from "@mysten/sui/transactions";
 import {
 	ASSEMBLY_MODULE_MAP,
+	buildCreateSsuUnifiedConfig,
 	buildSetGateStandingsConfig,
-	buildSetSsuStandingsConfig,
+	buildSetSsuUnifiedConfig,
 	getContractAddresses,
 } from "@tehfrontier/chain-shared";
 export { ASSEMBLY_MODULE_MAP };
@@ -200,34 +201,78 @@ export function buildConfigureGateStandings(params: ConfigureGateStandingsParams
 	});
 }
 
-interface ConfigureSsuStandingsParams {
+interface ConfigureSsuUnifiedParams {
 	tenant: TenantId;
 	ssuId: string;
 	registryId: string;
 	minDeposit: number;
 	minWithdraw: number;
+	/** Market ID to link (optional). */
+	marketId?: string;
+	/** Existing per-SSU SsuUnifiedConfig object ID (omit for first-time creation). */
+	ssuConfigId?: string;
 	senderAddress: string;
 }
 
 /**
- * Build a TX to configure standings-based access for an SSU.
- * Wraps chain-shared's buildSetSsuStandingsConfig().
+ * Result of building an SSU unified config transaction.
+ * `isCreate` indicates whether this creates a new config (caller should
+ * discover the new object ID after TX confirmation and persist it).
  */
-export function buildConfigureSsuStandings(params: ConfigureSsuStandingsParams): Transaction {
+export interface ConfigureSsuUnifiedResult {
+	tx: Transaction;
+	isCreate: boolean;
+}
+
+/**
+ * Build a TX to configure standings-based access for an SSU via ssu_unified.
+ *
+ * - First-time (no ssuConfigId): calls buildCreateSsuUnifiedConfig to create
+ *   a per-SSU config owned by the caller.
+ * - Update (has ssuConfigId): calls buildSetSsuUnifiedConfig to update the
+ *   existing config's standings thresholds.
+ */
+export function buildConfigureSsuUnified(params: ConfigureSsuUnifiedParams): ConfigureSsuUnifiedResult {
 	const addrs = getContractAddresses(params.tenant);
-	if (!addrs.ssuStandings) {
-		throw new Error(`SSU standings contract not deployed on ${params.tenant}`);
+	const ssuUnified = addrs.ssuUnified ?? addrs.ssuStandings;
+	if (!ssuUnified) {
+		throw new Error(`SSU unified contract not deployed on ${params.tenant}`);
 	}
 
-	return buildSetSsuStandingsConfig({
-		packageId: addrs.ssuStandings.packageId,
-		configObjectId: addrs.ssuStandings.configObjectId,
+	if (params.ssuConfigId) {
+		// Update existing per-SSU config
+		const tx = buildSetSsuUnifiedConfig({
+			packageId: ssuUnified.packageId,
+			ssuConfigId: params.ssuConfigId,
+			registryId: params.registryId,
+			minDeposit: params.minDeposit,
+			minWithdraw: params.minWithdraw,
+			senderAddress: params.senderAddress,
+		});
+
+		// If marketId provided, add market link in the same TX
+		if (params.marketId) {
+			tx.moveCall({
+				target: `${ssuUnified.packageId}::ssu_unified::set_market`,
+				arguments: [tx.object(params.ssuConfigId), tx.pure.id(params.marketId)],
+			});
+		}
+
+		return { tx, isCreate: false };
+	}
+
+	// First-time: create a new per-SSU config owned by the caller
+	const tx = buildCreateSsuUnifiedConfig({
+		packageId: ssuUnified.packageId,
 		ssuId: params.ssuId,
 		registryId: params.registryId,
 		minDeposit: params.minDeposit,
 		minWithdraw: params.minWithdraw,
+		marketId: params.marketId || undefined,
 		senderAddress: params.senderAddress,
 	});
+
+	return { tx, isCreate: true };
 }
 
 // ── Remove Extension Transaction ────────────────────────────────────────────

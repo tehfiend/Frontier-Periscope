@@ -71,6 +71,9 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		privateMapStandings: {
 			packageId: "0xade891ec8e8eca5f7594a16fc57ab78b8b20d62a1706218c334be8d7b59214ed",
 		},
+		ssuUnified: {
+			packageId: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
+		},
 	},
 	utopia: {
 		gateUnified: {
@@ -137,6 +140,9 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 		},
 		privateMapStandings: {
 			packageId: "0xade891ec8e8eca5f7594a16fc57ab78b8b20d62a1706218c334be8d7b59214ed",
+		},
+		ssuUnified: {
+			packageId: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
 		},
 	},
 };
