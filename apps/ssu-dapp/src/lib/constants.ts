@@ -76,6 +76,12 @@ export function getSsuMarketPreviousPackageIds(tenant?: string): string[] {
 	return getContractAddresses(t).ssuMarket?.previousOriginalPackageIds ?? [];
 }
 
+/** Get the ssu_unified package ID for the current tenant */
+export function getSsuUnifiedPackageId(tenant?: string): string | null {
+	const t = (tenant ?? getTenant()) as TenantId;
+	return getContractAddresses(t).ssuUnified?.packageId ?? null;
+}
+
 /** Get the market package ID for the current tenant (for Market<T> queries) */
 export function getMarketPackageId(tenant?: string): string | null {
 	const t = (tenant ?? getTenant()) as TenantId;

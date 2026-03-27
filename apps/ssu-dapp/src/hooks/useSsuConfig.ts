@@ -1,13 +1,11 @@
 import {
-	getSsuMarketOriginalPackageId,
-	getSsuMarketPackageId,
-	getSsuMarketPreviousPackageIds,
+	getSsuUnifiedPackageId,
 } from "@/lib/constants";
 import { useQuery } from "@tanstack/react-query";
 import {
-	discoverSsuConfigStandings,
+	discoverSsuUnifiedConfig,
 	queryMarketStandingsDetails,
-	querySsuConfigStandings,
+	querySsuUnifiedConfig,
 } from "@tehfrontier/chain-shared";
 import { useSuiClient } from "./useSuiClient";
 
@@ -20,18 +18,15 @@ export interface SsuConfigResult {
 	coinType: string | null;
 	/** StandingsRegistry object ID from the linked Market (needed for standings-gated trades). */
 	registryId: string | null;
-	/** SSU Market package ID (latest version for ssu_market calls). */
+	/** SSU Unified package ID (latest version for ssu_unified calls). */
 	packageId: string;
 	isPublic: boolean;
 }
 
 /**
- * Discover and query the SsuConfig for an SSU.
+ * Discover and query the SsuUnifiedConfig for an SSU.
  *
- * Uses the original package ID for GraphQL type filtering (type names use the
- * first-published package ID), and returns the latest package ID for moveCall targets.
- *
- * Only enabled when the SSU has a ssu_market extension.
+ * Only enabled when the SSU has a ssu_standings or ssu_market extension.
  */
 export function useSsuConfig(
 	ssuObjectId: string | null | undefined,
@@ -39,35 +34,36 @@ export function useSsuConfig(
 ) {
 	const client = useSuiClient();
 
-	const hasMarketExtension = !!extensionType && extensionType.includes("::ssu_market::");
-	const originalPkgId = getSsuMarketOriginalPackageId();
-	const latestPkgId = getSsuMarketPackageId();
+	const hasSsuExtension =
+		!!extensionType &&
+		(extensionType.includes("::ssu_market::") ||
+			extensionType.includes("::ssu_standings::"));
+	const ssuUnifiedPkg = getSsuUnifiedPackageId();
 
 	return useQuery({
-		queryKey: ["ssu-config", ssuObjectId, originalPkgId],
+		queryKey: ["ssu-config", ssuObjectId, ssuUnifiedPkg],
 		queryFn: async (): Promise<SsuConfigResult | null> => {
-			if (!ssuObjectId || !originalPkgId || !latestPkgId) return null;
+			if (!ssuObjectId || !ssuUnifiedPkg) return null;
 
-			// Step 1: Discover the SsuConfig object for this SSU
-			const ssuConfigId = await discoverSsuConfigStandings(
+			// Step 1: Discover the SsuUnifiedConfig object for this SSU
+			const ssuConfigId = await discoverSsuUnifiedConfig(
 				client,
-				originalPkgId,
+				ssuUnifiedPkg,
 				ssuObjectId,
-				getSsuMarketPreviousPackageIds(),
 			);
 			if (!ssuConfigId) return null;
 
-			// Step 2: Query the SsuConfig to get owner, delegates, marketId
-			const config = await querySsuConfigStandings(client, ssuConfigId);
+			// Step 2: Query the config to get owner, delegates, marketId, standings thresholds
+			const config = await querySsuUnifiedConfig(client, ssuConfigId);
 			if (!config) return null;
 
 			// Step 3: If Market is linked, query it for the coin type and registry ID
 			let coinType: string | null = null;
-			let registryId: string | null = null;
+			let registryId: string | null = config.registryId || null;
 			if (config.marketId) {
 				const market = await queryMarketStandingsDetails(client, config.marketId);
 				coinType = market?.coinType ?? null;
-				registryId = market?.registryId ?? null;
+				if (market?.registryId) registryId = market.registryId;
 			}
 
 			return {
@@ -77,11 +73,11 @@ export function useSsuConfig(
 				marketId: config.marketId,
 				coinType,
 				registryId,
-				packageId: latestPkgId,
+				packageId: ssuUnifiedPkg,
 				isPublic: config.isPublic,
 			};
 		},
-		enabled: !!ssuObjectId && hasMarketExtension && !!originalPkgId && !!latestPkgId,
+		enabled: !!ssuObjectId && hasSsuExtension && !!ssuUnifiedPkg,
 		staleTime: 60_000,
 	});
 }
