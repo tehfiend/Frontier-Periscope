@@ -127,9 +127,9 @@ This tagline captures both angles: "Peer into the frontier" evokes the blockchai
 
 **Features section:** Restructure from 6 cards to 8 cards in a 4-column grid (`lg:grid-cols-4`, 2 rows of 4) covering:
 1. **Custom Currencies** -- "Build your own economy. Publish tokens, manage markets, and trade on player-run exchanges." (icon: Coins)
-2. **Standings & Diplomacy** -- "Diplomacy on-chain. Standings registries control who can use your gates, turrets, and storage. Define alliances and manage access." (icon: Shield or BookUser)
-3. **Private Maps** -- "Coordinate securely. Encrypted location sharing -- only trusted allies see your structure positions." (icon: Lock)
-4. **Treasury** -- "Shared resources. Multi-user wallets for organizations. Collect toll revenue, pool funds, manage group finances." (icon: Wallet or Landmark)
+2. **Standings & Diplomacy** -- "Diplomacy on-chain. Standings registries control who can use your gates, turrets, and storage. Define alliances and manage access." (icon: BookUser -- matches sidebar)
+3. **Private Maps** -- "Coordinate securely. Encrypted location sharing -- only trusted allies see your structure positions." (icon: Lock -- matches sidebar)
+4. **Treasury** -- "Shared resources. Multi-user wallets for organizations. Collect toll revenue, pool funds, manage group finances." (icon: Landmark -- matches sidebar)
 5. **Sonar** -- "Real-time intel. On-chain and game log monitoring with watchlists and ping alerts." (icon: Radio/signal)
 6. **Structures** -- "Manage your fleet. Fuel tracking, extension deployment, and location resolution." (icon: Package/box)
 7. **Star Map** -- "Navigate the frontier. 3D solar system visualization with jump route planning." (icon: MapPin)
@@ -188,7 +188,7 @@ This tagline captures both angles: "Peer into the frontier" evokes the blockchai
 
    Peer into the frontier -- organizational toolkit for [EVE Frontier](https://evefrontier.com).
    ```
-   The hackathon attribution and "vibe coded" detail move into the new Philosophy section (step 3 below).
+   The hackathon attribution and "vibe coded" detail move into the new Philosophy section (step 4 below).
 
 2. **Add a one-paragraph pitch** after the tagline and before Getting Started. 3-4 sentences covering the key value props: custom currencies and player-run markets, standings-based infrastructure access, encrypted coordination, shared treasury, real-time monitoring, and 3D navigation. This replaces the current "Currently targeting Cycle 5" line (L5), which can move to a parenthetical in Getting Started or a note in the Development section.
 
@@ -235,9 +235,11 @@ This tagline captures both angles: "Peer into the frontier" evokes the blockchai
    - Increase the features section container from `max-w-5xl` to `max-w-6xl` to give 4-column cards adequate width (at `max-w-5xl` with 4 columns and `gap-6`, each card would be ~232px wide which feels cramped; `max-w-6xl` gives ~280px per card)
    - Reorder cards: Custom Currencies, Standings & Diplomacy, Private Maps, Treasury, Sonar, Structures, Star Map, Killmails
    - Rewrite each card's `<h3>` and `<p>` with benefit-oriented copy
-   - Add inline SVG icons for new cards. The existing cards use inline SVGs sourced from the Lucide icon set (24x24 viewBox, stroke-based). New cards need matching SVGs:
-     - Standings: use the `shield` or `book-user` Lucide icon SVG
-     - Treasury: use the `landmark` Lucide icon SVG (matching the sidebar icon)
+   - Add inline SVG icons for new cards. The existing cards use inline SVGs sourced from the Lucide icon set (24x24 viewBox, stroke-based). New cards need matching SVGs. Use the same icons as the app sidebar (`Sidebar.tsx` L46-82) for consistency:
+     - Custom Currencies: use the `coins` Lucide icon SVG (sidebar uses `Coins` for Markets)
+     - Standings: use the `book-user` Lucide icon SVG (sidebar uses `BookUser` for Standings)
+     - Treasury: use the `landmark` Lucide icon SVG (sidebar uses `Landmark` for Treasury)
+   - Existing cards that are kept can retain their current SVGs, but the Market card (renamed to Custom Currencies) should switch from the current diamond/gem icon to the `coins` icon for consistency with the sidebar
    - Add a screenshot placeholder comment inside each feature card, between the icon div and the `<h3>`:
      ```html
      <!-- Screenshot: add <img src="..." alt="..." class="mb-3 rounded" /> here -->
