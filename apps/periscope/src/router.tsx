@@ -22,6 +22,9 @@ const LazyPrivateMaps = lazy(() =>
 const LazyStandings = lazy(() =>
 	import("@/views/Standings").then((m) => ({ default: m.Standings })),
 );
+const LazyDashboard = lazy(() =>
+	import("@/views/Dashboard").then((m) => ({ default: m.Dashboard })),
+);
 
 function LoadingFallback() {
 	return (
@@ -87,6 +90,14 @@ function StandingsPage() {
 	);
 }
 
+function DashboardPage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyDashboard />
+		</Suspense>
+	);
+}
+
 const rootRoute = createRootRoute({
 	component: Layout,
 });
@@ -94,9 +105,7 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/",
-	beforeLoad: () => {
-		throw redirect({ to: "/sonar" });
-	},
+	component: DashboardPage,
 });
 
 const mapRoute = createRoute({
