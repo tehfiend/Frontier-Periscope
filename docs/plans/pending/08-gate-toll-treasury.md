@@ -89,26 +89,25 @@ A new Move contract (`gate_toll_custom`) that extends the gate-standings pattern
   - `tollCoinType` -- stored implicitly via the generic type parameter `T`
   - `tollRecipient` (address) -- where toll Coin<T> is sent (could be a treasury object)
   - `permitDurationMs` (u64)
-- Generic function `request_access<T>(config, gate_id, coin: Coin<T>, character, clock)`:
-  1. Look up gate config from dynamic field
+- `request_access<T>(config, gate_id, coin: Coin<T>, character, clock)` -- toll-paying path:
+  1. Look up gate config from phantom-typed dynamic field `GateKey<T>`
   2. Check character's standing in the registry
-  3. If standing >= freeAccess, issue permit (no toll)
-  4. If standing >= minAccess, verify `coin.value() >= tollAmount`, transfer coin to `tollRecipient`, issue permit
-  5. If standing < minAccess, abort
+  3. If standing >= minAccess but < freeAccess, verify `coin.value() >= tollAmount`, transfer coin to `tollRecipient`, issue permit
+  4. If standing < minAccess, abort
+- `request_free_access<T>(config, gate_id, character, clock)` -- free-access path (no coin needed):
+  1. Look up gate config, verify standing >= freeAccess, issue permit
+  2. The client-side TX builder picks which function to call based on the traveler's known standing
 - Admin functions: `set_gate_config<T>`, `remove_gate_config`, `add_admin`, `remove_admin`
 
-**Bytecode patching approach:**
-Following the proven pattern from `turret-factory.ts` and `token-factory-standings.ts`, the contract is pre-compiled with sentinel values and patched in-browser. However, because the coin type `T` is a generic type parameter (not a constant), it cannot be patched via `update_constants`. Instead:
-- The contract is compiled against a placeholder dependency for the token package
-- `update_identifiers` patches the module name
-- `update_constants` patches sentinels for admin config values
-- The coin type dependency is updated via the `dependencies` array in `tx.publish()`
+**Generic type approach:**
+Unlike the turret-factory or token-factory patterns (which use bytecode patching), this contract uses Sui Move generics natively. The contract is published once with generic `<T>` type parameters. At call time, the TX builder passes `typeArguments: [coinType]` to specify which Coin<T> type is used -- the same pattern used by `market.ts`, `exchange.ts`, and `ssu-unified.ts` throughout the codebase. No bytecode patching is needed for new currencies.
 
-**Alternative:** If bytecode patching for generic types proves infeasible, the contract could be pre-compiled per-currency (one publish per unique Coin<T>) or use a fully generic design where the coin type is specified at config time rather than compile time.
+**Dynamic field design note:** The per-gate dynamic field key must incorporate the coin type to allow different currency configs per gate. Using `GateKey { gate_id: ID }` alone (without T) would mean a gate can only ever have one toll currency. Two approaches: (a) use a phantom-typed key struct `GateKey<phantom T> { gate_id: ID }` so each (gate, coinType) pair is a distinct dynamic field, or (b) include the coin type as a string in the key. Approach (a) is more idiomatic in Sui Move.
 
 **TX builders** in a new `packages/chain-shared/src/gate-toll-custom.ts`:
-- `buildSetGateTollCustomConfig<T>()` -- configure a gate with custom currency toll
-- `buildRequestGateTollCustomAccess<T>()` -- traveler pays toll in Coin<T>
+- `buildSetGateTollCustomConfig()` -- configure a gate with custom currency toll (takes `coinType` param, passes as `typeArguments`)
+- `buildRequestGateTollCustomAccess()` -- traveler pays toll in Coin<T> (takes `coinType` + `coinObjectIds`)
+- `buildRequestGateTollCustomFreeAccess()` -- free-access path (takes `coinType` for dynamic field lookup)
 - `queryGateTollCustomConfig()` -- read per-gate config
 
 **UI changes** in `StandingsExtensionPanel.tsx`:
@@ -126,7 +125,7 @@ A new Move contract (`treasury`) implementing a shared multi-user wallet:
   - `owner` (address) -- creator, can manage members and withdraw
   - `admins` (vector<address>) -- can deposit and withdraw
   - `name` (vector<u8>) -- display name
-  - Dynamic fields for coin balances: keyed by coin type string, storing `Coin<T>` objects
+  - Dynamic fields for coin balances: keyed by phantom-typed struct `BalanceKey<phantom T> {}`, storing `Balance<T>` (see Open Question 3; `Balance<T>` is the recommended approach)
 - Functions:
   - `create_treasury(name)` -- creates shared Treasury, sender becomes owner
   - `add_admin(treasury, admin_address)` -- owner only
@@ -138,13 +137,14 @@ A new Move contract (`treasury`) implementing a shared multi-user wallet:
 
 **TX builders** in a new `packages/chain-shared/src/treasury.ts`:
 - `buildCreateTreasury()`, `buildAddTreasuryAdmin()`, `buildRemoveTreasuryAdmin()`
-- `buildTreasuryDeposit<T>()`, `buildTreasuryWithdraw<T>()`
+- `buildTreasuryDeposit()` (takes `coinType` param), `buildTreasuryWithdraw()` (takes `coinType` param)
 - `queryTreasuryDetails()`, `queryTreasuryBalances()`
 
 **Integration with gate tolls:**
-- When configuring a gate toll, the `tollRecipient` can be set to a Treasury object ID
-- The gate toll extension's `request_access` function transfers the toll Coin<T> to the recipient address, which can be the treasury
-- However, direct transfer to a shared object requires the treasury contract to accept incoming coins -- this is handled by having the toll payment go to the treasury's address, and an admin later sweeps it in, OR by composing the toll payment + treasury deposit in a single PTB (programmable transaction block)
+- The toll payment happens within the **traveler's** PTB (programmable transaction block). The traveler calls the gate extension, which validates standing and collects the toll.
+- For treasury integration, the gate extension's `request_access<T>` should return the toll `Coin<T>` as a transaction result rather than transferring it internally. The client-side PTB then composes: (1) split traveler's coins -> (2) call `request_access<T>` which takes the toll coin and issues a permit -> (3) call `treasury::deposit<T>` with the toll coin.
+- Alternatively, the gate extension can transfer directly to the `tollRecipient` address. If the recipient is a treasury shared object, Sui does not support direct `transfer::public_transfer` to a shared object -- funds must go through `treasury::deposit<T>`. This means the PTB composition approach is required for auto-deposit.
+- For simpler setups, the `tollRecipient` can be a regular address (e.g., the gate owner), and the owner manually deposits into a treasury later.
 
 **UI:** New "Treasury" view (or section within the Wallet view):
 - Create treasury, name it, add/remove admins
@@ -164,7 +164,7 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Gate toll custom currency approach | New extension contract (not world contract change) | World contracts have no built-in toll mechanism. Gate tolls are entirely extension-defined. A new extension contract with generic Coin<T> support is the correct approach. |
-| Bytecode patching vs. pre-compiled per-currency | Explore bytecode patching first, fall back to per-currency publish | Bytecode patching is the proven pattern in this codebase (token-factory, turret-factory). Generic type parameters add complexity but may be achievable via dependency swapping. |
+| Generic contract vs. per-currency publish | Fully generic contract with `<T>` type parameters | The existing `market.ts`, `exchange.ts`, and `ssu-unified.ts` demonstrate that Sui Move generics with `Coin<T>` work well. TX builders pass `typeArguments: [coinType]`. One deployment serves all currencies. |
 | Treasury ACL model | Owner + admins (same as StandingsRegistry) | Consistent with existing patterns. Simple and proven. Multi-sig adds unnecessary complexity for the current use case. |
 | Treasury coin storage | Dynamic fields keyed by coin type | Supports multiple currencies in a single treasury. Same pattern as Market<T> using typed dynamic fields. |
 | Toll-to-treasury integration | PTB composition (toll payment + treasury deposit in one TX) | Single atomic transaction. No intermediate sweep step. Requires the gate extension to return the toll coin as a TX result that can be fed into treasury deposit. |
@@ -184,14 +184,14 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
    - Events: `DepositEvent { treasury_id, depositor, coin_type, amount }`, `WithdrawEvent { treasury_id, withdrawer, coin_type, amount }`
    - Access control: `deposit` is open to anyone (gate extensions can deposit toll revenue); `withdraw` requires owner or admin
 
-2. Compile the contract via `sui move build --build-env testnet`
+2. Compile and publish the contract via `sui move build --build-env testnet` and `sui client publish`. This is a manual step outside the Periscope codebase (same as all other contract deployments in this project). The resulting package ID is added to `config.ts`.
 
 3. Create `packages/chain-shared/src/treasury.ts`:
    - `buildCreateTreasury(params: { packageId, name, senderAddress })` -> Transaction
    - `buildAddTreasuryAdmin(params: { packageId, treasuryId, adminAddress, senderAddress })` -> Transaction
    - `buildRemoveTreasuryAdmin(params: { packageId, treasuryId, adminAddress, senderAddress })` -> Transaction
-   - `buildTreasuryDeposit<T>(params: { packageId, treasuryId, coinType, coinObjectIds, amount, senderAddress })` -> Transaction
-   - `buildTreasuryWithdraw<T>(params: { packageId, treasuryId, coinType, amount, senderAddress })` -> Transaction
+   - `buildTreasuryDeposit(params: { packageId, treasuryId, coinType, coinObjectIds, amount, senderAddress })` -> Transaction (uses `typeArguments: [coinType]` on the move call, same pattern as `buildMint` in `market.ts`)
+   - `buildTreasuryWithdraw(params: { packageId, treasuryId, coinType, amount, senderAddress })` -> Transaction
    - `queryTreasuryDetails(client, treasuryId)` -> `TreasuryInfo | null`
    - `queryTreasuryBalances(client, treasuryId)` -> `TreasuryBalance[]`
 
@@ -199,8 +199,9 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
    - `TreasuryInfo { objectId, owner, admins, name }`
    - `TreasuryBalance { coinType, amount: bigint }`
 
-5. Add contract addresses to `packages/chain-shared/src/config.ts`:
-   - `treasury: { packageId: string }` in `ContractAddresses` interface (line 289)
+5. Add contract addresses:
+   - Add `treasury?: { packageId: string }` to `ContractAddresses` interface in `packages/chain-shared/src/types.ts` (line 289)
+   - Add `treasury: { packageId: "" }` placeholder entries in `packages/chain-shared/src/config.ts` for both tenants (populated after contract publish)
 
 6. Export from `packages/chain-shared/src/index.ts`
 
@@ -218,11 +219,11 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
 
 1. Design the `gate_toll_custom` Move module:
    - Shared config: `GateTollCustomConfig { id: UID, owner: address, admins: vector<address> }`
-   - Per-gate dynamic fields: `GateKey { gate_id: ID }` -> `GateConfig<T> { registry_id: ID, min_access: u8, free_access: u8, toll_amount: u64, toll_recipient: address, permit_duration_ms: u64 }`
-   - Note: The `<T>` generic on `GateConfig` means each gate's config is tied to a specific Coin<T> type. This is stored in the dynamic field's type, not as a data field.
+   - Per-gate dynamic fields: `GateKey<phantom T> { gate_id: ID }` -> `GateConfig { registry_id: ID, min_access: u8, free_access: u8, toll_amount: u64, toll_recipient: address, permit_duration_ms: u64 }`
+   - Note: The phantom type parameter on `GateKey` ties each gate config to a specific Coin<T> type. This means a single gate could have configs for multiple currencies (each as a separate dynamic field). The config value struct itself does not need `<T>` -- the coin type is encoded in the key.
    - `set_gate_config<T>(config, gate_id, registry_id, min_access, free_access, toll_amount, toll_recipient, permit_duration_ms)` -- admin only
-   - `request_access<T>(config, gate_id, character, coin: Coin<T>, clock)` -- checks standings, collects toll, issues permit
-   - `request_free_access(config, gate_id, character, clock)` -- for free-access standing travelers (no coin needed)
+   - `request_access<T>(config, gate_id, character, coin: Coin<T>, clock)` -- toll-paying path: checks standings, collects toll, issues permit
+   - `request_free_access<T>(config, gate_id, character, clock)` -- free-access path: verifies standing >= freeAccess, issues permit without toll. Needs `<T>` to look up the correct phantom-typed dynamic field for this gate's config.
 
 2. Handle the world contract interaction:
    - The extension must call `world::gate::issue_jump_permit()` or use the existing gate world hooks
@@ -233,12 +234,15 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
 
 4. Create `packages/chain-shared/src/gate-toll-custom.ts`:
    - `buildSetGateTollCustomConfig(params: { packageId, configObjectId, gateId, registryId, coinType, minAccess, freeAccess, tollAmount, tollRecipient, permitDurationMs, senderAddress })` -> Transaction
-   - `buildRequestGateTollCustomAccess(params: { packageId, configObjectId, gateId, coinType, coinObjectIds, tollAmount, characterId, senderAddress })` -> Transaction
-   - `queryGateTollCustomConfig(client, configObjectId, gateId)` -> GateTollCustomConfigInfo | null
+   - `buildRequestGateTollCustomAccess(params: { packageId, configObjectId, gateId, coinType, coinObjectIds, tollAmount, characterId, senderAddress })` -> Transaction (toll-paying path)
+   - `buildRequestGateTollCustomFreeAccess(params: { packageId, configObjectId, gateId, coinType, characterId, senderAddress })` -> Transaction (free-access path)
+   - `queryGateTollCustomConfig(client, configObjectId, gateId, coinType?)` -> GateTollCustomConfigInfo | null
 
 5. Add types: `GateTollCustomConfigInfo` to `types.ts`
 
-6. Add contract addresses to `config.ts`: `gateTollCustom: { packageId, configObjectId }` in `ContractAddresses`
+6. Add contract addresses:
+   - Add `gateTollCustom?: { packageId: string; configObjectId: string }` to `ContractAddresses` in `types.ts`
+   - Add placeholder entries in `config.ts` for both tenants
 
 **Files:**
 | File | Action |
@@ -264,8 +268,9 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
    - Use the same DataGrid component for balance display
 
 2. Add DB types for treasury caching in `apps/periscope/src/db/types.ts`:
-   - `TreasuryRecord extends SyncMeta { id, name, owner, admins, balances }`
-   - Add `treasuries` table to Dexie schema in `db/index.ts`
+   - `TreasuryRecord extends SyncMeta { id, name, owner, admins: string[], balances: TreasuryBalanceEntry[] }`
+   - `TreasuryBalanceEntry { coinType, symbol, amount: string }` (amount as string for IndexedDB bigint compat)
+   - Add `treasuries` table to Dexie schema in `db/index.ts` as version 32: `treasuries: "id, owner"`
 
 3. Add route in `apps/periscope/src/router.tsx`: `/treasury`
 
@@ -399,10 +404,10 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
    - **Recommendation:** Option A. The existing gate-standings extension already demonstrates direct integration with the world contract gate system. The new extension should follow the same pattern. This requires research into the exact API (the `gate_standings` contract's on-chain source is the reference).
 
 5. **Where should the Treasury view live in the app navigation?**
-   - **Option A: Standalone view at /treasury** -- Top-level nav item alongside Market, Structures, etc. Pros: Clear, discoverable. Cons: Adds another nav item.
-   - **Option B: Sub-section of Wallet view** -- Treasury management as a tab within the Wallet view. Pros: Groups financial features together. Cons: Wallet may not exist as a dedicated view currently.
-   - **Option C: Sub-section of Market view** -- Since treasuries hold market currencies. Pros: Contextually related. Cons: Market view is already complex.
-   - **Recommendation:** Option A (standalone view). Treasury management is a distinct feature with its own admin/access control concerns. Grouping it under Market or Wallet would make the navigation less clear.
+   - **Option A: Standalone view at /treasury** -- Top-level nav item alongside Market, Structures, etc. Pros: Clear, discoverable. Cons: Adds another nav item to an already populated sidebar.
+   - **Option B: Sub-section of Wallet view** -- Treasury management as a tab within the existing Wallet view (`apps/periscope/src/views/Wallet.tsx`, lazy-loaded in `router.tsx` line 17, nav entry at `Sidebar.tsx` line 68). Pros: Groups financial features together, Wallet already exists. Cons: Wallet view would need restructuring to support tabs.
+   - **Option C: Sub-section of Market view** -- Since treasuries hold market currencies. Pros: Contextually related. Cons: Market view (`views/Market.tsx`) is already complex with token creation, order books, and listings.
+   - **Recommendation:** Option A (standalone view). Treasury management has its own admin/access control concerns distinct from personal wallet or market trading. A dedicated route keeps navigation clear.
 
 ## Deferred
 
@@ -412,3 +417,9 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
 - **Treasury transaction history UI** -- Displaying deposit/withdraw history from on-chain events. Requires indexing treasury events in sonar. Deferred to after the base treasury feature is stable.
 - **Cross-tenant treasury support** -- Treasury objects are per-network (testnet). Cross-chain treasury management is out of scope.
 - **Existing SUI toll migration** -- Migrating gates currently using SUI tolls to the new custom currency system. Not required -- the existing gate-standings extension continues to work for SUI-only tolls. Users can switch when ready.
+
+## Cross-Plan Dependencies
+
+- **Plan 04 (manifest expansion):** The CurrencySelector component (Phase 4) reads from `db.currencies`, which already exists (Dexie v12+). Plan 04 adds market discovery caching that would improve currency data freshness, but is not a hard blocker -- the Market view already populates `db.currencies` via `discoverMarkets()`.
+- **Plan 06 (extension fixes):** Plan 06 defers custom toll currency (line 372). This plan supersedes that deferral. No code conflicts -- Plan 06 only touches the existing SUI toll help text (which this plan also modifies in Phase 4, but the change is compatible).
+- **Plan 07 (dashboard landing):** No dependency. Treasury could appear as a dashboard card in a future iteration.
