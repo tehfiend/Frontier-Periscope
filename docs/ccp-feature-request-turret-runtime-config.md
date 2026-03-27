@@ -2,6 +2,7 @@
 
 **Submitted by:** TehFrontier Periscope
 **Date:** 2026-03-26
+**Status:** Confirmed planned by CCP (post-hackathon). CCP Legolas confirmed shared object support for turrets is planned after the hackathon (Discord, 2026-03-26).
 
 ## Summary
 
