@@ -71,3 +71,9 @@
 - **File:** docs/plans/pending/09-branding-refresh.md
 - **Passes:** 4 (3 with changes, pass 4 NO_CHANGES)
 - **Result:** pending -- 2-phase plan refreshing README and landing page messaging. Reframes from "intel and monitoring tool" to "organizational toolkit" positioning. Reorders features to lead with custom currencies, standings/diplomacy, private maps, and treasury. Rewrites feature descriptions to be benefit-oriented. Adds Standings and Treasury cards to landing page (8 cards, up from 6). 5 open questions remain (tagline wording, treasury pre-implementation inclusion, grid layout, screenshots, privacy section restructuring).
+
+## 2026-03-27 -- gate-toll-treasury (update)
+- **Action:** UPDATE
+- **File:** plans/active/08-gate-toll-treasury.md
+- **Passes:** 3
+- **Result:** active -- resolved 5 open questions, added coin creation UI migration from Market to Treasury
