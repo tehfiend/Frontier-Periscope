@@ -3,9 +3,9 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<meta name="description" content="Intel and monitoring tool for EVE Frontier -- real-time sonar, structure management, star map, and more." />
+		<meta name="description" content="Organizational toolkit for EVE Frontier -- custom currencies, standings-based diplomacy, encrypted maps, and real-time monitoring." />
 		<meta name="theme-color" content="#09090b" />
-		<title>Frontier Periscope</title>
+		<title>Frontier Periscope -- Organizational Toolkit for EVE Frontier</title>
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="stylesheet" href="/src/styles.css" />
 	</head>
@@ -23,9 +23,9 @@
 					Frontier <span class="text-cyan-400">Periscope</span>
 				</h1>
 				<p class="max-w-lg text-lg text-zinc-400">
-					Intel and monitoring tool for
-					<a href="https://evefrontier.com" class="text-zinc-300 underline decoration-zinc-700 hover:text-cyan-400 hover:decoration-cyan-400/50 transition-colors">EVE Frontier</a>.
-					Real-time event tracking, structure management, and 3D star map -- all running locally in your browser.
+					Peer into the frontier. Custom currencies, on-chain diplomacy, encrypted coordination, shared treasury, and real-time intel for
+					<a href="https://evefrontier.com" class="text-zinc-300 underline decoration-zinc-700 hover:text-cyan-400 hover:decoration-cyan-400/50 transition-colors">EVE Frontier</a>
+					-- all running locally in your browser.
 				</p>
 			</div>
 
@@ -57,50 +57,80 @@
 		</section>
 
 		<!-- Features -->
-		<section class="mx-auto max-w-5xl px-6 py-24">
+		<section class="mx-auto max-w-6xl px-6 py-24">
 			<h2 class="mb-12 text-center text-3xl font-bold">Features</h2>
-			<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+			<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+				<!-- Custom Currencies -->
 				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
 					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
-						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>
 					</div>
-					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Sonar</h3>
-					<p class="text-xs text-zinc-500">Real-time on-chain and game log monitoring with configurable watchlists and ping alerts.</p>
+					<!-- Screenshot: add <img src="..." alt="..." class="mb-3 rounded" /> here -->
+					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Custom Currencies</h3>
+					<p class="text-xs text-zinc-500">Build your own economy. Publish tokens, manage markets, and trade on player-run exchanges.</p>
 				</div>
+				<!-- Standings & Diplomacy -->
 				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
 					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
-						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 13a3 3 0 1 0-6 0"/><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><circle cx="12" cy="8" r="2"/></svg>
 					</div>
-					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Structures</h3>
-					<p class="text-xs text-zinc-500">Manage owned deployables with fuel tracking, extension deployment, and L-point resolution.</p>
+					<!-- Screenshot: add <img src="..." alt="..." class="mb-3 rounded" /> here -->
+					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Standings &amp; Diplomacy</h3>
+					<p class="text-xs text-zinc-500">Diplomacy on-chain. Standings registries control who can use your gates, turrets, and storage. Define alliances and manage access.</p>
 				</div>
-				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
-					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
-						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
-					</div>
-					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Star Map</h3>
-					<p class="text-xs text-zinc-500">3D WebGL solar system visualization with jump route planning and system search.</p>
-				</div>
+				<!-- Private Maps -->
 				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
 					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
 					</div>
+					<!-- Screenshot: add <img src="..." alt="..." class="mb-3 rounded" /> here -->
 					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Private Maps</h3>
-					<p class="text-xs text-zinc-500">Encrypted location sharing via sealed-box cryptography with standings-based access control.</p>
+					<p class="text-xs text-zinc-500">Coordinate securely. Encrypted location sharing -- only trusted allies see your structure positions.</p>
 				</div>
+				<!-- Treasury -->
 				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
 					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
-						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg>
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
 					</div>
-					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Market</h3>
-					<p class="text-xs text-zinc-500">Create currencies, manage markets, and trade through the in-game governance market system.</p>
+					<!-- Screenshot: add <img src="..." alt="..." class="mb-3 rounded" /> here -->
+					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Treasury</h3>
+					<p class="text-xs text-zinc-500">Shared resources. Multi-user wallets for organizations. Collect toll revenue, pool funds, manage group finances.</p>
 				</div>
+				<!-- Sonar -->
+				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
+					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
+					</div>
+					<!-- Screenshot: add <img src="..." alt="..." class="mb-3 rounded" /> here -->
+					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Sonar</h3>
+					<p class="text-xs text-zinc-500">Real-time intel. On-chain and game log monitoring with watchlists and ping alerts.</p>
+				</div>
+				<!-- Structures -->
+				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
+					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+					</div>
+					<!-- Screenshot: add <img src="..." alt="..." class="mb-3 rounded" /> here -->
+					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Structures</h3>
+					<p class="text-xs text-zinc-500">Manage your fleet. Fuel tracking, extension deployment, and location resolution.</p>
+				</div>
+				<!-- Star Map -->
+				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
+					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+					</div>
+					<!-- Screenshot: add <img src="..." alt="..." class="mb-3 rounded" /> here -->
+					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Star Map</h3>
+					<p class="text-xs text-zinc-500">Navigate the frontier. 3D solar system visualization with jump route planning.</p>
+				</div>
+				<!-- Killmails -->
 				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
 					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
 					</div>
+					<!-- Screenshot: add <img src="..." alt="..." class="mb-3 rounded" /> here -->
 					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Killmails</h3>
-					<p class="text-xs text-zinc-500">Combat event tracking, threat assessment, and kill feed monitoring across the cluster.</p>
+					<p class="text-xs text-zinc-500">Know the threats. Combat event tracking and kill feed across the cluster.</p>
 				</div>
 			</div>
 		</section>
