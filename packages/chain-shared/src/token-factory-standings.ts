@@ -18,27 +18,7 @@ import { bcs } from "@mysten/bcs";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { Transaction } from "@mysten/sui/transactions";
 import { getCoinSupply, listCoinsGql } from "./graphql-queries";
-
-// WASM module -- needs async init before use
-let wasmReady: Promise<void> | null = null;
-let wasmMod: typeof import("@mysten/move-bytecode-template") | null = null;
-
-async function ensureWasmReady(): Promise<
-	typeof import("@mysten/move-bytecode-template")
-> {
-	if (wasmMod) return wasmMod;
-	if (!wasmReady) {
-		wasmReady = (async () => {
-			const mod = await import("@mysten/move-bytecode-template");
-			if (typeof mod.default === "function") {
-				await mod.default();
-			}
-			wasmMod = mod;
-		})();
-	}
-	await wasmReady;
-	return wasmMod!;
-}
+import { ensureWasmReady } from "./wasm-init";
 
 /**
  * Pre-compiled token_template_standings bytecodes (base64).
