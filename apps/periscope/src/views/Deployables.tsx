@@ -406,6 +406,8 @@ export function Deployables() {
 
 	// ── Save Parent ──────────────────────────────────────────────────────────
 	const handleSaveParent = useCallback(async (row: StructureRow, parentId: string | undefined) => {
+		// Prevent persisting self-referential parentId (nodes display themselves via UI logic)
+		if (parentId && (parentId === row.objectId || parentId === row.id)) return;
 		const now = new Date().toISOString();
 		if (row.source === "deployables") {
 			await db.deployables.update(row.id, { parentId, updatedAt: now });
@@ -945,7 +947,6 @@ export function Deployables() {
 							value={r.notes ?? ""}
 							onSave={(v) => handleSaveNotes(r, v)}
 							className="text-xs text-zinc-500"
-							placeholder=""
 						/>
 					);
 				},

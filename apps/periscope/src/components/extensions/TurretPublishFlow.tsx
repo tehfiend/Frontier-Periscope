@@ -58,6 +58,7 @@ function WeightSlider({
 }) {
 	return (
 		<div>
+			{/* biome-ignore lint/a11y/noLabelWithoutControl: input is adjacent, label text describes it */}
 			<label className="mb-1.5 block text-xs font-medium text-zinc-400">
 				{label}: <span className="font-mono text-zinc-200">{value}</span>
 			</label>
@@ -163,7 +164,12 @@ export function TurretPublishFlow({
 				include: { effects: true, objectTypes: true },
 			});
 			const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
-			const changedObjects = fullTx?.effects?.changedObjects ?? [];
+			if (!fullTx) {
+				throw new Error(
+					`Transaction not found after waiting. Check explorer for digest: ${publishDigest}`,
+				);
+			}
+			const changedObjects = fullTx.effects?.changedObjects ?? [];
 			const objectTypesMap = fullTx?.objectTypes ?? {};
 
 			const objectChanges = changedObjects.map(
@@ -339,6 +345,7 @@ export function TurretPublishFlow({
 					/>
 
 					<div>
+						{/* biome-ignore lint/a11y/noLabelWithoutControl: label describes the select group below */}
 						<label className="mb-1.5 block text-xs font-medium text-zinc-400">
 							Effective Ship Classes
 						</label>

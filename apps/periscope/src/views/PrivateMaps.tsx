@@ -31,6 +31,7 @@ import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useStoredEncryptionKey } from "@/hooks/useStoredEncryptionKey";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import type { Transaction } from "@mysten/sui/transactions";
 import {
 	type TenantId,
 	buildAddLocation,
@@ -954,7 +955,7 @@ function CreateMapDialog({
 				const mapKeyPair = generateEphemeralX25519Keypair();
 				const selfInviteEncrypted = sealForRecipient(mapKeyPair.secretKey, walletKeyPair.publicKey);
 
-				let tx;
+				let tx: Transaction;
 				if (packageIdV2) {
 					tx = buildCreateEncryptedMap({
 						packageId: packageIdV2,

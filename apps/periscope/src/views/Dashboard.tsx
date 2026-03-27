@@ -11,7 +11,7 @@ import {
 	Coins,
 	Lock,
 	type LucideIcon,
-	Map,
+	Map as MapIcon,
 	Package,
 	Radio,
 	Telescope,
@@ -24,7 +24,7 @@ import type { ReactNode } from "react";
 const quickActions = [
 	{ to: "/sonar", icon: Radio, label: "Sonar" },
 	{ to: "/structures", icon: Package, label: "Structures" },
-	{ to: "/map", icon: Map, label: "Star Map" },
+	{ to: "/map", icon: MapIcon, label: "Star Map" },
 	{ to: "/private-maps", icon: Lock, label: "Private Maps" },
 	{ to: "/standings", icon: BookUser, label: "Standings" },
 	{ to: "/markets", icon: Coins, label: "Markets" },
