@@ -3,6 +3,8 @@ import { useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	AlertCircle,
+	Archive,
+	ArchiveRestore,
 	BookUser,
 	Filter,
 	Globe,
@@ -34,6 +36,7 @@ import {
 } from "@/hooks/useContacts";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import {
+	useArchiveRegistry,
 	useRegistryStandings,
 	useSubscribeRegistry,
 	useSubscribedRegistries,
@@ -374,6 +377,7 @@ function RegistriesTab({
 	const subscribed = useSubscribedRegistries(tenant);
 	const subscribe = useSubscribeRegistry();
 	const unsubscribe = useUnsubscribeRegistry();
+	const archiveRegistry = useArchiveRegistry();
 	const syncStandings = useSyncRegistryStandings();
 
 	const cachedRegistries = useLiveQuery(() => db.manifestRegistries.toArray()) ?? [];
@@ -383,9 +387,23 @@ function RegistriesTab({
 	);
 	const [isLoading, setIsLoading] = useState(false);
 	const [selectedRegistryId, setSelectedRegistryId] = useState<string | null>(null);
+	const [showArchived, setShowArchived] = useState(false);
 
 	const addresses = getContractAddresses(tenant as TenantId);
 	const packageId = addresses.standingsRegistry?.packageId;
+
+	// Build a set of archived subscription IDs for filtering
+	const archivedSubIds = useMemo(
+		() => new Set(subscribed.filter((s) => s._archived).map((s) => s.id)),
+		[subscribed],
+	);
+
+	// Filter allRegistries to hide archived subscriptions unless toggle is on
+	const visibleRegistries = useMemo(
+		() =>
+			showArchived ? allRegistries : allRegistries.filter((r) => !archivedSubIds.has(r.objectId)),
+		[allRegistries, archivedSubIds, showArchived],
+	);
 
 	// Refresh registries from chain into manifest cache
 	const handleBrowse = useCallback(async () => {
@@ -429,11 +447,25 @@ function RegistriesTab({
 		<div className="space-y-4">
 			{/* Actions */}
 			<div className="flex items-center justify-between">
-				<span className="text-xs text-zinc-600">
-					{allRegistries.length} registr{allRegistries.length !== 1 ? "ies" : "y"} found
-					{" -- "}
-					{subscribed.length} subscribed
-				</span>
+				<div className="flex items-center gap-3">
+					<span className="text-xs text-zinc-600">
+						{allRegistries.length} registr{allRegistries.length !== 1 ? "ies" : "y"} found
+						{" -- "}
+						{subscribed.filter((s) => !s._archived).length} subscribed
+					</span>
+					<button
+						type="button"
+						onClick={() => setShowArchived(!showArchived)}
+						title={showArchived ? "Hide archived" : "Show archived"}
+						className={`rounded-lg p-1.5 text-xs transition-colors ${
+							showArchived
+								? "bg-amber-900/30 text-amber-400"
+								: "text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
+						}`}
+					>
+						<Archive size={14} />
+					</button>
+				</div>
 				<button
 					type="button"
 					onClick={handleBrowse}
@@ -452,7 +484,7 @@ function RegistriesTab({
 			)}
 
 			{/* Registry List */}
-			{allRegistries.length === 0 && packageId ? (
+			{visibleRegistries.length === 0 && packageId ? (
 				<EmptyState
 					icon={<Globe size={48} className="text-zinc-700" />}
 					title="No registries found"
@@ -464,8 +496,9 @@ function RegistriesTab({
 				/>
 			) : (
 				<div className="space-y-2">
-					{allRegistries.map((registry) => {
+					{visibleRegistries.map((registry) => {
 						const isSubscribed = subscribedIds.has(registry.objectId);
+						const isArchived = archivedSubIds.has(registry.objectId);
 						const isSelected = selectedRegistryId === registry.objectId;
 						const creatorName = creatorNameMap.get(registry.owner);
 
@@ -473,7 +506,11 @@ function RegistriesTab({
 							<div
 								key={registry.objectId}
 								className={`rounded-lg border p-4 transition-colors ${
-									isSelected ? "border-cyan-500/50 bg-cyan-500/5" : "border-zinc-800 bg-zinc-900/50"
+									isArchived
+										? "border-zinc-800/50 bg-zinc-900/30 opacity-60"
+										: isSelected
+											? "border-cyan-500/50 bg-cyan-500/5"
+											: "border-zinc-800 bg-zinc-900/50"
 								}`}
 							>
 								<div className="flex items-center justify-between">
@@ -487,6 +524,11 @@ function RegistriesTab({
 											<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400">
 												{registry.ticker}
 											</span>
+											{isArchived && (
+												<span className="rounded bg-amber-900/30 px-1.5 py-0.5 text-[10px] text-amber-400">
+													archived
+												</span>
+											)}
 										</div>
 										<div className="mt-1 flex items-center gap-3 text-xs text-zinc-600">
 											<span>
@@ -511,13 +553,23 @@ function RegistriesTab({
 									</button>
 									<div className="flex shrink-0 items-center gap-1.5">
 										{isSubscribed ? (
-											<button
-												type="button"
-												onClick={() => unsubscribe(registry.objectId)}
-												className="rounded-lg bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-700"
-											>
-												Unsubscribe
-											</button>
+											<>
+												<button
+													type="button"
+													onClick={() => unsubscribe(registry.objectId)}
+													className="rounded-lg bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-700"
+												>
+													Unsubscribe
+												</button>
+												<button
+													type="button"
+													onClick={() => archiveRegistry(registry.objectId, !isArchived)}
+													title={isArchived ? "Unarchive" : "Archive"}
+													className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+												>
+													{isArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+												</button>
+											</>
 										) : (
 											<button
 												type="button"
@@ -527,7 +579,7 @@ function RegistriesTab({
 												Subscribe
 											</button>
 										)}
-										{isSubscribed && (
+										{isSubscribed && !isArchived && (
 											<button
 												type="button"
 												onClick={() => syncStandings(client, registry.objectId)}
@@ -1212,10 +1264,11 @@ function AddContactDialog({
 					notes,
 				});
 			}
-			onClose();
+			setIsPending(false);
+			// Defer dialog close to a macrotask so Dexie's liveQuery re-read
+			// completes before React processes the unmount state update
+			setTimeout(() => onClose(), 0);
 		} catch {
-			// Add failed
-		} finally {
 			setIsPending(false);
 		}
 	};

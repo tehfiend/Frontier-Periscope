@@ -551,6 +551,8 @@ export interface ManifestPrivateMap {
 	tenant: string;
 	/** ISO timestamp */
 	cachedAt: string;
+	/** Locally archived -- hidden from UI but not deleted */
+	_archived?: boolean;
 }
 
 export interface ManifestMapLocation {
@@ -611,6 +613,8 @@ export interface ManifestPrivateMapV2 {
 	tenant: string;
 	/** ISO timestamp */
 	cachedAt: string;
+	/** Locally archived -- hidden from UI but not deleted */
+	_archived?: boolean;
 }
 
 // ── Standings Types ─────────────────────────────────────────────────────────
@@ -707,6 +711,8 @@ export interface SubscribedRegistry {
 	lastSyncedAt?: string;
 	/** "stillness" or "utopia" */
 	tenant: string;
+	/** Locally archived -- hidden from UI but not deleted */
+	_archived?: boolean;
 }
 
 export interface RegistryStanding {
@@ -796,6 +802,8 @@ export interface CurrencyRecord extends SyncMeta {
 	decimals: number;
 	createdAt: string;
 	updatedAt: string;
+	/** Locally archived -- hidden from UI but not deleted */
+	_archived?: boolean;
 }
 
 // ── Sonar Types ─────────────────────────────────────────────────────────────
