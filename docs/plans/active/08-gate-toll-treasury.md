@@ -35,11 +35,11 @@ The UI in `apps/periscope/src/components/extensions/StandingsExtensionPanel.tsx`
 
 ### Gate Toll and Gate Unified Extensions
 
-Two other gate extension contracts exist in `config.ts` (lines 141-152):
+Two other gate extension contracts exist in `config.ts` (lines 11-18 stillness, 79-86 utopia):
 - `gateUnified` -- emits `TollCollectedEvent` and `AccessGrantedEvent` via `gate_unified` module
 - `gateToll` -- emits `TollCollectedEvent` via `gate_toll` module
 
-The sonar event handler in `apps/periscope/src/chain/sonarEventHandlers.ts` (lines 432-452) parses toll collection events, reading `amount` and `payer` fields. The access granted handler (lines 455-475) reads `toll_paid`. Both assume SUI denomination.
+The sonar event handler in `apps/periscope/src/chain/sonarEventHandlers.ts` (lines 432-453) parses toll collection events, reading `amount` and `payer` fields. The access granted handler (lines 455-479) reads `toll_paid`. Both hardcode "EVE" as the currency label (line 442: `Toll ${amount} EVE`, line 466: `(toll: ${tollPaid} EVE)`).
 
 ### Market Currency System
 
@@ -53,11 +53,11 @@ Each published token creates a unique `Coin<T>` type where `T` is `{packageId}::
 - `marketId` -- the Market<T> shared object ID
 - `symbol`, `name`, `decimals`
 
-The exchange module (`packages/chain-shared/src/exchange.ts`) handles `Coin<T>` via `typeArguments` on all move calls (e.g., `buildPlaceBid` at line 41). The market module (`packages/chain-shared/src/market.ts`) similarly uses `typeArguments: [params.coinType]` for all operations. The `buildPostBuyOrder` function (lines 309-349) demonstrates the merge+split pattern for Coin<T> payment: merge multiple coin objects into one, split the exact amount needed, pass to the move call.
+The exchange module (`packages/chain-shared/src/exchange.ts`) handles `Coin<T>` via `typeArguments` on all move calls (e.g., `buildPlaceBid` at line 35). The market module (`packages/chain-shared/src/market.ts`) similarly uses `typeArguments: [params.coinType]` for all operations. The `buildPostBuyOrder` function (lines 310-350) demonstrates the merge+split pattern for Coin<T> payment: merge multiple coin objects into one, split the exact amount needed, pass to the move call.
 
 ### Market View Coin Creation UI
 
-The `Market.tsx` view (1738 lines) currently bundles two distinct responsibilities:
+The `Market.tsx` view (1737 lines) currently bundles two distinct responsibilities:
 
 1. **Coin creation / currency management** (to be migrated to Treasury):
    - `creating` state toggle + "Create" button in the header bar (lines 90-96, 350-368)
@@ -162,9 +162,9 @@ A new Move contract (`treasury`) implementing a shared multi-user wallet:
 
 **Integration with gate tolls:**
 - The toll payment happens within the **traveler's** PTB (programmable transaction block). The traveler calls the gate extension, which validates standing and collects the toll.
-- For treasury integration, the gate extension's `request_access<T>` should return the toll `Coin<T>` as a transaction result rather than transferring it internally. The client-side PTB then composes: (1) split traveler's coins -> (2) call `request_access<T>` which takes the toll coin and issues a permit -> (3) call `treasury::deposit<T>` with the toll coin.
-- Alternatively, the gate extension can transfer directly to the `tollRecipient` address. If the recipient is a treasury shared object, Sui does not support direct `transfer::public_transfer` to a shared object -- funds must go through `treasury::deposit<T>`. This means the PTB composition approach is required for auto-deposit.
-- For simpler setups, the `tollRecipient` can be a regular address (e.g., the gate owner), and the owner manually deposits into a treasury later.
+- The gate toll custom contract provides dual entry points for toll collection: `request_access<T>` (transfers toll coin to `tollRecipient` address) and `request_access_to_treasury<T>` (deposits toll coin into a `Treasury` shared object via `treasury::deposit<T>`). Both entry points are published in the initial contract deployment to avoid needing a package upgrade.
+- Direct `transfer::public_transfer` to a shared object is not supported in Sui -- the treasury deposit must go through the `treasury::deposit<T>` function. This is why a dedicated entry point is needed rather than just setting the treasury as the tollRecipient address.
+- For simpler setups, the `tollRecipient` can be a regular address (e.g., the gate owner) using the standard `request_access<T>` path, and the owner manually deposits into a treasury later.
 
 **UI:** Standalone Treasury view at `/treasury`:
 - Create treasury, name it, add/remove admins
@@ -202,7 +202,7 @@ Slim down `Market.tsx` to focus exclusively on SSU market orders:
 | Treasury nav location | Option A (standalone /treasury) + coin creation migration | Treasury gets its own top-level nav item at `/treasury`. The coin/currency creation UI (token factory) and currency management (mint, burn, authorize, fees) move from Market to Treasury. Market focuses solely on SSU market orders and listings. |
 | Treasury ACL model | Owner + admins (same as StandingsRegistry) | Consistent with existing patterns. Simple and proven. Multi-sig adds unnecessary complexity for the current use case. |
 | Treasury coin storage structure | Dynamic fields keyed by coin type | Supports multiple currencies in a single treasury. Same pattern as Market<T> using typed dynamic fields. |
-| Toll-to-treasury integration | PTB composition (toll payment + treasury deposit in one TX) | Single atomic transaction. No intermediate sweep step. Requires the gate extension to return the toll coin as a TX result that can be fed into treasury deposit. |
+| Toll-to-treasury integration | Dual entry points in contract (direct transfer vs. treasury deposit) | The contract publishes both `request_access<T>` (transfers to tollRecipient) and `request_access_to_treasury<T>` (deposits into treasury) from the start. Avoids needing a Sui package upgrade in Phase 6. The TX builder picks which entry point to call based on revenue destination config. |
 | New plan vs. amending Plan 06 | New plan (08) that supersedes Plan 06's deferral | Plan 06 is in `active/` and focused on turret fixes. Custom currency tolls are a separate feature with their own contract and UI work. |
 
 ## Implementation Phases
@@ -250,14 +250,15 @@ Slim down `Market.tsx` to focus exclusively on SSU market orders:
 
 ### Phase 2: Gate Toll Custom Currency Contract
 
-**Goal:** Design and implement the custom currency gate toll extension contract, and create TX builders.
+**Goal:** Design and implement the custom currency gate toll extension contract, and create TX builders. Depends on Phase 1 (treasury contract must be published first, since `request_access_to_treasury<T>` takes `&mut Treasury`).
 
 1. Design the `gate_toll_custom` Move module:
    - Shared config: `GateTollCustomConfig { id: UID, owner: address, admins: vector<address> }`
    - Per-gate dynamic fields: `GateKey<phantom T> { gate_id: ID }` -> `GateConfig { registry_id: ID, min_access: u8, free_access: u8, toll_amount: u64, toll_recipient: address, permit_duration_ms: u64 }`
    - Note: The phantom type parameter on `GateKey` ties each gate config to a specific Coin<T> type. This means a single gate could have configs for multiple currencies (each as a separate dynamic field). The config value struct itself does not need `<T>` -- the coin type is encoded in the key.
    - `set_gate_config<T>(config, gate_id, registry_id, min_access, free_access, toll_amount, toll_recipient, permit_duration_ms)` -- admin only
-   - `request_access<T>(config, gate_id, character, coin: Coin<T>, clock)` -- toll-paying path: checks standings, collects toll, issues permit via direct world contract call (following gate-standings pattern)
+   - `request_access<T>(config, gate_id, character, coin: Coin<T>, clock)` -- toll-paying path: checks standings, collects toll (transfers coin to `tollRecipient`), issues permit via direct world contract call (following gate-standings pattern)
+   - `request_access_to_treasury<T>(config, gate_id, character, coin: Coin<T>, treasury: &mut Treasury, clock)` -- toll-paying path with treasury deposit: checks standings, deposits toll coin into treasury via `treasury::deposit<T>`, issues permit. Both entry points are published in the initial contract to avoid needing a package upgrade for Phase 6.
    - `request_free_access<T>(config, gate_id, character, clock)` -- free-access path: verifies standing >= freeAccess, issues permit without toll. Needs `<T>` to look up the correct phantom-typed dynamic field for this gate's config.
 
 2. Handle the world contract interaction:
@@ -265,11 +266,12 @@ Slim down `Market.tsx` to focus exclusively on SSU market orders:
    - Research the exact interface from the gate-standings contract's on-chain source (the reference implementation)
    - The extension needs the `GateHook` witness type and must be authorized on the gate assembly
 
-3. Compile the contract -- this needs the world contracts package as a dependency
+3. Compile the contract -- this needs the world contracts package AND the treasury package (from Phase 1) as dependencies, since `request_access_to_treasury<T>` takes `&mut Treasury`
 
 4. Create `packages/chain-shared/src/gate-toll-custom.ts`:
    - `buildSetGateTollCustomConfig(params: { packageId, configObjectId, gateId, registryId, coinType, minAccess, freeAccess, tollAmount, tollRecipient, permitDurationMs, senderAddress })` -> Transaction
-   - `buildRequestGateTollCustomAccess(params: { packageId, configObjectId, gateId, coinType, coinObjectIds, tollAmount, characterId, senderAddress })` -> Transaction (toll-paying path)
+   - `buildRequestGateTollCustomAccess(params: { packageId, configObjectId, gateId, coinType, coinObjectIds, tollAmount, characterId, senderAddress })` -> Transaction (toll-paying path, transfers to tollRecipient)
+   - `buildRequestGateTollCustomAccessToTreasury(params: { packageId, treasuryPackageId, configObjectId, gateId, coinType, coinObjectIds, tollAmount, treasuryId, characterId, senderAddress })` -> Transaction (toll-paying path, deposits into treasury)
    - `buildRequestGateTollCustomFreeAccess(params: { packageId, configObjectId, gateId, coinType, characterId, senderAddress })` -> Transaction (free-access path)
    - `queryGateTollCustomConfig(client, configObjectId, gateId, coinType?)` -> GateTollCustomConfigInfo | null
 
@@ -310,7 +312,7 @@ Slim down `Market.tsx` to focus exclusively on SSU market orders:
    - **Currency management section (migrated from Market.tsx):**
      - Mint tokens (from Market.tsx `handleMint`, lines 793-818)
      - Burn tokens (from Market.tsx `handleBurn`, lines 820-841)
-     - Authorize minters (from Market.tsx `handleAddAuthorized`, lines 843-863, `handleRemoveAuthorized`, lines 865-883)
+     - Authorize minters (from Market.tsx `handleAddAuthorized`, lines 843-863, `handleRemoveAuthorized`, lines 865-884)
      - Update fees (from Market.tsx `handleUpdateFee`, lines 886-907)
      - Market discovery / create Market<T> (from Market.tsx `handleDiscoverMarket`, lines 909-984)
      - These admin panels render under the selected currency's detail section
@@ -358,14 +360,14 @@ Slim down `Market.tsx` to focus exclusively on SSU market orders:
    - `handleMint`, `handleBurn`, `handleAddAuthorized`, `handleRemoveAuthorized`, `handleUpdateFee` functions -- lines 793-907
    - `handleDiscoverMarket` function -- lines 909-984 (moves to Treasury)
    - `loadOwnedCoins` function -- lines 780-791
-   - Admin Actions section (AdminToggle buttons) -- lines 1151-1245
+   - Admin Actions section -- remove AdminToggle buttons (lines 1155-1211) and the admin-only guard wrapper (lines 1152-1153, 1244-1245). Note: the SSU link dropdown (lines 1213-1242) is currently nested inside this block but must be extracted and preserved (see step 3).
    - Expanded Admin Panels section (mint, burn, authorize, fees forms) -- lines 1279-1458
    - "No Market Linked" discover/create prompt -- lines 1131-1149 (moves to Treasury)
 
 3. Keep in `MarketDetail`:
    - Market identity card (coin type, market ID, creator, total supply, fee display) -- read-only
    - Order book DataGrid (sell listings, buy orders) -- lines 1248-1277
-   - `handleLinkToSsu` and SSU link dropdown -- lines 986-1029, 1213-1242
+   - `handleLinkToSsu` function (lines 986-1029) and SSU link dropdown -- currently at lines 1213-1242 inside the admin-only section; extract to a standalone section visible whenever a market is linked (not gated behind `isAuthorized`)
    - `loadMarketInfo`, `loadOrders`, `loadAll` functions
 
 4. Keep in `Market` (parent component):
@@ -434,30 +436,28 @@ Slim down `Market.tsx` to focus exclusively on SSU market orders:
 
 ### Phase 6: Toll-Treasury Integration
 
-**Goal:** Enable gate toll revenue to auto-deposit into a treasury.
+**Goal:** Wire up the treasury-aware gate toll entry point (already published in Phase 2's contract) and add UI for selecting revenue destination.
 
-1. Design the integration flow:
-   - Compose `request_access<T>` + `treasury::deposit<T>` in a single PTB
-   - The gate toll contract's `request_access<T>` returns the toll `Coin<T>` as a transaction result (not transferred internally)
+Note: The `request_access_to_treasury<T>` entry point was included in the Phase 2 contract to avoid needing a Sui package upgrade. This phase only adds the TX builder implementation and UI wiring.
 
-2. Update `buildRequestGateTollCustomAccess` to optionally compose with treasury deposit:
-   - Add optional `treasuryId` parameter
-   - If provided, instead of transferring toll to recipient, call `treasury::deposit<T>` with the toll coin
-   - This requires the gate toll contract to return the toll coin as a TX result (not transfer internally)
+1. Implement `buildRequestGateTollCustomAccessToTreasury` in `gate-toll-custom.ts`:
+   - Calls the contract's `request_access_to_treasury<T>` entry point (published in Phase 2)
+   - Passes `treasury: &mut Treasury` as an argument so the contract deposits the toll coin directly
+   - Uses merge+split pattern for the traveler's coins (same as `buildRequestGateTollCustomAccess`)
 
-3. Update the gate toll custom contract design:
-   - Split `request_access` into: collect toll (returns Coin<T>) + issue permit
-   - The PTB composition then does: split coin -> collect toll -> deposit to treasury -> issue permit
+2. Update `StandingsExtensionPanel.tsx` with a "Revenue destination" selector:
+   - "Direct to address" (current behavior -- uses `buildRequestGateTollCustomAccess`)
+   - "Deposit to treasury" (select from user's treasuries -- uses `buildRequestGateTollCustomAccessToTreasury`)
 
-4. Add a "Revenue destination" selector in the gate config UI:
-   - "Direct to address" (current behavior)
-   - "Deposit to treasury" (select from user's treasuries)
+3. Update `buildConfigureGateStandings()` in `transactions.ts`:
+   - When toll currency is custom AND treasury is selected as recipient, use the treasury-aware builder
 
 **Files:**
 | File | Action |
 |------|--------|
-| `packages/chain-shared/src/gate-toll-custom.ts` | Modify (PTB composition with treasury) |
+| `packages/chain-shared/src/gate-toll-custom.ts` | Modify (implement treasury-aware TX builder) |
 | `apps/periscope/src/components/extensions/StandingsExtensionPanel.tsx` | Modify (revenue destination selector) |
+| `apps/periscope/src/chain/transactions.ts` | Modify (branch on treasury destination) |
 
 ## File Summary
 
@@ -477,7 +477,7 @@ Slim down `Market.tsx` to focus exclusively on SSU market orders:
 | `apps/periscope/src/views/Market.tsx` | Modify | 4 | Remove coin creation, currency management, admin panels |
 | `apps/periscope/src/components/extensions/StandingsExtensionPanel.tsx` | Modify | 5, 6 | Currency selector, treasury recipient, updated help text |
 | `apps/periscope/src/components/extensions/CurrencySelector.tsx` | Create | 5 | Reusable currency dropdown component |
-| `apps/periscope/src/chain/transactions.ts` | Modify | 5 | Branch on toll currency type |
+| `apps/periscope/src/chain/transactions.ts` | Modify | 5, 6 | Branch on toll currency type and treasury destination |
 | `apps/periscope/src/chain/sonarEventHandlers.ts` | Modify | 5 | Parse custom currency from toll events |
 
 ## Resolved Decisions
