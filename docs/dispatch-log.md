@@ -65,3 +65,9 @@
 - **File:** docs/plans/pending/08-gate-toll-treasury.md
 - **Passes:** 4 (3 with changes, pass 4 NO_CHANGES)
 - **Result:** pending -- 5-phase plan for custom currency gate tolls and shared treasury wallet. New gate extension contract with Coin<T> generics for custom toll currencies, treasury shared object with admin ACL for multi-user fund management, Treasury UI view, gate toll currency selector, and toll-to-treasury PTB integration. 5 open questions remain. Key findings: gate tolls are extension-defined (not world contract), fully generic Coin<T> approach preferred over bytecode patching, Balance<T> recommended for treasury storage, existing Wallet view at /wallet could host treasury but standalone /treasury route is cleaner. Supersedes Plan 06 deferral of custom toll currency.
+
+## 2026-03-27 -- branding-refresh
+- **Action:** CREATE
+- **File:** docs/plans/pending/09-branding-refresh.md
+- **Passes:** 4 (3 with changes, pass 4 NO_CHANGES)
+- **Result:** pending -- 2-phase plan refreshing README and landing page messaging. Reframes from "intel and monitoring tool" to "organizational toolkit" positioning. Reorders features to lead with custom currencies, standings/diplomacy, private maps, and treasury. Rewrites feature descriptions to be benefit-oriented. Adds Standings and Treasury cards to landing page (8 cards, up from 6). 5 open questions remain (tagline wording, treasury pre-implementation inclusion, grid layout, screenshots, privacy section restructuring).
