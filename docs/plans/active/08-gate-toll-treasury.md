@@ -1,5 +1,5 @@
 # Plan: Gate Toll Custom Currency and Treasury Wallet
-**Status:** Draft
+**Status:** Ready
 **Created:** 2026-03-27
 **Module:** periscope, chain-shared
 
@@ -10,6 +10,8 @@ This plan introduces two related features: custom currency gate tolls and a shar
 The existing gate standings extension (`gate-standings.ts`) stores a `tollFee` as a u64 amount and a `tollRecipient` as an address. The toll is always paid in SUI because the on-chain `set_gate_config` function has no `typeArguments` parameter -- it cannot reference a custom Coin<T> type. However, as confirmed in prior research, the world-contracts gate module has no built-in toll mechanism. Gate tolls are entirely extension-defined -- the extension controls jump permit issuance and can require payment as a condition. This means supporting custom currency tolls requires building a new gate extension contract (or modifying the existing gate-standings extension) that accepts Coin<T> payments, not a world contract change.
 
 The treasury wallet is a new on-chain shared object with an admin/member access control list (modeled after the `StandingsRegistry` admin pattern in `standings-registry.ts`). It holds balances of one or more Coin<T> types, supports deposit/withdraw by authorized members, and can serve as the `tollRecipient` for gate toll revenue. This requires a custom Move contract since Sui has no built-in multi-user wallet primitive.
+
+Additionally, the Treasury view will absorb the coin/currency creation UI (token factory) currently housed in the Market view. Market should focus solely on SSU market orders and listings. The coin creation workflow (publish token, create Market<T>) and currency management (mint, burn, authorize minters, fees) logically belong under Treasury since treasuries hold currencies. This reorganization is a UI-level migration -- the underlying chain-shared TX builders remain unchanged.
 
 ## Current State
 
@@ -52,6 +54,24 @@ Each published token creates a unique `Coin<T>` type where `T` is `{packageId}::
 - `symbol`, `name`, `decimals`
 
 The exchange module (`packages/chain-shared/src/exchange.ts`) handles `Coin<T>` via `typeArguments` on all move calls (e.g., `buildPlaceBid` at line 41). The market module (`packages/chain-shared/src/market.ts`) similarly uses `typeArguments: [params.coinType]` for all operations. The `buildPostBuyOrder` function (lines 309-349) demonstrates the merge+split pattern for Coin<T> payment: merge multiple coin objects into one, split the exact amount needed, pass to the move call.
+
+### Market View Coin Creation UI
+
+The `Market.tsx` view (1738 lines) currently bundles two distinct responsibilities:
+
+1. **Coin creation / currency management** (to be migrated to Treasury):
+   - `creating` state toggle + "Create" button in the header bar (lines 90-96, 350-368)
+   - `handleCreateCurrency()` function (lines 211-289) -- calls `buildPublishToken`, parses result, saves to `db.currencies`
+   - `CreateCurrencyForm` component (lines 1604-1713) -- symbol, name, description, decimals inputs
+   - Currency selector dropdown and archive toggle in the header (lines 300-368)
+   - `syncMarkets` callback (lines 114-188) -- syncs currencies from manifest cache
+   - `MarketDetail` admin actions: mint, burn, authorize minters, update fees (lines 793-907, 1279-1458) -- these are currency management operations on Market<T> objects
+
+2. **SSU market orders** (stays in Market):
+   - `MarketDetail` order book section (lines 1248-1277) -- sell listings and buy orders DataGrid
+   - `handleLinkToSsu` (lines 986-1029) -- link a Market<T> to an SSU's SsuUnifiedConfig
+   - Order row types, columns, item name resolution (lines 64-75, 554-703)
+   - SSU location lookup logic (lines 503-548)
 
 ### Coin Handling Patterns
 
@@ -100,7 +120,7 @@ A new Move contract (`gate_toll_custom`) that extends the gate-standings pattern
 - Admin functions: `set_gate_config<T>`, `remove_gate_config`, `add_admin`, `remove_admin`
 
 **Generic type approach:**
-Unlike the turret-factory or token-factory patterns (which use bytecode patching), this contract uses Sui Move generics natively. The contract is published once with generic `<T>` type parameters. At call time, the TX builder passes `typeArguments: [coinType]` to specify which Coin<T> type is used -- the same pattern used by `market.ts`, `exchange.ts`, and `ssu-unified.ts` throughout the codebase. No bytecode patching is needed for new currencies.
+The contract uses Sui Move generics natively -- published once with generic `<T>` type parameters. At call time, the TX builder passes `typeArguments: [coinType]` to specify which Coin<T> type is used -- the same pattern used by `market.ts`, `exchange.ts`, and `ssu-unified.ts` throughout the codebase. No bytecode patching is needed for new currencies.
 
 **Dynamic field design note:** The per-gate dynamic field key must incorporate the coin type to allow different currency configs per gate. Using `GateKey { gate_id: ID }` alone (without T) would mean a gate can only ever have one toll currency. Two approaches: (a) use a phantom-typed key struct `GateKey<phantom T> { gate_id: ID }` so each (gate, coinType) pair is a distinct dynamic field, or (b) include the coin type as a string in the key. Approach (a) is more idiomatic in Sui Move.
 
@@ -125,13 +145,13 @@ A new Move contract (`treasury`) implementing a shared multi-user wallet:
   - `owner` (address) -- creator, can manage members and withdraw
   - `admins` (vector<address>) -- can deposit and withdraw
   - `name` (vector<u8>) -- display name
-  - Dynamic fields for coin balances: keyed by phantom-typed struct `BalanceKey<phantom T> {}`, storing `Balance<T>` (see Open Question 3; `Balance<T>` is the recommended approach)
+  - Dynamic fields for coin balances: keyed by phantom-typed struct `BalanceKey<phantom T> {}`, storing `Balance<T>` (the standard Sui Move idiom for fungible token balances inside shared objects)
 - Functions:
   - `create_treasury(name)` -- creates shared Treasury, sender becomes owner
   - `add_admin(treasury, admin_address)` -- owner only
   - `remove_admin(treasury, admin_address)` -- owner only
-  - `deposit<T>(treasury, coin: Coin<T>)` -- anyone can deposit (or admin-only, see Open Questions)
-  - `withdraw<T>(treasury, amount)` -- admin/owner only, splits coin and transfers to sender
+  - `deposit<T>(treasury, coin: Coin<T>)` -- open to anyone (gate extensions can deposit toll revenue without being admins)
+  - `withdraw<T>(treasury, amount)` -- admin/owner only, splits balance and transfers Coin<T> to sender
   - `transfer_ownership(treasury, new_owner)` -- owner only
 - Events: `DepositEvent`, `WithdrawEvent`, `AdminAddedEvent`, `AdminRemovedEvent`
 
@@ -146,11 +166,13 @@ A new Move contract (`treasury`) implementing a shared multi-user wallet:
 - Alternatively, the gate extension can transfer directly to the `tollRecipient` address. If the recipient is a treasury shared object, Sui does not support direct `transfer::public_transfer` to a shared object -- funds must go through `treasury::deposit<T>`. This means the PTB composition approach is required for auto-deposit.
 - For simpler setups, the `tollRecipient` can be a regular address (e.g., the gate owner), and the owner manually deposits into a treasury later.
 
-**UI:** New "Treasury" view (or section within the Wallet view):
+**UI:** Standalone Treasury view at `/treasury`:
 - Create treasury, name it, add/remove admins
 - View balances per currency
 - Deposit/withdraw actions
 - Link to gate toll config ("Use as toll recipient")
+- Coin creation UI (token factory) -- migrated from Market view
+- Currency management (mint, burn, authorize, fees) -- migrated from Market view
 
 ### 3. Sonar Event Updates
 
@@ -159,14 +181,27 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
 - Display the currency symbol instead of "EVE" or "SUI"
 - Look up currency name from `db.currencies`
 
+### 4. Market View Cleanup
+
+Slim down `Market.tsx` to focus exclusively on SSU market orders:
+- Remove the currency creation UI (CreateCurrencyForm, handleCreateCurrency, creating state)
+- Remove the currency management admin panels (mint, burn, authorize, fees)
+- Keep the currency selector (read-only, for selecting which market's orders to view)
+- Keep the order book DataGrid, SSU link functionality, and order loading logic
+- Keep syncMarkets for populating the currency list (or delegate to a shared hook)
+
 ## Design Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Gate toll custom currency approach | New extension contract (not world contract change) | World contracts have no built-in toll mechanism. Gate tolls are entirely extension-defined. A new extension contract with generic Coin<T> support is the correct approach. |
-| Generic contract vs. per-currency publish | Fully generic contract with `<T>` type parameters | The existing `market.ts`, `exchange.ts`, and `ssu-unified.ts` demonstrate that Sui Move generics with `Coin<T>` work well. TX builders pass `typeArguments: [coinType]`. One deployment serves all currencies. |
+| Generic contract vs. per-currency publish | Option A: Fully generic contract with `<T>` type parameters | The existing `market.ts`, `exchange.ts`, and `ssu-unified.ts` demonstrate that Sui Move generics with `Coin<T>` work well. TX builders pass `typeArguments: [coinType]`. One deployment serves all currencies. No bytecode patching needed. |
+| Treasury deposits | Option A: Open to anyone | Gate extensions can deposit toll revenue without being admins. External parties can send funds. Spam is low-risk since depositing costs gas. If this becomes a problem, a configurable `allow_public_deposits` flag can be added later without breaking changes. |
+| Treasury coin storage | Option A: Balance\<T> in dynamic fields | `0x2::balance::Balance<T>` is the standard way to store fungible token balances inside shared objects in Sui Move. Deposits convert `Coin<T>` to `Balance<T>` via `coin::into_balance()`, withdrawals convert back via `coin::from_balance()`. No object ID overhead. |
+| World contract interaction | Option A: Direct world contract call | The existing gate-standings extension already demonstrates direct integration with the world contract gate system. The new extension follows the same pattern -- calling `world::gate::issue_jump_permit()` directly. |
+| Treasury nav location | Option A (standalone /treasury) + coin creation migration | Treasury gets its own top-level nav item at `/treasury`. The coin/currency creation UI (token factory) and currency management (mint, burn, authorize, fees) move from Market to Treasury. Market focuses solely on SSU market orders and listings. |
 | Treasury ACL model | Owner + admins (same as StandingsRegistry) | Consistent with existing patterns. Simple and proven. Multi-sig adds unnecessary complexity for the current use case. |
-| Treasury coin storage | Dynamic fields keyed by coin type | Supports multiple currencies in a single treasury. Same pattern as Market<T> using typed dynamic fields. |
+| Treasury coin storage structure | Dynamic fields keyed by coin type | Supports multiple currencies in a single treasury. Same pattern as Market<T> using typed dynamic fields. |
 | Toll-to-treasury integration | PTB composition (toll payment + treasury deposit in one TX) | Single atomic transaction. No intermediate sweep step. Requires the gate extension to return the toll coin as a TX result that can be fed into treasury deposit. |
 | New plan vs. amending Plan 06 | New plan (08) that supersedes Plan 06's deferral | Plan 06 is in `active/` and focused on turret fixes. Custom currency tolls are a separate feature with their own contract and UI work. |
 
@@ -178,8 +213,8 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
 
 1. Design the `treasury` Move module:
    - Struct: `Treasury { id: UID, owner: address, admins: vector<address>, name: vector<u8> }`
-   - Coin balances stored as dynamic fields: `CoinKey<T> { }` -> `Coin<T>` or `Balance<T>`
-   - Using `Balance<T>` (from `0x2::balance`) instead of `Coin<T>` for storage is more idiomatic -- `Balance` is the unwrapped representation without an object ID
+   - Coin balances stored as dynamic fields: `BalanceKey<phantom T> {}` -> `Balance<T>` (from `0x2::balance`)
+   - `Balance<T>` is the unwrapped representation without an object ID -- the standard Sui Move idiom for shared objects
    - Functions: `create_treasury`, `add_admin`, `remove_admin`, `deposit<T>`, `withdraw<T>`, `transfer_ownership`
    - Events: `DepositEvent { treasury_id, depositor, coin_type, amount }`, `WithdrawEvent { treasury_id, withdrawer, coin_type, amount }`
    - Access control: `deposit` is open to anyone (gate extensions can deposit toll revenue); `withdraw` requires owner or admin
@@ -222,12 +257,12 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
    - Per-gate dynamic fields: `GateKey<phantom T> { gate_id: ID }` -> `GateConfig { registry_id: ID, min_access: u8, free_access: u8, toll_amount: u64, toll_recipient: address, permit_duration_ms: u64 }`
    - Note: The phantom type parameter on `GateKey` ties each gate config to a specific Coin<T> type. This means a single gate could have configs for multiple currencies (each as a separate dynamic field). The config value struct itself does not need `<T>` -- the coin type is encoded in the key.
    - `set_gate_config<T>(config, gate_id, registry_id, min_access, free_access, toll_amount, toll_recipient, permit_duration_ms)` -- admin only
-   - `request_access<T>(config, gate_id, character, coin: Coin<T>, clock)` -- toll-paying path: checks standings, collects toll, issues permit
+   - `request_access<T>(config, gate_id, character, coin: Coin<T>, clock)` -- toll-paying path: checks standings, collects toll, issues permit via direct world contract call (following gate-standings pattern)
    - `request_free_access<T>(config, gate_id, character, clock)` -- free-access path: verifies standing >= freeAccess, issues permit without toll. Needs `<T>` to look up the correct phantom-typed dynamic field for this gate's config.
 
 2. Handle the world contract interaction:
-   - The extension must call `world::gate::issue_jump_permit()` or use the existing gate world hooks
-   - Research the exact interface: how does the gate-standings extension currently issue permits? Check the on-chain contract bytecodes or the gate-unified contract for the pattern
+   - The extension calls `world::gate::issue_jump_permit()` directly, following the same pattern as the existing gate-standings extension
+   - Research the exact interface from the gate-standings contract's on-chain source (the reference implementation)
    - The extension needs the `GateHook` witness type and must be authorized on the gate assembly
 
 3. Compile the contract -- this needs the world contracts package as a dependency
@@ -252,20 +287,34 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
 | `packages/chain-shared/src/config.ts` | Modify (add gateTollCustom to ContractAddresses, both tenants) |
 | `packages/chain-shared/src/index.ts` | Modify (add gate-toll-custom export) |
 
-### Phase 3: Treasury UI
+### Phase 3: Treasury UI and Coin Creation Migration
 
-**Goal:** Add a Treasury management view in the Periscope app.
+**Goal:** Add a Treasury management view in the Periscope app and migrate coin/currency creation + management from Market to Treasury.
 
 1. Create `apps/periscope/src/views/Treasury.tsx`:
-   - List user's treasuries (query by owner address)
-   - Create new treasury (name input + create button)
-   - Treasury detail view:
-     - Name, owner, admins list
-     - Add/remove admin buttons (owner only)
-     - Balances table: currency symbol, amount, coin type
-     - Deposit action: select currency, enter amount, execute
-     - Withdraw action: select currency, enter amount, execute
-   - Use the same DataGrid component for balance display
+   - **Treasury management section:**
+     - List user's treasuries (query by owner address)
+     - Create new treasury (name input + create button)
+     - Treasury detail view:
+       - Name, owner, admins list
+       - Add/remove admin buttons (owner only)
+       - Balances table: currency symbol, amount, coin type
+       - Deposit action: select currency, enter amount, execute
+       - Withdraw action: select currency, enter amount, execute
+     - Use the same DataGrid component for balance display
+   - **Coin creation section (migrated from Market.tsx):**
+     - Currency list with selector dropdown and archive toggle (from Market.tsx lines 300-368)
+     - "Create" button + `CreateCurrencyForm` component (from Market.tsx lines 1604-1713)
+     - `handleCreateCurrency()` logic (from Market.tsx lines 211-289)
+     - `syncMarkets` callback for populating the currency list (from Market.tsx lines 114-188)
+   - **Currency management section (migrated from Market.tsx):**
+     - Mint tokens (from Market.tsx `handleMint`, lines 793-818)
+     - Burn tokens (from Market.tsx `handleBurn`, lines 820-841)
+     - Authorize minters (from Market.tsx `handleAddAuthorized`, lines 843-863, `handleRemoveAuthorized`, lines 865-883)
+     - Update fees (from Market.tsx `handleUpdateFee`, lines 886-907)
+     - Market discovery / create Market<T> (from Market.tsx `handleDiscoverMarket`, lines 909-984)
+     - These admin panels render under the selected currency's detail section
+   - **Shared sub-components** (`StatusBanner`, `AdminToggle`, `AdminPanel`, `FormField`, `StatBox`) can be extracted to a shared file or duplicated. Recommendation: extract to `apps/periscope/src/components/ui/` since both Treasury and Market may use `StatBox`.
 
 2. Add DB types for treasury caching in `apps/periscope/src/db/types.ts`:
    - `TreasuryRecord extends SyncMeta { id, name, owner, admins: string[], balances: TreasuryBalanceEntry[] }`
@@ -290,7 +339,58 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
 | `apps/periscope/src/components/Sidebar.tsx` | Modify (add Treasury nav item) |
 | `apps/periscope/src/chain/treasury-queries.ts` | Create |
 
-### Phase 4: Gate Toll Currency UI
+### Phase 4: Market View Cleanup
+
+**Goal:** Remove coin creation and currency management UI from Market.tsx, leaving it focused on SSU market orders.
+
+1. Remove from `Market.tsx`:
+   - `creating` state and related state variables (`symbol`, `tokenName`, `description`, `decimals`, `buildStatus`, `buildError`) -- lines 90-96
+   - `handleCreateCurrency()` function -- lines 211-289
+   - "Create" button toggle and `CreateCurrencyForm` rendering -- lines 350-368, 396-412
+   - `StatusBanner` rendering for build status -- lines 372-394
+   - `CreateCurrencyForm` component definition -- lines 1604-1713
+   - Archive toggle button -- lines 324-336 (archiving moves to Treasury)
+   - Archive/unarchive selected currency button -- lines 338-348
+   - `handleArchiveCurrency` function -- lines 293-296
+
+2. Remove from `MarketDetail` component:
+   - All admin action state variables (`showMint`, `mintAmount`, `mintRecipient`, `showBurn`, `burnCoinId`, `ownedCoins`, `loadingCoins`, `showAuth`, `authAddress`, `showFees`, `feeBps`, `feeRecipient`) -- lines 472-483
+   - `handleMint`, `handleBurn`, `handleAddAuthorized`, `handleRemoveAuthorized`, `handleUpdateFee` functions -- lines 793-907
+   - `handleDiscoverMarket` function -- lines 909-984 (moves to Treasury)
+   - `loadOwnedCoins` function -- lines 780-791
+   - Admin Actions section (AdminToggle buttons) -- lines 1151-1245
+   - Expanded Admin Panels section (mint, burn, authorize, fees forms) -- lines 1279-1458
+   - "No Market Linked" discover/create prompt -- lines 1131-1149 (moves to Treasury)
+
+3. Keep in `MarketDetail`:
+   - Market identity card (coin type, market ID, creator, total supply, fee display) -- read-only
+   - Order book DataGrid (sell listings, buy orders) -- lines 1248-1277
+   - `handleLinkToSsu` and SSU link dropdown -- lines 986-1029, 1213-1242
+   - `loadMarketInfo`, `loadOrders`, `loadAll` functions
+
+4. Keep in `Market` (parent component):
+   - Currency selector dropdown (read-only, for selecting which market's orders to view)
+   - `syncMarkets` callback (or convert to a shared hook if Treasury also needs it)
+
+5. Remove unused imports:
+   - `buildPublishToken`, `parsePublishResult` (used by handleCreateCurrency)
+   - `buildMint`, `buildBurn`, `buildAddAuthorized`, `buildRemoveAuthorized`, `buildUpdateFee` (used by admin actions)
+   - `buildCreateMarket`, `queryTreasuryCap` (used by handleDiscoverMarket)
+   - `queryOwnedCoins` (used by loadOwnedCoins)
+   - `Plus`, `Send`, `Flame`, `UserPlus`, `UserMinus`, `Settings` icons (used by admin panels and create button)
+
+6. Remove shared sub-component definitions that are no longer used in Market.tsx:
+   - `StatusBanner` (used only for build/mint/burn status -- moves to Treasury)
+   - `AdminToggle`, `AdminPanel`, `FormField` (used only by admin panels -- move to Treasury)
+   - `CreateCurrencyForm` (moves to Treasury)
+   - Keep `StatBox` (used by market identity display) and `formatTokenAmount`, `formatPrice` utilities
+
+**Files:**
+| File | Action |
+|------|--------|
+| `apps/periscope/src/views/Market.tsx` | Modify (remove coin creation, currency management, admin panels) |
+
+### Phase 5: Gate Toll Currency UI
 
 **Goal:** Update the gate config UI to support custom currency selection and integrate with the new gate toll custom extension.
 
@@ -332,14 +432,13 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
 | `apps/periscope/src/chain/transactions.ts` | Modify (branch on toll currency type) |
 | `apps/periscope/src/chain/sonarEventHandlers.ts` | Modify (parse custom currency from toll events) |
 
-### Phase 5: Toll-Treasury Integration
+### Phase 6: Toll-Treasury Integration
 
 **Goal:** Enable gate toll revenue to auto-deposit into a treasury.
 
 1. Design the integration flow:
-   - Option A: Gate extension transfers toll Coin<T> directly to treasury via PTB composition
-   - Option B: Gate extension transfers to treasury owner's address, manual sweep into treasury
-   - Prefer Option A: compose `request_access<T>` + `treasury::deposit<T>` in a single PTB
+   - Compose `request_access<T>` + `treasury::deposit<T>` in a single PTB
+   - The gate toll contract's `request_access<T>` returns the toll `Coin<T>` as a transaction result (not transferred internally)
 
 2. Update `buildRequestGateTollCustomAccess` to optionally compose with treasury deposit:
    - Add optional `treasuryId` parameter
@@ -368,46 +467,42 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
 | `packages/chain-shared/src/types.ts` | Modify | 1, 2 | Add TreasuryInfo, TreasuryBalance, GateTollCustomConfigInfo |
 | `packages/chain-shared/src/config.ts` | Modify | 1, 2 | Add treasury and gateTollCustom to ContractAddresses |
 | `packages/chain-shared/src/index.ts` | Modify | 1, 2 | Add treasury and gate-toll-custom exports |
-| `packages/chain-shared/src/gate-toll-custom.ts` | Create | 2, 5 | Gate toll custom currency TX builders |
-| `apps/periscope/src/views/Treasury.tsx` | Create | 3 | Treasury management view |
-| `apps/periscope/src/db/types.ts` | Modify | 3, 4 | Add TreasuryRecord, tollCoinType, tollTreasuryId |
+| `packages/chain-shared/src/gate-toll-custom.ts` | Create | 2, 6 | Gate toll custom currency TX builders |
+| `apps/periscope/src/views/Treasury.tsx` | Create | 3 | Treasury management + coin creation/management (migrated from Market) |
+| `apps/periscope/src/db/types.ts` | Modify | 3, 5 | Add TreasuryRecord, tollCoinType, tollTreasuryId |
 | `apps/periscope/src/db/index.ts` | Modify | 3 | Add treasuries table |
 | `apps/periscope/src/router.tsx` | Modify | 3 | Add /treasury route |
 | `apps/periscope/src/components/Sidebar.tsx` | Modify | 3 | Add Treasury nav item |
 | `apps/periscope/src/chain/treasury-queries.ts` | Create | 3 | Treasury chain query wrappers with IndexedDB caching |
-| `apps/periscope/src/components/extensions/StandingsExtensionPanel.tsx` | Modify | 4, 5 | Currency selector, treasury recipient, updated help text |
-| `apps/periscope/src/components/extensions/CurrencySelector.tsx` | Create | 4 | Reusable currency dropdown component |
-| `apps/periscope/src/chain/transactions.ts` | Modify | 4 | Branch on toll currency type |
-| `apps/periscope/src/chain/sonarEventHandlers.ts` | Modify | 4 | Parse custom currency from toll events |
+| `apps/periscope/src/views/Market.tsx` | Modify | 4 | Remove coin creation, currency management, admin panels |
+| `apps/periscope/src/components/extensions/StandingsExtensionPanel.tsx` | Modify | 5, 6 | Currency selector, treasury recipient, updated help text |
+| `apps/periscope/src/components/extensions/CurrencySelector.tsx` | Create | 5 | Reusable currency dropdown component |
+| `apps/periscope/src/chain/transactions.ts` | Modify | 5 | Branch on toll currency type |
+| `apps/periscope/src/chain/sonarEventHandlers.ts` | Modify | 5 | Parse custom currency from toll events |
 
-## Open Questions
+## Resolved Decisions
 
-1. **How should the gate toll custom extension handle the generic Coin<T> type?**
-   - **Option A: Fully generic contract** -- The Move contract uses `<T>` generics on all functions. One contract deployment handles all Coin types. Config is stored as `GateConfig<phantom T>` dynamic fields, so each gate is locked to one Coin type at config time. Pros: Single deployment, no bytecode patching needed for new currencies. Cons: Sui Move generics require the type to be known at call time, which is fine for TX building but means the config object stores different-typed dynamic fields per gate.
-   - **Option B: Per-currency published contract** -- Like the token-factory pattern, compile and publish a separate contract per currency. Bytecode patching swaps the dependency. Pros: Simpler Move code (no generics). Cons: Requires a publish transaction per currency, higher gas cost, more complex management.
-   - **Recommendation:** Option A (fully generic). The existing `market.ts` and `exchange.ts` contracts demonstrate that Sui Move generics with `Coin<T>` work well. The TX builder passes `typeArguments: [coinType]` and the Sui runtime resolves the type. This avoids the complexity of bytecode patching for coin types.
+> All 5 open questions have been resolved. The original questions and their resolutions are recorded below for traceability.
 
-2. **Should treasury deposits be open to anyone or restricted to admins?**
-   - **Option A: Open deposits** -- Anyone can deposit Coin<T> into a treasury. Pros: Gate extensions can deposit toll revenue without being admins. External parties can send funds. Cons: Potential for spam deposits of worthless tokens.
-   - **Option B: Admin-only deposits** -- Only owner/admins can deposit. Pros: No spam. Full control over what enters the treasury. Cons: Gate extensions would need to be added as admins, or toll revenue would need an intermediate step.
-   - **Option C: Configurable** -- Treasury has an `allow_public_deposits: bool` flag. Pros: Flexible. Cons: Slightly more complex contract.
-   - **Recommendation:** Option A (open deposits). The gate toll integration requires the extension to deposit without being an admin. Spam is low-risk since depositing costs gas and the owner can always see balances. If this becomes a problem, Option C can be added later without breaking changes.
+### Q1: How should the gate toll custom extension handle the generic Coin<T> type?
 
-3. **Should the treasury store `Balance<T>` or `Coin<T>` in dynamic fields?**
-   - **Option A: Balance\<T>** -- Unwrapped balance representation. Pros: More idiomatic for shared objects, no object ID overhead, supports join/split natively. Cons: Requires `balance::join` and `balance::split` instead of `coin::split` and `transfer::public_transfer`.
-   - **Option B: Coin\<T>** -- Wrapped coin objects. Pros: Simpler to transfer out (just `transfer::public_transfer`). Cons: Each Coin has its own object ID, more storage overhead, less idiomatic for balances held within shared objects.
-   - **Recommendation:** Option A (Balance\<T>). The `0x2::balance::Balance<T>` type is the standard way to store fungible token balances inside shared objects in Sui Move. Deposits convert `Coin<T>` to `Balance<T>` via `coin::into_balance()`, withdrawals convert back via `coin::from_balance()`.
+**Resolution:** Option A -- Fully generic contract. The Move contract uses `<T>` generics on all functions. One contract deployment handles all Coin types. Config is stored as phantom-typed dynamic fields, so each gate is locked to one Coin type per dynamic field entry (but can have multiple currencies via separate entries). The TX builder passes `typeArguments: [coinType]` at call time. No bytecode patching needed. This matches the established pattern in `market.ts`, `exchange.ts`, and `ssu-unified.ts`.
 
-4. **How should the gate toll extension interact with the world contract's gate system?**
-   - **Option A: Direct world contract call** -- The extension calls `world::gate::issue_jump_permit()` directly, similar to the existing gate-standings extension. Pros: Clean, direct. Cons: Requires understanding the exact gate world contract API and hook registration.
-   - **Option B: Compose via PTB** -- The extension validates the toll payment and returns a receipt, then a separate PTB step calls the world contract to issue the permit. Pros: Decouples toll logic from world contract integration. Cons: More complex client-side PTB construction.
-   - **Recommendation:** Option A. The existing gate-standings extension already demonstrates direct integration with the world contract gate system. The new extension should follow the same pattern. This requires research into the exact API (the `gate_standings` contract's on-chain source is the reference).
+### Q2: Should treasury deposits be open to anyone or restricted to admins?
 
-5. **Where should the Treasury view live in the app navigation?**
-   - **Option A: Standalone view at /treasury** -- Top-level nav item alongside Market, Structures, etc. Pros: Clear, discoverable. Cons: Adds another nav item to an already populated sidebar.
-   - **Option B: Sub-section of Wallet view** -- Treasury management as a tab within the existing Wallet view (`apps/periscope/src/views/Wallet.tsx`, lazy-loaded in `router.tsx` line 17, nav entry at `Sidebar.tsx` line 68). Pros: Groups financial features together, Wallet already exists. Cons: Wallet view would need restructuring to support tabs.
-   - **Option C: Sub-section of Market view** -- Since treasuries hold market currencies. Pros: Contextually related. Cons: Market view (`views/Market.tsx`) is already complex with token creation, order books, and listings.
-   - **Recommendation:** Option A (standalone view). Treasury management has its own admin/access control concerns distinct from personal wallet or market trading. A dedicated route keeps navigation clear.
+**Resolution:** Option A -- Open deposits. Anyone can deposit `Coin<T>` into a treasury. This is required for gate toll integration -- gate extensions can deposit toll revenue without being treasury admins. Spam is low-risk since depositing costs gas. If needed, a configurable `allow_public_deposits` flag can be added later without breaking changes.
+
+### Q3: Should the treasury store Balance\<T> or Coin\<T> in dynamic fields?
+
+**Resolution:** Option A -- Balance\<T>. The `0x2::balance::Balance<T>` type is the standard Sui Move idiom for storing fungible token balances inside shared objects. Deposits convert `Coin<T>` to `Balance<T>` via `coin::into_balance()`, withdrawals convert back via `coin::from_balance()`. No object ID overhead, supports `balance::join` and `balance::split` natively.
+
+### Q4: How should the gate toll extension interact with the world contract's gate system?
+
+**Resolution:** Option A -- Direct world contract call. The extension calls `world::gate::issue_jump_permit()` directly, following the same pattern as the existing gate-standings extension. This is clean and direct. The gate-standings contract's on-chain source serves as the reference implementation for the GateHook witness type and authorization pattern.
+
+### Q5: Where should the Treasury view live in the app navigation?
+
+**Resolution:** Option A (standalone /treasury) plus coin creation migration. Treasury gets its own top-level route at `/treasury`. Additionally, the coin/currency creation UI (token factory) and currency management (mint, burn, authorize, fees) move from `Market.tsx` to the Treasury view. Market focuses solely on SSU market orders and listings. This is a UI reorganization -- the underlying chain-shared TX builders remain unchanged.
 
 ## Deferred
 
@@ -417,9 +512,10 @@ Update `sonarEventHandlers.ts` to handle custom currency toll events:
 - **Treasury transaction history UI** -- Displaying deposit/withdraw history from on-chain events. Requires indexing treasury events in sonar. Deferred to after the base treasury feature is stable.
 - **Cross-tenant treasury support** -- Treasury objects are per-network (testnet). Cross-chain treasury management is out of scope.
 - **Existing SUI toll migration** -- Migrating gates currently using SUI tolls to the new custom currency system. Not required -- the existing gate-standings extension continues to work for SUI-only tolls. Users can switch when ready.
+- **Shared UI component extraction** -- `StatusBanner`, `AdminToggle`, `AdminPanel`, `FormField`, `StatBox` could be extracted to `apps/periscope/src/components/ui/`. Deferred -- copy to Treasury first, extract later if duplication becomes a maintenance burden.
 
 ## Cross-Plan Dependencies
 
-- **Plan 04 (manifest expansion):** The CurrencySelector component (Phase 4) reads from `db.currencies`, which already exists (Dexie v12+). Plan 04 adds market discovery caching that would improve currency data freshness, but is not a hard blocker -- the Market view already populates `db.currencies` via `discoverMarkets()`.
-- **Plan 06 (extension fixes):** Plan 06 defers custom toll currency (line 372). This plan supersedes that deferral. No code conflicts -- Plan 06 only touches the existing SUI toll help text (which this plan also modifies in Phase 4, but the change is compatible).
+- **Plan 04 (manifest expansion):** The CurrencySelector component (Phase 5) reads from `db.currencies`, which already exists (Dexie v12+). Plan 04 adds market discovery caching that would improve currency data freshness, but is not a hard blocker -- the Market view already populates `db.currencies` via `discoverMarkets()`.
+- **Plan 06 (extension fixes):** Plan 06 defers custom toll currency (line 372). This plan supersedes that deferral. No code conflicts -- Plan 06 only touches the existing SUI toll help text (which this plan also modifies in Phase 5, but the change is compatible).
 - **Plan 07 (dashboard landing):** No dependency. Treasury could appear as a dashboard card in a future iteration.
