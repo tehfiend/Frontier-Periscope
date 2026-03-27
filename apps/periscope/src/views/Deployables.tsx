@@ -109,11 +109,7 @@ function resolveCategory(assemblyType: string, catMap: Map<string, string>): str
 	if (lower.includes("storage") || lower.includes("depot") || lower.includes("gatekeeper"))
 		return "Storage";
 	if (lower.includes("node")) return "Node";
-	if (
-		lower.includes("refinery") ||
-		lower.includes("printer") ||
-		lower.includes("manufacturing")
-	)
+	if (lower.includes("refinery") || lower.includes("printer") || lower.includes("manufacturing"))
 		return "Production";
 	if (lower.includes("refuge")) return "Habitat";
 	return "Other";
@@ -585,8 +581,7 @@ export function Deployables() {
 				cell: ({ row }) => {
 					const r = row.original;
 					const tenantDapp =
-						TENANTS[tenant]?.dappUrl ??
-						`https://dapp.frontierperiscope.com/?tenant=${tenant}`;
+						TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
 					const dappHref = r.dappUrl
 						? r.dappUrl.startsWith("http")
 							? r.dappUrl
@@ -828,9 +823,7 @@ export function Deployables() {
 					const r = row.original;
 					// Network nodes with no explicit parent show their own label as static text
 					if (!r.parentId && r.assemblyType.toLowerCase().includes("node")) {
-						return (
-							<span className="text-xs text-zinc-400">{r.label}</span>
-						);
+						return <span className="text-xs text-zinc-400">{r.label}</span>;
 					}
 					return (
 						<ParentSelect
@@ -910,9 +903,7 @@ export function Deployables() {
 					const r = row.original;
 					return (
 						<div className="min-w-0">
-							<span className="text-xs text-zinc-300">
-								{r.ownerName ?? "Unknown"}
-							</span>
+							<span className="text-xs text-zinc-300">{r.ownerName ?? "Unknown"}</span>
 							<CopyAddress
 								address={r.owner}
 								sliceStart={6}

@@ -16,10 +16,7 @@
 
 import { bcs } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
-import {
-	DEFAULT_TURRET_PRIORITY_CONFIG,
-	SHIP_CLASSES,
-} from "./turret-priority";
+import { DEFAULT_TURRET_PRIORITY_CONFIG, SHIP_CLASSES } from "./turret-priority";
 import { ensureWasmReady } from "./wasm-init";
 
 // Re-export for convenience so the app can import from @tehfrontier/chain-shared
@@ -130,9 +127,7 @@ export async function buildPublishTurret(
 	let bytecodes = getTemplateBytecodes();
 
 	// Determine effective module name
-	const moduleName = symbol
-		? `turret_priority_${symbol.toLowerCase()}`
-		: "turret_priority";
+	const moduleName = symbol ? `turret_priority_${symbol.toLowerCase()}` : "turret_priority";
 
 	// 1. Optionally patch identifiers if a custom symbol is provided
 	if (symbol) {
@@ -148,22 +143,12 @@ export async function buildPublishTurret(
 
 	// DEFAULT_WEIGHT: sentinel 1000001 -> actual value
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			bcsU64(defaultWeight),
-			bcsU64(SENTINEL_DEFAULT_WEIGHT),
-			"U64",
-		),
+		mod.update_constants(bytecodes, bcsU64(defaultWeight), bcsU64(SENTINEL_DEFAULT_WEIGHT), "U64"),
 	);
 
 	// KOS_WEIGHT: sentinel 1000002 -> actual value
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			bcsU64(kosWeight),
-			bcsU64(SENTINEL_KOS_WEIGHT),
-			"U64",
-		),
+		mod.update_constants(bytecodes, bcsU64(kosWeight), bcsU64(SENTINEL_KOS_WEIGHT), "U64"),
 	);
 
 	// AGGRESSOR_BONUS: sentinel 1000003 -> actual value
@@ -178,22 +163,12 @@ export async function buildPublishTurret(
 
 	// BETRAYAL_BONUS: sentinel 1000004 -> actual value
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			bcsU64(betrayalBonus),
-			bcsU64(SENTINEL_BETRAYAL_BONUS),
-			"U64",
-		),
+		mod.update_constants(bytecodes, bcsU64(betrayalBonus), bcsU64(SENTINEL_BETRAYAL_BONUS), "U64"),
 	);
 
 	// LOW_HP_BONUS: sentinel 1000005 -> actual value
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			bcsU64(lowHpBonus),
-			bcsU64(SENTINEL_LOW_HP_BONUS),
-			"U64",
-		),
+		mod.update_constants(bytecodes, bcsU64(lowHpBonus), bcsU64(SENTINEL_LOW_HP_BONUS), "U64"),
 	);
 
 	// LOW_HP_THRESHOLD: sentinel 1000006 -> actual value
@@ -208,12 +183,7 @@ export async function buildPublishTurret(
 
 	// CLASS_BONUS: sentinel 1000007 -> actual value
 	bytecodes = new Uint8Array(
-		mod.update_constants(
-			bytecodes,
-			bcsU64(classBonus),
-			bcsU64(SENTINEL_CLASS_BONUS),
-			"U64",
-		),
+		mod.update_constants(bytecodes, bcsU64(classBonus), bcsU64(SENTINEL_CLASS_BONUS), "U64"),
 	);
 
 	// EFFECTIVE_CLASS_0: sentinel 1000008 -> actual value
@@ -274,9 +244,7 @@ export function parsePublishTurretResult(
 	for (const change of objectChanges) {
 		if (change.type === "published" && change.packageId) {
 			packageId = change.packageId;
-			const modules = (change as Record<string, unknown>).modules as
-				| string[]
-				| undefined;
+			const modules = (change as Record<string, unknown>).modules as string[] | undefined;
 			if (modules?.[0]) {
 				moduleName = modules[0];
 			}

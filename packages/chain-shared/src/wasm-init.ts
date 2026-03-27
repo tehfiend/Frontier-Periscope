@@ -13,9 +13,7 @@ let wasmMod: typeof import("@mysten/move-bytecode-template") | null = null;
  * Ensure the @mysten/move-bytecode-template WASM module is initialized.
  * Safe to call multiple times -- subsequent calls return the cached module.
  */
-export async function ensureWasmReady(): Promise<
-	typeof import("@mysten/move-bytecode-template")
-> {
+export async function ensureWasmReady(): Promise<typeof import("@mysten/move-bytecode-template")> {
 	if (wasmMod) return wasmMod;
 	if (!wasmReady) {
 		wasmReady = (async () => {
