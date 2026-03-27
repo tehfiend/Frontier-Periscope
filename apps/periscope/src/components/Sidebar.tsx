@@ -11,7 +11,7 @@ import {
 	LayoutDashboard,
 	Lock,
 	type LucideIcon,
-	Map,
+	Map as MapIcon,
 	Package,
 	PanelLeft,
 	PanelLeftClose,
@@ -56,7 +56,7 @@ const navGroups: NavGroup[] = [
 	{
 		title: "Navigation",
 		items: [
-			{ to: "/map", icon: Map, label: "Star Map" },
+			{ to: "/map", icon: MapIcon, label: "Star Map" },
 			{ to: "/jump-planner", icon: Route, label: "Jump Planner" },
 		],
 	},

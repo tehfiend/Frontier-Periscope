@@ -97,13 +97,15 @@ export function useStructureRows({
 		}
 
 		// Resolve addresses from manifest characters
+		// characterItemId is stored as a decimal string from chain sync; convert to number for
+		// registry standing lookup. NaN from invalid values safely fails the Set.has() check.
 		for (const mc of manifestChars) {
 			const charItemId = Number(mc.characterItemId);
 			if (
-				(matchedCharIds.has(charItemId) || (mc.tribeId && matchedTribeIds.has(mc.tribeId))) &&
-				mc.suiAddress
+				(!Number.isNaN(charItemId) && matchedCharIds.has(charItemId)) ||
+				(mc.tribeId && matchedTribeIds.has(mc.tribeId))
 			) {
-				matched.add(mc.suiAddress);
+				if (mc.suiAddress) matched.add(mc.suiAddress);
 			}
 		}
 

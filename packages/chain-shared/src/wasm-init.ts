@@ -25,5 +25,6 @@ export async function ensureWasmReady(): Promise<typeof import("@mysten/move-byt
 		})();
 	}
 	await wasmReady;
-	return wasmMod!;
+	// wasmMod is guaranteed non-null after wasmReady resolves (set in the async IIFE above)
+	return wasmMod as NonNullable<typeof wasmMod>;
 }

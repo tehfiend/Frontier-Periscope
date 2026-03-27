@@ -591,4 +591,6 @@ export function notDeleted<T extends { _deleted?: boolean }>(record: T): boolean
 }
 
 /** Filter predicate to exclude locally archived records from queries */
-export const notArchived = (r: { _archived?: boolean }) => !r._archived;
+export function notArchived<T extends { _archived?: boolean }>(record: T): boolean {
+	return !record._archived;
+}
