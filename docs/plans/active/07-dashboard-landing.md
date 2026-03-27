@@ -144,7 +144,7 @@ In the Deployables view, when a structure has no location (no systemId):
    - Links (using same icons as sidebar for consistency):
      - `Radio` icon + "Sonar" -> `/sonar`
      - `Package` icon + "Structures" -> `/structures`
-     - `Globe` icon + "Star Map" -> `/map`
+     - `Map` icon + "Star Map" -> `/map`
      - `Lock` icon + "Private Maps" -> `/private-maps`
      - `BookUser` icon + "Standings" -> `/standings`
      - `Coins` icon + "Markets" -> `/markets`
