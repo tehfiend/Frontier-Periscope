@@ -29,3 +29,9 @@
 - **File:** docs/plans/pending/06-extension-fixes.md
 - **Passes:** 4 (4 with changes)
 - **Result:** pending -- 3-phase plan fixing turret deploy bug (false success without TX), adding turret staleness detection, and documenting gate toll SUI-only limitation. 5 open questions remain. Key findings: turret config UI model mismatches generator (weights vs. thresholds), witness type mismatch between template and generated source, gates read registry at runtime (no staleness issue), gate toll contract only supports SUI.
+
+## 2026-03-26 -- misc-fixes (update)
+- **Action:** UPDATE
+- **File:** plans/active/05-misc-fixes.md
+- **Passes:** 2
+- **Result:** active -- resolved 4 open questions, researched standings reactivity root cause
