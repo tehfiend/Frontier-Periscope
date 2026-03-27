@@ -1,6 +1,6 @@
 # Plan: Storage Datagrid Improvements
 
-**Status:** Draft
+**Status:** Ready
 **Created:** 2026-03-26
 **Module:** periscope
 
@@ -38,9 +38,9 @@ The target state introduces `SYSTEM NAME (P#L#)` location formatting throughout 
 - It is a plain text `<input>` with placeholder `"0x... (leave blank for no market link)"`.
 - `SsuConfigValues` interface has `marketId: string` (L262).
 - Market objects are stored in `db.currencies` with `marketId` field (db/types.ts L728).
-- `CurrencyRecord` has `marketId`, `symbol`, `name`, `coinType` fields.
-- Markets are synced from chain via `queryMarkets()` in `packages/chain-shared/src/market.ts` L381.
-- The Market view already queries `db.currencies.filter(notDeleted).toArray()` (Market.tsx L80).
+- `CurrencyRecord` has `marketId`, `symbol`, `name`, `coinType` fields but does NOT store `creator` or `authorized` -- those live on `MarketInfo` (chain-shared `types.ts` L22-34) and are fetched live in `MarketDetail`.
+- Markets are synced from chain via `queryMarkets()` in `packages/chain-shared/src/market.ts` L381. During sync (`Market.tsx` L117-126), only markets where the user is creator or authorized are saved to `db.currencies`.
+- The Market view resolves character names from Sui addresses using `db.manifestCharacters` -> `charNameMap` (Market.tsx L453-459). Tribe info is available via `ManifestCharacter.tribeId` -> `db.manifestTribes` lookup.
 - `RegistrySelector` in `components/extensions/RegistrySelector.tsx` provides a pattern for a similar dropdown selector.
 
 ### Structure Data in Manifest + Filtered Datagrid
@@ -79,8 +79,8 @@ The "Reset" button and its confirm flow move from the inline Extension column ce
 ### 3. Market ID Picker for SSU
 
 Replace the raw text input in `SsuStandingsConfig` with a `MarketSelector` dropdown component (modeled after `RegistrySelector`). It:
-- Queries `db.currencies` for all known markets (those with a `marketId`)
-- Shows market name/symbol, coinType, and truncated marketId
+- Queries `db.currencies` for all known markets (those with a `marketId`) -- shows all synced markets since `db.currencies` is already filtered to user-accessible markets during sync
+- Shows market symbol, truncated marketId, and admin info: creator character name with tribe affiliation (resolved via `db.manifestCharacters` -> `db.manifestTribes`)
 - Allows clearing the selection (optional field)
 - Falls back to the raw text input if no currencies are cached yet
 - Stores the selected `marketId` string in `SsuConfigValues` (no type change needed)
@@ -89,10 +89,12 @@ Replace the raw text input in `SsuStandingsConfig` with a `MarketSelector` dropd
 
 The datagrid shifts from querying `db.deployables` / `db.assemblies` directly to reading from a combined view that includes:
 - **Owned structures:** `db.deployables` where `owner` matches active character's addresses (unchanged)
-- **Sonar-targeted structures:** assemblies/deployables whose `objectId` appears in recent `sonarEvents` (join on `assemblyId`)
+- **Sonar-targeted structures:** assemblies/deployables whose `objectId` appears in ANY `sonarEvents` (all time, no time window filter) joined on `assemblyId`
 - **Registry structures:** structures whose owner appears in a subscribed registry's standings. The join path: `db.assemblies`/`db.deployables` -> `owner` (Sui address) -> `db.manifestCharacters` (suiAddress -> characterId, tribeId) -> `db.registryStandings` (characterId or tribeId). Any structure whose owner (resolved to characterId/tribeId via manifest) has an entry in any subscribed registry is included. Note: `structureExtensionConfigs` only stores configs for the user's own structures, so it cannot be used for this purpose.
 
 The existing `assemblies` table continues to hold watched structures. The key change is the filter: instead of showing all assemblies, only show those that match the three criteria above. A new `useStructureRows()` hook encapsulates the query logic.
+
+A "Show All" toggle (defaulting to off/filtered) lets users bypass the filter and see every structure in the local database, providing an escape hatch when needed.
 
 ## Design Decisions
 
@@ -104,8 +106,10 @@ The existing `assemblies` table continues to hold watched structures. The key ch
 | Reset button placement | StructureDetailCard only | Reduces datagrid clutter; destructive actions belong in detail views |
 | Market selector component | New `MarketSelector.tsx` in `components/extensions/` | Follows same pattern as `RegistrySelector` |
 | Market data source | `db.currencies` where `marketId` is non-null | Already synced from chain; no new queries needed |
+| Market picker scope | All synced markets with admin character+tribe info | `db.currencies` is already filtered during sync (Market.tsx L117-126) to user-accessible markets. Admin info resolved via `db.manifestCharacters` (suiAddress -> name, tribeId) and `db.manifestTribes` (tribeId -> name) |
 | Filtered datagrid approach | Computed in `useMemo` from existing live queries | Avoids complex Dexie joins; data sets are small (hundreds, not thousands) for in-memory filtering |
-| Sonar-targeted detection | Query recent `sonarEvents` for distinct `assemblyId` values | Direct DB index on `assemblyId` exists |
+| Sonar lookback window | All time (no time filter) | Shows all structures that have ever appeared in sonar events. Avoids data loss from rolling windows. Dataset remains bounded by actual sonar activity |
+| Show All toggle | Toggle button defaulting to filtered view | Preserves the filtering improvement while giving users an escape hatch to see full dataset when needed |
 | Registry structure detection | Join structure owner -> manifest char -> registry standings | Indirect but only viable path; `structureExtensionConfigs` only has user's own structures |
 
 ## Implementation Phases
@@ -142,21 +146,33 @@ The existing `assemblies` table continues to hold watched structures. The key ch
 
 1. Create `apps/periscope/src/components/extensions/MarketSelector.tsx`:
    - Props: `value: string`, `onChange: (marketId: string) => void`
-   - Query `db.currencies` for records with non-null `marketId` (note: `CurrencyRecord` has no `tenant` field -- all synced markets are shown)
+   - Query `db.currencies` for records with non-null `marketId` -- show all synced markets
+   - Query `db.manifestCharacters` and `db.manifestTribes` for admin name resolution
+   - Build a `charNameMap: Map<string, string>` from `manifestCharacters` (suiAddress -> name), same pattern as Market.tsx L453-459
+   - Build a `tribeLookup: Map<number, string>` from `manifestTribes` (id -> name/nameShort) for tribe affiliation display
+   - For each currency with a `marketId`, resolve the admin info: the `creator` address is not stored on `CurrencyRecord`, so the selector must fetch `MarketInfo` for each market at mount time via `queryMarketById()` (chain-shared `market.ts` L462-467). Cache the results in local state. This is a small number of markets (typically <10) so the fetch overhead is negligible.
    - Dropdown UI matching `RegistrySelector` pattern: search, item list, clear option
-   - Display each market as `SYMBOL -- truncated marketId`
+   - Display each market as: `SYMBOL -- AdminName [TribeName] -- 0xabcd...1234`
+     - `AdminName` = character name from `charNameMap.get(marketInfo.creator)`, fallback to truncated address
+     - `[TribeName]` = tribe name from `tribeLookup.get(manifestChar.tribeId)`, omitted if not found
+     - Truncated marketId for identification
+   - Search filters on symbol, admin name, tribe name, and marketId
+   - Allows clearing the selection (optional field)
 2. Replace the `<input type="text">` in `SsuStandingsConfig` (`StandingsExtensionPanel.tsx` L160-174) with `<MarketSelector>`
+   - Pass `suiClient` from context so `MarketSelector` can call `queryMarketById()`
 3. Add a "Paste custom ID" fallback toggle for advanced users who need to enter an ID not in the list
 4. No changes to `SsuConfigValues` type -- still stores `marketId: string`
 
 ### Phase 4: Manifest-Backed Filtered Datagrid
 
 1. Create `apps/periscope/src/hooks/useStructureRows.ts`:
-   - Accept active character address(es), tenant
+   - Accept active character address(es), tenant, and `showAll: boolean` parameter
    - Use `useLiveQuery()` (from `dexie-react-hooks`) for all DB queries to maintain reactivity
-   - Query `db.deployables` for owned structures (existing logic from Deployables.tsx L230-234)
-   - Query `db.sonarEvents` for distinct `assemblyId` values from recent events (last 7 days or configurable), then query `db.assemblies`/`db.deployables` for matching entries
-   - Build a `registryOwnerAddresses: Set<string>` in a `useMemo`: load `db.registryStandings` -> collect characterIds/tribeIds -> look up `db.manifestCharacters` to resolve to Sui addresses. Then query `db.assemblies`/`db.deployables` where `owner` is in that set.
+   - When `showAll` is true: return all structures from `db.deployables` and `db.assemblies` (unfiltered, same as current behavior)
+   - When `showAll` is false (default): apply the three-criteria filter:
+     - Query `db.deployables` for owned structures (existing logic from Deployables.tsx L230-234)
+     - Query `db.sonarEvents` for distinct `assemblyId` values from ALL events (no time window), then query `db.assemblies`/`db.deployables` for matching entries
+     - Build a `registryOwnerAddresses: Set<string>` in a `useMemo`: load `db.registryStandings` -> collect characterIds/tribeIds -> look up `db.manifestCharacters` to resolve to Sui addresses. Then query `db.assemblies`/`db.deployables` where `owner` is in that set.
    - Merge and deduplicate by `objectId` in a final `useMemo` (owned structures take priority for richer data)
    - Return `StructureRow[]` and any needed lookup maps (ownerNames, extensionByAssembly)
    - Note: the owner name lookup, extension lookup, and contacts lookup currently in Deployables.tsx L254-293 should either move into this hook or remain in the view -- the hook returns raw rows and the view enriches them
@@ -164,38 +180,35 @@ The existing `assemblies` table continues to hold watched structures. The key ch
 3. Keep quick-filter logic (`all` / `mine` / `friendly` / `hostile`) -- it stacks on top of the base filter
 4. Remove standalone `db.assemblies.filter(notDeleted).toArray()` query (L238) -- now handled by hook
 5. Ensure the "Sync Chain" button still populates `db.deployables` the same way
-6. Add a "Show All" toggle or notice so users understand the datagrid is filtered
+6. Add a "Show All" toggle button in the datagrid toolbar (near existing filter controls):
+   - Default state: off (filtered view active)
+   - When toggled on: passes `showAll: true` to `useStructureRows`, bypasses the three-criteria filter
+   - Visual indicator: subtle badge or text showing "Filtered" vs "All" so users know which mode is active
+   - State stored in the component (not persisted) -- resets to filtered on page load
 
 ## File Summary
 
 | File | Action | Description |
 |------|--------|-------------|
 | `apps/periscope/src/lib/format.ts` | CREATE | Shared `formatLocation()` helper |
-| `apps/periscope/src/views/Deployables.tsx` | MODIFY | Use formatLocation, remove Reset from Extension column, replace inline data merge with useStructureRows hook |
+| `apps/periscope/src/views/Deployables.tsx` | MODIFY | Use formatLocation, remove Reset from Extension column, replace inline data merge with useStructureRows hook, add Show All toggle |
 | `apps/periscope/src/components/StructureDetailCard.tsx` | MODIFY | Use formatLocation, add onReset prop and Reset button with confirm flow |
-| `apps/periscope/src/components/extensions/MarketSelector.tsx` | CREATE | Dropdown selector for Market objects from db.currencies |
+| `apps/periscope/src/components/extensions/MarketSelector.tsx` | CREATE | Dropdown selector for Market objects from db.currencies, with admin character+tribe info |
 | `apps/periscope/src/components/extensions/StandingsExtensionPanel.tsx` | MODIFY | Replace Market ID text input with MarketSelector component |
-| `apps/periscope/src/hooks/useStructureRows.ts` | CREATE | Hook encapsulating filtered structure query (owned + sonar + registry) |
+| `apps/periscope/src/hooks/useStructureRows.ts` | CREATE | Hook encapsulating filtered structure query (owned + sonar + registry) with showAll parameter |
 | `apps/periscope/src/views/Market.tsx` | MODIFY | (optional) Align location format strings with formatLocation |
 | `apps/periscope/src/lib/lpoints.ts` | UNCHANGED | No changes -- lPoint values stay as `"P2-L3"` in storage; display formatting is in format.ts |
 
-## Open Questions
+## Resolved Questions
 
 1. **Should the filtered datagrid allow a "show all" mode?**
-   - **Option A: No "show all" -- strict filter only** -- Pros: cleaner UX, intentional curation, smaller data set. Cons: users may want to see all tracked structures.
-   - **Option B: Add a "Show All" toggle** -- Pros: flexibility, backward compat, users can browse full dataset. Cons: defeats purpose of filtering, may re-introduce noise.
-   - **Recommendation:** Option B -- add a toggle defaulting to filtered view. This preserves the improvement while giving users an escape hatch.
+   - **Decision: Option B -- Add a "Show All" toggle.** Default to filtered view (owned + sonar + registry). Toggle lets users see all tracked structures when needed. This preserves the improvement while giving an escape hatch.
 
 2. **How far back should sonar events be scanned for "targeted by sonar" structures?**
-   - **Option A: Last 7 days (rolling window)** -- Pros: bounded, predictable. Cons: may miss older targets.
-   - **Option B: Since last clear / configurable** -- Pros: user control. Cons: more complexity.
-   - **Option C: All time (all events with assemblyId)** -- Pros: no data loss. Cons: potentially large set.
-   - **Recommendation:** Option A -- 7-day rolling window. Simple, bounded, and most sonar targets are recent. Can be made configurable later.
+   - **Decision: Option C -- All time.** Show all structures that have ever appeared in sonar events, with no time window filter. This avoids data loss from rolling windows. The dataset remains naturally bounded by the user's actual sonar activity volume.
 
 3. **Should the Market ID picker show all synced markets or only markets the user has access to?**
-   - **Option A: All synced markets** -- Pros: simple, markets are already filtered during sync. Cons: might show irrelevant markets.
-   - **Option B: Only markets where user is creator or authorized** -- Pros: relevant only. Cons: requires re-filtering already-filtered data.
-   - **Recommendation:** Option A -- `db.currencies` already contains only markets the user has access to (the sync in Market.tsx L117-126 filters by creator/authorized). No additional filtering needed.
+   - **Decision: Option A -- All synced markets from `db.currencies`, with admin character+tribe info.** Since `db.currencies` is already filtered during sync (Market.tsx L117-126) to only include markets where the user is creator or authorized, no additional access filtering is needed. The MarketSelector displays admin info alongside each market: creator character name (resolved from `db.manifestCharacters` via Sui address) with tribe affiliation (resolved from `db.manifestTribes` via tribeId). This helps users identify markets by who runs them.
 
 ## Deferred
 
@@ -203,3 +216,4 @@ The existing `assemblies` table continues to hold watched structures. The key ch
 - **Location auto-resolution on sync** -- When syncing owned structures, auto-query `manifestLocations` to populate systemId/lPoint. Currently relies on separate manifest sync. Could be made more seamless but is a separate concern.
 - **Turret/Gate market support** -- The market picker is SSU-specific. Other assembly types might need market links in the future.
 - **PrivateMaps location formatting** -- `PrivateMaps.tsx` L782 uses `P{loc.planet}-L{loc.lPoint}` with numeric lPoint values (number, not string). Different data shape than `formatLocation` expects; would need a separate adapter or overload.
+- **Cache MarketInfo on CurrencyRecord** -- Currently MarketSelector must fetch `MarketInfo` live from the chain to get creator/authorized addresses. A future improvement could store `creator` and `authorized` fields on `CurrencyRecord` during sync, eliminating the need for a per-mount chain fetch. Low priority since the number of markets is small.
