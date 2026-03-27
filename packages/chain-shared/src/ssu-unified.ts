@@ -200,7 +200,6 @@ export interface UnifiedDepositWithStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
 	registryId: string;
-	worldPackageId: string;
 	ssuObjectId: string;
 	characterObjectId: string;
 	/** The Item object to deposit (result of a prior withdraw/transfer). */
@@ -236,7 +235,6 @@ export interface UnifiedWithdrawWithStandingsParams {
 	packageId: string;
 	ssuConfigId: string;
 	registryId: string;
-	worldPackageId: string;
 	ssuObjectId: string;
 	characterObjectId: string;
 	typeId: number;
@@ -333,7 +331,7 @@ export function buildEscrowAndListWithStandings(
 			tx.object(params.characterObjectId),
 			item,
 			tx.pure.u64(params.pricePerUnit),
-			tx.object("0x6"), // Clock shared object
+			tx.object(CLOCK_REF),
 		],
 	});
 
@@ -491,6 +489,178 @@ export function buildBuyFromListingWithStandings(
 	return tx;
 }
 
+export interface CancelListingWithStandingsParams {
+	packageId: string;
+	ssuConfigId: string;
+	marketId: string;
+	coinType: string;
+	ssuObjectId: string;
+	characterObjectId: string;
+	listingId: number;
+	senderAddress: string;
+}
+
+/**
+ * Build a TX to cancel a sell listing (owner/delegate).
+ * No standings check on cancel -- the listing was already validated at creation.
+ */
+export function buildCancelListingWithStandings(
+	params: CancelListingWithStandingsParams,
+): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	tx.moveCall({
+		target: `${params.packageId}::ssu_unified::cancel_listing`,
+		typeArguments: [params.coinType],
+		arguments: [
+			tx.object(params.ssuConfigId),
+			tx.object(params.marketId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			tx.pure.u64(params.listingId),
+		],
+	});
+
+	return tx;
+}
+
+/**
+ * Build a TX for a player to cancel their own sell listing.
+ */
+export function buildPlayerCancelListingWithStandings(
+	params: CancelListingWithStandingsParams,
+): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	tx.moveCall({
+		target: `${params.packageId}::ssu_unified::player_cancel_listing`,
+		typeArguments: [params.coinType],
+		arguments: [
+			tx.object(params.ssuConfigId),
+			tx.object(params.marketId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			tx.pure.u64(params.listingId),
+		],
+	});
+
+	return tx;
+}
+
+export interface PlayerFillBuyOrderWithStandingsParams {
+	packageId: string;
+	ssuConfigId: string;
+	marketId: string;
+	coinType: string;
+	worldPackageId: string;
+	ssuObjectId: string;
+	characterObjectId: string;
+	ownerCapReceivingId: string;
+	orderId: number;
+	typeId: number;
+	quantity: number;
+	senderAddress: string;
+}
+
+/**
+ * Build a PTB for any player to fill a buy order from their own inventory.
+ * No standings check needed -- buyer already passed min_buy when posting.
+ */
+export function buildPlayerFillBuyOrderWithStandings(
+	params: PlayerFillBuyOrderWithStandingsParams,
+): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	const capType = `${params.worldPackageId}::character::Character`;
+
+	// Step 1: Borrow OwnerCap<Character> from Character
+	const [ownerCap, receipt] = tx.moveCall({
+		target: `${params.worldPackageId}::character::borrow_owner_cap`,
+		typeArguments: [capType],
+		arguments: [
+			tx.object(params.characterObjectId),
+			tx.object(params.ownerCapReceivingId),
+		],
+	});
+
+	// Step 2: Withdraw items from player's inventory
+	const [item] = tx.moveCall({
+		target: `${params.worldPackageId}::storage_unit::withdraw_by_owner`,
+		typeArguments: [capType],
+		arguments: [
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			ownerCap,
+			tx.pure.u64(params.typeId),
+			tx.pure.u32(params.quantity),
+		],
+	});
+
+	// Step 3: Fill the buy order with withdrawn items
+	tx.moveCall({
+		target: `${params.packageId}::ssu_unified::player_fill_buy_order`,
+		typeArguments: [params.coinType],
+		arguments: [
+			tx.object(params.ssuConfigId),
+			tx.object(params.marketId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			item,
+			tx.pure.u64(params.orderId),
+		],
+	});
+
+	// Step 4: Return OwnerCap<Character>
+	tx.moveCall({
+		target: `${params.worldPackageId}::character::return_owner_cap`,
+		typeArguments: [capType],
+		arguments: [tx.object(params.characterObjectId), ownerCap, receipt],
+	});
+
+	return tx;
+}
+
+export interface FillBuyOrderWithStandingsParams {
+	packageId: string;
+	ssuConfigId: string;
+	marketId: string;
+	coinType: string;
+	ssuObjectId: string;
+	characterObjectId: string;
+	orderId: number;
+	quantity: number;
+	senderAddress: string;
+}
+
+/**
+ * Build a TX to fill a buy order by providing items from the SSU (owner/delegate).
+ * No standings check -- buyer passed min_buy when posting the order.
+ */
+export function buildFillBuyOrderWithStandings(
+	params: FillBuyOrderWithStandingsParams,
+): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	tx.moveCall({
+		target: `${params.packageId}::ssu_unified::fill_buy_order`,
+		typeArguments: [params.coinType],
+		arguments: [
+			tx.object(params.ssuConfigId),
+			tx.object(params.marketId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			tx.pure.u64(params.orderId),
+			tx.pure.u32(params.quantity),
+		],
+	});
+
+	return tx;
+}
+
 // ── SsuUnifiedConfig Query Functions ────────────────────────────────────────
 
 /**
@@ -625,5 +795,5 @@ function parseOptionId(raw: unknown): string | null {
 			if (Array.isArray(vec)) return vec.length > 0 ? String(vec[0]) : null;
 		}
 	}
-	return String(raw) || null;
+	return null;
 }
