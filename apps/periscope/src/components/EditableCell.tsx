@@ -26,7 +26,7 @@ export function EditableCell({
 	onSave,
 	editable = true,
 	disabledTooltip,
-	placeholder = "\u2014",
+	placeholder = "",
 	className = "",
 	children,
 }: EditableCellProps) {

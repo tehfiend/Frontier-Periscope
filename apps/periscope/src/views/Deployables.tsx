@@ -99,6 +99,28 @@ function fuelColorClass(hours: number | null): string {
 	return "text-green-400";
 }
 
+function resolveCategory(assemblyType: string, catMap: Map<string, string>): string {
+	// Direct match from gameTypes DB (e.g. "Heavy Storage" -> "Ship / Drone / Structure Equipment")
+	const direct = catMap.get(assemblyType);
+	if (direct) return direct;
+	// Fallback: keyword-based classification
+	const lower = assemblyType.toLowerCase();
+	if (lower.includes("turret")) return "Turret";
+	if (lower.includes("gate") || lower.includes("jumpgate") || lower.includes("stargate"))
+		return "Gate";
+	if (lower.includes("storage") || lower.includes("depot") || lower.includes("gatekeeper"))
+		return "Storage";
+	if (lower.includes("node")) return "Node";
+	if (
+		lower.includes("refinery") ||
+		lower.includes("printer") ||
+		lower.includes("manufacturing")
+	)
+		return "Production";
+	if (lower.includes("refuge")) return "Habitat";
+	return "Other";
+}
+
 function statusDotClass(status: string): string {
 	switch (status) {
 		case "online":
@@ -239,6 +261,21 @@ export function Deployables() {
 	const players = useLiveQuery(() => db.players.filter(notDeleted).toArray(), []);
 	const extensions = useLiveQuery(() => db.extensions.filter(notDeleted).toArray(), []);
 	const lastSync = useLiveQuery(() => db.settings.get("lastChainSync"));
+
+	// ── Category Lookup (from gameTypes DB) ─────────────────────────────────
+	const assemblyCategoryMap =
+		useLiveQuery(async () => {
+			const typeIds = Object.keys(ASSEMBLY_TYPE_IDS).map(Number);
+			const types = await db.gameTypes.where("id").anyOf(typeIds).toArray();
+			const map = new Map<string, string>();
+			for (const t of types) {
+				const assemblyName = ASSEMBLY_TYPE_IDS[t.id];
+				if (assemblyName) {
+					map.set(assemblyName, t.categoryName);
+				}
+			}
+			return map;
+		}) ?? new Map<string, string>();
 
 	// ── Solar System Lookup ──────────────────────────────────────────────────
 	const systems = useLiveQuery(() => db.solarSystems.toArray()) ?? [];
@@ -614,6 +651,62 @@ export function Deployables() {
 	const columns: ColumnDef<StructureRow, unknown>[] = useMemo(
 		() => [
 			{
+				id: "actions",
+				header: "Actions",
+				size: 80,
+				enableColumnFilter: false,
+				enableSorting: false,
+				cell: ({ row }) => {
+					const r = row.original;
+					const tenantDapp =
+						TENANTS[tenant]?.dappUrl ??
+						`https://dapp.frontierperiscope.com/?tenant=${tenant}`;
+					const dappHref = r.dappUrl
+						? r.dappUrl.startsWith("http")
+							? r.dappUrl
+							: `https://${r.dappUrl}`
+						: r.itemId
+							? `${tenantDapp}&itemId=${r.itemId}`
+							: r.ownership === "mine"
+								? tenantDapp
+								: undefined;
+					return (
+						<div className="flex items-center gap-1">
+							{dappHref && (
+								<a
+									href={dappHref}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-zinc-600 hover:text-cyan-400"
+									title="Open dApp"
+								>
+									<AppWindow size={14} />
+								</a>
+							)}
+							<a
+								href={`https://testnet.suivision.xyz/object/${r.objectId}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="text-zinc-600 hover:text-zinc-400"
+								title="View on explorer"
+							>
+								<ExternalLink size={14} />
+							</a>
+							{r.source === "assemblies" && (
+								<button
+									type="button"
+									onClick={() => handleRemove(r)}
+									className="text-zinc-600 hover:text-red-400"
+									title="Remove from tracking"
+								>
+									<Trash2 size={14} />
+								</button>
+							)}
+						</div>
+					);
+				},
+			},
+			{
 				id: "status",
 				accessorKey: "status",
 				header: "Status",
@@ -686,6 +779,13 @@ export function Deployables() {
 				accessorFn: (d) => d.assemblyType,
 				header: "Type",
 				size: 150,
+				filterFn: excelFilterFn,
+			},
+			{
+				id: "category",
+				accessorFn: (d) => resolveCategory(d.assemblyType, assemblyCategoryMap),
+				header: "Category",
+				size: 110,
 				filterFn: excelFilterFn,
 			},
 			{
@@ -830,12 +930,23 @@ export function Deployables() {
 			},
 			{
 				id: "parent",
-				accessorFn: (d) => (d.parentId ? (parentLabels.get(d.parentId) ?? "") : ""),
+				accessorFn: (d) => {
+					if (d.parentId) return parentLabels.get(d.parentId) ?? "";
+					// Network nodes with no parent show themselves
+					if (d.assemblyType.toLowerCase().includes("node")) return d.label;
+					return "";
+				},
 				header: "Parent",
 				size: 160,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
+					// Network nodes with no explicit parent show their own label as static text
+					if (!r.parentId && r.assemblyType.toLowerCase().includes("node")) {
+						return (
+							<span className="text-xs text-zinc-400">{r.label}</span>
+						);
+					}
 					return (
 						<ParentSelect
 							value={r.parentId}
@@ -908,7 +1019,7 @@ export function Deployables() {
 							value={r.notes ?? ""}
 							onSave={(v) => handleSaveNotes(r, v)}
 							className="text-xs text-zinc-500"
-							placeholder="\u2014"
+							placeholder=""
 						/>
 					);
 				},
@@ -924,62 +1035,6 @@ export function Deployables() {
 						{new Date(row.original.updatedAt).toLocaleDateString()}
 					</span>
 				),
-			},
-			{
-				id: "actions",
-				header: "Actions",
-				size: 80,
-				enableColumnFilter: false,
-				enableSorting: false,
-				cell: ({ row }) => {
-					const r = row.original;
-					const tenantDapp =
-						TENANTS[tenant]?.dappUrl ??
-						`https://dapp.frontierperiscope.com/?tenant=${tenant}`;
-					const dappHref = r.dappUrl
-						? r.dappUrl.startsWith("http")
-							? r.dappUrl
-							: `https://${r.dappUrl}`
-						: r.itemId
-							? `${tenantDapp}&itemId=${r.itemId}`
-							: r.ownership === "mine"
-								? tenantDapp
-								: undefined;
-					return (
-						<div className="flex items-center gap-1">
-							{dappHref && (
-								<a
-									href={dappHref}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="text-zinc-600 hover:text-cyan-400"
-									title="Open dApp"
-								>
-									<AppWindow size={14} />
-								</a>
-							)}
-							<a
-								href={`https://testnet.suivision.xyz/object/${r.objectId}`}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="text-zinc-600 hover:text-zinc-400"
-								title="View on explorer"
-							>
-								<ExternalLink size={14} />
-							</a>
-							{r.source === "assemblies" && (
-								<button
-									type="button"
-									onClick={() => handleRemove(r)}
-									className="text-zinc-600 hover:text-red-400"
-									title="Remove from tracking"
-								>
-									<Trash2 size={14} />
-								</button>
-							)}
-						</div>
-					);
-				},
 			},
 		],
 		[
@@ -999,6 +1054,7 @@ export function Deployables() {
 			parentLabels,
 			systems,
 			systemNames,
+			assemblyCategoryMap,
 		],
 	);
 
