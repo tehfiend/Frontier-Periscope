@@ -3,6 +3,8 @@ import { useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	AlertCircle,
+	Archive,
+	ArchiveRestore,
 	Loader2,
 	Lock,
 	MapPin,
@@ -70,20 +72,29 @@ export function PrivateMaps() {
 	const [showInviteDialog, setShowInviteDialog] = useState(false);
 	const [showAddLocationDialog, setShowAddLocationDialog] = useState(false);
 	const [showAddMapByIdDialog, setShowAddMapByIdDialog] = useState(false);
+	const [showArchived, setShowArchived] = useState(false);
 
 	// Read cached V1 maps from IndexedDB
-	const mapsV1 =
-		useLiveQuery(
-			() => db.manifestPrivateMaps.where("tenant").equals(tenant).toArray(),
-			[tenant],
-		) ?? [];
+	const allMapsV1 =
+		useLiveQuery(() => db.manifestPrivateMaps.where("tenant").equals(tenant).toArray(), [tenant]) ??
+		[];
 
 	// Read cached V2 maps from IndexedDB
-	const mapsV2 =
+	const allMapsV2 =
 		useLiveQuery(
 			() => db.manifestPrivateMapsV2.where("tenant").equals(tenant).toArray(),
 			[tenant],
 		) ?? [];
+
+	// Filter maps by archive status
+	const mapsV1 = useMemo(
+		() => allMapsV1.filter((m) => !m._archived || showArchived),
+		[allMapsV1, showArchived],
+	);
+	const mapsV2 = useMemo(
+		() => allMapsV2.filter((m) => !m._archived || showArchived),
+		[allMapsV2, showArchived],
+	);
 
 	// Read cached locations for selected map
 	const locations =
@@ -100,6 +111,16 @@ export function PrivateMaps() {
 	const selectedMap = selectedMapVersion === "v1" ? selectedMapV1 : null;
 	const totalMaps = mapsV1.length + mapsV2.length;
 
+	// Archive/unarchive handlers
+	const handleArchiveV1 = async (id: string, archived: boolean) => {
+		await db.manifestPrivateMaps.update(id, { _archived: archived });
+		if (archived && selectedMapId === id) setSelectedMapId(null);
+	};
+	const handleArchiveV2 = async (id: string, archived: boolean) => {
+		await db.manifestPrivateMapsV2.update(id, { _archived: archived });
+		if (archived && selectedMapId === id) setSelectedMapId(null);
+	};
+
 	// Discover maps from chain -- uses stored suiAddress, no wallet needed
 	const handleSync = useCallback(async () => {
 		if (!suiAddress) return;
@@ -114,18 +135,10 @@ export function PrivateMaps() {
 			}
 
 			// Sync V1 locations for all maps that have a decryptedMapKey
-			const cachedMaps = await db.manifestPrivateMaps
-				.where("tenant")
-				.equals(tenant)
-				.toArray();
+			const cachedMaps = await db.manifestPrivateMaps.where("tenant").equals(tenant).toArray();
 			for (const m of cachedMaps) {
 				if (m.decryptedMapKey) {
-					await syncMapLocations(
-						client,
-						m.id,
-						m.decryptedMapKey,
-						tenant as TenantId,
-					);
+					await syncMapLocations(client, m.id, m.decryptedMapKey, tenant as TenantId);
 				}
 			}
 
@@ -133,21 +146,11 @@ export function PrivateMaps() {
 			await syncPrivateMapsV2ForUser(client, tenant as TenantId, suiAddress);
 
 			// Sync V2 locations
-			const cachedV2Maps = await db.manifestPrivateMapsV2
-				.where("tenant")
-				.equals(tenant)
-				.toArray();
+			const cachedV2Maps = await db.manifestPrivateMapsV2.where("tenant").equals(tenant).toArray();
 			for (const m of cachedV2Maps) {
 				if (m.mode === 1) {
 					// Cleartext standings -- no key needed
-					await syncMapLocationsV2(
-						client,
-						m.id,
-						1,
-						undefined,
-						undefined,
-						tenant as TenantId,
-					);
+					await syncMapLocationsV2(client, m.id, 1, undefined, undefined, tenant as TenantId);
 				} else if (m.decryptedMapKey && m.publicKey) {
 					// Encrypted -- needs map key
 					await syncMapLocationsV2(
@@ -178,7 +181,7 @@ export function PrivateMaps() {
 
 	// When key becomes available, decrypt any pending V1 map keys + sync locations
 	useEffect(() => {
-		const pending = mapsV1.filter((m) => !m.decryptedMapKey && m.encryptedMapKey);
+		const pending = allMapsV1.filter((m) => !m.decryptedMapKey && m.encryptedMapKey);
 		if (keyPair && pending.length > 0) {
 			decryptMapKeys(keyPair, tenant as TenantId).then(() => {
 				db.manifestPrivateMaps
@@ -194,7 +197,7 @@ export function PrivateMaps() {
 					});
 			});
 		}
-	}, [keyPair, mapsV1, client, tenant]);
+	}, [keyPair, allMapsV1, client, tenant]);
 
 	// Sync V1 locations when a V1 map is selected
 	useEffect(() => {
@@ -221,13 +224,13 @@ export function PrivateMaps() {
 
 	// Also sync locations for all decrypted V1 maps on first load
 	useEffect(() => {
-		if (mapsV1.length === 0) return;
-		for (const m of mapsV1) {
+		if (allMapsV1.length === 0) return;
+		for (const m of allMapsV1) {
 			if (m.decryptedMapKey) {
 				syncMapLocations(client, m.id, m.decryptedMapKey, tenant as TenantId);
 			}
 		}
-	}, [mapsV1.length]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [allMapsV1.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const addresses = getContractAddresses(tenant as TenantId);
 	const packageId = addresses.privateMap?.packageId;
@@ -254,6 +257,8 @@ export function PrivateMaps() {
 				onCreate={walletAddress && keyPair ? () => setShowCreateDialog(true) : undefined}
 				onAddById={walletAddress ? () => setShowAddMapByIdDialog(true) : undefined}
 				hasPackageId={!!packageId || !!packageIdV2}
+				showArchived={showArchived}
+				onToggleArchived={() => setShowArchived(!showArchived)}
 			/>
 
 			{/* Map List */}
@@ -278,6 +283,7 @@ export function PrivateMaps() {
 							map={m}
 							isSelected={m.id === selectedMapId && selectedMapVersion === "v1"}
 							onSelect={() => handleSelectMap(m.id, "v1")}
+							onArchive={(archived) => handleArchiveV1(m.id, archived)}
 						/>
 					))}
 					{/* V2 Maps */}
@@ -287,6 +293,7 @@ export function PrivateMaps() {
 							map={m}
 							isSelected={m.id === selectedMapId && selectedMapVersion === "v2"}
 							onSelect={() => handleSelectMap(m.id, "v2")}
+							onArchive={(archived) => handleArchiveV2(m.id, archived)}
 						/>
 					))}
 				</div>
@@ -332,9 +339,7 @@ export function PrivateMaps() {
 										});
 										try {
 											await dAppKit.signAndExecuteTransaction({ transaction: tx });
-											await db.manifestMapLocations.delete(
-												`${selectedMapV1.id}:${locationId}`,
-											);
+											await db.manifestMapLocations.delete(`${selectedMapV1.id}:${locationId}`);
 										} catch {
 											// TX failed
 										}
@@ -358,15 +363,11 @@ export function PrivateMaps() {
 							<div className="mt-2 grid grid-cols-2 gap-3 text-xs">
 								<div>
 									<span className="text-zinc-600">Min Read:</span>{" "}
-									<span className="text-zinc-300">
-										{selectedMapV2.minReadStanding ?? 0}
-									</span>
+									<span className="text-zinc-300">{selectedMapV2.minReadStanding ?? 0}</span>
 								</div>
 								<div>
 									<span className="text-zinc-600">Min Write:</span>{" "}
-									<span className="text-zinc-300">
-										{selectedMapV2.minWriteStanding ?? 0}
-									</span>
+									<span className="text-zinc-300">{selectedMapV2.minWriteStanding ?? 0}</span>
 								</div>
 								{selectedMapV2.registryId && (
 									<div className="col-span-2">
@@ -421,9 +422,7 @@ export function PrivateMaps() {
 										});
 										try {
 											await dAppKit.signAndExecuteTransaction({ transaction: tx });
-											await db.manifestMapLocations.delete(
-												`v2:${selectedMapV2.id}:${locationId}`,
-											);
+											await db.manifestMapLocations.delete(`v2:${selectedMapV2.id}:${locationId}`);
 										} catch {
 											// TX failed
 										}
@@ -494,12 +493,16 @@ function Header({
 	onCreate,
 	onAddById,
 	hasPackageId,
+	showArchived,
+	onToggleArchived,
 }: {
 	onSync?: () => void;
 	isSyncing?: boolean;
 	onCreate?: () => void;
 	onAddById?: () => void;
 	hasPackageId?: boolean;
+	showArchived?: boolean;
+	onToggleArchived?: () => void;
 } = {}) {
 	return (
 		<div className="mb-6 flex items-center justify-between">
@@ -508,11 +511,23 @@ function Header({
 					<Lock size={24} />
 					Private Maps
 				</h1>
-				<p className="mt-1 text-sm text-zinc-500">
-					Encrypted and standings-gated location sharing
-				</p>
+				<p className="mt-1 text-sm text-zinc-500">Encrypted and standings-gated location sharing</p>
 			</div>
 			<div className="flex items-center gap-2">
+				{onToggleArchived && (
+					<button
+						type="button"
+						onClick={onToggleArchived}
+						title={showArchived ? "Hide archived" : "Show archived"}
+						className={`rounded-lg p-2 text-xs transition-colors ${
+							showArchived
+								? "bg-amber-900/30 text-amber-400"
+								: "text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
+						}`}
+					>
+						<Archive size={14} />
+					</button>
+				)}
 				{onSync && (
 					<button
 						type="button"
@@ -571,86 +586,40 @@ function MapCard({
 	map,
 	isSelected,
 	onSelect,
+	onArchive,
 }: {
 	map: ManifestPrivateMap;
 	isSelected: boolean;
 	onSelect: () => void;
+	onArchive?: (archived: boolean) => void;
 }) {
 	return (
-		<button
-			type="button"
-			onClick={onSelect}
-			className={`w-full rounded-lg border p-4 text-left transition-colors ${
-				isSelected
-					? "border-cyan-500/50 bg-cyan-500/5"
-					: "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
+		<div
+			className={`rounded-lg border p-4 transition-colors ${
+				map._archived
+					? "border-zinc-800/50 bg-zinc-900/30 opacity-60"
+					: isSelected
+						? "border-cyan-500/50 bg-cyan-500/5"
+						: "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
 			}`}
 		>
 			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
+				<button
+					type="button"
+					onClick={onSelect}
+					className="flex min-w-0 flex-1 items-center gap-3 text-left"
+				>
 					<div className="rounded-lg bg-zinc-800 p-2">
 						<Lock size={18} className="text-cyan-500" />
 					</div>
 					<div>
-						<p className="text-sm font-medium text-zinc-200">{map.name}</p>
-						<CopyAddress
-							address={map.id}
-							sliceStart={14}
-							sliceEnd={6}
-							className="text-xs text-zinc-600"
-						/>
-					</div>
-				</div>
-				<div className="text-xs text-zinc-500">{new Date(map.cachedAt).toLocaleDateString()}</div>
-			</div>
-		</button>
-	);
-}
-
-function MapCardV2({
-	map,
-	isSelected,
-	onSelect,
-}: {
-	map: ManifestPrivateMapV2;
-	isSelected: boolean;
-	onSelect: () => void;
-}) {
-	const isEncrypted = map.mode === 0;
-	const ModeIcon = isEncrypted ? Lock : Shield;
-	const modeColor = isEncrypted ? "text-cyan-500" : "text-amber-500";
-	const modeLabel = isEncrypted ? "Encrypted" : "Standings";
-
-	return (
-		<button
-			type="button"
-			onClick={onSelect}
-			className={`w-full rounded-lg border p-4 text-left transition-colors ${
-				isSelected
-					? "border-cyan-500/50 bg-cyan-500/5"
-					: "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
-			}`}
-		>
-			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-3">
-					<div className="rounded-lg bg-zinc-800 p-2">
-						<ModeIcon size={18} className={modeColor} />
-					</div>
-					<div>
 						<div className="flex items-center gap-2">
 							<p className="text-sm font-medium text-zinc-200">{map.name}</p>
-							<span
-								className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-									isEncrypted
-										? "bg-cyan-500/10 text-cyan-400"
-										: "bg-amber-500/10 text-amber-400"
-								}`}
-							>
-								{modeLabel}
-							</span>
-							<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
-								V2
-							</span>
+							{map._archived && (
+								<span className="rounded bg-amber-900/30 px-1.5 py-0.5 text-[10px] text-amber-400">
+									archived
+								</span>
+							)}
 						</div>
 						<CopyAddress
 							address={map.id}
@@ -659,12 +628,112 @@ function MapCardV2({
 							className="text-xs text-zinc-600"
 						/>
 					</div>
-				</div>
-				<div className="text-xs text-zinc-500">
-					{new Date(map.cachedAt).toLocaleDateString()}
+				</button>
+				<div className="flex shrink-0 items-center gap-2">
+					<span className="text-xs text-zinc-500">
+						{new Date(map.cachedAt).toLocaleDateString()}
+					</span>
+					{onArchive && (
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								onArchive(!map._archived);
+							}}
+							title={map._archived ? "Unarchive" : "Archive"}
+							className="rounded p-1 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+						>
+							{map._archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+						</button>
+					)}
 				</div>
 			</div>
-		</button>
+		</div>
+	);
+}
+
+function MapCardV2({
+	map,
+	isSelected,
+	onSelect,
+	onArchive,
+}: {
+	map: ManifestPrivateMapV2;
+	isSelected: boolean;
+	onSelect: () => void;
+	onArchive?: (archived: boolean) => void;
+}) {
+	const isEncrypted = map.mode === 0;
+	const ModeIcon = isEncrypted ? Lock : Shield;
+	const modeColor = isEncrypted ? "text-cyan-500" : "text-amber-500";
+	const modeLabel = isEncrypted ? "Encrypted" : "Standings";
+
+	return (
+		<div
+			className={`rounded-lg border p-4 transition-colors ${
+				map._archived
+					? "border-zinc-800/50 bg-zinc-900/30 opacity-60"
+					: isSelected
+						? "border-cyan-500/50 bg-cyan-500/5"
+						: "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
+			}`}
+		>
+			<div className="flex items-center justify-between">
+				<button
+					type="button"
+					onClick={onSelect}
+					className="flex min-w-0 flex-1 items-center gap-3 text-left"
+				>
+					<div className="rounded-lg bg-zinc-800 p-2">
+						<ModeIcon size={18} className={modeColor} />
+					</div>
+					<div>
+						<div className="flex items-center gap-2">
+							<p className="text-sm font-medium text-zinc-200">{map.name}</p>
+							<span
+								className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+									isEncrypted ? "bg-cyan-500/10 text-cyan-400" : "bg-amber-500/10 text-amber-400"
+								}`}
+							>
+								{modeLabel}
+							</span>
+							<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
+								V2
+							</span>
+							{map._archived && (
+								<span className="rounded bg-amber-900/30 px-1.5 py-0.5 text-[10px] text-amber-400">
+									archived
+								</span>
+							)}
+						</div>
+						<CopyAddress
+							address={map.id}
+							sliceStart={14}
+							sliceEnd={6}
+							className="text-xs text-zinc-600"
+						/>
+					</div>
+				</button>
+				<div className="flex shrink-0 items-center gap-2">
+					<span className="text-xs text-zinc-500">
+						{new Date(map.cachedAt).toLocaleDateString()}
+					</span>
+					{onArchive && (
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								onArchive(!map._archived);
+							}}
+							title={map._archived ? "Unarchive" : "Archive"}
+							className="rounded p-1 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+						>
+							{map._archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+						</button>
+					)}
+				</div>
+			</div>
+		</div>
 	);
 }
 
@@ -885,10 +954,7 @@ function CreateMapDialog({
 
 				// Generate ephemeral map keypair
 				const mapKeyPair = generateEphemeralX25519Keypair();
-				const selfInviteEncrypted = sealForRecipient(
-					mapKeyPair.secretKey,
-					walletKeyPair.publicKey,
-				);
+				const selfInviteEncrypted = sealForRecipient(mapKeyPair.secretKey, walletKeyPair.publicKey);
 
 				let tx;
 				if (packageIdV2) {
@@ -910,8 +976,7 @@ function CreateMapDialog({
 				}
 
 				const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
-				const digest =
-					result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
+				const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
 
 				let mapObjectId: string | undefined;
 				let inviteObjectId: string | undefined;
@@ -996,8 +1061,7 @@ function CreateMapDialog({
 				});
 
 				const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
-				const digest =
-					result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
+				const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
 
 				let mapObjectId: string | undefined;
 				try {
@@ -1098,9 +1162,7 @@ function CreateMapDialog({
 			{mode === "standings" && (
 				<>
 					<label className="mb-3 block">
-						<span className="mb-1 block text-xs text-zinc-400">
-							StandingsRegistry
-						</span>
+						<span className="mb-1 block text-xs text-zinc-400">StandingsRegistry</span>
 						{registries.length > 0 ? (
 							<select
 								value={registryId}
@@ -1126,9 +1188,7 @@ function CreateMapDialog({
 					</label>
 					<div className="mb-4 grid grid-cols-2 gap-3">
 						<label className="block">
-							<span className="mb-1 block text-xs text-zinc-400">
-								Min Read Standing (0-6)
-							</span>
+							<span className="mb-1 block text-xs text-zinc-400">Min Read Standing (0-6)</span>
 							<input
 								type="number"
 								min={0}
@@ -1139,9 +1199,7 @@ function CreateMapDialog({
 							/>
 						</label>
 						<label className="block">
-							<span className="mb-1 block text-xs text-zinc-400">
-								Min Write Standing (0-6)
-							</span>
+							<span className="mb-1 block text-xs text-zinc-400">Min Write Standing (0-6)</span>
 							<input
 								type="number"
 								min={0}
