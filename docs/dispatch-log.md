@@ -47,3 +47,9 @@
 - **File:** plans/active/07-dashboard-landing.md
 - **Passes:** 2
 - **Result:** active -- resolved 3 open questions (B: quick actions with module links, Dashboard naming with exact match, B: depends on Plan 04 manifest data)
+
+## 2026-03-26 -- storage-datagrid (update)
+- **Action:** UPDATE
+- **File:** plans/active/03-storage-datagrid.md
+- **Passes:** 3
+- **Result:** active -- resolved 3 open questions (B: show-all toggle, C: all-time sonar, A: all markets with admin info)
