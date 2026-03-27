@@ -35,3 +35,9 @@
 - **File:** plans/active/05-misc-fixes.md
 - **Passes:** 2
 - **Result:** active -- resolved 4 open questions, researched standings reactivity root cause
+
+## 2026-03-26 -- manifest-expansion (update)
+- **Action:** UPDATE
+- **File:** plans/active/04-manifest-expansion.md
+- **Passes:** 3
+- **Result:** active -- resolved 3 open questions (A: visual indicator, B: global scoping, A: startup + refresh button)
