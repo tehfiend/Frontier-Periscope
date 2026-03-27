@@ -45,6 +45,7 @@ import type {
 	SubscribedRegistry,
 	SyncMeta,
 	TradeNodeRecord,
+	TreasuryRecord,
 } from "./types";
 
 class PeriscopeDB extends Dexie {
@@ -127,6 +128,9 @@ class PeriscopeDB extends Dexie {
 
 	// Structure Extension Configs (standings-based)
 	structureExtensionConfigs!: EntityTable<StructureExtensionConfig, "id">;
+
+	// Treasury
+	treasuries!: EntityTable<TreasuryRecord, "id">;
 
 	constructor() {
 		super("frontier-periscope");
@@ -568,6 +572,11 @@ class PeriscopeDB extends Dexie {
 			subscribedRegistries: "id, name, ticker, creator, tenant, subscribedAt, _archived",
 			manifestPrivateMaps: "id, name, creator, tenant, cachedAt, _archived",
 			manifestPrivateMapsV2: "id, name, creator, mode, registryId, tenant, cachedAt, _archived",
+		});
+
+		// V32: Treasury -- shared multi-user wallet for holding Coin<T> balances
+		this.version(32).stores({
+			treasuries: "id, owner",
 		});
 	}
 }
