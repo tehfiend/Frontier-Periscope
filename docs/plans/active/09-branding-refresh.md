@@ -69,7 +69,7 @@ The landing page is a static HTML site served via Vite (`apps/www/`) with Tailwi
 - No dedicated section explaining the organizational toolkit value proposition
 - Missing: Standings, Wallet, Dashboard, Jump Planner, Blueprints from the feature cards
 
-### Sidebar Navigation (C:/Projects/periscope/apps/periscope/src/components/Sidebar.tsx L45-80)
+### Sidebar Navigation (C:/Projects/periscope/apps/periscope/src/components/Sidebar.tsx L46-82)
 
 The sidebar reveals the full feature set organized into four groups:
 - **Intel:** Sonar, Killmails, Standings, Private Maps, Manifest
@@ -190,7 +190,9 @@ This tagline captures both angles: "Peer into the frontier" evokes the blockchai
    ```
    The hackathon attribution and "vibe coded" detail move into the new Philosophy section (step 3 below).
 
-2. **Replace the existing feature list** (L19-29) with the reordered, rewritten feature descriptions. Eight features with benefit-oriented headings and 1-2 sentence descriptions each:
+2. **Add a one-paragraph pitch** after the tagline and before Getting Started. 3-4 sentences covering the key value props: custom currencies and player-run markets, standings-based infrastructure access, encrypted coordination, shared treasury, real-time monitoring, and 3D navigation. This replaces the current "Currently targeting Cycle 5" line (L5), which can move to a parenthetical in Getting Started or a note in the Development section.
+
+3. **Replace the existing feature list** (L19-29) with the reordered, rewritten feature descriptions. Eight features with benefit-oriented headings and 1-2 sentence descriptions each:
    - Custom Currencies & Markets
    - Standings & Diplomacy
    - Private Maps
@@ -200,7 +202,7 @@ This tagline captures both angles: "Peer into the frontier" evokes the blockchai
    - Star Map & Navigation
    - Killmails
 
-3. **Add a Philosophy section** after the Features section and before Privacy. Title: "Why This Exists". Content should cover three points in an authentic, encouraging tone:
+4. **Add a Philosophy section** after the Features section and before Privacy. Title: "Why This Exists". Content should cover three points in an authentic, encouraging tone:
 
    - **100% vibe coded** -- This project was built entirely without a single line of manually written code. Every line was generated through AI-assisted development using Claude Code. Mention the hackathon origin here (moved from the old tagline).
    - **Encouraging non-developers** -- One core intention is to show EVE Frontier players who have no coding skills that they CAN build and develop on the Frontier blockchain system. You don't need to be a software developer to participate in building tools for the community.
@@ -208,13 +210,13 @@ This tagline captures both angles: "Peer into the frontier" evokes the blockchai
 
    Tone: Authentic and encouraging, written from the perspective of a player who used AI tools to build something real. Not preachy, not corporate. First person is fine. Example opening: "This project started as a hackathon entry and grew into something I use every day. Here's the thing -- I didn't write a single line of code by hand."
 
-4. **Update the Getting Started section** (L7-13) to adjust the parenthetical about read-only features. Current: "fully usable without it for read-only features like log analysis, star map, and standings management". New: broaden to mention more features that work without wallet (star map, standings, killmails, log analysis).
+5. **Update the Getting Started section** (L7-13) to adjust the parenthetical about read-only features. Current: "fully usable without it for read-only features like log analysis, star map, and standings management". New: broaden to mention more features that work without wallet (star map, standings, killmails, log analysis).
 
-5. **Keep Privacy (L31-33), Development (L35-82), and License (L80-82) sections unchanged.** The Privacy section now follows the new Philosophy section.
+6. **Keep Privacy (L31-33), Development (L35-82), and License (L80-82) sections unchanged.** The Privacy section now follows the new Philosophy section.
 
-6. **Verify all links still work** (app.frontierperiscope.com, GitHub, EVE Vault, EVE Frontier).
+7. **Verify all links still work** (app.frontierperiscope.com, GitHub, EVE Vault, EVE Frontier).
 
-7. **Update the root `CLAUDE.md`** (L5) project overview line. Currently says "an intel and monitoring tool for EVE Frontier". Update to: "an organizational toolkit for EVE Frontier". Note: `CLAUDE.md` is in `.gitignore` -- must use `git add -f` when committing.
+8. **Update the root `CLAUDE.md`** (L5) project overview line. Currently says "an intel and monitoring tool for EVE Frontier". Update to: "an organizational toolkit for EVE Frontier". Note: `CLAUDE.md` is in `.gitignore` -- must use `git add -f` when committing.
 
 **Files:**
 | File | Action |
