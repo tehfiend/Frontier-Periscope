@@ -59,3 +59,9 @@
 - **File:** plans/active/06-extension-fixes.md
 - **Passes:** 3
 - **Result:** active -- simplified turrets to weights-only with bytecode patching, deferred standings integration pending CCP world contract improvements
+
+## 2026-03-27 -- gate-toll-treasury
+- **Action:** CREATE
+- **File:** docs/plans/pending/08-gate-toll-treasury.md
+- **Passes:** 4 (3 with changes, pass 4 NO_CHANGES)
+- **Result:** pending -- 5-phase plan for custom currency gate tolls and shared treasury wallet. New gate extension contract with Coin<T> generics for custom toll currencies, treasury shared object with admin ACL for multi-user fund management, Treasury UI view, gate toll currency selector, and toll-to-treasury PTB integration. 5 open questions remain. Key findings: gate tolls are extension-defined (not world contract), fully generic Coin<T> approach preferred over bytecode patching, Balance<T> recommended for treasury storage, existing Wallet view at /wallet could host treasury but standalone /treasury route is cleaner. Supersedes Plan 06 deferral of custom toll currency.
