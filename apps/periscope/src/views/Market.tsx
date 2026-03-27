@@ -1,23 +1,7 @@
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
-import {
-	AlertCircle,
-	Archive,
-	ArchiveRestore,
-	ChevronDown,
-	Flame,
-	Loader2,
-	Package,
-	Plus,
-	RefreshCw,
-	Send,
-	Settings,
-	ShoppingBag,
-	Store,
-	UserMinus,
-	UserPlus,
-} from "lucide-react";
+import { ChevronDown, Loader2, Package, RefreshCw, ShoppingBag, Store } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { TenantId } from "@/chain/config";
@@ -29,28 +13,15 @@ import type { CurrencyRecord } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import {
-	buildAddAuthorized,
-	buildBurn,
-	buildCreateMarket,
-	buildMint,
-	buildPublishToken,
-	buildRemoveAuthorized,
 	buildSetSsuMarketLink,
-	buildUpdateFee,
 	discoverSsuUnifiedConfig,
 	getCoinMetadata,
 	getContractAddresses,
-	parsePublishResult,
 	queryMarketBuyOrders,
 	queryMarketDetails,
 	queryMarketListings,
-	queryMarkets,
-	queryOwnedCoins,
-	queryTreasuryCap,
 } from "@tehfrontier/chain-shared";
 import type { MarketBuyOrder, MarketInfo, MarketSellListing } from "@tehfrontier/chain-shared";
-
-type BuildStatus = "idle" | "building" | "minting" | "burning" | "done" | "error";
 
 /** Assembly type names that are SSU-class structures */
 const SSU_TYPE_NAMES = new Set([
@@ -76,28 +47,18 @@ interface MarketOrderRow {
 
 export function Market() {
 	const account = useCurrentAccount();
-	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
 	const tenant = useActiveTenant();
 	const currencies = useLiveQuery(() => db.currencies.filter(notDeleted).toArray());
-	const [showArchived, setShowArchived] = useState(false);
 	const filteredCurrencies = useMemo(
-		() => (currencies ?? []).filter((c) => !c._archived || showArchived),
-		[currencies, showArchived],
+		() => (currencies ?? []).filter((c) => !c._archived),
+		[currencies],
 	);
 
-	const [creating, setCreating] = useState(false);
-	const [symbol, setSymbol] = useState("");
-	const [tokenName, setTokenName] = useState("");
-	const [description, setDescription] = useState("");
-	const [decimals, setDecimals] = useState(9);
-	const [buildStatus, setBuildStatus] = useState<BuildStatus>("idle");
-	const [buildError, setBuildError] = useState("");
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 
-	// Auto-select first non-archived market when list loads and nothing is selected.
-	// Only re-run when filteredCurrencies changes -- omit selectedId to avoid a set/dep loop.
+	// Auto-select first market when list loads and nothing is selected.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: selectedId intentionally omitted to prevent infinite loop
 	useEffect(() => {
 		if (!selectedId && filteredCurrencies.length > 0) {
@@ -107,18 +68,13 @@ export function Market() {
 
 	const suiClient = useSuiClient();
 
-	const isProcessing =
-		buildStatus === "building" || buildStatus === "minting" || buildStatus === "burning";
-
-	// Sync currencies from manifest cache -- reads cached Market<T> objects
+	// Sync currencies from manifest cache
 	const syncMarkets = useCallback(async () => {
 		if (!suiAddress) return;
 
 		try {
-			// Refresh manifest cache first
 			await discoverMarkets(suiClient);
 
-			// Read from cached manifest
 			const markets = await db.manifestMarkets.toArray();
 			const validMarketIds = new Set<string>();
 
@@ -208,96 +164,11 @@ export function Market() {
 		);
 	}
 
-	async function handleCreateCurrency() {
-		if (!symbol.trim() || !tokenName.trim()) return;
-
-		setBuildStatus("building");
-		setBuildError("");
-
-		try {
-			const tx = await buildPublishToken({
-				symbol: symbol.trim().toUpperCase(),
-				name: tokenName.trim(),
-				description: description.trim() || `${tokenName.trim()} token`,
-				decimals,
-			});
-
-			const result = await signAndExecute({
-				transaction: tx,
-			});
-
-			const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
-			const fullResult = await suiClient.waitForTransaction({
-				digest,
-				include: { effects: true, objectTypes: true },
-			});
-			const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
-			const changedObjects = fullTx?.effects?.changedObjects ?? [];
-			const objectTypesMap = fullTx?.objectTypes ?? {};
-
-			const objectChanges: Array<{
-				type: string;
-				packageId?: string;
-				objectType?: string;
-				objectId?: string;
-				modules?: string[];
-			}> = changedObjects.map((change) => {
-				if (change.outputState === "PackageWrite" && change.idOperation === "Created") {
-					return {
-						type: "published",
-						packageId: change.objectId,
-					};
-				}
-				return {
-					type: change.idOperation === "Created" ? "created" : "mutated",
-					objectId: change.objectId,
-					objectType: objectTypesMap[change.objectId],
-				};
-			});
-
-			const parsed = parsePublishResult(objectChanges);
-			if (!parsed) {
-				throw new Error(
-					"Token published but could not parse result." + " Check transaction on explorer.",
-				);
-			}
-
-			const now = new Date().toISOString();
-			await db.currencies.add({
-				id: crypto.randomUUID(),
-				symbol: symbol.trim().toUpperCase(),
-				name: tokenName.trim(),
-				description: description.trim(),
-				moduleName: parsed.moduleName,
-				coinType: parsed.coinType,
-				packageId: parsed.packageId,
-				marketId: parsed.marketId,
-				decimals,
-				createdAt: now,
-				updatedAt: now,
-			});
-
-			setSymbol("");
-			setTokenName("");
-			setDescription("");
-			setCreating(false);
-			setBuildStatus("done");
-		} catch (err) {
-			setBuildStatus("error");
-			setBuildError(err instanceof Error ? err.message : String(err));
-		}
-	}
-
 	const selectedCurrency = filteredCurrencies.find((c) => c.id === selectedId);
-
-	const handleArchiveCurrency = async (id: string, archived: boolean) => {
-		await db.currencies.update(id, { _archived: archived });
-		if (archived && selectedId === id) setSelectedId(null);
-	};
 
 	return (
 		<div className="flex h-full flex-col gap-4 p-4">
-			{/* Header bar: title + market selector + create */}
+			{/* Header bar: title + market selector */}
 			<div className="flex items-center gap-3">
 				<span className="shrink-0 text-sm text-zinc-400">Market:</span>
 				<div className="relative max-w-sm min-w-0 flex-1">
@@ -311,7 +182,6 @@ export function Market() {
 							<option key={c.id} value={c.id}>
 								{c.symbol} -- {c.name}
 								{c.marketId ? "" : " (no market)"}
-								{c._archived ? " (archived)" : ""}
 							</option>
 						))}
 					</select>
@@ -320,110 +190,12 @@ export function Market() {
 						className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500"
 					/>
 				</div>
-
-				{/* Archive toggle */}
-				<button
-					type="button"
-					onClick={() => setShowArchived(!showArchived)}
-					title={showArchived ? "Hide archived" : "Show archived"}
-					className={`shrink-0 rounded-lg p-2 text-xs transition-colors ${
-						showArchived
-							? "bg-amber-900/30 text-amber-400"
-							: "text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
-					}`}
-				>
-					<Archive size={14} />
-				</button>
-
-				{/* Archive / Unarchive selected currency */}
-				{selectedCurrency && (
-					<button
-						type="button"
-						onClick={() => handleArchiveCurrency(selectedCurrency.id, !selectedCurrency._archived)}
-						title={selectedCurrency._archived ? "Unarchive" : "Archive"}
-						className="shrink-0 rounded-lg p-2 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-400"
-					>
-						{selectedCurrency._archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-					</button>
-				)}
-
-				{/* Create button / form toggle */}
-				{creating ? (
-					<button
-						type="button"
-						onClick={() => setCreating(false)}
-						className="shrink-0 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-					>
-						Cancel
-					</button>
-				) : (
-					<button
-						type="button"
-						onClick={() => setCreating(true)}
-						className="flex shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-zinc-700 px-5 py-2 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
-					>
-						<Plus size={14} />
-						Create
-					</button>
-				)}
 			</div>
-
-			{/* Status Banner */}
-			{buildStatus !== "idle" && buildStatus !== "done" && (
-				<StatusBanner
-					status={buildStatus}
-					error={buildError}
-					onDismiss={() => {
-						setBuildStatus("idle");
-						setBuildError("");
-					}}
-				/>
-			)}
-
-			{buildStatus === "done" && (
-				<div className="rounded-lg border border-green-900/50 bg-green-950/20 p-4">
-					<p className="text-sm text-green-400">Operation completed successfully.</p>
-					<button
-						type="button"
-						onClick={() => setBuildStatus("idle")}
-						className="mt-2 text-xs text-zinc-400 hover:text-zinc-300"
-					>
-						Dismiss
-					</button>
-				</div>
-			)}
-
-			{/* Create Currency Form (inline, shown when creating) */}
-			{creating && (
-				<CreateCurrencyForm
-					symbol={symbol}
-					tokenName={tokenName}
-					description={description}
-					decimals={decimals}
-					isProcessing={isProcessing}
-					hasAccount={!!account}
-					onSymbolChange={setSymbol}
-					onNameChange={setTokenName}
-					onDescChange={setDescription}
-					onDecimalsChange={setDecimals}
-					onCreate={handleCreateCurrency}
-					onCancel={() => setCreating(false)}
-				/>
-			)}
 
 			{/* Market detail (fills remaining space) */}
 			<div className="min-h-0 flex-1">
 				{selectedCurrency ? (
-					<MarketDetail
-						currency={selectedCurrency}
-						tenant={tenant}
-						suiAddress={suiAddress}
-						onStatusChange={(s, e) => {
-							setBuildStatus(s);
-							setBuildError(e ?? "");
-						}}
-						onMarketCreated={syncMarkets}
-					/>
+					<MarketDetail currency={selectedCurrency} tenant={tenant} suiAddress={suiAddress} />
 				) : (
 					<div className="flex h-full items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/30">
 						<div className="text-center">
@@ -431,7 +203,7 @@ export function Market() {
 							<p className="text-sm text-zinc-500">
 								{(currencies ?? []).length > 0
 									? "Select a market to view orders"
-									: "No markets yet -- create one to get started"}
+									: "No markets yet -- create one in Treasury to get started"}
 							</p>
 						</div>
 					</div>
@@ -447,14 +219,10 @@ function MarketDetail({
 	currency,
 	tenant,
 	suiAddress,
-	onStatusChange,
-	onMarketCreated,
 }: {
 	currency: CurrencyRecord;
 	tenant: TenantId;
 	suiAddress: string;
-	onStatusChange: (status: BuildStatus, error?: string) => void;
-	onMarketCreated: () => void;
 }) {
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
@@ -467,28 +235,13 @@ function MarketDetail({
 	const [buyOrders, setBuyOrders] = useState<MarketBuyOrder[]>([]);
 	const [loadingOrders, setLoadingOrders] = useState(false);
 	const [itemNameMap, setItemNameMap] = useState<Map<number, string>>(new Map());
-
-	// Admin panel state
-	const [showMint, setShowMint] = useState(false);
-	const [mintAmount, setMintAmount] = useState("");
-	const [mintRecipient, setMintRecipient] = useState("");
-	const [showBurn, setShowBurn] = useState(false);
-	const [burnCoinId, setBurnCoinId] = useState("");
-	const [ownedCoins, setOwnedCoins] = useState<Array<{ objectId: string; balance: bigint }>>([]);
-	const [loadingCoins, setLoadingCoins] = useState(false);
-	const [showAuth, setShowAuth] = useState(false);
-	const [authAddress, setAuthAddress] = useState("");
-	const [showFees, setShowFees] = useState(false);
-	const [feeBps, setFeeBps] = useState("");
-	const [feeRecipient, setFeeRecipient] = useState("");
 	const [linkSsuId, setLinkSsuId] = useState("");
+	const [linkStatus, setLinkStatus] = useState<"idle" | "linking" | "done" | "error">("idle");
+	const [linkError, setLinkError] = useState("");
 
-	const isPublished = !!currency.packageId;
 	const hasMarket = !!currency.marketId;
 	const addresses = getContractAddresses(tenant);
 	const marketPkg = addresses.market?.packageId;
-	const isCreator = marketInfo?.creator === suiAddress;
-	const isAuthorized = isCreator || (marketInfo?.authorized ?? []).includes(suiAddress);
 
 	// Address -> character name lookup from manifest
 	const manifestChars = useLiveQuery(() => db.manifestCharacters.toArray()) ?? [];
@@ -501,7 +254,6 @@ function MarketDetail({
 	}, [manifestChars]);
 
 	// SSU location lookup: ssuObjectId -> system name
-	// Sources: public manifest, private map cache, local deployables
 	const manifestLocs = useLiveQuery(() => db.manifestLocations.toArray()) ?? [];
 	const mapLocs = useLiveQuery(() => db.manifestMapLocations.toArray()) ?? [];
 	const systems = useLiveQuery(() => db.solarSystems.toArray()) ?? [];
@@ -525,7 +277,7 @@ function MarketDetail({
 			if (name) loc.set(m.id, m.lPoint ? `${name} ${m.lPoint}` : name);
 		}
 
-		// Private map cache (already decrypted, no re-decrypt needed)
+		// Private map cache
 		for (const m of mapLocs) {
 			if (m.structureId && m.solarSystemId && !loc.has(m.structureId)) {
 				const name = sysNames.get(m.solarSystemId);
@@ -742,12 +494,10 @@ function MarketDetail({
 			for (const o of buys) typeIds.add(o.typeId);
 			if (typeIds.size > 0) {
 				const names = new Map<number, string>();
-				// First pass: check local gameTypes DB
 				const dbTypes = await db.gameTypes.bulkGet([...typeIds]);
 				for (const t of dbTypes) {
 					if (t) names.set(t.id, t.name);
 				}
-				// Second pass: fetch missing from World API
 				const missing = [...typeIds].filter((id) => !names.has(id));
 				await Promise.all(
 					missing.map(async (id) => {
@@ -777,212 +527,6 @@ function MarketDetail({
 		await Promise.all([loadMarketInfo(), loadOrders()]);
 	}
 
-	async function loadOwnedCoins() {
-		if (!currency.coinType) return;
-		setLoadingCoins(true);
-		try {
-			const coins = await queryOwnedCoins(suiClient, suiAddress, currency.coinType);
-			setOwnedCoins(coins);
-		} catch {
-			setOwnedCoins([]);
-		} finally {
-			setLoadingCoins(false);
-		}
-	}
-
-	async function handleMint() {
-		if (!mintAmount || !currency.marketId || !currency.coinType || !marketPkg) return;
-
-		onStatusChange("minting");
-		try {
-			const amount = BigInt(Math.floor(Number(mintAmount) * 10 ** currency.decimals));
-			const recipient = mintRecipient.trim() || suiAddress;
-			const tx = buildMint({
-				packageId: marketPkg,
-				marketId: currency.marketId,
-				coinType: currency.coinType,
-				amount: Number(amount),
-				recipient,
-				senderAddress: suiAddress,
-			});
-
-			await signAndExecute({ transaction: tx });
-			setShowMint(false);
-			setMintAmount("");
-			setMintRecipient("");
-			onStatusChange("done");
-			setTimeout(() => loadMarketInfo(), 1500);
-		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
-		}
-	}
-
-	async function handleBurn() {
-		if (!burnCoinId || !currency.marketId || !currency.coinType || !marketPkg) return;
-
-		onStatusChange("burning");
-		try {
-			const tx = buildBurn({
-				packageId: marketPkg,
-				marketId: currency.marketId,
-				coinType: currency.coinType,
-				coinObjectId: burnCoinId,
-				senderAddress: suiAddress,
-			});
-
-			await signAndExecute({ transaction: tx });
-			setShowBurn(false);
-			setBurnCoinId("");
-			onStatusChange("done");
-			setTimeout(() => loadMarketInfo(), 1500);
-		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
-		}
-	}
-
-	async function handleAddAuthorized() {
-		if (!authAddress.trim() || !currency.marketId || !currency.coinType || !marketPkg) return;
-
-		onStatusChange("building");
-		try {
-			const tx = buildAddAuthorized({
-				packageId: marketPkg,
-				marketId: currency.marketId,
-				coinType: currency.coinType,
-				addr: authAddress.trim(),
-				senderAddress: suiAddress,
-			});
-
-			await signAndExecute({ transaction: tx });
-			setAuthAddress("");
-			onStatusChange("done");
-			setTimeout(() => loadMarketInfo(), 1500);
-		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
-		}
-	}
-
-	async function handleRemoveAuthorized(addr: string) {
-		if (!currency.marketId || !currency.coinType || !marketPkg) return;
-
-		onStatusChange("building");
-		try {
-			const tx = buildRemoveAuthorized({
-				packageId: marketPkg,
-				marketId: currency.marketId,
-				coinType: currency.coinType,
-				addr,
-				senderAddress: suiAddress,
-			});
-
-			await signAndExecute({ transaction: tx });
-			onStatusChange("done");
-			setTimeout(() => loadMarketInfo(), 1500);
-		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
-		}
-	}
-
-	async function handleUpdateFee() {
-		if (!currency.marketId || !currency.coinType || !marketPkg) return;
-
-		onStatusChange("building");
-		try {
-			const tx = buildUpdateFee({
-				packageId: marketPkg,
-				marketId: currency.marketId,
-				coinType: currency.coinType,
-				feeBps: Number(feeBps) || 0,
-				feeRecipient: feeRecipient.trim() || suiAddress,
-				senderAddress: suiAddress,
-			});
-
-			await signAndExecute({ transaction: tx });
-			setShowFees(false);
-			onStatusChange("done");
-			setTimeout(() => loadMarketInfo(), 1500);
-		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
-		}
-	}
-
-	async function handleDiscoverMarket() {
-		if (!currency.coinType || !marketPkg) return;
-
-		onStatusChange("building");
-		try {
-			const markets = await queryMarkets(suiClient, marketPkg, currency.coinType);
-
-			if (markets.length === 0) {
-				const treasuryCapId = await queryTreasuryCap(suiClient, currency.coinType, suiAddress);
-				if (!treasuryCapId) {
-					onStatusChange(
-						"error",
-						"No Market found on-chain and no TreasuryCap" +
-							" in your wallet. The Market may have been" +
-							" created with a different market package" +
-							" version.",
-					);
-					return;
-				}
-
-				const tx = buildCreateMarket({
-					packageId: marketPkg,
-					coinType: currency.coinType,
-					treasuryCapId,
-					senderAddress: suiAddress,
-				});
-
-				const result = await signAndExecute({
-					transaction: tx,
-				});
-
-				const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
-				const fullResult = await suiClient.waitForTransaction({
-					digest,
-					include: {
-						effects: true,
-						objectTypes: true,
-					},
-				});
-				const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
-				const changedObjects = fullTx?.effects?.changedObjects ?? [];
-				const objectTypesMap = fullTx?.objectTypes ?? {};
-
-				let marketId: string | undefined;
-				for (const change of changedObjects) {
-					const objType = objectTypesMap[change.objectId] ?? "";
-					if (objType.includes("::market::Market<")) {
-						marketId = change.objectId;
-						break;
-					}
-				}
-
-				if (marketId) {
-					await db.currencies.update(currency.id, {
-						marketId,
-						updatedAt: new Date().toISOString(),
-					});
-				}
-
-				onStatusChange("done");
-				onMarketCreated();
-				return;
-			}
-
-			const market = markets[0];
-			await db.currencies.update(currency.id, {
-				marketId: market.objectId,
-				updatedAt: new Date().toISOString(),
-			});
-
-			onStatusChange("done");
-			onMarketCreated();
-		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
-		}
-	}
-
 	async function handleLinkToSsu(ssuObjectId: string) {
 		if (!currency.marketId || !currency.coinType) return;
 
@@ -990,16 +534,13 @@ function MarketDetail({
 		const ssuUnifiedPkg = ssuUnifiedAddresses?.packageId;
 		if (!ssuUnifiedPkg) return;
 
-		onStatusChange("building");
+		setLinkStatus("linking");
+		setLinkError("");
 		try {
-			const currentConfigId = await discoverSsuUnifiedConfig(
-				suiClient,
-				ssuUnifiedPkg,
-				ssuObjectId,
-			);
+			const currentConfigId = await discoverSsuUnifiedConfig(suiClient, ssuUnifiedPkg, ssuObjectId);
 			if (!currentConfigId) {
-				onStatusChange(
-					"error",
+				setLinkStatus("error");
+				setLinkError(
 					"No SsuUnifiedConfig found on-chain for this SSU. Deploy the SSU extension first.",
 				);
 				return;
@@ -1021,10 +562,10 @@ function MarketDetail({
 				});
 			}
 
-			onStatusChange("done");
-			onMarketCreated();
+			setLinkStatus("done");
 		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
+			setLinkStatus("error");
+			setLinkError(err instanceof Error ? err.message : String(err));
 		}
 	}
 
@@ -1114,7 +655,9 @@ function MarketDetail({
 											className="font-mono text-zinc-400"
 										/>
 									)}
-									{isCreator && <span className="text-cyan-400">(you)</span>}
+									{marketInfo.creator === suiAddress && (
+										<span className="text-cyan-400">(you)</span>
+									)}
 								</div>
 							</div>
 							<div className="col-span-2">
@@ -1127,120 +670,44 @@ function MarketDetail({
 					<p className="text-xs text-zinc-600">Loading market data...</p>
 				) : null}
 
-				{/* No market -- discover/create prompt */}
-				{isPublished && !hasMarket && (
-					<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
-						<h4 className="mb-2 text-xs font-medium text-amber-400">No Market Linked</h4>
-						<p className="mb-3 text-xs text-zinc-500">
-							Search for the existing Market on-chain, or create one if none exists.
-						</p>
-						{account ? (
-							<button
-								type="button"
-								onClick={handleDiscoverMarket}
-								className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500"
+				{/* Link Market to SSU -- visible whenever a market is linked */}
+				{hasMarket && (
+					<div className="mt-3 border-t border-zinc-800 pt-3">
+						<div className="flex items-center gap-2">
+							<select
+								value={linkSsuId}
+								onChange={(e) => setLinkSsuId(e.target.value)}
+								className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-200 focus:border-cyan-500 focus:outline-none"
 							>
-								Find / Create Market
-							</button>
-						) : (
-							<span className="text-xs text-zinc-500">Connect wallet</span>
-						)}
-					</div>
-				)}
-
-				{/* Admin Actions -- always visible for authorized users */}
-				{hasMarket && isAuthorized && (
-					<div className="border-t border-zinc-800 pt-3 mt-3">
-						<div className="flex flex-wrap items-center gap-2">
-							<AdminToggle
-								active={showMint}
-								onClick={() => {
-									setShowMint(!showMint);
-									setShowBurn(false);
-									setShowAuth(false);
-									setShowFees(false);
-								}}
-								icon={<Send size={12} />}
-								label="Mint"
-								color="cyan"
-							/>
-							<AdminToggle
-								active={showBurn}
-								onClick={() => {
-									setShowBurn(!showBurn);
-									setShowMint(false);
-									setShowAuth(false);
-									setShowFees(false);
-									if (!showBurn) loadOwnedCoins();
-								}}
-								icon={<Flame size={12} />}
-								label="Burn"
-								color="red"
-							/>
-							{isCreator && (
-								<>
-									<AdminToggle
-										active={showAuth}
-										onClick={() => {
-											setShowAuth(!showAuth);
-											setShowMint(false);
-											setShowBurn(false);
-											setShowFees(false);
-										}}
-										icon={<UserPlus size={12} />}
-										label="Authorize"
-										color="amber"
-									/>
-									<AdminToggle
-										active={showFees}
-										onClick={() => {
-											setShowFees(!showFees);
-											setShowMint(false);
-											setShowBurn(false);
-											setShowAuth(false);
-											if (marketInfo) {
-												setFeeBps(String(marketInfo.feeBps));
-												setFeeRecipient(marketInfo.feeRecipient);
-											}
-										}}
-										icon={<Settings size={12} />}
-										label="Fees"
-										color="purple"
-									/>
-								</>
-							)}
-
-							{/* Link Market to SSU -- inline */}
-							<div className="ml-auto flex items-center gap-2">
-								<select
-									value={linkSsuId}
-									onChange={(e) => setLinkSsuId(e.target.value)}
-									className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-200 focus:border-cyan-500 focus:outline-none"
+								<option value="">Link to SSU...</option>
+								{allSsus.map((ssu) => (
+									<option key={ssu.objectId} value={ssu.objectId}>
+										{ssu.label || `${ssu.objectId.slice(0, 14)}...`}
+										{ssu.systemId ? ` (System ${ssu.systemId})` : ""}
+									</option>
+								))}
+							</select>
+							{account ? (
+								<button
+									type="button"
+									onClick={() => {
+										if (linkSsuId) handleLinkToSsu(linkSsuId);
+									}}
+									disabled={!linkSsuId || linkStatus === "linking"}
+									className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
 								>
-									<option value="">Link to SSU...</option>
-									{allSsus.map((ssu) => (
-										<option key={ssu.objectId} value={ssu.objectId}>
-											{ssu.label || `${ssu.objectId.slice(0, 14)}...`}
-											{ssu.systemId ? ` (System ${ssu.systemId})` : ""}
-										</option>
-									))}
-								</select>
-								{account ? (
-									<button
-										type="button"
-										onClick={() => {
-											if (linkSsuId) handleLinkToSsu(linkSsuId);
-										}}
-										disabled={!linkSsuId}
-										className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
-									>
-										Link
-									</button>
-								) : (
-									<span className="text-xs text-zinc-500">Connect wallet to link</span>
-								)}
-							</div>
+									{linkStatus === "linking" ? "Linking..." : "Link"}
+								</button>
+							) : (
+								<span className="text-xs text-zinc-500">Connect wallet to link</span>
+							)}
 						</div>
+						{linkStatus === "error" && linkError && (
+							<p className="mt-1 text-xs text-red-400">{linkError}</p>
+						)}
+						{linkStatus === "done" && (
+							<p className="mt-1 text-xs text-green-400">SSU linked successfully.</p>
+						)}
 					</div>
 				)}
 			</div>
@@ -1275,240 +742,11 @@ function MarketDetail({
 					)}
 				</div>
 			)}
-
-			{/* Expanded Admin Panels */}
-			{hasMarket && isAuthorized && (showMint || showBurn || showAuth || showFees) && (
-				<div className="space-y-3">
-					{/* Mint Form */}
-					{showMint && (
-						<AdminPanel title={`Mint ${currency.symbol}`}>
-							<div className="space-y-3">
-								<FormField label="Amount">
-									<input
-										type="number"
-										value={mintAmount}
-										onChange={(e) => setMintAmount(e.target.value)}
-										placeholder="e.g., 1000"
-										min={0}
-										step="any"
-										className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-									/>
-								</FormField>
-								<FormField label="Recipient (blank = your wallet)">
-									<input
-										type="text"
-										value={mintRecipient}
-										onChange={(e) => setMintRecipient(e.target.value)}
-										placeholder={suiAddress.slice(0, 16)}
-										className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-									/>
-								</FormField>
-								{account ? (
-									<button
-										type="button"
-										onClick={handleMint}
-										disabled={!mintAmount}
-										className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-									>
-										Mint {currency.symbol}
-									</button>
-								) : (
-									<span className="text-xs text-zinc-500">EVE Vault not connected</span>
-								)}
-							</div>
-						</AdminPanel>
-					)}
-
-					{/* Burn Form */}
-					{showBurn && (
-						<AdminPanel title={`Burn ${currency.symbol}`}>
-							{loadingCoins ? (
-								<div className="flex items-center gap-2 text-xs text-zinc-500">
-									<Loader2 size={12} className="animate-spin" />
-									Loading your coins...
-								</div>
-							) : ownedCoins.length === 0 ? (
-								<p className="text-xs text-zinc-600">No {currency.symbol} coins in your wallet.</p>
-							) : (
-								<div className="space-y-2">
-									<FormField label="Select Coin to Burn">
-										<select
-											value={burnCoinId}
-											onChange={(e) => setBurnCoinId(e.target.value)}
-											className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
-										>
-											<option value="">Choose a coin...</option>
-											{ownedCoins.map((c) => (
-												<option key={c.objectId} value={c.objectId}>
-													{formatTokenAmount(c.balance, currency.decimals)} {currency.symbol} (
-													{c.objectId.slice(0, 10)}
-													...)
-												</option>
-											))}
-										</select>
-									</FormField>
-									{account ? (
-										<button
-											type="button"
-											onClick={handleBurn}
-											disabled={!burnCoinId}
-											className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
-										>
-											Burn Selected Coin
-										</button>
-									) : (
-										<span className="text-xs text-zinc-500">EVE Vault not connected</span>
-									)}
-								</div>
-							)}
-						</AdminPanel>
-					)}
-
-					{/* Authorization Form (creator only) */}
-					{showAuth && isCreator && (
-						<AdminPanel title="Add Authorized Minter">
-							<div className="space-y-3">
-								<FormField label="Sui Address">
-									<input
-										type="text"
-										value={authAddress}
-										onChange={(e) => setAuthAddress(e.target.value)}
-										placeholder="0x..."
-										className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-									/>
-								</FormField>
-								<button
-									type="button"
-									onClick={handleAddAuthorized}
-									disabled={!authAddress.trim()}
-									className="flex items-center gap-1.5 rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
-								>
-									<UserPlus size={12} />
-									Add Authorized
-								</button>
-							</div>
-
-							{/* Current authorized list */}
-							{marketInfo && marketInfo.authorized.length > 0 && (
-								<div className="mt-3 border-t border-zinc-800 pt-3">
-									<p className="mb-1.5 text-xs text-zinc-500">
-										Currently authorized ({marketInfo.authorized.length})
-									</p>
-									<div className="space-y-1">
-										{marketInfo.authorized.map((addr) => (
-											<div key={addr} className="flex items-center justify-between">
-												<span className="font-mono text-xs text-zinc-400">
-													{addr.slice(0, 12)}
-													...
-													{addr.slice(-6)}
-													{addr === suiAddress && <span className="ml-1 text-cyan-400">(you)</span>}
-												</span>
-												<button
-													type="button"
-													onClick={() => handleRemoveAuthorized(addr)}
-													className="text-zinc-600 transition-colors hover:text-red-400"
-													title="Remove"
-												>
-													<UserMinus size={12} />
-												</button>
-											</div>
-										))}
-									</div>
-								</div>
-							)}
-						</AdminPanel>
-					)}
-
-					{/* Fee Management (creator only) */}
-					{showFees && isCreator && (
-						<AdminPanel title="Update Fee Configuration">
-							<div className="space-y-3">
-								<FormField label="Fee (basis points, 100 = 1%)">
-									<input
-										type="number"
-										value={feeBps}
-										onChange={(e) => setFeeBps(e.target.value)}
-										placeholder="e.g., 250"
-										min={0}
-										max={10000}
-										className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-									/>
-								</FormField>
-								<FormField label="Fee Recipient">
-									<input
-										type="text"
-										value={feeRecipient}
-										onChange={(e) => setFeeRecipient(e.target.value)}
-										placeholder="0x..."
-										className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-									/>
-								</FormField>
-								<button
-									type="button"
-									onClick={handleUpdateFee}
-									className="flex items-center gap-1.5 rounded bg-purple-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-purple-500"
-								>
-									<Settings size={12} />
-									Update Fee
-								</button>
-							</div>
-						</AdminPanel>
-					)}
-				</div>
-			)}
 		</div>
 	);
 }
 
 // ── Shared UI Components ─────────────────────────────────────────────
-
-function StatusBanner({
-	status,
-	error,
-	onDismiss,
-}: {
-	status: BuildStatus;
-	error: string;
-	onDismiss: () => void;
-}) {
-	const messages: Record<string, string> = {
-		building: "Building and publishing token on-chain...",
-		minting: "Minting tokens...",
-		burning: "Burning tokens...",
-		error: "Operation failed",
-	};
-
-	const isError = status === "error";
-
-	return (
-		<div
-			className={`mb-6 rounded-lg border p-4 ${
-				isError ? "border-red-900/50 bg-red-950/20" : "border-cyan-900/50 bg-cyan-950/20"
-			}`}
-		>
-			<div className="flex items-center gap-2">
-				{isError ? (
-					<AlertCircle size={16} className="text-red-400" />
-				) : (
-					<Loader2 size={16} className="animate-spin text-cyan-400" />
-				)}
-				<span className={`text-sm ${isError ? "text-red-300" : "text-cyan-300"}`}>
-					{messages[status] ?? "Processing..."}
-				</span>
-			</div>
-			{error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-			{isError && (
-				<button
-					type="button"
-					onClick={onDismiss}
-					className="mt-2 text-xs text-zinc-400 hover:text-zinc-300"
-				>
-					Dismiss
-				</button>
-			)}
-		</div>
-	);
-}
 
 function StatBox({
 	label,
@@ -1521,193 +759,6 @@ function StatBox({
 		<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-2.5">
 			<p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">{label}</p>
 			<p className="mt-0.5 text-sm font-semibold text-zinc-200">{value}</p>
-		</div>
-	);
-}
-
-function AdminToggle({
-	active,
-	onClick,
-	icon,
-	label,
-	color,
-}: {
-	active: boolean;
-	onClick: () => void;
-	icon: React.ReactNode;
-	label: string;
-	color: "cyan" | "red" | "amber" | "purple";
-}) {
-	const colorMap = {
-		cyan: {
-			active: "bg-cyan-600/20 text-cyan-400",
-			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
-		},
-		red: {
-			active: "bg-red-600/20 text-red-400",
-			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
-		},
-		amber: {
-			active: "bg-amber-600/20 text-amber-400",
-			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
-		},
-		purple: {
-			active: "bg-purple-600/20 text-purple-400",
-			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
-		},
-	};
-
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-				active ? colorMap[color].active : colorMap[color].idle
-			}`}
-		>
-			{icon}
-			{label}
-		</button>
-	);
-}
-
-function AdminPanel({
-	title,
-	children,
-}: {
-	title: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
-			<h4 className="mb-3 text-xs font-medium text-zinc-400">{title}</h4>
-			{children}
-		</div>
-	);
-}
-
-function FormField({
-	label,
-	children,
-}: {
-	label: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<div className="block">
-			<span className="mb-1 block text-xs text-zinc-500">{label}</span>
-			{children}
-		</div>
-	);
-}
-
-function CreateCurrencyForm({
-	symbol,
-	tokenName,
-	description,
-	decimals,
-	isProcessing,
-	hasAccount,
-	onSymbolChange,
-	onNameChange,
-	onDescChange,
-	onDecimalsChange,
-	onCreate,
-	onCancel,
-}: {
-	symbol: string;
-	tokenName: string;
-	description: string;
-	decimals: number;
-	isProcessing: boolean;
-	hasAccount: boolean;
-	onSymbolChange: (v: string) => void;
-	onNameChange: (v: string) => void;
-	onDescChange: (v: string) => void;
-	onDecimalsChange: (v: number) => void;
-	onCreate: () => void;
-	onCancel: () => void;
-}) {
-	return (
-		<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-			<h2 className="mb-4 text-sm font-medium text-zinc-100">Create Currency</h2>
-			<div className="space-y-3">
-				<FormField label="Symbol">
-					<input
-						type="text"
-						value={symbol}
-						onChange={(e) => onSymbolChange(e.target.value)}
-						placeholder="e.g., GOLD"
-						className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-						maxLength={10}
-					/>
-				</FormField>
-				<FormField label="Name">
-					<input
-						type="text"
-						value={tokenName}
-						onChange={(e) => onNameChange(e.target.value)}
-						placeholder="e.g., Organization Gold"
-						className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-						maxLength={100}
-					/>
-				</FormField>
-				<FormField label="Description">
-					<textarea
-						value={description}
-						onChange={(e) => onDescChange(e.target.value)}
-						placeholder="e.g., Official currency of our organization"
-						className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-						maxLength={500}
-						rows={2}
-					/>
-				</FormField>
-				<FormField label="Decimals">
-					<input
-						type="number"
-						value={decimals}
-						onChange={(e) => onDecimalsChange(Number(e.target.value))}
-						min={0}
-						max={18}
-						className="w-32 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
-					/>
-				</FormField>
-				<div className="flex gap-2">
-					{hasAccount ? (
-						<button
-							type="button"
-							onClick={onCreate}
-							disabled={!symbol.trim() || !tokenName.trim() || isProcessing}
-							className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-						>
-							{isProcessing ? (
-								<span className="flex items-center gap-2">
-									<Loader2 size={14} className="animate-spin" /> Publishing...
-								</span>
-							) : (
-								"Create Currency"
-							)}
-						</button>
-					) : (
-						<span className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-zinc-500">
-							EVE Vault not connected
-						</span>
-					)}
-					<button
-						type="button"
-						onClick={onCancel}
-						className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:text-zinc-300"
-					>
-						Cancel
-					</button>
-				</div>
-				{isProcessing && (
-					<p className="text-xs text-zinc-500">
-						Your wallet will prompt you to sign. The token and Market will be published directly to
-						Sui testnet.
-					</p>
-				)}
-			</div>
 		</div>
 	);
 }

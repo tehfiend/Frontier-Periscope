@@ -8,6 +8,7 @@ import {
 	Cog,
 	Coins,
 	Database,
+	Landmark,
 	LayoutDashboard,
 	Lock,
 	type LucideIcon,
@@ -67,6 +68,7 @@ const navGroups: NavGroup[] = [
 			{ to: "/assets", icon: Boxes, label: "Inventory" },
 			{ to: "/wallet", icon: Wallet, label: "Wallet" },
 			{ to: "/markets", icon: Coins, label: "Markets" },
+			{ to: "/treasury", icon: Landmark, label: "Treasury" },
 		],
 	},
 	{

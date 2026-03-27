@@ -808,6 +808,22 @@ export interface CurrencyRecord extends SyncMeta {
 	_archived?: boolean;
 }
 
+// ── Treasury Types ──────────────────────────────────────────────────────────
+
+export interface TreasuryBalanceEntry {
+	coinType: string;
+	symbol: string;
+	amount: string;
+}
+
+export interface TreasuryRecord extends SyncMeta {
+	id: string;
+	name: string;
+	owner: string;
+	admins: string[];
+	balances: TreasuryBalanceEntry[];
+}
+
 // ── Sonar Types ─────────────────────────────────────────────────────────────
 
 export type SonarSource = "local" | "chain";
