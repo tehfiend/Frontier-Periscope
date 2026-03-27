@@ -3,6 +3,7 @@ import {
 	ASSEMBLY_MODULE_MAP,
 	buildCreateSsuUnifiedConfig,
 	buildSetGateStandingsConfig,
+	buildSetGateTollCustomConfig,
 	buildSetSsuUnifiedConfig,
 	getContractAddresses,
 } from "@tehfrontier/chain-shared";
@@ -175,13 +176,47 @@ interface ConfigureGateStandingsParams {
 	tollRecipient: string;
 	permitDurationMs: bigint;
 	senderAddress: string;
+	/** Custom toll currency coin type. If set, uses gate-toll-custom extension instead of gate-standings. */
+	tollCoinType?: string;
 }
 
 /**
  * Build a TX to configure standings-based access for a gate.
- * Wraps chain-shared's buildSetGateStandingsConfig().
+ *
+ * Branches on tollCoinType:
+ * - undefined/empty: uses existing gate-standings extension (SUI tolls)
+ * - custom coin type: uses gate-toll-custom extension (Coin<T> tolls)
+ *
+ * Note on treasury integration: the treasury destination is a *traveler-side*
+ * concern. The gate config always sets a tollRecipient address. When treasury
+ * is the revenue destination, the traveler's PTB uses
+ * buildRequestGateTollCustomAccessToTreasury to deposit directly into the
+ * treasury, rather than using the tollRecipient address.
  */
 export function buildConfigureGateStandings(params: ConfigureGateStandingsParams): Transaction {
+	if (params.tollCoinType) {
+		// Custom currency toll via gate-toll-custom extension
+		const addrs = getContractAddresses(params.tenant);
+		if (!addrs.gateTollCustom?.packageId || !addrs.gateTollCustom?.configObjectId) {
+			throw new Error(`Gate toll custom contract not deployed on ${params.tenant}`);
+		}
+
+		return buildSetGateTollCustomConfig({
+			packageId: addrs.gateTollCustom.packageId,
+			configObjectId: addrs.gateTollCustom.configObjectId,
+			gateId: params.gateId,
+			registryId: params.registryId,
+			coinType: params.tollCoinType,
+			minAccess: params.minAccess,
+			freeAccess: params.freeAccess,
+			tollAmount: params.tollFee,
+			tollRecipient: params.tollRecipient,
+			permitDurationMs: params.permitDurationMs,
+			senderAddress: params.senderAddress,
+		});
+	}
+
+	// SUI toll via existing gate-standings extension
 	const addrs = getContractAddresses(params.tenant);
 	if (!addrs.gateStandings) {
 		throw new Error(`Gate standings contract not deployed on ${params.tenant}`);
@@ -232,7 +267,9 @@ export interface ConfigureSsuUnifiedResult {
  * - Update (has ssuConfigId): calls buildSetSsuUnifiedConfig to update the
  *   existing config's standings thresholds.
  */
-export function buildConfigureSsuUnified(params: ConfigureSsuUnifiedParams): ConfigureSsuUnifiedResult {
+export function buildConfigureSsuUnified(
+	params: ConfigureSsuUnifiedParams,
+): ConfigureSsuUnifiedResult {
 	const addrs = getContractAddresses(params.tenant);
 	const ssuUnified = addrs.ssuUnified ?? addrs.ssuStandings;
 	if (!ssuUnified) {

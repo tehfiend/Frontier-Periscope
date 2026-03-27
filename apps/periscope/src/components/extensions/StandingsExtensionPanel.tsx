@@ -1,7 +1,8 @@
 import type { TenantId } from "@/chain/config";
 import { buildConfigureGateStandings, buildConfigureSsuUnified } from "@/chain/transactions";
 import { db } from "@/db";
-import type { StructureExtensionConfig } from "@/db/types";
+import type { StructureExtensionConfig, TreasuryRecord } from "@/db/types";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import {
 	REGISTRY_STANDING_LABELS,
@@ -9,9 +10,10 @@ import {
 	getContractAddresses,
 	standingToDisplay,
 } from "@tehfrontier/chain-shared";
-import { useSuiClient } from "@/hooks/useSuiClient";
-import { AlertCircle, CheckCircle2, Loader2, Settings2 } from "lucide-react";
-import { useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { AlertCircle, CheckCircle2, Loader2, Settings2, Vault } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CurrencySelector } from "./CurrencySelector";
 import { MarketSelector } from "./MarketSelector";
 import { RegistrySelector } from "./RegistrySelector";
 import { TurretPublishFlow } from "./TurretPublishFlow";
@@ -80,11 +82,31 @@ function StandingSlider({
 function GateStandingsConfig({
 	values,
 	onChange,
+	account,
 }: {
 	values: GateConfigValues;
 	onChange: (v: GateConfigValues) => void;
+	account: { address: string } | null;
 }) {
 	const durationMinutes = Math.round(Number(values.permitDurationMs) / 60_000);
+	const isCustomCurrency = !!values.tollCoinType;
+
+	// Resolve the selected currency symbol for the toll fee label
+	const currencies = useLiveQuery(() => db.currencies.filter((c) => !c._archived).toArray(), []);
+	const currencySymbol = useMemo(() => {
+		if (!values.tollCoinType) return "SUI";
+		const match = (currencies ?? []).find((c) => c.coinType === values.tollCoinType);
+		return match?.symbol ?? "TOKEN";
+	}, [values.tollCoinType, currencies]);
+
+	// Load user's treasuries for the revenue destination picker
+	const treasuries = useLiveQuery(() => db.treasuries.toArray(), []);
+	const userTreasuries = useMemo(() => {
+		if (!account) return [];
+		return (treasuries ?? []).filter(
+			(t: TreasuryRecord) => t.owner === account.address || t.admins.includes(account.address),
+		);
+	}, [treasuries, account]);
 
 	return (
 		<div className="space-y-4">
@@ -99,8 +121,30 @@ function GateStandingsConfig({
 				onChange={(v) => onChange({ ...values, freeAccess: v })}
 			/>
 
+			{/* Toll Currency */}
 			<div>
-				<label className="mb-1.5 block text-xs font-medium text-zinc-400">Toll Fee (SUI)</label>
+				<label className="mb-1.5 block text-xs font-medium text-zinc-400">Toll Currency</label>
+				<CurrencySelector
+					value={values.tollCoinType}
+					onChange={(coinType) =>
+						onChange({
+							...values,
+							tollCoinType: coinType,
+							// Reset revenue destination to direct when switching to SUI
+							// (treasury deposits are only for custom currencies)
+							revenueDestination: coinType ? values.revenueDestination : "direct",
+							tollTreasuryId: coinType ? values.tollTreasuryId : undefined,
+						})
+					}
+				/>
+				<p className="mt-1 text-xs text-zinc-600">Select a custom currency or use SUI (default).</p>
+			</div>
+
+			{/* Toll Fee */}
+			<div>
+				<label className="mb-1.5 block text-xs font-medium text-zinc-400">
+					Toll Fee ({currencySymbol})
+				</label>
 				<input
 					type="text"
 					value={values.tollFee}
@@ -108,21 +152,94 @@ function GateStandingsConfig({
 					placeholder="0"
 					className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
 				/>
-				<p className="mt-1 text-xs text-zinc-600">
-					Gate tolls are always paid in SUI. Custom currency tolls require a world contract upgrade.
-				</p>
 			</div>
 
-			<div>
-				<label className="mb-1.5 block text-xs font-medium text-zinc-400">Toll Recipient</label>
-				<input
-					type="text"
-					value={values.tollRecipient}
-					onChange={(e) => onChange({ ...values, tollRecipient: e.target.value })}
-					placeholder="0x..."
-					className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
-				/>
-			</div>
+			{/* Revenue Destination (only for custom currency) */}
+			{isCustomCurrency && (
+				<div>
+					<label className="mb-1.5 block text-xs font-medium text-zinc-400">
+						<Vault size={12} className="mr-1 inline" />
+						Revenue Destination
+					</label>
+					<div className="flex gap-2">
+						<button
+							type="button"
+							onClick={() =>
+								onChange({
+									...values,
+									revenueDestination: "direct",
+									tollTreasuryId: undefined,
+								})
+							}
+							className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+								values.revenueDestination === "direct"
+									? "border-cyan-500 bg-cyan-950/30 text-cyan-300"
+									: "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
+							}`}
+						>
+							Direct to address
+						</button>
+						<button
+							type="button"
+							onClick={() => onChange({ ...values, revenueDestination: "treasury" })}
+							className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+								values.revenueDestination === "treasury"
+									? "border-cyan-500 bg-cyan-950/30 text-cyan-300"
+									: "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
+							}`}
+						>
+							Deposit to treasury
+						</button>
+					</div>
+				</div>
+			)}
+
+			{/* Treasury Selector (custom currency + treasury destination) */}
+			{isCustomCurrency && values.revenueDestination === "treasury" && (
+				<div>
+					<label className="mb-1.5 block text-xs font-medium text-zinc-400">Treasury</label>
+					{userTreasuries.length > 0 ? (
+						<select
+							value={values.tollTreasuryId ?? ""}
+							onChange={(e) =>
+								onChange({
+									...values,
+									tollTreasuryId: e.target.value || undefined,
+								})
+							}
+							className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
+						>
+							<option value="">Select a treasury...</option>
+							{userTreasuries.map((t: TreasuryRecord) => (
+								<option key={t.id} value={t.id}>
+									{t.name || `${t.id.slice(0, 16)}...`}
+								</option>
+							))}
+						</select>
+					) : (
+						<p className="rounded border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-500">
+							No treasuries found. Create one in the Treasury view.
+						</p>
+					)}
+					<p className="mt-1 text-xs text-zinc-600">
+						Toll revenue will be deposited into the selected treasury.
+					</p>
+				</div>
+			)}
+
+			{/* Toll Recipient (direct mode or SUI) */}
+			{(!isCustomCurrency || values.revenueDestination === "direct") && (
+				<div>
+					<label className="mb-1.5 block text-xs font-medium text-zinc-400">Toll Recipient</label>
+					<input
+						type="text"
+						value={values.tollRecipient}
+						onChange={(e) => onChange({ ...values, tollRecipient: e.target.value })}
+						placeholder="0x..."
+						className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+					/>
+				</div>
+			)}
 
 			<div>
 				<label className="mb-1.5 block text-xs font-medium text-zinc-400">
@@ -187,12 +304,20 @@ function SsuStandingsConfig({
 
 // ── Config Value Types ──────────────────────────────────────────────────────
 
+type RevenueDestination = "direct" | "treasury";
+
 interface GateConfigValues {
 	minAccess: number;
 	freeAccess: number;
 	tollFee: string;
 	tollRecipient: string;
 	permitDurationMs: bigint;
+	/** Custom toll currency coin type (undefined = SUI via gate-standings) */
+	tollCoinType?: string;
+	/** Treasury object ID for toll revenue deposit (custom currency only) */
+	tollTreasuryId?: string;
+	/** Revenue destination: "direct" (address) or "treasury" */
+	revenueDestination: RevenueDestination;
 }
 
 interface SsuConfigValues {
@@ -263,6 +388,9 @@ function StandingsExtensionPanelInner({
 		tollFee: existingConfig?.tollFee ?? "0",
 		tollRecipient: existingConfig?.tollRecipient ?? account?.address ?? "",
 		permitDurationMs: BigInt(existingConfig?.permitDurationMs ?? 600_000),
+		tollCoinType: existingConfig?.tollCoinType,
+		tollTreasuryId: existingConfig?.tollTreasuryId,
+		revenueDestination: existingConfig?.tollTreasuryId ? "treasury" : "direct",
 	});
 
 	// SSU config
@@ -298,6 +426,7 @@ function StandingsExtensionPanelInner({
 					tollRecipient: gateConfig.tollRecipient || account.address,
 					permitDurationMs: gateConfig.permitDurationMs,
 					senderAddress: account.address,
+					tollCoinType: gateConfig.tollCoinType,
 				});
 			} else {
 				const result = buildConfigureSsuUnified({
@@ -324,9 +453,7 @@ function StandingsExtensionPanelInner({
 				const addrs = getContractAddresses(tenant);
 				const pkgId = addrs.ssuUnified?.packageId ?? addrs.ssuStandings?.packageId;
 				if (pkgId) {
-					ssuConfigId =
-						(await discoverSsuUnifiedConfig(gqlClient, pkgId, assemblyId)) ??
-						undefined;
+					ssuConfigId = (await discoverSsuUnifiedConfig(gqlClient, pkgId, assemblyId)) ?? undefined;
 				}
 			}
 
@@ -359,6 +486,9 @@ function StandingsExtensionPanelInner({
 				tollFee: gateConfig.tollFee,
 				tollRecipient: gateConfig.tollRecipient,
 				permitDurationMs: Number(gateConfig.permitDurationMs),
+				tollCoinType: gateConfig.tollCoinType,
+				tollTreasuryId:
+					gateConfig.revenueDestination === "treasury" ? gateConfig.tollTreasuryId : undefined,
 			}),
 			...(structureKind === "ssu" && {
 				minDeposit: ssuConfig.minDeposit,
@@ -386,7 +516,7 @@ function StandingsExtensionPanelInner({
 			{registryId && (
 				<>
 					{structureKind === "gate" && (
-						<GateStandingsConfig values={gateConfig} onChange={setGateConfig} />
+						<GateStandingsConfig values={gateConfig} onChange={setGateConfig} account={account} />
 					)}
 					{structureKind === "ssu" && (
 						<SsuStandingsConfig values={ssuConfig} onChange={setSsuConfig} />

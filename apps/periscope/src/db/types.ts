@@ -251,6 +251,10 @@ export interface StructureExtensionConfig {
 	tollFee?: string;
 	tollRecipient?: string;
 	permitDurationMs?: number;
+	/** Custom toll currency coin type (undefined = SUI via gate-standings) */
+	tollCoinType?: string;
+	/** Treasury object ID for toll revenue deposit (custom currency only) */
+	tollTreasuryId?: string;
 	// SSU-specific
 	minDeposit?: number;
 	minWithdraw?: number;

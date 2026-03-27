@@ -109,6 +109,15 @@ export function useChainSonar() {
 				}
 			}
 
+			// Build coin type -> currency symbol lookup (for toll display)
+			const currencySymbolMap = new Map<string, string>();
+			const currencies = await db.currencies.toArray();
+			for (const c of currencies) {
+				if (c.coinType && c.symbol) {
+					currencySymbolMap.set(c.coinType, c.symbol);
+				}
+			}
+
 			const handlerCtx: HandlerContext = {
 				ssuObjectIds,
 				ownedAssemblyIds,
@@ -117,6 +126,7 @@ export function useChainSonar() {
 				typeNameMap,
 				charNameMap,
 				charTribeMap,
+				currencySymbolMap,
 			};
 
 			// ── Build event type map: key -> moveEventType string ────────
