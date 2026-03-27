@@ -87,7 +87,7 @@ export interface MintParams {
 	packageId: string;
 	marketId: string;
 	coinType: string;
-	amount: number;
+	amount: bigint;
 	recipient: string;
 	senderAddress: string;
 }
