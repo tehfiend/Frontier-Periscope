@@ -125,7 +125,7 @@ Add a notice in the turret publish flow explaining that this is a simplified wei
    - Define `TURRET_TEMPLATE_BYTECODES_B64` constant (initially empty placeholder, populated after step 2)
    - Define `TurretWeightsParams` interface:
      ```
-     symbol: string          // Module name suffix, e.g. "ALPHA" -> "turret_priority_ALPHA"
+     symbol?: string         // Optional module name suffix, e.g. "ALPHA" -> "turret_priority_alpha"
      defaultWeight: number   // 0-255
      kosWeight: number       // 0-255
      aggressorBonus: number  // 0-255
@@ -135,21 +135,23 @@ Add a notice in the turret publish flow explaining that this is a simplified wei
      classBonus: number      // 0-255
      effectiveClasses: [number, number]  // Ship class group IDs (0 = disabled)
      ```
-   - Export `buildPublishTurret(params: TurretWeightsParams): Promise<Transaction>`:
+   - Export `buildPublishTurret(params: TurretWeightsParams, worldPackageId: string): Promise<{ tx: Transaction; moduleName: string }>`:
      - Load WASM via shared `ensureWasmReady()`
      - Get template bytecodes
      - Patch u64 sentinels: for each weight constant, call `mod.update_constants(bytecodes, bcsU64(actualValue), bcsU64(sentinelValue), "U64")` where `bcsU64` serializes a u64 via `bcs.u64().serialize(n).toBytes()`
      - Note: Unlike token-factory which patches u8 values, turret weights are u64 constants in Move source. The `update_constants` call uses "U64" type, and BCS encoding is `bcs.u64().serialize(n).toBytes()`
-     - Optionally patch identifiers if user wants a custom module name (default: keep "turret_priority")
-     - Build and return `Transaction` with `tx.publish()` and dependency on `0x1` (Move stdlib), `0x2` (Sui framework), and the world contracts package ID
+     - If `symbol` is provided, patch identifiers: `turret_priority` -> `turret_priority_{symbol.toLowerCase()}` via `mod.update_identifiers()`. If omitted, keep the default module name `"turret_priority"`
+     - Build and return `Transaction` with `tx.publish()` and dependency on `0x1` (Move stdlib), `0x2` (Sui framework), and `worldPackageId` (passed by caller -- use `TENANTS[tenant].worldPackageId` from config, same pattern as `buildPublishTokenStandings` taking its dependency as a parameter)
      - Transfer UpgradeCap to sender
+     - Return the effective module name (either `"turret_priority"` or `"turret_priority_{symbol}"`) alongside the Transaction so the caller can construct the correct `witnessType`
    - Export `parsePublishTurretResult()` to extract packageId from transaction object changes (simpler than token-factory -- no Market object to find, just the published package ID)
 
 4. **Extract shared WASM init** -- Create `packages/chain-shared/src/wasm-init.ts`:
    - Move the `ensureWasmReady()` function and related state (`wasmReady`, `wasmMod`) from `token-factory-standings.ts`
    - Update `token-factory-standings.ts` to import from `wasm-init.ts`
-   - Update `token-factory.ts` if it also has the same pattern (verify -- it likely does)
+   - Update `token-factory.ts` -- it has an identical local copy (lines 7-23) that must also be replaced with the shared import
    - Export from `index.ts`
+   - Note: `turret-factory.ts` must re-export `SHIP_CLASSES` and `DEFAULT_TURRET_PRIORITY_CONFIG` from `turret-priority.ts` so the app can import them from `@tehfrontier/chain-shared` (currently `turret-priority.ts` is not in the package's `index.ts` exports and `turret-standings.ts` does not re-export them)
 
 5. **Verify sentinel approach** -- The sentinel values must be unique within the compiled bytecodes so `update_constants` matches exactly one constant. Since all 7 weight sentinels are distinct u64 values (1000001-1000007) and the 2 effective class sentinels are also distinct (1000008-1000009), and no other constants in the module will have these values, uniqueness is guaranteed. The padded friend/foe slots are all 0 (from `padSlots`) which is the same as "disabled" in the lookup functions.
 
@@ -163,7 +165,7 @@ Add a notice in the turret publish flow explaining that this is a simplified wei
 | `packages/chain-shared/src/turret-factory.ts` | Create |
 | `packages/chain-shared/src/wasm-init.ts` | Create |
 | `packages/chain-shared/src/token-factory-standings.ts` | Modify (import shared WASM init) |
-| `packages/chain-shared/src/token-factory.ts` | Modify (import shared WASM init, if applicable) |
+| `packages/chain-shared/src/token-factory.ts` | Modify (import shared WASM init, replace identical local copy at lines 7-23) |
 | `packages/chain-shared/src/index.ts` | Modify (add exports) |
 
 ### Phase 2: Simplified TurretPublishFlow Component
@@ -186,20 +188,20 @@ Add a notice in the turret publish flow explaining that this is a simplified wei
    - **App notice** (rendered at top of configure step):
      - Amber info banner: "This is a simplified weights-only turret configuration. Standings-based targeting (friend/foe lists derived from your registry) requires runtime config support in the world contracts, which is not yet available. We've submitted a feature request to CCP for this capability."
    - **Step 2 (Publish):** On "Publish Turret" button click:
-     - Call `buildPublishTurret()` from `@tehfrontier/chain-shared` with the configured weights
+     - Call `buildPublishTurret()` from `@tehfrontier/chain-shared` with the configured weights and `TENANTS[tenant].worldPackageId`
      - Sign and execute via `signAndExecuteTransaction` from dApp kit
      - Parse result via `parsePublishTurretResult()` to get `packageId`
    - **Step 3 (Authorize):** Automatically after publish succeeds:
-     - Construct a synthetic `ExtensionTemplate` from the turret template in `EXTENSION_TEMPLATES`, injecting the published `packageId` into `packageIds[tenant]` and setting `witnessType` to `"turret_priority::TurretPriorityAuth"` (the pre-compiled module uses default name "turret_priority")
+     - Construct a synthetic `ExtensionTemplate` from the turret template in `EXTENSION_TEMPLATES`, injecting the published `packageId` into `packageIds[tenant]` and setting `witnessType` to `"{moduleName}::TurretPriorityAuth"` where `moduleName` is the effective module name returned by `buildPublishTurret` (e.g., `"turret_priority"` if no symbol, or `"turret_priority_alpha"` if symbol is `"ALPHA"`)
      - Build TX via `buildAuthorizeExtension()` from `@/chain/transactions`
      - Sign and execute
    - **Step 4 (Done):** Save config to IndexedDB, show success with Suiscan link
 
 2. **Update `StructureExtensionPanel.tsx`**:
    - Add `characterId?: string` and `ownerCapId?: string` to `StandingsExtensionPanelProps` (optional, only needed for turrets)
-   - Replace the turret rendering section (lines 426-428) and the turret `else` branch in `handleApply` (lines 351-356):
-     - When `structureKind === "turret"`, render `TurretPublishFlow` instead of `TurretStandingsConfig` + the apply button
-     - `TurretPublishFlow` handles its own apply/publish flow, so the turret code path is fully delegated
+   - Add an early return at the top of the component body for turrets: when `structureKind === "turret"`, render `<TurretPublishFlow>` and return immediately -- this bypasses the registry selector, gate/SSU config, and apply button entirely (none of which apply to the weights-only turret flow)
+   - Remove the turret rendering section inside the `{registryId && (...)}` block (lines 426-428) -- now handled by the early return
+   - Remove the turret `else` branch in `handleApply` (lines 351-356) -- `TurretPublishFlow` handles its own flow
    - Remove `TurretStandingsConfig` component (lines 181-247) and `TurretConfigValues` interface (lines 265-268) -- no longer needed
    - Remove `turretConfig` state (lines 303-314) -- no longer needed
    - Remove turret spread from `saveConfigToDb` (lines 397-400) -- `TurretPublishFlow` handles its own persistence
@@ -218,6 +220,7 @@ Add a notice in the turret publish flow explaining that this is a simplified wei
      ```
 
 4. **Update `StructureExtensionConfig` in `db/types.ts`** (lines 240-261):
+   - Change `registryId: string` to `registryId?: string` -- turrets no longer use a registry, but gates/SSUs still do. The `TurretPublishFlow` save-to-db step must work without a registry ID.
    - Remove `standingWeights?: Record<number, number>`
    - Add turret weight fields (all optional):
      - `defaultWeight?: number`
@@ -254,7 +257,7 @@ Add a notice in the turret publish flow explaining that this is a simplified wei
 
 **Goal:** Clarify gate toll SUI-only limitation in the UI.
 
-1. In `StandingsExtensionPanel.tsx` `GateStandingsConfig` component (line 91), update the toll fee section:
+1. In `StandingsExtensionPanel.tsx`, in the `GateStandingsConfig` component (line 68), update the toll fee section (line 91):
    - Change the `<p>` help text below the toll fee input (line 99-101) to: "Gate tolls are always paid in SUI. Custom currency tolls require a world contract upgrade."
    - Optionally add a small info icon next to the "Toll Fee (SUI)" label with a tooltip
 
@@ -286,7 +289,7 @@ Add a notice in the turret publish flow explaining that this is a simplified wei
 | `packages/chain-shared/src/turret-factory.ts` | Create | 1 | Bytecode patcher for weights-only turret (analogous to token-factory-standings.ts) |
 | `packages/chain-shared/src/wasm-init.ts` | Create | 1 | Shared WASM initialization for @mysten/move-bytecode-template |
 | `packages/chain-shared/src/token-factory-standings.ts` | Modify | 1 | Import shared WASM init instead of local copy |
-| `packages/chain-shared/src/token-factory.ts` | Modify | 1 | Import shared WASM init if it has a local copy |
+| `packages/chain-shared/src/token-factory.ts` | Modify | 1 | Import shared WASM init (replace identical local copy at lines 7-23) |
 | `packages/chain-shared/src/index.ts` | Modify | 1 | Add turret-factory and wasm-init exports |
 | `apps/periscope/src/components/extensions/TurretPublishFlow.tsx` | Create | 2 | Weights-only turret config UI + bytecode patch + wallet publish + authorize |
 | `apps/periscope/src/components/extensions/StandingsExtensionPanel.tsx` | Modify | 2, 3 | Delegate turret to TurretPublishFlow, remove old turret UI; add gate toll info |
@@ -311,7 +314,7 @@ Add a notice in the turret publish flow explaining that this is a simplified wei
    - **Resolution:** SIMPLIFIED. No threshold sliders needed. Just weight configuration: `defaultWeight`, `kosWeight`, `aggressorBonus`, `betrayalBonus`, `lowHpBonus`, `lowHpThreshold`, `classBonus`, `effectiveClasses`. No friendly/KOS lists. Each weight gets a slider with the default value from `DEFAULT_TURRET_PRIORITY_CONFIG`.
 
 5. **How should the turret witness type mismatch be resolved?**
-   - **Resolution:** SIMPLIFIED. With bytecode patching, the witness type (`TurretPriorityAuth`) is part of the pre-compiled bytecodes. The module name is "turret_priority" by default. The synthetic `ExtensionTemplate` constructed in `TurretPublishFlow` uses `witnessType: "turret_priority::TurretPriorityAuth"` which matches the compiled module exactly. The `update_identifiers` step can optionally rename the module if a custom name is desired.
+   - **Resolution:** SIMPLIFIED. With bytecode patching, the witness type (`TurretPriorityAuth`) is part of the pre-compiled bytecodes. The default module name is "turret_priority". If an optional `symbol` is provided, `update_identifiers` renames the module (e.g., `"turret_priority_alpha"`), but the struct name `TurretPriorityAuth` stays the same. The synthetic `ExtensionTemplate` constructed in `TurretPublishFlow` uses `witnessType: "{moduleName}::TurretPriorityAuth"` where `moduleName` is the effective name returned by `buildPublishTurret`.
 
 ## CCP Feature Request: Runtime Turret Configuration
 

@@ -53,3 +53,9 @@
 - **File:** plans/active/03-storage-datagrid.md
 - **Passes:** 3
 - **Result:** active -- resolved 3 open questions (B: show-all toggle, C: all-time sonar, A: all markets with admin info)
+
+## 2026-03-26 -- extension-fixes (update)
+- **Action:** UPDATE
+- **File:** plans/active/06-extension-fixes.md
+- **Passes:** 3
+- **Result:** active -- simplified turrets to weights-only with bytecode patching, deferred standings integration pending CCP world contract improvements
