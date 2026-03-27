@@ -7,7 +7,7 @@ import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useQuery } from "@tanstack/react-query";
 import {
 	type MarketSellListing,
-	buildCancelListingStandings,
+	buildCancelListingWithStandings,
 	buildUpdateSellListing,
 	formatBaseUnits,
 	parseDisplayPrice,
@@ -66,7 +66,7 @@ export function ListingAdminList({
 		if (!account?.address || !ssuConfig.marketId || !characterObjectId) return;
 		setError(null);
 		try {
-			const tx = buildCancelListingStandings({
+			const tx = buildCancelListingWithStandings({
 				packageId: ssuConfig.packageId,
 				ssuConfigId: ssuConfig.ssuConfigId,
 				marketId: ssuConfig.marketId,

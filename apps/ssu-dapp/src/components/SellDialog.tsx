@@ -8,8 +8,8 @@ import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import type { Transaction } from "@mysten/sui/transactions";
 import {
-	buildEscrowAndListStandings,
-	buildPlayerEscrowAndListStandings,
+	buildEscrowAndListWithStandings,
+	buildPlayerEscrowAndListWithStandings,
 	formatBaseUnits,
 	parseDisplayPrice,
 } from "@tehfrontier/chain-shared";
@@ -81,7 +81,7 @@ export function SellDialog({
 		try {
 			let tx: Transaction;
 			if (isPlayerSell && charOwnerCap && charOwnerCapId) {
-				tx = buildPlayerEscrowAndListStandings({
+				tx = buildPlayerEscrowAndListWithStandings({
 					packageId: ssuConfig.packageId,
 					ssuConfigId: ssuConfig.ssuConfigId,
 					marketId: ssuConfig.marketId,
@@ -100,7 +100,7 @@ export function SellDialog({
 					senderAddress: account.address,
 				});
 			} else if (ownerCap) {
-				tx = buildEscrowAndListStandings({
+				tx = buildEscrowAndListWithStandings({
 					packageId: ssuConfig.packageId,
 					ssuConfigId: ssuConfig.ssuConfigId,
 					marketId: ssuConfig.marketId,

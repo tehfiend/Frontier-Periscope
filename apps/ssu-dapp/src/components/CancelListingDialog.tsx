@@ -4,8 +4,8 @@ import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import {
-	buildCancelListingStandings,
-	buildPlayerCancelListingStandings,
+	buildCancelListingWithStandings,
+	buildPlayerCancelListingWithStandings,
 	formatBaseUnits,
 } from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
@@ -61,8 +61,8 @@ export function CancelListingDialog({
 				senderAddress: account.address,
 			};
 			const tx = isAuthorized
-				? buildCancelListingStandings(params)
-				: buildPlayerCancelListingStandings(params);
+				? buildCancelListingWithStandings(params)
+				: buildPlayerCancelListingWithStandings(params);
 			await signAndExecute(tx);
 			setSuccess("Listing cancelled successfully");
 		} catch (err) {

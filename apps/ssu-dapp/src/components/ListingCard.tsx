@@ -8,7 +8,7 @@ import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useQuery } from "@tanstack/react-query";
 import {
 	type MarketSellListing,
-	buildBuyFromListingStandings,
+	buildBuyFromListingWithStandings,
 	formatBaseUnits,
 	queryOwnedCoins,
 } from "@tehfrontier/chain-shared";
@@ -74,7 +74,7 @@ export function ListingCard({
 		}
 
 		try {
-			const tx = buildBuyFromListingStandings({
+			const tx = buildBuyFromListingWithStandings({
 				packageId: ssuConfig.packageId,
 				ssuConfigId: ssuConfig.ssuConfigId,
 				marketId: ssuConfig.marketId,
