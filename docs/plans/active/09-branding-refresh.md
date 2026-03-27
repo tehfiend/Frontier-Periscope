@@ -112,7 +112,7 @@ This tagline captures both angles: "Peer into the frontier" evokes the blockchai
    - **Structures** -- "Manage owned deployables and assemblies with fuel tracking, extension deployment, and location resolution from both public reveals and private maps."
    - **Star Map & Navigation** -- "3D WebGL solar system visualization with jump route planning. Search systems, plot routes, and explore the cluster."
    - **Killmails** -- "Combat event tracking and threat assessment across the cluster."
-5. **Philosophy** -- why this project exists, 100% vibe coded, encouraging non-developers, why open source (new section -- see Phase 1 step 3)
+5. **Philosophy** -- why this project exists, 100% vibe coded, encouraging non-developers, why open source (new section -- see Phase 1 step 4)
 6. **Privacy** -- same as current
 7. **Development** -- same as current (package table, setup, build, deploy)
 8. **License** -- same
