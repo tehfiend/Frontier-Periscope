@@ -47,7 +47,7 @@ Location data flows from two sources into deployables:
 1. **Public locations** -- `manifestLocations` populated from `LocationRevealedEvent`, cross-referenced by `crossReferenceManifestLocations()` (L824-849)
 2. **Private map locations** -- `manifestMapLocations` populated from decrypted private map entries, cross-referenced by `crossReferencePrivateMapLocations()` (L857-887)
 
-Both cross-reference functions write `systemId` and `lPoint` onto `deployables`/`assemblies` table records. The Market view (Market.tsx L465-466) reads both `manifestLocations` and `manifestMapLocations` directly via `useLiveQuery` to build an SSU location lookup. The Deployables view (Deployables.tsx L453-455) calls both cross-reference functions after syncing.
+Both cross-reference functions write `systemId` and `lPoint` onto `deployables`/`assemblies` table records. The Market view (Market.tsx L465-466) reads both `manifestLocations` and `manifestMapLocations` directly via `useLiveQuery` to build an SSU location lookup. The Deployables view (Deployables.tsx L452-455) calls both cross-reference functions after syncing.
 
 ### Markets -- Current Ad-Hoc Pattern
 
@@ -76,7 +76,7 @@ All package IDs needed for queries exist in `CONTRACT_ADDRESSES`:
 
 - `market.packageId` (L44, L110) -- Market<T> package
 - `standingsRegistry.packageId` (L52, L119) -- StandingsRegistry package
-- `privateMap.packageId` (L48, L113) -- PrivateMap (V1) package
+- `privateMap.packageId` (L47, L113) -- PrivateMap (V1) package
 - `privateMapStandings.packageId` (L72, L139) -- PrivateMapV2 package
 
 ### Auto-Sync (hooks/useManifestAutoSync.ts)
