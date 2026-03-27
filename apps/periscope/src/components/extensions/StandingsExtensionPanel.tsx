@@ -1,9 +1,15 @@
 import type { TenantId } from "@/chain/config";
-import { buildConfigureGateStandings, buildConfigureSsuStandings } from "@/chain/transactions";
+import { buildConfigureGateStandings, buildConfigureSsuUnified } from "@/chain/transactions";
 import { db } from "@/db";
 import type { StructureExtensionConfig } from "@/db/types";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
-import { REGISTRY_STANDING_LABELS, standingToDisplay } from "@tehfrontier/chain-shared";
+import {
+	REGISTRY_STANDING_LABELS,
+	discoverSsuUnifiedConfig,
+	getContractAddresses,
+	standingToDisplay,
+} from "@tehfrontier/chain-shared";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { AlertCircle, CheckCircle2, Loader2, Settings2 } from "lucide-react";
 import { useState } from "react";
 import { MarketSelector } from "./MarketSelector";
@@ -245,6 +251,7 @@ function StandingsExtensionPanelInner({
 }: Omit<StandingsExtensionPanelProps, "characterId" | "ownerCapId">) {
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
+	const gqlClient = useSuiClient();
 
 	// Registry selection
 	const [registryId, setRegistryId] = useState<string | null>(existingConfig?.registryId ?? null);
@@ -278,6 +285,7 @@ function StandingsExtensionPanelInner({
 
 		try {
 			let tx: import("@mysten/sui/transactions").Transaction;
+			let isCreate = false;
 
 			if (structureKind === "gate") {
 				tx = buildConfigureGateStandings({
@@ -292,21 +300,38 @@ function StandingsExtensionPanelInner({
 					senderAddress: account.address,
 				});
 			} else {
-				tx = buildConfigureSsuStandings({
+				const result = buildConfigureSsuUnified({
 					tenant,
 					ssuId: assemblyId,
 					registryId,
 					minDeposit: ssuConfig.minDeposit,
 					minWithdraw: ssuConfig.minWithdraw,
+					marketId: ssuConfig.marketId || undefined,
+					ssuConfigId: existingConfig?.ssuConfigId,
 					senderAddress: account.address,
 				});
+				tx = result.tx;
+				isCreate = result.isCreate;
 			}
 
 			setStatus("signing");
 			await signAndExecute({ transaction: tx });
 
+			// For SSU create, discover the new config object ID on-chain
+			let ssuConfigId = existingConfig?.ssuConfigId;
+			if (structureKind === "ssu" && isCreate) {
+				setStatus("confirming");
+				const addrs = getContractAddresses(tenant);
+				const pkgId = addrs.ssuUnified?.packageId ?? addrs.ssuStandings?.packageId;
+				if (pkgId) {
+					ssuConfigId =
+						(await discoverSsuUnifiedConfig(gqlClient, pkgId, assemblyId)) ??
+						undefined;
+				}
+			}
+
 			// Save config to IndexedDB
-			await saveConfigToDb();
+			await saveConfigToDb(ssuConfigId);
 
 			setStatus("done");
 			onConfigured?.();
@@ -316,7 +341,7 @@ function StandingsExtensionPanelInner({
 		}
 	}
 
-	async function saveConfigToDb() {
+	async function saveConfigToDb(ssuConfigId?: string) {
 		if (!registryId) return;
 
 		const registries = await db.subscribedRegistries.where("id").equals(registryId).toArray();
@@ -339,6 +364,7 @@ function StandingsExtensionPanelInner({
 				minDeposit: ssuConfig.minDeposit,
 				minWithdraw: ssuConfig.minWithdraw,
 				marketId: ssuConfig.marketId || undefined,
+				ssuConfigId,
 			}),
 		};
 
