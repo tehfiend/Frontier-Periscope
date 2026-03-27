@@ -2,6 +2,7 @@ import { discoverCharacterAndAssemblies } from "@/chain/queries";
 import { buildRenameTx, isRenamableModule } from "@/chain/transactions";
 import { db, notDeleted } from "@/db";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { useContacts } from "@/hooks/useContacts";
 import { canRevokeExtension, useExtensionRevoke } from "@/hooks/useExtensionRevoke";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useStructureExtensions } from "@/hooks/useStructureExtensions";
@@ -280,6 +281,17 @@ export function Deployables() {
 		return map;
 	}, [extensions, tenant]);
 
+	// ── Contacts / Standings ─────────────────────────────────────────────────
+	const contacts = useContacts();
+
+	const standingByName = useMemo(() => {
+		const m = new Map<string, number>();
+		for (const c of contacts) {
+			if (c.characterName) m.set(c.characterName, c.standing);
+		}
+		return m;
+	}, [contacts]);
+
 	// ── Merge Rows ───────────────────────────────────────────────────────────
 	const data: StructureRow[] = useMemo(() => {
 		const seenObjectIds = new Set<string>();
@@ -346,6 +358,25 @@ export function Deployables() {
 
 		return rows;
 	}, [deployables, assemblies, chainAddress, activeSuiAddresses, ownerNames, extensionByAssembly]);
+
+	// ── Quick Filter ─────────────────────────────────────────────────────────
+	const [quickFilter, setQuickFilter] = useState<"all" | "mine" | "friendly" | "hostile">("all");
+
+	const filteredData = useMemo(() => {
+		if (quickFilter === "all") return data;
+		if (quickFilter === "mine") return data.filter((d) => d.ownership === "mine");
+		if (quickFilter === "friendly")
+			return data.filter((d) => {
+				const standing = standingByName.get(d.ownerName ?? "");
+				return standing != null && standing > 0;
+			});
+		if (quickFilter === "hostile")
+			return data.filter((d) => {
+				const standing = standingByName.get(d.ownerName ?? "");
+				return standing != null && standing < 0;
+			});
+		return data;
+	}, [data, quickFilter, standingByName]);
 
 	// ── Sync State ───────────────────────────────────────────────────────────
 	const [syncing, setSyncing] = useState(false);
@@ -846,33 +877,83 @@ export function Deployables() {
 				},
 			},
 			{
+				id: "standing",
+				accessorFn: (d) => {
+					if (d.ownership === "mine") return 99;
+					return standingByName.get(d.ownerName ?? "") ?? 0;
+				},
+				header: "Standing",
+				size: 100,
+				filterFn: excelFilterFn,
+				cell: ({ row }) => {
+					const r = row.original;
+					if (r.ownership === "mine") {
+						return (
+							<span className="inline-flex items-center rounded-full bg-cyan-500/15 px-2 py-0.5 text-[10px] font-medium text-cyan-400">
+								Mine
+							</span>
+						);
+					}
+					const standing = standingByName.get(r.ownerName ?? "");
+					if (standing == null || standing === 0) {
+						return <span className="text-[10px] text-zinc-600">--</span>;
+					}
+					const style =
+						standing === 3
+							? "text-blue-400 bg-blue-400/20"
+							: standing === 2
+								? "text-blue-300 bg-blue-300/20"
+								: standing === 1
+									? "text-blue-200 bg-blue-200/20"
+									: standing === -1
+										? "text-red-200 bg-red-200/20"
+										: standing === -2
+											? "text-red-300 bg-red-300/20"
+											: standing === -3
+												? "text-red-400 bg-red-400/20"
+												: "text-zinc-100 bg-zinc-100/20";
+					const label =
+						standing === 3
+							? "Excellent"
+							: standing === 2
+								? "Good"
+								: standing === 1
+									? "Friendly"
+									: standing === -1
+										? "Unfriendly"
+										: standing === -2
+											? "Bad"
+											: standing === -3
+												? "Terrible"
+												: "Neutral";
+					return (
+						<span
+							className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${style}`}
+						>
+							{standing > 0 ? `+${standing}` : standing} {label}
+						</span>
+					);
+				},
+			},
+			{
 				id: "owner",
 				accessorFn: (d) => d.ownerName ?? d.owner,
 				header: "Owner",
-				size: 180,
+				size: 150,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
 					return (
-						<div className="flex min-w-0 items-center gap-1.5">
-							<span
-								className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-									r.ownership === "mine"
-										? "bg-cyan-500/15 text-cyan-400"
-										: "bg-zinc-700/50 text-zinc-400"
-								}`}
-							>
-								{r.ownership === "mine" ? "Mine" : "Watched"}
+						<div className="min-w-0">
+							<span className="text-xs text-zinc-300">
+								{r.ownerName ?? "Unknown"}
 							</span>
-							<div className="min-w-0">
-								<span className="text-xs text-zinc-300">{r.ownerName ?? "Unknown"}</span>
-								<CopyAddress
-									address={r.owner}
-									sliceStart={6}
-									sliceEnd={4}
-									className="block text-xs text-zinc-600"
-								/>
-							</div>
+							<CopyAddress
+								address={r.owner}
+								sliceStart={6}
+								sliceEnd={4}
+								className="block text-xs text-zinc-600"
+							/>
 						</div>
 					);
 				},
@@ -934,8 +1015,7 @@ export function Deployables() {
 				cell: ({ row }) => {
 					const r = row.original;
 					const tenantDapp =
-						TENANTS[tenant]?.dappUrl ??
-						`https://dapp.frontierperiscope.com/?tenant=${tenant}`;
+						TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
 					const dappHref = r.dappUrl
 						? r.dappUrl.startsWith("http")
 							? r.dappUrl
@@ -999,6 +1079,7 @@ export function Deployables() {
 			parentLabels,
 			systems,
 			systemNames,
+			standingByName,
 		],
 	);
 
@@ -1067,7 +1148,7 @@ export function Deployables() {
 			{/* Data Grid */}
 			<DataGrid
 				columns={columns}
-				data={data}
+				data={filteredData}
 				keyFn={(d) => d.id}
 				searchPlaceholder="Search structures, owners, notes..."
 				emptyMessage='No structures found. Click "Sync Chain" to discover your on-chain deployables, or add targets in the Watchlist.'
@@ -1075,6 +1156,24 @@ export function Deployables() {
 				onRowClick={(id) => setSelectedId(id === selectedId ? null : id)}
 				actions={
 					<>
+						{/* Quick filters */}
+						<div className="flex items-center gap-1">
+							<FilterButton
+								active={quickFilter === "mine"}
+								onClick={() => setQuickFilter(quickFilter === "mine" ? "all" : "mine")}
+								label="Mine"
+							/>
+							<FilterButton
+								active={quickFilter === "friendly"}
+								onClick={() => setQuickFilter(quickFilter === "friendly" ? "all" : "friendly")}
+								label="Friendly"
+							/>
+							<FilterButton
+								active={quickFilter === "hostile"}
+								onClick={() => setQuickFilter(quickFilter === "hostile" ? "all" : "hostile")}
+								label="Hostile"
+							/>
+						</div>
 						{syncStatus && <span className="text-xs text-zinc-500">{syncStatus}</span>}
 						<button
 							type="button"
@@ -1455,5 +1554,25 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 			<p className="text-xs text-zinc-500">{label}</p>
 			<p className={`mt-1 text-2xl font-bold ${color}`}>{value}</p>
 		</div>
+	);
+}
+
+function FilterButton({
+	active,
+	onClick,
+	label,
+}: { active: boolean; onClick: () => void; label: string }) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={
+				active
+					? "flex shrink-0 items-center gap-1 rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-400"
+					: "flex shrink-0 items-center gap-1 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+			}
+		>
+			{label}
+		</button>
 	);
 }
