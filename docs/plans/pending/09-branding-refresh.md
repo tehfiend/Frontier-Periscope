@@ -17,7 +17,7 @@ The landing page is a static HTML site served via Vite (`apps/www/`) with Tailwi
 ### README (C:/Projects/periscope/README.md)
 
 - **Title line (L1):** "# Frontier Periscope"
-- **Tagline (L3):** "Intel and monitoring tool for EVE Frontier" -- this sets the entire framing
+- **Tagline (L3):** "Intel and monitoring tool for EVE Frontier -- built for the EVE Frontier hackathon. Vibe coded with Claude Code." -- the "intel and monitoring" framing sets the identity; the hackathon and vibe-coded attributions are secondary details that should be preserved or deliberately addressed
 - **Getting started (L7-13):** Links to app.frontierperiscope.com, mentions EVE Vault for on-chain features, says "fully usable without it for read-only features like log analysis, star map, and standings management"
 - **Features list (L19-29):** Lists 9 features in this order:
   1. Sonar -- leads the list
@@ -42,7 +42,7 @@ The landing page is a static HTML site served via Vite (`apps/www/`) with Tailwi
 
 ### Landing Page (C:/Projects/periscope/apps/www/index.html)
 
-- **Meta description (L7):** "Intel and monitoring tool for EVE Frontier -- real-time sonar, structure management, star map, and more."
+- **Meta description (L6):** "Intel and monitoring tool for EVE Frontier -- real-time sonar, structure management, star map, and more."
 - **Hero section (L14-57):**
   - Logo + "Frontier Periscope" heading
   - Subtitle (L26-29): "Intel and monitoring tool for EVE Frontier. Real-time event tracking, structure management, and 3D star map -- all running locally in your browser."
@@ -77,13 +77,13 @@ The sidebar reveals the full feature set organized into four groups:
 - **Assets:** Structures, Inventory, Wallet, Markets
 - **System:** Blueprints, Workers, Settings
 
-Plus a Dashboard link at the top (from Plan 07, pending implementation).
+Plus a Dashboard link at the top (from Plan 07, already implemented).
 
-### Planned Features Not Yet Implemented
+### Implementation Status of Related Plans
 
-- **Treasury** (Plan 08) -- shared multi-user wallet, coin creation migration from Market, gate toll custom currency. Not yet in codebase.
-- **Dashboard** (Plan 07) -- landing page with module cards. Not yet in codebase.
-- **Manifest expansion** (Plan 04) -- cached markets, registries, private map index. Not yet in codebase.
+- **Treasury** (Plan 08) -- shared multi-user wallet, coin creation migration from Market, gate toll custom currency. **Not yet implemented.** Plan is in `active/` but no Treasury view or contract exists in the codebase.
+- **Dashboard** (Plan 07) -- landing page with module cards. **Implemented.** `Dashboard.tsx` exists, route is wired in `router.tsx` (L108), sidebar has Dashboard link.
+- **Manifest expansion** (Plan 04) -- cached markets, registries, private map index. **Partially implemented.** `manifestMarkets` and `manifestRegistries` tables exist in `db/index.ts` (L93-94, L560-561), `discoverMarkets()` and `discoverRegistries()` exist in `manifest.ts` (L1565, L1612), and `Standings.tsx` reads from `manifestRegistries` (L383, L633). Private map index table (`manifestPrivateMapIndex`) not yet confirmed.
 
 ### App Feature Inventory (from views directory)
 
@@ -167,9 +167,9 @@ Assets, Blueprints, Dashboard, Deployables, JumpPlanner, Killmails, Manifest, Ma
 1. Update the title and tagline at L1-3. Change from:
    ```
    # Frontier Periscope
-   Intel and monitoring tool for EVE Frontier...
+   Intel and monitoring tool for EVE Frontier -- built for the EVE Frontier hackathon. Vibe coded with Claude Code.
    ```
-   to the new tagline (see Open Questions for exact wording).
+   to the new tagline (see Open Questions for exact wording). Preserve the "built for the EVE Frontier hackathon" and "Vibe coded with Claude Code" attributions -- move them to the pitch paragraph or a separate line below the new tagline.
 
 2. Replace the existing feature list (L19-29) with the reordered, rewritten feature descriptions. Eight features with benefit-oriented headings and 1-2 sentence descriptions each. Treasury entry marked with "(Coming soon -- Plan 08)" or similar.
 
@@ -186,7 +186,7 @@ Assets, Blueprints, Dashboard, Deployables, JumpPlanner, Killmails, Manifest, Ma
 
 ### Phase 2: Landing Page Content Refresh
 
-1. Update `<meta name="description">` at `apps/www/index.html` L7 from the current intel-focused description to the new organizational framing.
+1. Update `<meta name="description">` at `apps/www/index.html` L6 from the current intel-focused description to the new organizational framing.
 
 2. Update the hero subtitle at L26-29. Replace the current "Intel and monitoring tool for EVE Frontier. Real-time event tracking, structure management, and 3D star map" with the new benefit-oriented copy.
 
@@ -214,9 +214,9 @@ Assets, Blueprints, Dashboard, Deployables, JumpPlanner, Killmails, Manifest, Ma
 
 1. Update the `<title>` tag at `apps/www/index.html` L8 if needed -- currently "Frontier Periscope" which is fine. Could add a subtitle: "Frontier Periscope -- Organizational Toolkit for EVE Frontier" for SEO.
 
-2. Verify the root `CLAUDE.md` (L5) project overview line. Currently says "an intel and monitoring tool for EVE Frontier". This is internal documentation but should be consistent. Update to match the new framing.
+2. Update the root `CLAUDE.md` (L5) project overview line. Currently says "an intel and monitoring tool for EVE Frontier". This is internal documentation but should be consistent. Update to match the new framing. Note: `CLAUDE.md` is in `.gitignore` -- changes here are local-only and must be force-added with `git add -f` if committing.
 
-3. Verify the root `package.json` description field (if it has one) matches the new framing.
+3. The root `package.json` has no `description` field -- no update needed.
 
 **Files:**
 | File | Action |
@@ -230,7 +230,7 @@ Assets, Blueprints, Dashboard, Deployables, JumpPlanner, Killmails, Manifest, Ma
 |------|--------|-------------|
 | `README.md` | Modify | Rewrite tagline, feature list, and pitch paragraph. Lead with currencies/standings/maps/treasury. |
 | `apps/www/index.html` | Modify | Update meta description, hero subtitle, feature cards (8 cards, reordered, benefit-oriented copy), optional value prop section. |
-| `CLAUDE.md` | Modify | Update project overview line (L5) to match new framing. |
+| `CLAUDE.md` | Modify | Update project overview line (L5) to match new framing. Note: in `.gitignore`, requires `git add -f`. |
 
 ## Open Questions
 
