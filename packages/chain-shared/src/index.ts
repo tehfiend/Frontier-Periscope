@@ -20,4 +20,6 @@ export * from "./ssu-market-standings";
 export * from "./ssu-unified";
 export * from "./token-factory-standings";
 export * from "./turret-standings";
+export * from "./turret-factory";
+export * from "./wasm-init";
 export * from "./private-map-standings";
