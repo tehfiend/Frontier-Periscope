@@ -270,16 +270,16 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 	},
 	{
 		id: "turret_standings",
-		name: "Turret Standings",
+		name: "Turret Priority",
 		description:
-			"Standings-based turret targeting with configurable weight mappings. Uses a StandingsRegistry to prioritise or ignore targets by standing level. Per-user published packages.",
+			"Weights-only turret targeting with configurable priority constants. Each user publishes their own turret package with baked-in weight values via in-browser bytecode patching.",
 		assemblyTypes: ["turret"],
 		hasConfig: true,
 		// Turret uses per-user published packages, so packageIds is empty.
 		// The user publishes their own turret package with baked-in config.
 		packageIds: {},
 		configObjectIds: {},
-		witnessType: "turret_standings::TurretStandingsAuth",
+		witnessType: "turret_priority::TurretPriorityAuth",
 	},
 ];
 

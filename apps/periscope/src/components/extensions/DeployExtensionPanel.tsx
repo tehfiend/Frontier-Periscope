@@ -181,6 +181,8 @@ export function DeployExtensionPanel({
 									assemblyType={assembly.type}
 									structureKind={getStructureKind(assembly.type)}
 									tenant={tenant}
+									characterId={characterId}
+									ownerCapId={assembly.ownerCapId}
 								/>
 							</div>
 						)}

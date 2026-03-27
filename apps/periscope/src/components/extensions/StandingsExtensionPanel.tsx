@@ -7,6 +7,7 @@ import { REGISTRY_STANDING_LABELS, standingToDisplay } from "@tehfrontier/chain-
 import { AlertCircle, CheckCircle2, Loader2, Settings2 } from "lucide-react";
 import { useState } from "react";
 import { RegistrySelector } from "./RegistrySelector";
+import { TurretPublishFlow } from "./TurretPublishFlow";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,10 @@ interface StandingsExtensionPanelProps {
 	/** "gate" | "storage_unit" | "turret" -- the structure category for config sections */
 	structureKind: "gate" | "ssu" | "turret";
 	tenant: TenantId;
+	/** Character Sui object ID (needed for turret publish flow) */
+	characterId?: string;
+	/** OwnerCap object ID (needed for turret publish flow) */
+	ownerCapId?: string;
 	/** Existing config (if reconfiguring) */
 	existingConfig?: StructureExtensionConfig;
 	onConfigured?: () => void;
@@ -97,7 +102,7 @@ function GateStandingsConfig({
 					className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
 				/>
 				<p className="mt-1 text-xs text-zinc-600">
-					Toll for characters between minAccess and freeAccess. 0 = no toll.
+					Gate tolls are always paid in SUI. Custom currency tolls require a world contract upgrade.
 				</p>
 			</div>
 
@@ -176,76 +181,6 @@ function SsuStandingsConfig({
 	);
 }
 
-// ── Turret Config ───────────────────────────────────────────────────────────
-
-function TurretStandingsConfig({
-	values,
-	onChange,
-}: {
-	values: TurretConfigValues;
-	onChange: (v: TurretConfigValues) => void;
-}) {
-	// Standing levels 0-6 with editable weights
-	const standingEntries = Array.from({ length: 7 }, (_, i) => ({
-		standing: i,
-		label: REGISTRY_STANDING_LABELS.get(i) ?? `${i}`,
-		weight: values.standingWeights[i] ?? 0,
-	}));
-
-	function updateWeight(standing: number, weight: number) {
-		onChange({
-			...values,
-			standingWeights: { ...values.standingWeights, [standing]: weight },
-		});
-	}
-
-	return (
-		<div className="space-y-4">
-			<div>
-				<label className="mb-2 block text-xs font-medium text-zinc-400">
-					Standing Weight Mapping
-				</label>
-				<p className="mb-2 text-[10px] text-zinc-600">
-					Higher weight = higher targeting priority. Set 0 to ignore.
-				</p>
-				<div className="space-y-1.5">
-					{standingEntries.map((e) => (
-						<div key={e.standing} className="flex items-center gap-3">
-							<span className="w-20 text-xs text-zinc-400">{e.label}</span>
-							<input
-								type="range"
-								min={0}
-								max={100}
-								value={e.weight}
-								onChange={(ev) => updateWeight(e.standing, Number(ev.target.value))}
-								className="flex-1 accent-cyan-500"
-							/>
-							<span className="w-8 text-right font-mono text-xs text-zinc-300">{e.weight}</span>
-						</div>
-					))}
-				</div>
-			</div>
-
-			<div>
-				<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-					Aggressor Bonus: {values.aggressorBonus}
-				</label>
-				<input
-					type="range"
-					min={0}
-					max={100}
-					value={values.aggressorBonus}
-					onChange={(e) => onChange({ ...values, aggressorBonus: Number(e.target.value) })}
-					className="w-full accent-cyan-500"
-				/>
-				<p className="mt-0.5 text-[10px] text-zinc-600">
-					Extra priority for targets actively attacking. 0 = disabled.
-				</p>
-			</div>
-		</div>
-	);
-}
-
 // ── Config Value Types ──────────────────────────────────────────────────────
 
 interface GateConfigValues {
@@ -262,11 +197,6 @@ interface SsuConfigValues {
 	marketId: string;
 }
 
-interface TurretConfigValues {
-	standingWeights: Record<number, number>;
-	aggressorBonus: number;
-}
-
 // ── Main Panel ──────────────────────────────────────────────────────────────
 
 export function StandingsExtensionPanel({
@@ -274,9 +204,47 @@ export function StandingsExtensionPanel({
 	assemblyType,
 	structureKind,
 	tenant,
+	characterId,
+	ownerCapId,
 	existingConfig,
 	onConfigured,
 }: StandingsExtensionPanelProps) {
+	// Early return for turrets -- delegate to TurretPublishFlow
+	if (structureKind === "turret") {
+		return (
+			<TurretPublishFlow
+				assemblyId={assemblyId}
+				assemblyType={assemblyType}
+				characterId={characterId ?? ""}
+				ownerCapId={ownerCapId ?? ""}
+				tenant={tenant}
+				existingConfig={existingConfig}
+				onConfigured={onConfigured}
+			/>
+		);
+	}
+
+	return (
+		<StandingsExtensionPanelInner
+			assemblyId={assemblyId}
+			assemblyType={assemblyType}
+			structureKind={structureKind}
+			tenant={tenant}
+			existingConfig={existingConfig}
+			onConfigured={onConfigured}
+		/>
+	);
+}
+
+/** Inner panel for gate/SSU standings configuration (uses hooks, cannot be after early return). */
+function StandingsExtensionPanelInner({
+	assemblyId,
+	assemblyType,
+	structureKind,
+	tenant,
+	existingConfig,
+	onConfigured,
+}: Omit<StandingsExtensionPanelProps, "characterId" | "ownerCapId">) {
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 
@@ -299,20 +267,6 @@ export function StandingsExtensionPanel({
 		marketId: existingConfig?.marketId ?? "",
 	});
 
-	// Turret config
-	const [turretConfig, setTurretConfig] = useState<TurretConfigValues>({
-		standingWeights: existingConfig?.standingWeights ?? {
-			0: 100, // Opposition -- highest priority
-			1: 80, // Hostile
-			2: 50, // Unfriendly
-			3: 30, // Neutral
-			4: 10, // Friendly
-			5: 0, // Ally -- don't target
-			6: 0, // Full Trust -- don't target
-		},
-		aggressorBonus: existingConfig?.aggressorBonus ?? 40,
-	});
-
 	const [status, setStatus] = useState<ConfigStatus>("idle");
 	const [error, setError] = useState<string | null>(null);
 
@@ -325,7 +279,7 @@ export function StandingsExtensionPanel({
 		setError(null);
 
 		try {
-			let tx: import("@mysten/sui/transactions").Transaction | undefined;
+			let tx: import("@mysten/sui/transactions").Transaction;
 
 			if (structureKind === "gate") {
 				tx = buildConfigureGateStandings({
@@ -339,7 +293,7 @@ export function StandingsExtensionPanel({
 					permitDurationMs: gateConfig.permitDurationMs,
 					senderAddress: account.address,
 				});
-			} else if (structureKind === "ssu") {
+			} else {
 				tx = buildConfigureSsuStandings({
 					tenant,
 					ssuId: assemblyId,
@@ -348,12 +302,6 @@ export function StandingsExtensionPanel({
 					minWithdraw: ssuConfig.minWithdraw,
 					senderAddress: account.address,
 				});
-			} else {
-				// Turret -- config is stored locally, no on-chain TX needed
-				await saveConfigToDb();
-				setStatus("done");
-				onConfigured?.();
-				return;
 			}
 
 			setStatus("signing");
@@ -394,10 +342,6 @@ export function StandingsExtensionPanel({
 				minWithdraw: ssuConfig.minWithdraw,
 				marketId: ssuConfig.marketId || undefined,
 			}),
-			...(structureKind === "turret" && {
-				standingWeights: turretConfig.standingWeights,
-				aggressorBonus: turretConfig.aggressorBonus,
-			}),
 		};
 
 		await db.structureExtensionConfigs.put(config);
@@ -422,9 +366,6 @@ export function StandingsExtensionPanel({
 					)}
 					{structureKind === "ssu" && (
 						<SsuStandingsConfig values={ssuConfig} onChange={setSsuConfig} />
-					)}
-					{structureKind === "turret" && (
-						<TurretStandingsConfig values={turretConfig} onChange={setTurretConfig} />
 					)}
 				</>
 			)}

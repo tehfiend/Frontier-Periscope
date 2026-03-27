@@ -230,35 +230,6 @@ export function buildConfigureSsuStandings(params: ConfigureSsuStandingsParams):
 	});
 }
 
-interface GenerateTurretFromRegistryParams {
-	tenant: TenantId;
-	registryId: string;
-	standingWeights: Record<number, number>;
-	aggressorBonus: number;
-	senderAddress: string;
-}
-
-/**
- * Build a TX to generate a turret extension from a standings registry.
- *
- * Turret standings use per-user published packages. This builder creates
- * the configuration data; the actual Move package must be published separately
- * using the turret-priority code generator with the registry reference.
- *
- * Returns a Transaction that stores the turret config intent on-chain.
- */
-export function buildGenerateTurretFromRegistry(
-	params: GenerateTurretFromRegistryParams,
-): Transaction {
-	const tx = new Transaction();
-	tx.setSender(params.senderAddress);
-
-	// Turret standings packages are user-published, so there's no shared config object.
-	// This TX creates a local config record; the user publishes their own package.
-	// The config is stored in IndexedDB and used to regenerate the Move source.
-	return tx;
-}
-
 // ── Remove Extension Transaction ────────────────────────────────────────────
 
 interface RemoveExtensionParams {
