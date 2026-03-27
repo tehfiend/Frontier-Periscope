@@ -8,6 +8,7 @@ import {
 	Cog,
 	Coins,
 	Database,
+	LayoutDashboard,
 	Lock,
 	type LucideIcon,
 	Map,
@@ -32,6 +33,8 @@ interface NavItem {
 	label: string;
 	/** Optional: render a status dot next to the label */
 	statusDot?: boolean;
+	/** When true, only highlight when path matches exactly (needed for "/" prefix) */
+	exact?: boolean;
 }
 
 interface NavGroup {
@@ -95,14 +98,14 @@ function useSonarDots(): { local: string; chain: string } {
 	};
 }
 
-function NavLink({ to, icon: Icon, label, statusDot }: NavItem) {
+function NavLink({ to, icon: Icon, label, statusDot, exact }: NavItem) {
 	const collapsed = useAppStore((s) => s.sidebarCollapsed);
 	const dots = useSonarDots();
 
 	return (
 		<Link
 			to={to}
-			activeOptions={{ exact: false }}
+			activeOptions={{ exact: !!exact }}
 			className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-100"
 			activeProps={{
 				className:
@@ -179,6 +182,9 @@ export function Sidebar() {
 
 				{/* Navigation */}
 				<nav className="flex-1 overflow-y-auto px-2 py-4">
+					<div className="mb-4">
+						<NavLink to="/" icon={LayoutDashboard} label="Dashboard" exact />
+					</div>
 					{navGroups.map((group) => (
 						<div key={group.title} className="mb-4">
 							{!collapsed && (
