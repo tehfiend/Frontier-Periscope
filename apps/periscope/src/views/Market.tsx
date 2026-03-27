@@ -35,9 +35,9 @@ import {
 	buildMint,
 	buildPublishToken,
 	buildRemoveAuthorized,
-	buildSetMarketStandings,
+	buildSetSsuMarketLink,
 	buildUpdateFee,
-	discoverSsuConfigStandings,
+	discoverSsuUnifiedConfig,
 	getCoinMetadata,
 	getContractAddresses,
 	parsePublishResult,
@@ -986,30 +986,27 @@ function MarketDetail({
 	async function handleLinkToSsu(ssuObjectId: string) {
 		if (!currency.marketId || !currency.coinType) return;
 
-		const ssuMarketAddresses = getContractAddresses(tenant).ssuMarket;
-		const ssuMarketPkg = ssuMarketAddresses?.packageId;
-		const originalPkg = ssuMarketAddresses?.originalPackageId ?? ssuMarketPkg;
-		const previousPkgs = ssuMarketAddresses?.previousOriginalPackageIds;
-		if (!ssuMarketPkg || !originalPkg) return;
+		const ssuUnifiedAddresses = getContractAddresses(tenant).ssuUnified;
+		const ssuUnifiedPkg = ssuUnifiedAddresses?.packageId;
+		if (!ssuUnifiedPkg) return;
 
 		onStatusChange("building");
 		try {
-			const currentConfigId = await discoverSsuConfigStandings(
+			const currentConfigId = await discoverSsuUnifiedConfig(
 				suiClient,
-				originalPkg,
+				ssuUnifiedPkg,
 				ssuObjectId,
-				previousPkgs,
 			);
 			if (!currentConfigId) {
 				onStatusChange(
 					"error",
-					"No SsuConfig found on-chain for this SSU." + " Deploy the extension first.",
+					"No SsuUnifiedConfig found on-chain for this SSU. Deploy the SSU extension first.",
 				);
 				return;
 			}
 
-			const tx = buildSetMarketStandings({
-				packageId: ssuMarketPkg,
+			const tx = buildSetSsuMarketLink({
+				packageId: ssuUnifiedPkg,
 				ssuConfigId: currentConfigId,
 				marketId: currency.marketId,
 				senderAddress: suiAddress,
