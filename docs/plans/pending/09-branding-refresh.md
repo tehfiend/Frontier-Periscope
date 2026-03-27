@@ -1,6 +1,6 @@
 # Plan: Branding Refresh -- README and Landing Page
 
-**Status:** Draft
+**Status:** Pending
 **Created:** 2026-03-27
 **Module:** www (plus root README.md and CLAUDE.md)
 
@@ -132,9 +132,7 @@ Assets, Blueprints, Dashboard, Deployables, JumpPlanner, Killmails, Manifest, Ma
 7. **Star Map** -- "Navigate the frontier. 3D solar system visualization with jump route planning." (icon: MapPin)
 8. **Killmails** -- "Know the threats. Combat event tracking and kill feed across the cluster." (icon: Skull/crosshair)
 
-**New "Why Periscope" or "How It Works" section:** Optional section between features and install that briefly explains the value proposition for organizational play -- you bring the people, Periscope gives you the tools to run an economy, manage access, coordinate secretly, and monitor your territory.
-
-**Install, Privacy, Requirements, Footer:** Keep as-is with minor copy tweaks if needed.
+**Install, Privacy, Requirements, Footer:** Keep as-is. No additional sections needed -- the feature cards carry the value proposition through their copy (see Open Question 5).
 
 ### Tone and Voice
 
@@ -203,15 +201,15 @@ Assets, Blueprints, Dashboard, Deployables, JumpPlanner, Killmails, Manifest, Ma
    - Add a "Coming soon" badge to the Treasury card (e.g., `<span class="ml-2 text-[10px] text-zinc-500">Coming soon</span>` after the `<h3>`)
    - Adjust grid layout: `lg:grid-cols-4` for 2 rows of 4, or keep `lg:grid-cols-3` for a 3-3-2 pattern (see Open Questions)
 
-4. Optionally add a brief "value proposition" section between the features grid and the install section -- 2-3 sentences about why organizational players need Periscope. This could replace or supplement the existing "Fully Client-Side" section, or sit alongside it.
+4. Keep the Install section (L109-171) unchanged.
 
-5. Keep the Install section (L109-171) unchanged.
+5. Keep the Privacy "Fully Client-Side" section (L175-195) unchanged.
 
-6. Keep the Privacy "Fully Client-Side" section (L175-195) unchanged.
+6. Keep the Requirements section (L199-210) and Footer (L213-232) unchanged.
 
-7. Keep the Requirements section (L199-210) and Footer (L213-232) unchanged.
+7. Optionally update the `<title>` tag at L8 -- currently "Frontier Periscope". Could add a subtitle for SEO: "Frontier Periscope -- Organizational Toolkit for EVE Frontier". This is a minor enhancement.
 
-8. Optionally update the `<title>` tag at L8 -- currently "Frontier Periscope". Could add a subtitle for SEO: "Frontier Periscope -- Organizational Toolkit for EVE Frontier". This is a minor enhancement.
+8. If switching to 4-column grid, consider increasing the features section container from `max-w-5xl` (~1024px) to `max-w-6xl` (~1152px) to give cards more room. At `max-w-5xl` with 4 columns and `gap-6` (24px), each card would be approximately 232px wide, which may feel cramped.
 
 **Files:**
 | File | Action |
