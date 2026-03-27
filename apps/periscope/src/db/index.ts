@@ -548,6 +548,14 @@ class PeriscopeDB extends Dexie {
 			assemblyPolicies: null,
 			betrayalAlerts: null,
 		});
+
+		// V31: Entity archival -- add _archived index for local hide/archive
+		this.version(31).stores({
+			currencies: "id, symbol, coinType, packageId, marketId, _archived",
+			subscribedRegistries: "id, name, ticker, creator, tenant, subscribedAt, _archived",
+			manifestPrivateMaps: "id, name, creator, tenant, cachedAt, _archived",
+			manifestPrivateMapsV2: "id, name, creator, mode, registryId, tenant, cachedAt, _archived",
+		});
 	}
 }
 
@@ -568,3 +576,6 @@ db.on("ready", async () => {
 export function notDeleted<T extends { _deleted?: boolean }>(record: T): boolean {
 	return !record._deleted;
 }
+
+/** Filter predicate to exclude locally archived records from queries */
+export const notArchived = (r: { _archived?: boolean }) => !r._archived;
