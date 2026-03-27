@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Created:** 2026-03-27
-**Module:** periscope, www
+**Module:** www (plus root README.md and CLAUDE.md)
 
 ## Overview
 
@@ -116,7 +116,7 @@ Assets, Blueprints, Dashboard, Deployables, JumpPlanner, Killmails, Manifest, Ma
 
 ### Landing Page -- New Structure and Messaging
 
-**Meta description (L7):** Update to reflect the new framing. Proposed: "Organizational toolkit for EVE Frontier -- custom currencies, standings-based diplomacy, encrypted maps, and real-time monitoring."
+**Meta description (L6):** Update to reflect the new framing. Proposed: "Organizational toolkit for EVE Frontier -- custom currencies, standings-based diplomacy, encrypted maps, and real-time monitoring."
 
 **Hero section:** Replace the subtitle with benefit-oriented copy that leads with the organizational angle.
 - New subtitle: "Build your frontier organization. Custom currencies, on-chain diplomacy, encrypted coordination, and real-time intel -- all running locally in your browser."
@@ -159,6 +159,7 @@ Assets, Blueprints, Dashboard, Deployables, JumpPlanner, Killmails, Manifest, Ma
 | Feature card count | 8 cards (up from 6) | Adding Standings (previously missing) and Treasury. Removing nothing -- all current cards are updated. |
 | Private Maps description | Lead with "Coordinate securely" not "sealed-box cryptography" | Players care about what it does for them, not the crypto primitive. Technical details can appear in the expanded description. |
 | README "Extensions" feature | Fold into Standings description | Extensions are the mechanism by which standings control infrastructure access. Describing them separately confuses the value proposition. |
+| README "Manifest" feature | Drop from feature list | Manifest is an internal data cache, not a user-facing feature. Players don't care about "local cache of on-chain entities" -- they care about what that cache enables (fast lookups, offline access). The privacy section already covers the local-storage angle. |
 
 ## Implementation Phases
 
@@ -179,10 +180,13 @@ Assets, Blueprints, Dashboard, Deployables, JumpPlanner, Killmails, Manifest, Ma
 
 5. Verify all links still work (app.frontierperiscope.com, GitHub, EVE Vault, EVE Frontier).
 
+6. Update the root `CLAUDE.md` (L5) project overview line. Currently says "an intel and monitoring tool for EVE Frontier". Update to match the new tagline. Note: `CLAUDE.md` is in `.gitignore` -- must use `git add -f` when committing.
+
 **Files:**
 | File | Action |
 |------|--------|
 | `README.md` | Modify |
+| `CLAUDE.md` | Modify (project overview line; requires `git add -f`) |
 
 ### Phase 2: Landing Page Content Refresh
 
@@ -193,8 +197,10 @@ Assets, Blueprints, Dashboard, Deployables, JumpPlanner, Killmails, Manifest, Ma
 3. Replace the 6-card feature grid (L60-106) with an 8-card grid:
    - Reorder: Custom Currencies, Standings & Diplomacy, Private Maps, Treasury, Sonar, Structures, Star Map, Killmails
    - Rewrite each card's `<h3>` and `<p>` with benefit-oriented copy
-   - Add appropriate SVG icons for new/changed cards (Standings needs a shield or book-user icon; Treasury needs a wallet icon)
-   - Add a "Coming soon" badge to the Treasury card (small text label, muted color)
+   - Add inline SVG icons for new cards. The existing cards use inline SVGs sourced from the Lucide icon set (24x24 viewBox, stroke-based). New cards need matching SVGs:
+     - Standings: use the `shield` or `book-user` Lucide icon SVG
+     - Treasury: use the `wallet` Lucide icon SVG
+   - Add a "Coming soon" badge to the Treasury card (e.g., `<span class="ml-2 text-[10px] text-zinc-500">Coming soon</span>` after the `<h3>`)
    - Adjust grid layout: `lg:grid-cols-4` for 2 rows of 4, or keep `lg:grid-cols-3` for a 3-3-2 pattern (see Open Questions)
 
 4. Optionally add a brief "value proposition" section between the features grid and the install section -- 2-3 sentences about why organizational players need Periscope. This could replace or supplement the existing "Fully Client-Side" section, or sit alongside it.
@@ -205,32 +211,20 @@ Assets, Blueprints, Dashboard, Deployables, JumpPlanner, Killmails, Manifest, Ma
 
 7. Keep the Requirements section (L199-210) and Footer (L213-232) unchanged.
 
+8. Optionally update the `<title>` tag at L8 -- currently "Frontier Periscope". Could add a subtitle for SEO: "Frontier Periscope -- Organizational Toolkit for EVE Frontier". This is a minor enhancement.
+
 **Files:**
 | File | Action |
 |------|--------|
 | `apps/www/index.html` | Modify |
 
-### Phase 3: Meta and SEO Alignment
-
-1. Update the `<title>` tag at `apps/www/index.html` L8 if needed -- currently "Frontier Periscope" which is fine. Could add a subtitle: "Frontier Periscope -- Organizational Toolkit for EVE Frontier" for SEO.
-
-2. Update the root `CLAUDE.md` (L5) project overview line. Currently says "an intel and monitoring tool for EVE Frontier". This is internal documentation but should be consistent. Update to match the new framing. Note: `CLAUDE.md` is in `.gitignore` -- changes here are local-only and must be force-added with `git add -f` if committing.
-
-3. The root `package.json` has no `description` field -- no update needed.
-
-**Files:**
-| File | Action |
-|------|--------|
-| `apps/www/index.html` | Modify (title tag, if changing) |
-| `CLAUDE.md` | Modify (project overview line) |
-
 ## File Summary
 
-| File | Action | Description |
-|------|--------|-------------|
-| `README.md` | Modify | Rewrite tagline, feature list, and pitch paragraph. Lead with currencies/standings/maps/treasury. |
-| `apps/www/index.html` | Modify | Update meta description, hero subtitle, feature cards (8 cards, reordered, benefit-oriented copy), optional value prop section. |
-| `CLAUDE.md` | Modify | Update project overview line (L5) to match new framing. Note: in `.gitignore`, requires `git add -f`. |
+| File | Action | Phase | Description |
+|------|--------|-------|-------------|
+| `README.md` | Modify | 1 | Rewrite tagline, feature list, and pitch paragraph. Lead with currencies/standings/maps/treasury. |
+| `CLAUDE.md` | Modify | 1 | Update project overview line (L5) to match new framing. In `.gitignore`, requires `git add -f`. |
+| `apps/www/index.html` | Modify | 2 | Update meta description, hero subtitle, feature cards (8 cards, reordered, benefit-oriented copy), optional title tag. |
 
 ## Open Questions
 
