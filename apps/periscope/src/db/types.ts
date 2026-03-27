@@ -242,7 +242,7 @@ export interface StructureExtensionConfig {
 	id: string;
 	assemblyId: string;
 	assemblyType: string;
-	registryId: string;
+	registryId?: string;
 	registryName?: string;
 	// Gate-specific
 	minAccess?: number;
@@ -255,9 +255,18 @@ export interface StructureExtensionConfig {
 	minDeposit?: number;
 	minWithdraw?: number;
 	marketId?: string;
-	// Turret-specific
-	standingWeights?: Record<number, number>;
+	// Turret weight fields
+	defaultWeight?: number;
+	kosWeight?: number;
 	aggressorBonus?: number;
+	betrayalBonus?: number;
+	lowHpBonus?: number;
+	lowHpThreshold?: number;
+	classBonus?: number;
+	effectiveClasses?: number[];
+	// Turret publish tracking
+	publishedPackageId?: string;
+	publishedAt?: string;
 }
 
 // ── Permission Group Types (deprecated -- replaced by StandingsRegistry) ────
