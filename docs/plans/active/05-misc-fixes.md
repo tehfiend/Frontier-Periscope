@@ -15,7 +15,7 @@ These items are grouped because they're all small-to-medium scope, span the same
 
 ### Standings Bug
 - `useContacts()` at `apps/periscope/src/hooks/useContacts.ts:19-22` uses `useLiveQuery(() => db.contacts.toArray())` which should be fully reactive to IndexedDB changes.
-- `useAddContact()` at the same file (lines 25-54) calls `await db.contacts.add(contact)` which returns a Promise. The caller in `AddContactDialog` (Standings.tsx line 1182-1208) awaits `onAdd(...)` then immediately calls `onClose()`.
+- `useAddContact()` at the same file (lines 25-54) calls `await db.contacts.add(contact)` which returns a Promise. The caller in `AddContactDialog` (Standings.tsx line 1182-1209) awaits `onAdd(...)` then immediately calls `onClose()`.
 - The `ContactsTab` component (Standings.tsx line 215) gets contacts via `useContacts()`, and the `AddContactDialog` is conditionally rendered via `showAddDialog` state. When `onClose()` fires, `setShowAddDialog(false)` unmounts the dialog.
 - **Root cause (confirmed via source analysis):**
 
@@ -35,14 +35,14 @@ These items are grouped because they're all small-to-medium scope, span the same
 
 ### Structure Category Column
 - `ASSEMBLY_TYPE_IDS` in `apps/periscope/src/chain/config.ts:184-200` maps numeric type IDs to specific names like "Heavy Storage", "Light Turret", "Stargate", etc.
-- The `GameType` interface in `db/types.ts:50-63` has `groupName`, `groupId`, `categoryName`, `categoryId` fields. The `gameTypes` table is indexed on `name` and `categoryName` (db/index.ts line 160).
-- The `assemblyType` field on `StructureRow` (Deployables.tsx line 59) contains the resolved type name string (e.g., "Light Turret", "Stargate", "Heavy Storage"). This name originates from `ASSEMBLY_TYPE_IDS[typeId]` -> `ASSEMBLY_KIND_NAMES[assembly.type]` -> `assembly.type.replace("_", " ")` fallback chain (Deployables.tsx lines 402-406).
-- The `gameTypes` table stores all game item types fetched from the World API (`lib/worldApi.ts`). Each entry has `id` (numeric typeId), `name`, `categoryName`, and `categoryId`. Since `ASSEMBLY_TYPE_IDS` maps typeId -> name, we can reverse-lookup: for each assembly type name in the datagrid, find the matching `gameTypes` record by name and extract `categoryName`.
+- The `GameType` interface in `db/types.ts:50-63` has `id` (numeric), `name`, `groupName`, `groupId`, `categoryName`, `categoryId` fields. The `gameTypes` table is indexed on `id`, `name`, and `categoryName` (db/index.ts line 160).
+- The `assemblyType` field on `StructureRow` (Deployables.tsx line 59) contains the resolved type name string (e.g., "Light Turret", "Stargate", "Heavy Storage"). This name originates from `ASSEMBLY_TYPE_IDS[typeId]` -> `ASSEMBLY_KIND_NAMES[assembly.type]` -> `assembly.type.replace("_", " ")` fallback chain (Deployables.tsx lines 402-406). Note: `StructureRow` has no `typeId` field -- only the string `assemblyType`.
+- The `gameTypes` table stores all game item types fetched from the World API (`lib/worldApi.ts`). Each entry has `id` (numeric typeId), `name`, `categoryName`, and `categoryId`. Since `ASSEMBLY_TYPE_IDS` maps typeId -> name, we can join by ID: load gameTypes records whose `id` matches `ASSEMBLY_TYPE_IDS` keys, then build a map from `ASSEMBLY_TYPE_IDS[gameType.id]` (the hardcoded name used in rows) -> `gameType.categoryName`.
 - Currently there is no "category" column in the datagrid. The "Type" column shows the specific type name.
 
 ### Parent Node Column
 - A "Parent" column already exists at Deployables.tsx line 862-878. It uses a `ParentSelect` component (line 1466-1548) which shows a dropdown of all other structures.
-- The `parentId` field on `DeployableIntel` (db/types.ts line 116) and `AssemblyIntel` (line 133) stores the parent reference.
+- The `parentId` field on `DeployableIntel` (db/types.ts line 116) and `AssemblyIntel` (line 131) stores the parent reference.
 - During sync (Deployables.tsx line 435), `parentId` is set from `assembly.energySourceId` -- this links structures to their energy source (network node).
 - The parent column's `accessorFn` (line 864) resolves the parent's label via `parentLabels` map. A node with no parent shows an em dash.
 - **The request is for nodes to list themselves as their own parent.** Currently a node with `parentId === undefined` shows the em dash placeholder. The fix should auto-populate a node's parentId to itself, or handle the display logic so nodes show their own label.
@@ -81,7 +81,7 @@ These items are grouped because they're all small-to-medium scope, span the same
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Standings reactivity fix | Defer `onClose()` with `setTimeout(..., 0)` | Root cause is a race between the dialog-close state update and Dexie's async liveQuery re-read. Deferring `onClose()` to a macrotask lets the liveQuery microtask/IDB re-read complete and `triggerUpdate()` fire first, so React batches both updates into one render with fresh data. |
-| Category derivation | Derive from `gameTypes` DB table, build name->category map via `useLiveQuery` | Game types change with updates, so a hardcoded map would go stale. The `gameTypes` table has `name` and `categoryName` fields. Build a `Map<string, string>` from `gameTypes.name` -> `gameTypes.categoryName` on load. Falls back to "Other" for unknown types. |
+| Category derivation | Derive from `gameTypes` DB table, build assemblyName->category map via `useLiveQuery` | Game types change with updates, so a hardcoded map would go stale. Load gameTypes by `ASSEMBLY_TYPE_IDS` keys, build `Map<string, string>` from `ASSEMBLY_TYPE_IDS[gameType.id]` -> `categoryName`. Keys match `StructureRow.assemblyType` strings. Falls back to "Other" for unknown types. |
 | Notes placeholder | Completely empty, no placeholder | An em dash for "no notes" is confusing -- it looks like data. Show nothing for empty notes; the pencil-on-hover already signals editability. |
 | Parent self-reference | Display-side only (don't mutate DB) | Show the structure's own label when `parentId` is undefined and the structure is a network node. Avoids polluting the DB with self-referential IDs. |
 | On-chain deletion | Local-only archival with `_archived` flag | Sui shared objects cannot be destroyed. A local `_archived: boolean` flag in IndexedDB is the only viable approach. Keeps chain state honest while letting users declutter their UI. |
@@ -112,7 +112,7 @@ These items are grouped because they're all small-to-medium scope, span the same
 **Notes placeholder fix:**
 4. In `apps/periscope/src/views/Deployables.tsx` line 992, change `placeholder="\u2014"` to `placeholder=""` (empty string) so blank notes show nothing.
 5. In `apps/periscope/src/components/EditableCell.tsx` line 29, change the default placeholder from `"\u2014"` to `""`.
-6. Other `EditableCell` usages are unaffected: the Name column (Deployables.tsx line 698) uses `children` prop which bypasses the placeholder mechanism; `StructureDetailCard.tsx` line 277 uses a custom `placeholder="Click to add notes..."`. Neither is impacted by changing the default.
+6. Other `EditableCell` usages are unaffected: the Name column (Deployables.tsx line 698) uses `children` prop which bypasses the placeholder mechanism; `StructureDetailCard.tsx` line 281 uses a custom `placeholder="Click to add notes..."`. Neither is impacted by changing the default.
 
 **Actions column reorder:**
 7. In `apps/periscope/src/views/Deployables.tsx`, move the `actions` column definition (lines 1009-1063) from the end of the `columns` array to the beginning (before the `status` column definition at line 647).
@@ -134,12 +134,16 @@ These items are grouped because they're all small-to-medium scope, span the same
        const types = await db.gameTypes.where("id").anyOf(typeIds).toArray();
        const map = new Map<string, string>();
        for (const t of types) {
-           map.set(t.name, t.categoryName);
+           // Key by the hardcoded name from ASSEMBLY_TYPE_IDS (matches StructureRow.assemblyType)
+           const assemblyName = ASSEMBLY_TYPE_IDS[t.id];
+           if (assemblyName) {
+               map.set(assemblyName, t.categoryName);
+           }
        }
        return map;
    }) ?? new Map<string, string>();
    ```
-   This query loads only the ~15 game types that match `ASSEMBLY_TYPE_IDS` keys. The `useLiveQuery` ensures the map updates if `gameTypes` data is refreshed. The `categoryName` field on each `GameType` record provides the canonical category from the World API.
+   This query loads only the ~15 game types that match `ASSEMBLY_TYPE_IDS` keys. The map is keyed by the hardcoded assembly name (e.g., "Light Turret") which matches `StructureRow.assemblyType`, not by `gameTypes.name` which may differ from the World API. The `useLiveQuery` ensures the map updates if `gameTypes` data is refreshed.
 
 2. Add a helper function to resolve category for a given `assemblyType` string, with a fallback chain:
    ```ts
@@ -228,7 +232,7 @@ These items are grouped because they're all small-to-medium scope, span the same
 
 2. **Notes placeholder:** Completely empty -- no placeholder character. The pencil-on-hover icon is sufficient to signal editability.
 
-3. **Category map:** Derive from `gameTypes` DB table using `useLiveQuery` to load assembly type IDs and build a `Map<string, string>` from name -> categoryName. Falls back to keyword-based classification if the World API categories are too generic.
+3. **Category map:** Derive from `gameTypes` DB table using `useLiveQuery` to load assembly type IDs and build a `Map<string, string>` from `ASSEMBLY_TYPE_IDS[gameType.id]` -> categoryName. This ensures the map keys match `StructureRow.assemblyType` strings. Falls back to keyword-based classification if the World API categories are too generic.
 
 4. **Entity archival filtering:** View-level filtering via `useMemo` in each view component. Each view has its own `showArchived` toggle and filters `_archived` records locally. This keeps queries simple and makes the toggle trivial.
 
