@@ -288,9 +288,9 @@ export function TurretPublishFlow({
 					<AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-400" />
 					<p className="text-xs text-amber-300">
 						This is a simplified weights-only turret configuration. Standings-based targeting
-						(friend/foe lists derived from your registry) requires runtime config support in the
-						world contracts, which is not yet available. We've submitted a feature request to CCP
-						for this capability.
+						(friend/foe lists derived from your registry) requires shared object support for
+						turrets, which CCP has confirmed will be added after the hackathon. Once available,
+						Periscope will support full registry-driven turret targeting -- no republish needed.
 					</p>
 				</div>
 			</div>
