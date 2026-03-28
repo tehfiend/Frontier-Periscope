@@ -1,5 +1,5 @@
-import { create } from "zustand";
 import { db } from "@/db";
+import { create } from "zustand";
 
 interface AppState {
 	// Data loading state
@@ -16,6 +16,9 @@ interface AppState {
 	selectedSystemId: number | null;
 	hoveredSystemId: number | null;
 
+	// Private map default
+	defaultMapId: string | null;
+
 	// UI state
 	searchQuery: string;
 	sidebarCollapsed: boolean;
@@ -27,6 +30,7 @@ interface AppState {
 	setActiveCharacterId: (id: string | "all") => void;
 	selectSystem: (id: number | null) => void;
 	hoverSystem: (id: number | null) => void;
+	setDefaultMapId: (id: string | null) => void;
 	setSearchQuery: (query: string) => void;
 	toggleSidebar: () => void;
 }
@@ -43,6 +47,16 @@ function getPersistedCharacterId(): string | "all" {
 	return "all";
 }
 
+function getPersistedDefaultMapId(): string | null {
+	try {
+		const cached = localStorage.getItem("periscope:defaultMapId");
+		if (cached) return cached;
+	} catch {
+		// localStorage unavailable
+	}
+	return null;
+}
+
 export const useAppStore = create<AppState>((set) => ({
 	staticDataReady: false,
 	profileConfigured: false,
@@ -50,6 +64,7 @@ export const useAppStore = create<AppState>((set) => ({
 	activeCharacterId: getPersistedCharacterId(),
 	selectedSystemId: null,
 	hoveredSystemId: null,
+	defaultMapId: getPersistedDefaultMapId(),
 	searchQuery: "",
 	sidebarCollapsed: false,
 
@@ -63,6 +78,15 @@ export const useAppStore = create<AppState>((set) => ({
 	},
 	selectSystem: (id) => set({ selectedSystemId: id }),
 	hoverSystem: (id) => set({ hoveredSystemId: id }),
+	setDefaultMapId: (id) => {
+		set({ defaultMapId: id });
+		if (id) {
+			localStorage.setItem("periscope:defaultMapId", id);
+		} else {
+			localStorage.removeItem("periscope:defaultMapId");
+		}
+		db.settings.put({ key: "defaultMapId", value: id });
+	},
 	setSearchQuery: (query) => set({ searchQuery: query }),
 	toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 }));
@@ -75,6 +99,16 @@ db.settings.get("activeCharacterId").then((setting) => {
 		if (current !== setting.value) {
 			useAppStore.setState({ activeCharacterId: setting.value as string });
 			localStorage.setItem("periscope:activeCharacterId", setting.value as string);
+		}
+	}
+});
+
+db.settings.get("defaultMapId").then((setting) => {
+	if (setting?.value) {
+		const current = useAppStore.getState().defaultMapId;
+		if (current !== setting.value) {
+			useAppStore.setState({ defaultMapId: setting.value as string });
+			localStorage.setItem("periscope:defaultMapId", setting.value as string);
 		}
 	}
 });

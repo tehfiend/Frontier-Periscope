@@ -1,5 +1,6 @@
 import { type TenantId, getTemplate } from "@/chain/config";
 import { db, notDeleted } from "@/db";
+import type { StructureExtensionConfig } from "@/db/types";
 import type { StructureRow } from "@/views/Deployables";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo } from "react";
@@ -30,6 +31,7 @@ export function useStructureRows({
 	const assemblies = useLiveQuery(() => db.assemblies.filter(notDeleted).toArray(), []);
 	const players = useLiveQuery(() => db.players.filter(notDeleted).toArray(), []);
 	const extensions = useLiveQuery(() => db.extensions.filter(notDeleted).toArray(), []);
+	const structureExtensionConfigs = useLiveQuery(() => db.structureExtensionConfigs.toArray(), []);
 	const manifestChars = useLiveQuery(() => db.manifestCharacters.toArray(), []) ?? [];
 
 	// Sonar assembly IDs (all time) -- for the "sonar-targeted" filter
@@ -60,6 +62,12 @@ export function useStructureRows({
 
 	// ── Extension Lookup ───────────────────────────────────────────────────
 	const extensionByAssembly = useMemo(() => {
+		// Build a lookup for published turret package IDs from extension configs
+		const configByAssembly = new Map<string, StructureExtensionConfig>();
+		for (const cfg of structureExtensionConfigs ?? []) {
+			configByAssembly.set(cfg.assemblyId, cfg);
+		}
+
 		const map = new Map<string, string>();
 		for (const ext of extensions ?? []) {
 			const tmpl = getTemplate(ext.templateId);
@@ -67,10 +75,16 @@ export function useStructureRows({
 			const pkgId = tmpl.packageIds[tenant as TenantId];
 			if (pkgId) {
 				map.set(ext.assemblyId, `${pkgId}::${tmpl.witnessType}`);
+			} else {
+				// Turret template has empty packageIds -- check for user-published package
+				const cfg = configByAssembly.get(ext.assemblyId);
+				if (cfg?.publishedPackageId) {
+					map.set(ext.assemblyId, `${cfg.publishedPackageId}::${tmpl.witnessType}`);
+				}
 			}
 		}
 		return map;
-	}, [extensions, tenant]);
+	}, [extensions, structureExtensionConfigs, tenant]);
 
 	// ── Build addresses set for ownership checks ──────────────────────────
 	const addressSet = useMemo(() => new Set(activeAddresses), [activeAddresses]);

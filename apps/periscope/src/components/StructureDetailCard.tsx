@@ -5,7 +5,6 @@ import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useStructureExtensionConfig } from "@/hooks/useStructureExtensions";
 import { formatLocation } from "@/lib/format";
 import type { StructureRow } from "@/views/Deployables";
-import { Link } from "@tanstack/react-router";
 import { REGISTRY_STANDING_LABELS } from "@tehfrontier/chain-shared";
 import { AppWindow, ExternalLink, Fuel, Loader2, MapPin, Settings2 } from "lucide-react";
 import { useState } from "react";
@@ -44,7 +43,9 @@ interface StructureDetailCardProps {
 	row: StructureRow | null;
 	systemNames: Map<number, string>;
 	onSaveNotes?: (row: StructureRow, notes: string) => void;
+	onDeploy?: (row: StructureRow) => void;
 	onConfigure?: (row: StructureRow) => void;
+	onAddToMap?: (row: StructureRow) => void;
 	onReset?: (row: StructureRow) => void;
 	isResetting?: boolean;
 }
@@ -53,7 +54,9 @@ export function StructureDetailCard({
 	row,
 	systemNames,
 	onSaveNotes,
+	onDeploy,
 	onConfigure,
+	onAddToMap,
 	onReset,
 	isResetting,
 }: StructureDetailCardProps) {
@@ -67,7 +70,11 @@ export function StructureDetailCard({
 	const systemName = row.systemId ? (systemNames.get(row.systemId) ?? `#${row.systemId}`) : null;
 	const locationStr = formatLocation(systemName ?? undefined, row.lPoint) || "\u2014";
 
-	const extensionInfo = classifyExtension(row.extensionType, tenant as TenantId);
+	const extensionInfo = classifyExtension(
+		row.extensionType,
+		tenant as TenantId,
+		extConfig?.publishedPackageId,
+	);
 
 	const tenantDapp =
 		TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
@@ -219,6 +226,39 @@ export function StructureDetailCard({
 					</div>
 				</div>
 
+				{/* Extension Action Buttons */}
+				{row.ownership === "mine" && (
+					<div className="col-span-2 flex items-center gap-2">
+						{extensionInfo.status === "default" && onDeploy && (
+							<button
+								type="button"
+								onClick={() => onDeploy(row)}
+								className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500"
+							>
+								Deploy Extension
+							</button>
+						)}
+						{extensionInfo.status === "periscope" && onConfigure && (
+							<button
+								type="button"
+								onClick={() => onConfigure(row)}
+								className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500"
+							>
+								Configure
+							</button>
+						)}
+						{extensionInfo.status === "periscope-outdated" && onDeploy && (
+							<button
+								type="button"
+								onClick={() => onDeploy(row)}
+								className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500"
+							>
+								Update Extension
+							</button>
+						)}
+					</div>
+				)}
+
 				{/* Standings Extension Details */}
 				{extConfig && (
 					<div className="col-span-2 rounded-lg border border-zinc-700/50 bg-zinc-800/30 p-3">
@@ -227,15 +267,6 @@ export function StructureDetailCard({
 								<Settings2 size={12} className="text-cyan-500" />
 								Standings Config
 							</span>
-							{onConfigure && (
-								<button
-									type="button"
-									onClick={() => onConfigure(row)}
-									className="rounded px-2 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-900/30"
-								>
-									Configure
-								</button>
-							)}
 						</div>
 						<div className="grid grid-cols-2 gap-2 text-xs">
 							<div>
@@ -293,13 +324,14 @@ export function StructureDetailCard({
 					<div className="mt-0.5 flex items-center gap-1 text-zinc-300">
 						{systemName && <MapPin size={12} className="shrink-0 text-cyan-500" />}
 						<span>{locationStr}</span>
-						{locationStr === "\u2014" && (
-							<Link
-								to="/private-maps"
+						{locationStr === "\u2014" && onAddToMap && (
+							<button
+								type="button"
+								onClick={() => onAddToMap(row)}
 								className="ml-1 text-[10px] text-cyan-500 hover:text-cyan-400"
 							>
-								Add via Private Map
-							</Link>
+								Add to Map
+							</button>
 						)}
 					</div>
 				</div>
