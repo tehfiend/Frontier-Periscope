@@ -47,7 +47,7 @@ The `ssu_unified` extension template needs to be created with:
 
 3. **SSU dapp reads market from chain** -- `useSsuConfig` queries `SsuUnifiedConfig` and gets real `marketId`, resolves `coinType` from the linked `Market<T>`.
 
-4. **Market/sell UI fully functional** -- all trade builders in `ssu-unified.ts` work against the new on-chain contract.
+4. **Market/sell UI fully functional** -- trade builders in `ssu-unified.ts` rewritten to call `market_standings` functions directly via PTBs, config builders target the new `ssu_unified` contract.
 
 5. **Extension deployment flow** -- when a user configures an SSU with the Periscope extension, the TX creates an `SsuUnifiedConfig` object (optionally with market link) and stores its ID locally. Market linking can be done at creation time or updated later.
 
