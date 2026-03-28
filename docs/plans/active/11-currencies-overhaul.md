@@ -104,7 +104,7 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
 ### Route Changes
 
 - `/currencies` -- new unified page (Currencies.tsx)
-- `/markets` -- redirect to `/currencies`
+- `/markets` -- removed entirely (no existing users, no bookmarks to preserve)
 - `/treasury` -- kept, but only for treasury-wallet management (remove currency section)
 - `/wallet` -- unchanged
 
@@ -119,7 +119,7 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
 |----------|--------|-----------|
 | Data source for grid | Join `db.manifestMarkets` with `db.currencies` and `db.treasuries` at query time | manifestMarkets has all chain markets; currencies has user's local metadata and _archived flag; treasuries has balance data. Join in component via useMemo, keyed on coinType. |
 | Treasury balance column | Include in DataGrid | Each currency has exactly one treasury (1:1). No ambiguity -- look up the treasury via its `coinType` field (matches `CurrencyRecord.coinType`). Shows the treasury's balance for that currency directly in the grid. |
-| Route path | `/currencies` with redirect from `/markets` | Clean break from "markets" terminology. Redirect preserves bookmarks. |
+| Route path | `/currencies`, delete `/markets` route | Clean break from "markets" terminology. No existing users -- no redirect needed. |
 | Default decimals | Change to 2 in Currencies.tsx create form only | The chain-shared token factory keeps 9 as the default parameter -- it is a protocol default. The UI create form will default its own state to 2 since most governance tokens use 2 decimals. |
 | Treasury page scope | Keep `/treasury` for treasury-wallet management only | Treasuries are 1:1 with currencies, but the Treasury view provides a wallet-centric perspective (managing admins, viewing all balances). Removing the currency section from Treasury.tsx simplifies it. |
 | Wallet connect pattern | Use ConnectWalletButton from WalletConnect.tsx | Matches existing pattern in Standings.tsx. Show ConnectWalletButton in place of "Create" button when wallet disconnected. |
@@ -210,7 +210,7 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
    - Add `LazyCurrencies` lazy import for `views/Currencies.tsx`.
    - Add `CurrenciesPage` wrapper with Suspense.
    - Add `/currencies` route -> CurrenciesPage.
-   - Change `marketsRoute` from `/markets` component to redirect -> `/currencies`.
+   - Delete `marketsRoute` (`/markets`) entirely -- no redirect needed since there are no existing users.
    - Keep `treasuryRoute` as-is.
 2. In `Sidebar.tsx`:
    - Replace the "Markets" nav item: change `to` from `/markets` to `/currencies`, change `label` from "Markets" to "Currencies". Keep `Coins` icon.
@@ -244,7 +244,7 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
 | `apps/periscope/src/views/Currencies.tsx` | Create | New unified Currencies page with DataGrid + detail panel (market order book, exchange order book, treasury, admin actions) |
 | `apps/periscope/src/views/Market.tsx` | Delete | Fully subsumed by Currencies.tsx |
 | `apps/periscope/src/views/Treasury.tsx` | Modify | Remove currency creation/management section; keep treasury-wallet only |
-| `apps/periscope/src/router.tsx` | Modify | Add `/currencies` route, redirect `/markets` -> `/currencies`, add lazy import |
+| `apps/periscope/src/router.tsx` | Modify | Add `/currencies` route, delete `/markets` route, add lazy import |
 | `apps/periscope/src/components/Sidebar.tsx` | Modify | Rename "Markets" nav item to "Currencies", change route to `/currencies` |
 | `apps/periscope/src/chain/currency-sync.ts` | Create | Extracted `syncCurrenciesFromManifest()` helper |
 | `packages/chain-shared/src/exchange.ts` | Modify | Add `queryOrderBook()` and `queryOrders()` query functions for exchange order books |
