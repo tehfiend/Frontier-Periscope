@@ -107,3 +107,9 @@
 - **File:** plans/active/11-currencies-overhaul.md
 - **Passes:** 3
 - **Result:** active -- resolved 3 questions (treasury balance included, exchange order book added, SSU link to structures only)
+
+## 2026-03-28 -- currencies-overhaul (simplify)
+- **Action:** UPDATE
+- **File:** plans/active/11-currencies-overhaul.md
+- **Passes:** 2
+- **Result:** active -- removed backwards-compat concerns, fresh contract/schema design
