@@ -22,7 +22,9 @@ The deployed `ssu_standings` contract stores per-SSU config as dynamic fields on
 - `min_withdraw: u8`
 - `config_owner: address`
 
-There is no `market_id`, `coin_type`, `delegates`, or `is_public` field. No `ssu_unified` Move source exists in the `contracts/` directory at all.
+There is no `market_id`, `coin_type`, `delegates`, or `is_public` field. The `ssu_standings.move` source also has no witness/auth struct -- the deployed `ssuStandings` contract (at `0xbd77...0bf`) was built from a different version.
+
+No `ssu_unified` Move source exists in the `contracts/` directory. The deployed `ssuUnified` contract (at `0x8668...568d`, which the extension template references with witness `ssu_standings::SsuStandingsAuth`) was built from source that is not in the repo. Both deployed contracts lack market linking.
 
 ### TypeScript TX builders (`packages/chain-shared/src/ssu-unified.ts`)
 
@@ -53,7 +55,7 @@ The `ssu_unified` extension template is registered with:
 
 1. **New `ssu_unified` Move contract** in `contracts/ssu_unified/` that creates per-user `SsuUnifiedConfig` owned objects with all fields including `market_id: Option<ID>`.
 
-2. **Published to both tenants** (stillness and utopia on Sui testnet), replacing the current `ssuUnified` package IDs in `config.ts`.
+2. **Published to Sui testnet** (single publish, package ID shared across tenants), replacing the current `ssuUnified` package IDs in `config.ts`.
 
 3. **SSU dapp reads market from chain** -- `useSsuConfig` queries the new `SsuUnifiedConfig` object and gets real `marketId` and resolves `coinType` from the linked `Market<T>`.
 
@@ -65,11 +67,11 @@ The `ssu_unified` extension template is registered with:
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Config storage model | Per-user owned objects (not dynamic fields on shared) | The existing `ssu-unified.ts` TX builders and `querySsuUnifiedConfig` already assume owned objects. Avoids shared object contention. Each SSU owner creates/owns their own config. |
+| Config storage model | Per-user owned objects (not dynamic fields on shared) | The existing `ssu-unified.ts` TX builders and `querySsuUnifiedConfig` already assume owned objects. Avoids shared object contention. Each SSU owner creates/owns their own config. Owned objects are readable by anyone via GraphQL (for market resolution) but only modifiable by the owner via TX. This works because trade/deposit TXs are refactored to not pass the config object -- they read config client-side and call market/world functions directly. |
 | Market linking approach | `Option<ID>` field on `SsuUnifiedConfig` + `set_market`/`remove_market` entry points | Matches the existing `SsuUnifiedConfigInfo` type in `types.ts` (line 239-252). Simple and directly queryable. |
 | coinType resolution | Not stored on-chain; derived by querying the linked Market<T>'s type repr | `coinType` is embedded in the Market object's Move type string (`PKG::market::Market<COIN_TYPE>`). Storing it redundantly would require type generics on the config struct, adding complexity. The dapp already queries `MarketInfo` from chain to get coinType (see `queryMarketDetails` in `market.ts`). |
 | Witness type | `ssu_unified::SsuUnifiedAuth` (new struct in new module) | The existing template uses `ssu_standings::SsuStandingsAuth`. A new contract needs its own witness type. Must update the extension template. |
-| Contract pattern | Follows `gate_toll_custom` pattern (shared init + owned objects) | The `init` function does not create a shared config. Instead, `create_config` creates owned objects transferred to the caller. This is the pattern `ssu-unified.ts` already expects. |
+| Contract pattern | No `init` function; `create_config` creates owned objects | Unlike `gate_toll_custom` (which has `init` creating a shared config), this contract has no shared state. Each `create_config` call creates a new owned `SsuUnifiedConfig` transferred to the caller. This matches what `ssu-unified.ts` TX builders expect. |
 | No dependency on ssu_standings | Fresh contract, no migration | Since there are no existing users, the old `ssu_standings` contract can be abandoned. The new contract is self-contained. |
 
 ## Implementation Phases
@@ -78,9 +80,9 @@ The `ssu_unified` extension template is registered with:
 
 1. Create `contracts/ssu_unified/Move.toml` with `edition = "2024.beta"` and no external dependencies (only `Sui` framework).
 2. Create `contracts/ssu_unified/sources/ssu_unified.move` with:
-   - `SsuUnifiedConfig has key` struct: `id: UID`, `owner: address`, `ssu_id: ID`, `delegates: vector<address>`, `market_id: Option<ID>`, `is_public: bool`, `registry_id: ID`, `min_deposit: u8`, `min_withdraw: u8`
+   - `SsuUnifiedConfig has key` struct (no `store` -- prevents unauthorized transfer): `id: UID`, `owner: address`, `ssu_id: ID`, `delegates: vector<address>`, `market_id: Option<ID>`, `is_public: bool`, `registry_id: ID`, `min_deposit: u8`, `min_withdraw: u8`
    - `SsuUnifiedAuth has drop` witness struct for extension authorization
-   - `create_config(ssu_id, registry_id, min_deposit, min_withdraw, ctx)` -- creates config, transfers to sender
+   - `create_config(ssu_id, registry_id, min_deposit, min_withdraw, ctx)` -- creates config, uses `transfer::transfer(config, ctx.sender())` to send to caller
    - `create_config_with_market(ssu_id, registry_id, min_deposit, min_withdraw, market_id, ctx)` -- same but with market pre-linked
    - `set_standings_config(config, registry_id, min_deposit, min_withdraw, ctx)` -- update thresholds, owner-only
    - `set_market(config, market_id, ctx)` -- link market, owner-only
@@ -130,19 +132,29 @@ The `ssu_unified` extension template is registered with:
    - Flow: `discoverSsuUnifiedConfig(client, packageId, ssuId)` -> returns config object ID -> `querySsuUnifiedConfig(client, configId)` -> returns `SsuUnifiedConfigInfo` with `marketId`
    - If `marketId` is set, resolve `coinType` by calling `queryMarketDetails(client, marketId)` or `queryMarketStandingsDetails(client, marketId)` to extract the coin type from the Market object's type repr
    - Return the real `marketId` and `coinType` instead of `null`
-2. Verify that all existing trade TX builders in `ssu-unified.ts` (escrow_and_list, buy_from_listing, etc.) correctly reference the new package's entry points. The function names (`ssu_unified::escrow_and_list`, etc.) already match what the new Move contract should export.
+2. The `discoverSsuUnifiedConfig` function (line 703-717 of `ssu-unified.ts`) accepts `previousPackageIds` for searching after contract republish. Pass the new package ID and keep the old one as fallback for any test configs that may exist.
 
-### Phase 5: Add Trade Entry Points to Move Contract
+### Phase 5: Refactor Trade TX Builders to PTB-Only
 
-The trade entry points (`escrow_and_list`, `buy_from_listing`, `cancel_listing`, `fill_buy_order`, `player_escrow_and_list`, `player_cancel_listing`, `player_fill_buy_order`, `deposit_item`, `withdraw_item`) are referenced by TX builders in `ssu-unified.ts` but would require dependencies on the EVE world contracts (character, storage_unit, inventory modules) and the market/market_standings contracts.
+The trade TX builders in `ssu-unified.ts` currently call on-chain entry points like `ssu_unified::escrow_and_list` (line 324), `ssu_unified::buy_from_listing` (line 472), etc. These are Move entry points that wrap market_standings operations with SSU config and standings checks. The builders also call world contract functions in the same PTB (borrow_owner_cap at line 301, withdraw_by_owner at line 311, etc.).
 
-1. Evaluate whether these functions should live in the `ssu_unified` contract or remain as client-side PTB orchestration:
-   - **PTB-only approach**: The TX builders already construct multi-step PTBs that call world contract functions directly (borrow_owner_cap, withdraw_by_owner, etc.) and market contract functions (post_sell_listing, etc.). These don't need on-chain wrapper functions.
-   - **On-chain wrapper approach**: The current `ssu-unified.ts` TX builders call entry points like `ssu_unified::escrow_and_list`. If the new contract doesn't export these, the TX builders must be refactored to PTB-only.
-2. Decision: Start with config management only (Phase 1) -- `create_config`, `set_market`, delegates, visibility. Trade entry points are deferred until the config contract is deployed and proven. The TX builders in `ssu-unified.ts` can be refactored to PTB-only composition in a follow-up.
-3. Update the trade TX builders in `ssu-unified.ts` to use PTB composition instead of calling `ssu_unified::escrow_and_list`:
-   - Instead of calling a single `ssu_unified::escrow_and_list<T>`, compose the PTB to: read config -> check standings -> borrow_owner_cap -> withdraw_by_owner -> post_sell_listing on Market -> return_owner_cap
-   - This avoids the ssu_unified contract needing to depend on the world contracts.
+Since the new `ssu_unified` contract will be config-only (no trade entry points), the trade TX builders must be refactored to call the `market_standings` contract functions directly:
+
+**Escrow concern:** The old `ssu_unified::escrow_and_list` consumed the withdrawn `item` object (physically escrowing it). The `market_standings::post_sell_listing` function only records listing metadata (ssuId, typeId, quantity, price) without taking an item object. This means listings in market_standings are "virtual" -- items remain in SSU inventory until purchase. The refactored PTB should NOT withdraw items at listing time; instead, withdrawal happens at purchase/fill time. The borrow_owner_cap + withdraw_by_owner steps should be removed from the listing flow and added to the buy/fill flow instead.
+
+1. **`buildEscrowAndListWithStandings`** (lines 293-346): Remove the withdraw_by_owner step. Replace `ssu_unified::escrow_and_list` with `market_standings::post_sell_listing`. The listing becomes virtual -- items stay in SSU inventory. Remove `ssuConfigId` parameter.
+2. **`buildPlayerEscrowAndListWithStandings`** (lines 371-428): Same refactor -- replace `ssu_unified::player_escrow_and_list` with direct `market_standings::post_sell_listing`.
+3. **`buildBuyFromListingWithStandings`** (lines 449-490): Replace `ssu_unified::buy_from_listing` with `market_standings::buy_from_listing`.
+4. **`buildCancelListingWithStandings`** (lines 507-526): Replace `ssu_unified::cancel_listing` with `market_standings::cancel_sell_listing`.
+5. **`buildPlayerCancelListingWithStandings`** (lines 531-550): Replace `ssu_unified::player_cancel_listing` with `market_standings::cancel_sell_listing`.
+6. **`buildPlayerFillBuyOrderWithStandings`** (lines 571-624): Replace `ssu_unified::player_fill_buy_order` with `market_standings::fill_buy_order`.
+7. **`buildFillBuyOrderWithStandings`** (lines 642-662): Replace `ssu_unified::fill_buy_order` with `market_standings::fill_buy_order`.
+8. **`buildUnifiedDepositWithStandings`** (lines 214-232): Replace `ssu_unified::deposit_item` -- this may need to call world contract deposit functions directly. Standings check moves to client-side.
+9. **`buildUnifiedWithdrawWithStandings`** (lines 249-268): Replace `ssu_unified::withdraw_item` -- same pattern, call world contract withdraw functions directly.
+
+Note: The `market-standings.ts` file (in `packages/chain-shared/src/`) already exports direct TX builders for all market operations: `buildPostSellListingStandings` (line 143), `buildCancelSellListingStandings` (line 208), `buildPostBuyOrderStandings` (line 244), `buildCancelBuyOrderStandings` (line 298), etc. These accept `packageId`, `marketId`, `coinType`, `registryId` directly. The refactored trade builders in `ssu-unified.ts` should delegate to these existing functions instead of reimplementing the market calls.
+
+The market_standings package IDs are in `config.ts` under `marketStandings.packageId`. The trade TX builders will need to accept `marketStandingsPackageId` (or look it up from config) instead of only `ssuUnifiedPackageId`. Config management calls still use the ssu_unified packageId.
 
 ## File Summary
 
@@ -151,7 +163,8 @@ The trade entry points (`escrow_and_list`, `buy_from_listing`, `cancel_listing`,
 | `contracts/ssu_unified/Move.toml` | Create | Package manifest for new contract |
 | `contracts/ssu_unified/sources/ssu_unified.move` | Create | Move contract with SsuUnifiedConfig + market linking + delegate/visibility management |
 | `packages/chain-shared/src/config.ts` | Edit | Update `ssuUnified` package IDs for both tenants |
-| `packages/chain-shared/src/ssu-unified.ts` | Edit | Refactor trade TX builders to PTB-only (remove `ssu_unified::escrow_and_list` etc. calls). Config management functions already match the new contract. |
+| `packages/chain-shared/src/ssu-unified.ts` | Edit | Refactor trade TX builders to PTB-only (remove `ssu_unified::escrow_and_list` etc. calls, delegate to `market-standings.ts` functions). Config management functions already match the new contract. |
+| `packages/chain-shared/src/market-standings.ts` | None | Already exports direct market TX builders (`buildPostSellListingStandings`, etc.) -- used as delegation targets by refactored trade builders |
 | `packages/chain-shared/src/types.ts` | None | `SsuUnifiedConfigInfo` already correct (lines 239-252) |
 | `apps/periscope/src/chain/config.ts` | Edit | Update `ssu_unified` extension template: new witnessType, packageIds, remove configObjectIds |
 | `apps/periscope/src/chain/transactions.ts` | Edit | Update `buildConfigureSsuStandings` to use `buildCreateSsuUnifiedConfig` / `buildSetSsuUnifiedConfig` |
