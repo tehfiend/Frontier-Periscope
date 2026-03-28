@@ -11,6 +11,7 @@ import {
 	Plus,
 	RefreshCw,
 	Shield,
+	Star,
 	Trash2,
 	UserPlus,
 } from "lucide-react";
@@ -31,10 +32,11 @@ import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useStoredEncryptionKey } from "@/hooks/useStoredEncryptionKey";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { buildAddLocationTx } from "@/lib/mapLocation";
+import { useAppStore } from "@/stores/appStore";
 import type { Transaction } from "@mysten/sui/transactions";
 import {
 	type TenantId,
-	buildAddLocation,
 	buildCreateEncryptedMap,
 	buildCreateMap,
 	buildCreateStandingsMap,
@@ -42,7 +44,6 @@ import {
 	buildRemoveLocation,
 	buildRemoveLocationV2,
 	bytesToHex,
-	encodeLocationData,
 	generateEphemeralX25519Keypair,
 	getContractAddresses,
 	getPublicKeyForAddress,
@@ -592,6 +593,9 @@ function MapCard({
 	onSelect: () => void;
 	onArchive?: (archived: boolean) => void;
 }) {
+	const defaultMapId = useAppStore((s) => s.defaultMapId);
+	const isDefault = defaultMapId === map.id;
+
 	return (
 		<div
 			className={`rounded-lg border p-4 transition-colors ${
@@ -614,6 +618,7 @@ function MapCard({
 					<div>
 						<div className="flex items-center gap-2">
 							<p className="text-sm font-medium text-zinc-200">{map.name}</p>
+							{isDefault && <Star size={12} className="fill-amber-400 text-amber-400" />}
 							{map._archived && (
 								<span className="rounded bg-amber-900/30 px-1.5 py-0.5 text-[10px] text-amber-400">
 									archived
@@ -629,6 +634,21 @@ function MapCard({
 					</div>
 				</button>
 				<div className="flex shrink-0 items-center gap-2">
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							useAppStore.getState().setDefaultMapId(isDefault ? null : map.id);
+						}}
+						title={isDefault ? "Remove default" : "Set as default"}
+						className={`rounded p-1 transition-colors ${
+							isDefault
+								? "text-amber-400 hover:bg-zinc-800"
+								: "text-zinc-600 hover:bg-zinc-800 hover:text-amber-400"
+						}`}
+					>
+						<Star size={14} className={isDefault ? "fill-amber-400" : ""} />
+					</button>
 					<span className="text-xs text-zinc-500">
 						{new Date(map.cachedAt).toLocaleDateString()}
 					</span>
@@ -666,6 +686,8 @@ function MapCardV2({
 	const ModeIcon = isEncrypted ? Lock : Shield;
 	const modeColor = isEncrypted ? "text-cyan-500" : "text-amber-500";
 	const modeLabel = isEncrypted ? "Encrypted" : "Standings";
+	const defaultMapId = useAppStore((s) => s.defaultMapId);
+	const isDefault = defaultMapId === map.id;
 
 	return (
 		<div
@@ -689,6 +711,7 @@ function MapCardV2({
 					<div>
 						<div className="flex items-center gap-2">
 							<p className="text-sm font-medium text-zinc-200">{map.name}</p>
+							{isDefault && <Star size={12} className="fill-amber-400 text-amber-400" />}
 							<span
 								className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
 									isEncrypted ? "bg-cyan-500/10 text-cyan-400" : "bg-amber-500/10 text-amber-400"
@@ -714,6 +737,21 @@ function MapCardV2({
 					</div>
 				</button>
 				<div className="flex shrink-0 items-center gap-2">
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							useAppStore.getState().setDefaultMapId(isDefault ? null : map.id);
+						}}
+						title={isDefault ? "Remove default" : "Set as default"}
+						className={`rounded p-1 transition-colors ${
+							isDefault
+								? "text-amber-400 hover:bg-zinc-800"
+								: "text-zinc-600 hover:bg-zinc-800 hover:text-amber-400"
+						}`}
+					>
+						<Star size={14} className={isDefault ? "fill-amber-400" : ""} />
+					</button>
 					<span className="text-xs text-zinc-500">
 						{new Date(map.cachedAt).toLocaleDateString()}
 					</span>
@@ -1371,24 +1409,21 @@ function AddLocationDialog({
 		setError(null);
 
 		try {
-			// Encode and encrypt location data
-			const plaintext = encodeLocationData({
-				solarSystemId: Number(solarSystemId),
-				planet: Number(planet),
-				lPoint: Number(lPoint),
-				description: description.trim() || undefined,
-			});
-
-			const mapPublicKey = hexToBytes(map.publicKey);
-			const encryptedData = sealForRecipient(plaintext, mapPublicKey);
-
-			const tx = buildAddLocation({
+			const tx = buildAddLocationTx({
+				mapVersion: "v1",
+				mapMode: 0,
 				packageId,
 				mapId: map.id,
 				inviteId: map.inviteId,
 				structureId: structureId.trim() || undefined,
-				encryptedData,
+				locationData: {
+					solarSystemId: Number(solarSystemId),
+					planet: Number(planet),
+					lPoint: Number(lPoint),
+					description: description.trim() || undefined,
+				},
 				senderAddress,
+				mapPublicKey: map.publicKey,
 			});
 
 			await dAppKit.signAndExecuteTransaction({ transaction: tx });

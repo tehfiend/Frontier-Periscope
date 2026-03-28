@@ -236,7 +236,7 @@ export interface ExtensionTemplate {
 export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 	{
 		id: "gate_standings",
-		name: "Gate Standings",
+		name: "Periscope Gate",
 		description:
 			"Control gate access via a StandingsRegistry. Block, toll, or grant free passage based on character/tribe standing thresholds.",
 		assemblyTypes: ["gate"],
@@ -253,7 +253,7 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 	},
 	{
 		id: "ssu_unified",
-		name: "SSU Unified",
+		name: "Periscope SSU",
 		description:
 			"Standings-based SSU access with optional market integration. Set deposit/withdraw thresholds, link a market, and manage delegates -- all via a StandingsRegistry.",
 		assemblyTypes: ["storage_unit", "smart_storage_unit", "protocol_depot"],
@@ -270,7 +270,7 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 	},
 	{
 		id: "turret_standings",
-		name: "Turret Priority",
+		name: "Periscope Turret",
 		description:
 			"Weights-only turret targeting with configurable priority constants. Each user publishes their own turret package with baked-in weight values via in-browser bytecode patching.",
 		assemblyTypes: ["turret"],
@@ -310,6 +310,7 @@ export interface ExtensionInfo {
 export function classifyExtension(
 	extensionType: string | undefined | null,
 	tenant: TenantId,
+	knownPackageId?: string,
 ): ExtensionInfo {
 	if (!extensionType) return { status: "default" };
 
@@ -319,6 +320,11 @@ export function classifyExtension(
 
 		const currentPkgId = template.packageIds[tenant];
 		if (currentPkgId && extensionType.startsWith(currentPkgId)) {
+			return { status: "periscope", template };
+		}
+		// For templates with no canonical packageId (e.g. turrets -- per-user published),
+		// check the caller-supplied knownPackageId from the extension config
+		if (!currentPkgId && knownPackageId && extensionType.startsWith(knownPackageId)) {
 			return { status: "periscope", template };
 		}
 		// Witness matches but package ID differs -- outdated deployment
