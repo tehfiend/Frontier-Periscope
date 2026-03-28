@@ -15,7 +15,9 @@ const LazyStarMap = lazy(() => import("@/views/StarMap").then((m) => ({ default:
 const LazySonar = lazy(() => import("@/views/Sonar").then((m) => ({ default: m.Sonar })));
 const LazyManifest = lazy(() => import("@/views/Manifest").then((m) => ({ default: m.Manifest })));
 const LazyWallet = lazy(() => import("@/views/Wallet").then((m) => ({ default: m.Wallet })));
-const LazyMarket = lazy(() => import("@/views/Market").then((m) => ({ default: m.Market })));
+const LazyCurrencies = lazy(() =>
+	import("@/views/Currencies").then((m) => ({ default: m.Currencies })),
+);
 const LazyPrivateMaps = lazy(() =>
 	import("@/views/PrivateMaps").then((m) => ({ default: m.PrivateMaps })),
 );
@@ -67,10 +69,10 @@ function WalletPage() {
 	);
 }
 
-function MarketPage() {
+function CurrenciesPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
-			<LazyMarket />
+			<LazyCurrencies />
 		</Suspense>
 	);
 }
@@ -195,10 +197,18 @@ const extensionsRoute = createRoute({
 	},
 });
 
+const currenciesRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/currencies",
+	component: CurrenciesPage,
+});
+
 const marketsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/markets",
-	component: MarketPage,
+	beforeLoad: () => {
+		throw redirect({ to: "/currencies" });
+	},
 });
 
 const settingsRoute = createRoute({
@@ -274,6 +284,7 @@ const routeTree = rootRoute.addChildren([
 	logsRoute,
 	sonarRoute,
 	extensionsRoute,
+	currenciesRoute,
 	marketsRoute,
 	assetsRoute,
 	manifestRoute,

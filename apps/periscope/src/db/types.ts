@@ -505,6 +505,19 @@ export interface ManifestMarket {
 	// No tenant -- market packageId is shared across tenants
 }
 
+export interface ManifestExchangePair {
+	/** OrderBook shared object ID */
+	id: string;
+	/** Full coin type A */
+	coinTypeA: string;
+	/** Full coin type B */
+	coinTypeB: string;
+	/** Fee in basis points */
+	feeBps: number;
+	/** When this entry was last cached */
+	cachedAt: string;
+}
+
 export interface ManifestRegistry {
 	/** StandingsRegistry object ID */
 	id: string;
@@ -826,6 +839,8 @@ export interface TreasuryRecord extends SyncMeta {
 	owner: string;
 	admins: string[];
 	balances: TreasuryBalanceEntry[];
+	/** The currency's coin type -- 1:1 link between treasury and currency */
+	coinType: string;
 }
 
 // ── Sonar Types ─────────────────────────────────────────────────────────────
