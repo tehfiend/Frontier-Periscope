@@ -263,7 +263,7 @@ export function TurretPublishFlow({
 					| "network_node"
 					| "protocol_depot",
 				templateId: "turret_standings",
-				templateName: "Turret Priority",
+				templateName: "Periscope Turret",
 				status: "authorized",
 				txDigest: authDigest,
 				authorizedAt: now,
