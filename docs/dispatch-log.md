@@ -101,3 +101,9 @@
 - **File:** docs/plans/pending/11-currencies-overhaul.md
 - **Passes:** 4 (4 with changes)
 - **Result:** pending -- 5-phase plan merging Market view and Treasury currency management into a unified Currencies page at /currencies. DataGrid with all currencies from manifestMarkets, Excel-like filtering, archive toggle, inline create with 2-decimal default, ConnectWalletButton pattern, detail panel with admin actions + order book + SSU link. Market.tsx deleted, Treasury.tsx trimmed to treasury-wallet only, syncMarkets deduplicated. 3 open questions remain (treasury balance column, exchange inclusion, SSU link placement). Key findings: Treasury.tsx is 1628 lines with StatusBanner/FormField shared between treasury and currency sections; both Market.tsx and Treasury.tsx duplicate identical syncMarkets logic; CreateCurrencyForm uses plain text instead of ConnectWalletButton.
+
+## 2026-03-28 -- currencies-overhaul (update)
+- **Action:** UPDATE
+- **File:** plans/active/11-currencies-overhaul.md
+- **Passes:** 3
+- **Result:** active -- resolved 3 questions (treasury balance included, exchange order book added, SSU link to structures only)
