@@ -17,16 +17,17 @@ The private map default selection (item #1) is a prerequisite for item #8 (the i
 ### Private Maps
 - Private maps are managed in `apps/periscope/src/views/PrivateMaps.tsx`. Maps are stored in IndexedDB (`db.manifestPrivateMaps` for V1, `db.manifestPrivateMapsV2` for V2).
 - There is no concept of a "default" private map. The user must navigate to `/private-maps`, select a map, and manually add locations.
+- The existing `AddLocationDialog` (line 1346) only supports V1 maps (`ManifestPrivateMap`). For V2 maps, the "Add Location" button exists in the UI (line 400) but the dialog never renders because `selectedMap` is null for V2 (line 110: `selectedMapVersion === "v1" ? selectedMapV1 : null`). This means V2 add-location is currently unimplemented.
 - The `appStore` (`apps/periscope/src/stores/appStore.ts`) uses Zustand with localStorage + IndexedDB hydration for persisted settings like `activeCharacterId`. This is the natural place for a `defaultMapId` setting.
 
 ### Structures / Deployables
-- The main view is `apps/periscope/src/views/Deployables.tsx` (~1400 lines). It defines `StructureRow` (line 52), column definitions (line 585), and several inline sub-components (`LocationEditor`, `ParentSelect`, `FilterButton`, `StatCard`).
+- The main view is `apps/periscope/src/views/Deployables.tsx` (~1500 lines). It defines `StructureRow` (line 52), column definitions (line 585), and several inline sub-components (`LocationEditor`, `ParentSelect`, `FilterButton`, `StatCard`).
 - **Extension column** (line 725): When `info.status === "default"`, it shows `<span className="text-xs text-zinc-600">None</span>` (line 757). The column also contains both a Configure icon button (line 793, `<Settings2>`) and a text action button (line 802, showing "Deploy", "Configure", or "Update").
 - **Market currency**: The currency ticker is shown as a badge inside the extension column cell (lines 769-773). It's extracted from `extensionConfigMap` -> `extConfig.marketId` -> `currencyByMarketId`. There is no dedicated column.
 - **Parent column** (line 837): Uses `parentLabels.get(d.parentId)` as the accessor, returning the parent's label (name). Network nodes with no explicit parent show their own label. The accessor returns a name string, not an ID, so filtering by object ID is impossible.
-- **"Add to Map" link**: In `LocationEditor` (line 1291), when a structure has no location, it shows `<Link to="/private-maps">Add to map</Link>` -- this navigates away entirely. The `StructureDetailCard` (line 297-301) has a similar `<Link to="/private-maps">Add via Private Map</Link>`.
-- **Detail card** (`apps/periscope/src/components/StructureDetailCard.tsx`): Shows structure details including extension info, fuel, location, notes, and dApp URL. It has an `onConfigure` callback but it's only rendered inside the Standings Config section (line 231). There are no standalone Deploy or Configure buttons.
-- **CSV export**: No export infrastructure exists. No `papaparse` or similar dependency.
+- **"Add to Map" link**: In `LocationEditor` (line 1291), when a structure has no location, it shows `<Link to="/private-maps">Add to map</Link>` -- this navigates away entirely. The `StructureDetailCard` (lines 296-302) has a similar `<Link to="/private-maps">Add via Private Map</Link>`.
+- **Detail card** (`apps/periscope/src/components/StructureDetailCard.tsx`): Shows structure details including extension info, fuel, location, notes, and dApp URL. It accepts an `onConfigure` prop but it's only rendered inside the Standings Config section (line 230). Importantly, `onConfigure` is NOT currently passed from Deployables.tsx (only `onReset`, `onSaveNotes`, and `isResetting` are wired at line 1127). There are no standalone Deploy or Configure buttons.
+- **CSV export**: No CSV export infrastructure exists. No `papaparse` or similar dependency. However, `apps/periscope/src/lib/dataExport.ts` has a JSON backup export that uses the `Blob` + `URL.createObjectURL` + programmatic click pattern -- the CSV download trigger can reuse this approach.
 
 ### Extension Display Names
 - Extension templates are defined in `apps/periscope/src/chain/config.ts` starting at line 236:
@@ -47,17 +48,17 @@ The private map default selection (item #1) is a prerequisite for item #8 (the i
 
 ### 2. CSV Export
 - Add an "Export CSV" button to the DataGrid toolbar area (via the `actions` prop in Deployables).
-- Use a zero-dependency approach: build CSV in-memory from the currently filtered `data` array (the `filteredData` passed to DataGrid), then trigger a browser download via `Blob` + `URL.createObjectURL`. No library needed for simple tabular data.
+- Use a zero-dependency approach: build CSV in-memory from the filtered row data, then trigger a browser download via `Blob` + `URL.createObjectURL` (same pattern as `lib/dataExport.ts`). No library needed for simple tabular data.
 - Export columns: Status, Name, Object ID, Type, Category, Extension, Location, Parent, Standing, Owner, Runtime (hours), Notes, Updated.
-- The export operates on the `filteredData` array that Deployables already computes -- this avoids needing to reach into DataGrid's internal TanStack Table state.
+- The exact data source (Deployables' `filteredData` vs DataGrid's internal filtered rows) depends on Open Question #2. The recommended approach (Option B) has DataGrid expose its post-column-filter rows via an `onExport` callback so the export reflects exactly what the user sees.
 
 ### 3. Extension Column -- "Deploy" Link Instead of "None"
 - When `info.status === "default"` and `r.ownership === "mine"`, replace the `"None"` text with a `"Deploy"` button that opens the deploy panel (same as the existing deploy action).
 - When `info.status === "default"` and `r.ownership !== "mine"`, show a dash (`--`) instead of "None".
 
 ### 4. Remove Redundant Configure Link + Add Buttons to Detail Card
-- In the extension column cell (lines 789-809): remove the separate `<Settings2>` icon button (lines 792-800) since the text action button already opens the same deploy/configure panel. Keep only the text button ("Deploy", "Configure", or "Update").
-- In `StructureDetailCard.tsx`: add a row of action buttons below the extension info section. Show "Deploy" if extension status is "default", "Configure" if status is "periscope", "Update" if "periscope-outdated". These call the existing `onConfigure` callback (rename parameter to `onDeploy` for clarity, or add `onDeploy` alongside `onConfigure`).
+- In the extension column cell (lines 789-809): remove the separate `<Settings2>` icon button (lines 791-801, including comment and closing `)}`) since the text action button already opens the same deploy/configure panel. Keep only the text button ("Configure" or "Update") -- but hide it for `info.status === "default"` since the inline "Deploy" (item #3) handles that case.
+- In `StructureDetailCard.tsx`: add a row of action buttons below the Extension Type section (after line 220). Show "Deploy" if extension status is "default", "Configure" if status is "periscope", "Update" if "periscope-outdated". These use a new `onDeploy` prop for deploy/update and the existing `onConfigure` prop for configure. Also remove the existing "Configure" button in the Standings Config header (lines 230-238) since the new button row replaces it and the old one lacked an ownership guard.
 
 ### 5. Market Currency Column
 - Add a new column "Currency" after the Extension column.
@@ -74,12 +75,12 @@ The private map default selection (item #1) is a prerequisite for item #8 (the i
 
 ### 7. Parent Node as Filterable ID
 - Change the parent column accessor to return a composite string that includes the parent's object ID (truncated) along with the label, enabling filtering by ID.
-- Accessor: for a row with `parentId`, return `parentLabels.get(parentId) ?? "" + " " + truncateId(parentId)`. For nodes self-referencing, return `row.label + " " + truncateId(row.objectId)`.
+- Accessor: for a row with `parentId`, return `(parentLabels.get(parentId) ?? "") + " " + truncateId(parentId)`. For nodes self-referencing, return `row.label + " " + truncateId(row.objectId)`. (Parentheses around `??` are required -- without them, `+` binds tighter and the fallback becomes `"" + " " + truncateId(...)` instead of just `""`.)
 - The cell renderer continues to show the label and a truncated ID visually.
 - A node should list itself as its own parent in the accessor so it groups with its children when filtering.
 
 ### 8. "Add to Map" Inline Dialog
-- Replace the `<Link to="/private-maps">Add to map</Link>` in `LocationEditor` (line 1291) and `StructureDetailCard` (line 297) with a button that opens a new `AddToMapDialog` component.
+- Replace the `<Link to="/private-maps">Add to map</Link>` in `LocationEditor` (line 1291) and `StructureDetailCard` (lines 296-302) with a button that opens a new `AddToMapDialog` component.
 - The dialog contains:
   - A map selector dropdown listing all V1 maps (with `decryptedMapKey`) and V2 maps, defaulting to `appStore.defaultMapId`.
   - Structure name pre-filled as description.
@@ -101,6 +102,7 @@ The private map default selection (item #1) is a prerequisite for item #8 (the i
 | Contract rename scope | `EXTENSION_TEMPLATES[].name` in config.ts only | Single source of truth. Name propagates everywhere through `classifyExtension` -> `info.template.name`. |
 | Parent accessor format | Label + truncated objectId in accessor string | Enables TanStack Table's filter to match against both name and ID fragments. |
 | AddToMapDialog location | New component in `apps/periscope/src/components/AddToMapDialog.tsx` | Shared between Deployables and StructureDetailCard. Keeps PrivateMaps.tsx from growing. |
+| Add-location TX logic | Extract into `lib/mapLocation.ts` | Shared between AddToMapDialog and PrivateMaps' existing AddLocationDialog. Avoids duplicating encryption + version/mode branching. |
 | Encryption key requirement | Dialog uses `useStoredEncryptionKey` hook | Same pattern as PrivateMaps. Key auto-derives on first use. For V2 standings-gated maps with `mode === 1`, no encryption needed. |
 
 ## Implementation Phases
@@ -112,34 +114,38 @@ The private map default selection (item #1) is a prerequisite for item #8 (the i
    - Line 239: `"Gate Standings"` -> `"Periscope Gate"`
    - Line 256: `"SSU Unified"` -> `"Periscope SSU"`
    - Line 273: `"Turret Priority"` -> `"Periscope Turret"`
-4. Update descriptions to reference "Periscope" branding (lines 240-242, 257-258, 274-276).
+4. Update descriptions to reference "Periscope" branding (lines 240-241, 257-258, 274-275). Note: line 242/259/276 are `assemblyTypes` -- do not modify.
 
 ### Phase 2: Column Cleanup -- Extension, Currency, Parent
-1. **Extension column "None" -> "Deploy"**: In `Deployables.tsx` line 757, replace `<span className="text-xs text-zinc-600">None</span>` with a conditional: if `r.ownership === "mine"`, show a "Deploy" button that calls `setDeployTarget(r)`; otherwise show a dash.
-2. **Remove redundant Configure icon**: Delete the `<Settings2>` icon button block at lines 792-800 in the extension column cell.
-3. **Market currency column**: Add a new column definition after the extension column (after line 813). Accessor: `extensionConfigMap.get(d.objectId)?.marketId ? currencyByMarketId.get(extensionConfigMap.get(d.objectId)!.marketId!) ?? "" : ""`. Header: "Currency". Size: 100. filterFn: `excelFilterFn`. Remove the ticker badge from the extension column cell (delete lines 769-773).
+1. **Extension column "None" -> "Deploy"**: In `Deployables.tsx` line 757, replace `<span className="text-xs text-zinc-600">None</span>` with a conditional: if `r.ownership === "mine"`, show a "Deploy" button that calls `setDeployTarget(r)`; otherwise show a dash. Additionally, guard the existing action button block (lines 802-808) so it does NOT render when `info.status === "default"` -- otherwise both the inline "Deploy" and the right-side action button would show "Deploy" simultaneously.
+2. **Remove redundant Configure icon**: Delete the `<Settings2>` icon button block at lines 791-801 in the extension column cell (includes the comment at line 791 and closing `)}` at line 801).
+3. **Market currency column**: Add a new column definition after the extension column (after line 814 which closes the column object; line 813 only closes the `cell` method). Accessor: `extensionConfigMap.get(d.objectId)?.marketId ? currencyByMarketId.get(extensionConfigMap.get(d.objectId)!.marketId!) ?? "" : ""`. Header: "Currency". Size: 100. filterFn: `excelFilterFn`. Remove the ticker badge from the extension column cell (delete lines 769-773).
 4. **Parent column -> filterable by ID**: Change the accessor at line 838-842 to include the objectId. For rows with `parentId`, return `(parentLabels.get(d.parentId) ?? "") + " " + (d.parentId?.slice(0, 10) ?? "")`. For self-referencing nodes, return `d.label + " " + d.objectId.slice(0, 10)`. Update the cell renderer to display the truncated ID next to the label (e.g., as a faint mono-spaced suffix).
 
 ### Phase 3: Detail Card Buttons + CSV Export
-1. **Detail card Deploy/Configure buttons**: In `StructureDetailCard.tsx`, add a new prop `onDeploy?: (row: StructureRow) => void`. Add a button row after the extension info section (after line 219, before the Location section at line 290). Show:
+1. **Detail card Deploy/Configure buttons**: In `StructureDetailCard.tsx`, add a new prop `onDeploy?: (row: StructureRow) => void`. Add a button row after the Extension Type section (after line 220 which closes the section div, before the Standings Config section at line 222). This ensures the buttons appear even when `extConfig` is null (no standings config to show). Also remove the existing "Configure" button from the Standings Config section header (lines 230-238) since the new button row replaces it -- this avoids a duplicate Configure button and removes a button that had no ownership check. Show:
    - "Deploy Extension" button when `extensionInfo.status === "default"` and `row.ownership === "mine"` -> calls `onDeploy`.
    - "Configure" button when `extensionInfo.status === "periscope"` and `row.ownership === "mine"` -> calls `onConfigure`.
    - "Update Extension" button when `extensionInfo.status === "periscope-outdated"` and `row.ownership === "mine"` -> calls `onDeploy`.
-2. Wire up `onDeploy` in `Deployables.tsx` where `StructureDetailCard` is rendered (line 1127). Set `onDeploy={(row) => setDeployTarget(row)}` and `onConfigure={(row) => setDeployTarget(row)}`.
-3. **CSV export**: Create a `exportToCsv` utility function in `apps/periscope/src/lib/csv.ts`. It accepts an array of objects and column definitions (header + accessor key), builds a CSV string with proper escaping (quotes around fields containing commas/quotes/newlines), and triggers a browser download.
-4. Add an "Export CSV" button to the Deployables toolbar `actions` area (after the "Sync Chain" button, around line 1121). On click, call `exportToCsv` with `filteredData` and the relevant column accessors. File name: `structures-{ISO date}.csv`.
+2. Wire up new props in `Deployables.tsx` where `StructureDetailCard` is rendered (line 1127). Add `onDeploy={(row) => setDeployTarget(row)}` and `onConfigure={(row) => setDeployTarget(row)}`. Note: `onConfigure` prop already exists on StructureDetailCard but is not currently passed from Deployables -- this is new wiring.
+3. **CSV export**: Create a `exportToCsv` utility function in `apps/periscope/src/lib/csv.ts`. It accepts an array of objects and column definitions (header + accessor key), builds a CSV string with proper escaping (quotes around fields containing commas/quotes/newlines), and triggers a browser download (reuse the Blob + click pattern from `lib/dataExport.ts`).
+4. **CSV export button** (implementation depends on Open Question #2):
+   - **If Option A**: Add an "Export CSV" button to the Deployables toolbar `actions` area (after the "Sync Chain" button, around line 1121). On click, call `exportToCsv` with `filteredData`. File name: `structures-{ISO date}.csv`.
+   - **If Option B (recommended)**: Add an optional `onExport?: (rows: T[]) => void` prop to `DataGrid`. When provided, DataGrid renders a download icon button that calls `onExport(getFilteredRowModel().rows.map(r => r.original))`. In Deployables, pass `onExport={(rows) => exportToCsv(rows, structureColumns)}` via the DataGrid props.
 
 ### Phase 4: Inline "Add to Map" Dialog
-1. Create `apps/periscope/src/components/AddToMapDialog.tsx`. Props: `structureRow: StructureRow`, `onClose`, `onAdded?`. The component:
+1. **Extract shared add-location logic**: Before building the new dialog, extract the encryption + TX-building core from `PrivateMaps.tsx` `AddLocationDialog` (lines 1374-1393) into a shared utility (e.g., `apps/periscope/src/lib/mapLocation.ts`). This utility should expose a function like `buildAddLocationTx({ mapVersion, mapMode, packageId, mapId, inviteId, structureId, locationData, senderAddress, mapPublicKey })` that branches on version/mode to call the appropriate chain-shared builder. Both `PrivateMaps.tsx` and the new dialog will import from this utility.
+2. Create `apps/periscope/src/components/AddToMapDialog.tsx`. Props: `structureRow: StructureRow`, `onClose`, `onAdded?`. The component:
    - Reads all V1 and V2 maps from IndexedDB via `useLiveQuery`.
    - Uses `useStoredEncryptionKey` for encryption.
    - Shows a map selector dropdown, defaulting to `useAppStore(s => s.defaultMapId)`.
    - Pre-fills description with `structureRow.label`, structureId with `structureRow.objectId`.
    - Pre-fills system ID from `structureRow.systemId`, derives planet/lPoint from `structureRow.lPoint` if available.
-   - On submit: encrypts location data (for V1 and V2 mode=0 maps) or sends cleartext (for V2 mode=1), builds the appropriate TX (`buildAddLocation` for V1, `buildAddLocationEncrypted`/`buildAddLocationStandings` for V2), signs and executes.
+   - On submit: calls the shared `buildAddLocationTx` utility, which encrypts location data (for V1 and V2 mode=0 maps) or sends cleartext (for V2 mode=1) and builds the appropriate TX. Note: the V2 builders (`buildAddLocationEncrypted`, `buildAddLocationStandings`) exist in chain-shared but are not yet used anywhere in the app -- this dialog will be their first consumer.
    - On success: updates the structure's local systemId/lPoint if they were previously empty, syncs map locations.
-2. In `Deployables.tsx`, add state `const [addToMapTarget, setAddToMapTarget] = useState<StructureRow | null>(null)`. Replace `<Link to="/private-maps">Add to map</Link>` at line 1291 with `<button onClick={() => setAddToMapTarget(r)}>Add to map</button>`. Render `AddToMapDialog` when `addToMapTarget` is set.
-3. In `StructureDetailCard.tsx`, add an `onAddToMap?: (row: StructureRow) => void` prop. Replace the `<Link to="/private-maps">Add via Private Map</Link>` at line 297-301 with a button calling `onAddToMap`. Wire it up in Deployables.
+3. In `Deployables.tsx`, add state `const [addToMapTarget, setAddToMapTarget] = useState<StructureRow | null>(null)`. Replace `<Link to="/private-maps">Add to map</Link>` at line 1291 with `<button onClick={() => setAddToMapTarget(r)}>Add to map</button>`. Render `AddToMapDialog` when `addToMapTarget` is set.
+4. In `StructureDetailCard.tsx`, add an `onAddToMap?: (row: StructureRow) => void` prop. Replace the `<Link to="/private-maps">Add via Private Map</Link>` at lines 296-302 with a button calling `onAddToMap`. Wire it up in Deployables.
+5. Update `PrivateMaps.tsx` `AddLocationDialog` to use the shared `buildAddLocationTx` utility extracted in step 1, replacing its inline encryption + TX-building logic.
 
 ## File Summary
 
@@ -149,8 +155,10 @@ The private map default selection (item #1) is a prerequisite for item #8 (the i
 | `apps/periscope/src/chain/config.ts` | Modify | Rename extension template names to Periscope branding |
 | `apps/periscope/src/views/Deployables.tsx` | Modify | Extension column cleanup, currency column, parent column ID, CSV export button, Add to Map dialog integration |
 | `apps/periscope/src/components/StructureDetailCard.tsx` | Modify | Add Deploy/Configure/Update buttons, Add to Map button, new `onDeploy`/`onAddToMap` props |
-| `apps/periscope/src/views/PrivateMaps.tsx` | Modify | Add "Set Default" map button to MapCard/MapCardV2 |
-| `apps/periscope/src/lib/csv.ts` | Create | Zero-dependency CSV export utility (build string + trigger download) |
+| `apps/periscope/src/views/PrivateMaps.tsx` | Modify | Add "Set Default" map button to MapCard/MapCardV2; refactor AddLocationDialog to use shared `mapLocation.ts` utility |
+| `apps/periscope/src/components/DataGrid.tsx` | Modify | Add optional `onExport` prop (if Open Question #2 -> Option B) |
+| `apps/periscope/src/lib/csv.ts` | Create | Zero-dependency CSV export utility (reuses Blob download pattern from `dataExport.ts`) |
+| `apps/periscope/src/lib/mapLocation.ts` | Create | Shared add-location TX builder (encryption + version/mode branching) |
 | `apps/periscope/src/components/AddToMapDialog.tsx` | Create | Shared inline dialog for adding a structure location to a private map |
 
 ## Open Questions
@@ -160,7 +168,7 @@ The private map default selection (item #1) is a prerequisite for item #8 (the i
      Pros: Less code, V1 is proven. Cons: Users with only V2 maps cannot use inline add.
    - **Option B: V1 + V2 support** -- Handle both V1 (`buildAddLocation`) and V2 (`buildAddLocationEncrypted` for mode=0, `buildAddLocationStandings` for mode=1).
      Pros: Full compatibility. Cons: More complex dialog logic, needs to branch on map version and mode.
-   - **Recommendation:** Option B. V2 maps are the active format. The branching logic is manageable since the three TX builders share similar parameter shapes.
+   - **Recommendation:** Option B. V2 maps are the active format. The branching logic is manageable since the three TX builders (`buildAddLocation`, `buildAddLocationEncrypted`, `buildAddLocationStandings`) share similar parameter shapes. All three already exist in `@tehfrontier/chain-shared`.
 
 2. **CSV export -- should DataGrid expose filtered rows, or should Deployables export from its own `filteredData`?**
    - **Option A: Export from Deployables' `filteredData`** -- The export button lives in Deployables' `actions` slot and operates on `filteredData` (the quick-filter result). Does not respect DataGrid's internal column filters.
