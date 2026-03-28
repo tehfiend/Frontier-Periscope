@@ -119,3 +119,9 @@
 - **File:** docs/plans/pending/12-ssu-market-linking.md
 - **Passes:** 4 (4 with changes)
 - **Result:** pending -- 5-phase plan for new ssu_unified Move contract with market_id storage, config deployment flow, SSU dapp market resolution, and trade TX builder refactor to PTB-only. 3 open questions remain (trade entry points vs PTB-only, config discovery strategy, old ssu_standings removal). Key findings: deployed ssu_unified/ssu_standings contracts lack market fields and source not in repo; market_standings::post_sell_listing uses virtual listings (no item escrow); owned config objects work because trade TXs read config via GraphQL rather than passing as TX argument.
+
+## 2026-03-28 -- ssu-market-linking (simplify)
+- **Action:** UPDATE
+- **File:** plans/active/12-ssu-market-linking.md
+- **Passes:** 2
+- **Result:** active -- stripped legacy concerns, fresh contract design
