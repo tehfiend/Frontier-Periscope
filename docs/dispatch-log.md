@@ -89,3 +89,9 @@
 - **File:** docs/plans/pending/10-structures-ux-v2.md
 - **Passes:** 5 (5 with changes)
 - **Result:** pending -- 4-phase plan covering default private map selection, CSV export, extension column cleanup (None->Deploy, remove redundant Configure icon, Periscope branding), market currency column, filterable parent IDs, detail card Deploy/Configure buttons, and inline Add to Map dialog. 3 open questions remain (V2 map support scope, CSV export data source, parent ID truncation format). Key findings: V2 add-location is currently unimplemented in PrivateMaps, onConfigure prop exists on StructureDetailCard but is not wired from Deployables, dataExport.ts has reusable Blob download pattern.
+
+## 2026-03-28 -- structures-ux-v2 (update)
+- **Action:** UPDATE
+- **File:** plans/active/10-structures-ux-v2.md
+- **Passes:** 3
+- **Result:** active -- resolved 3 questions, added turret extension detection fix
