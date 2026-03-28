@@ -1,16 +1,16 @@
 # Plan: Currencies Overhaul -- Unified Currency/Market/Treasury Page
 
-**Status:** Draft
+**Status:** Ready
 **Created:** 2026-03-28
 **Module:** periscope
 
 ## Overview
 
-The current Periscope app treats currencies, markets, and treasuries as three separate concepts with three separate views (`/markets`, `/treasury`, `/wallet`). In practice, a "currency" is a single entity that inherently has a market (Market<T> on-chain) and optionally participates in a treasury wallet. Users must navigate between these views to manage different facets of the same currency -- a fragmented experience.
+The current Periscope app treats currencies, markets, and treasuries as three separate concepts with three separate views (`/markets`, `/treasury`, `/wallet`). In practice, a "currency" is a single entity that inherently has a market (Market<T> on-chain), a treasury (1:1 -- every currency has exactly one treasury), and optionally participates in exchange pairs. Users must navigate between these views to manage different facets of the same currency -- a fragmented experience.
 
-This plan merges the Market view and the currency-management portion of Treasury into a single unified "Currencies" page at `/currencies`. The page will feature a DataGrid showing ALL currencies (from `db.manifestMarkets`) with Excel-like column filtering, archive/unarchive support, and inline currency creation. The Market order-book detail and currency admin actions (mint, burn, authorize, fees) will appear as an expandable detail panel when a currency row is selected.
+This plan merges the Market view and the currency-management portion of Treasury into a single unified "Currencies" page at `/currencies`. The page will feature a DataGrid showing ALL currencies (from `db.manifestMarkets`) with Excel-like column filtering, archive/unarchive support, treasury balance column, and inline currency creation. The detail panel when a currency row is selected will show: admin actions (mint, burn, authorize, fees), Market<T> order book (sell listings + buy orders), exchange order book (bid/ask for coin pairs involving this currency), and treasury balance/admin management.
 
-The Treasury view's treasury-wallet functionality (creating treasuries, managing admins, viewing balances) remains at `/treasury` as it is a separate organizational concept (a shared wallet that can hold multiple currency balances). The Wallet view (`/wallet`) remains unchanged as it shows the user's personal Sui wallet balances and transactions.
+The Treasury view's treasury-wallet functionality (creating treasuries, managing admins, viewing balances) remains at `/treasury` as a convenience view. The Wallet view (`/wallet`) remains unchanged as it shows the user's personal Sui wallet balances and transactions.
 
 ## Current State
 
@@ -39,8 +39,25 @@ The Treasury view's treasury-wallet functionality (creating treasuries, managing
 ### Data Layer
 - `db.currencies` (CurrencyRecord) -- local currency records with `_archived` flag (db/types.ts line 792-813)
 - `db.manifestMarkets` (ManifestMarket) -- chain-cached Market<T> objects (db/types.ts line 487-506)
-- `db.treasuries` (TreasuryRecord) -- shared treasury wallets (db/types.ts line 823-829)
+- `db.treasuries` (TreasuryRecord) -- treasury wallets (db/types.ts line 823-829). Each currency has exactly one treasury (1:1 relationship). The treasury's admins are the currency's admins who can withdraw; anyone can deposit.
 - `discoverMarkets()` in manifest.ts (line 1565-1604) -- fetches all Market<T> from chain into manifestMarkets
+
+### Treasury-Currency Relationship (1:1)
+- A treasury is always tied to a currency. A currency can only have a single treasury.
+- The currency admins are the treasury admins who can transfer/withdraw from the treasury.
+- Anyone can deposit into a treasury (e.g., gate extensions deposit toll revenue).
+- `TreasuryRecord` (db/types.ts line 823-829) has `balances: TreasuryBalanceEntry[]` -- for a 1:1 currency treasury, this array will contain a single entry for the currency's coinType.
+- The link between treasury and currency is via `TreasuryBalanceEntry.coinType` matching `CurrencyRecord.coinType`. There is no explicit `treasuryId` field on CurrencyRecord currently.
+- `queryTreasuryBalances()` in `chain-shared/src/treasury.ts` (line 199-244) enumerates Balance<T> dynamic fields via BalanceKey<T> on the treasury object.
+- `queryTreasuryDetails()` in `chain-shared/src/treasury.ts` (line 174-192) fetches owner, admins, and name.
+- `treasury-queries.ts` in `apps/periscope/src/chain/` wraps these with IndexedDB caching (currently stubbed, waiting for chain-shared merge).
+
+### Exchange Module
+- `packages/chain-shared/src/exchange.ts` -- TX builders for coin-pair exchange: `buildCreatePair`, `buildPlaceBid`, `buildPlaceAsk`, `buildCancelBid`, `buildCancelAsk`.
+- Types in `chain-shared/src/types.ts`: `OrderBookInfo` (objectId, coinTypeA, coinTypeB, bidCount, askCount, feeBps), `OrderInfo` (orderId, owner, price, amount, isBid).
+- Exchange package deployed at `0x72928ee80a252eece16925c3e7d0cbf6280a8981ebf72c1a0f614f9d8a48315d` (config.ts line 19).
+- No query functions exist yet for fetching order book state from chain -- only TX builders and types.
+- Sonar already handles exchange events: `exchange_order_placed`, `exchange_order_cancelled` (sonarEventHandlers.ts lines 821-853).
 
 ### Token Factory
 - `buildPublishToken()` in `packages/chain-shared/src/token-factory.ts` -- decimals default is 9 (line 62)
@@ -67,6 +84,7 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
    - Name (from coin metadata or parsed from coinType)
    - Ticker/Symbol
    - Total Supply (from ManifestMarket.totalSupply, cached during discoverMarkets)
+   - Treasury Balance (from the currency's treasury, queried via `db.treasuries` matching on coinType)
    - Creator (resolved to character name via manifestCharacters)
    - Status (Mine/Authorized/Public based on whether user is creator/authorized/neither)
    - Fee (basis points, from ManifestMarket.feeBps)
@@ -79,8 +97,9 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
 4. **Row click -> Detail panel** below the grid showing:
    - Market identity card (from current MarketDetail/CurrencyManagement)
    - Admin actions (mint, burn, authorize, fees) -- from Treasury.tsx CurrencyManagement
-   - Order book (sell listings + buy orders) -- from Market.tsx MarketDetail
-   - Link to SSU action -- from Market.tsx MarketDetail
+   - Market<T> order book (sell listings + buy orders) -- from Market.tsx MarketDetail
+   - Exchange order book section (bid/ask orders for exchange pairs involving this currency)
+   - Treasury section (balance, deposit/withdraw actions)
 
 ### Route Changes
 
@@ -98,21 +117,24 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Data source for grid | Join `db.manifestMarkets` with `db.currencies` at query time | manifestMarkets has all chain markets; currencies has user's local metadata and _archived flag. No schema change needed -- join in component via useMemo. |
+| Data source for grid | Join `db.manifestMarkets` with `db.currencies` and `db.treasuries` at query time | manifestMarkets has all chain markets; currencies has user's local metadata and _archived flag; treasuries has balance data. Join in component via useMemo, keyed on coinType. |
+| Treasury balance column | Include in DataGrid | Each currency has exactly one treasury (1:1). No ambiguity -- look up the treasury whose balance coinType matches the currency's coinType. Shows the treasury's balance for that currency directly in the grid. |
 | Route path | `/currencies` with redirect from `/markets` | Clean break from "markets" terminology. Redirect preserves bookmarks. |
 | Default decimals | Change to 2 in Currencies.tsx create form only | The chain-shared token factory keeps 9 as the default parameter -- it is a protocol default. The UI create form will default its own state to 2 since most governance tokens use 2 decimals. |
-| Treasury page scope | Keep `/treasury` for treasury-wallet management only | Treasuries (shared wallets) are a distinct concept from currencies. Removing the currency section from Treasury.tsx simplifies it. |
+| Treasury page scope | Keep `/treasury` for treasury-wallet management only | Treasuries are 1:1 with currencies, but the Treasury view provides a wallet-centric perspective (managing admins, viewing all balances). Removing the currency section from Treasury.tsx simplifies it. |
 | Wallet connect pattern | Use ConnectWalletButton from WalletConnect.tsx | Matches existing pattern in Standings.tsx. Show ConnectWalletButton in place of "Create" button when wallet disconnected. |
-| Market.tsx disposition | Delete after merging into Currencies.tsx | All Market.tsx functionality (order book, SSU link) moves into the Currencies detail panel. File is fully subsumed. |
+| Market.tsx disposition | Delete after merging into Currencies.tsx | All Market.tsx functionality (order book) moves into the Currencies detail panel. File is fully subsumed. |
+| SSU link action | Structures only -- remove from Currencies detail panel | SSU linking is a structure-level action. Keep it in the Structures/Deployables view only, not in the currency detail panel. Cleaner separation of concerns. |
 | Treasury.tsx currency section | Remove lines 416-527 (JSX) + 711-1363 (CurrencyManagement) + 1506-1627 (CreateCurrencyForm + formatTokenAmount) | Currency creation and CurrencyManagement move to Currencies.tsx. Lines 1-414 (Treasury component + treasury state) and 530-709 (TreasuryDetail) stay. StatusBanner (line 1367-1413), StatBox (line 1415-1428), and FormField (line 1491-1504) are also used by the treasury section and must stay or be shared. |
 | Order book placement | Expandable section in detail panel | The order book is per-currency context -- it belongs in the selected currency's detail view, not as a separate page. |
+| Exchange order book | Include in detail panel | The exchange module supports coin-pair trading. For each selected currency, show any exchange pairs where this currency is coinTypeA or coinTypeB. Query functions need to be built (see Phase 2b). |
 
 ## Implementation Phases
 
 ### Phase 1: Create Currencies.tsx with DataGrid
 
 1. Create `apps/periscope/src/views/Currencies.tsx` as the new unified view.
-2. Build a `UnifiedCurrencyRow` type that merges ManifestMarket + CurrencyRecord data:
+2. Build a `UnifiedCurrencyRow` type that merges ManifestMarket + CurrencyRecord + treasury data:
    ```
    interface UnifiedCurrencyRow {
      id: string;             // manifestMarket.id or CurrencyRecord.id (for unsynced local currencies)
@@ -120,19 +142,24 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
      symbol: string;         // parsed from coinType: last segment, strip _TOKEN suffix
      name: string;           // from CurrencyRecord.name if exists, else "{symbol} Token"
      totalSupply?: number;   // from ManifestMarket.totalSupply (cached)
+     treasuryBalance?: string; // from TreasuryRecord balance matching this coinType (string for bigint)
      creator: string;        // from ManifestMarket.creator
      creatorName?: string;   // resolved from db.manifestCharacters
      feeBps: number;         // from ManifestMarket.feeBps
      status: "mine" | "authorized" | "public";  // based on suiAddress match
      archived: boolean;      // from CurrencyRecord._archived if linked
      currencyRecordId?: string;  // link to db.currencies for local actions
+     treasuryId?: string;    // link to TreasuryRecord.id if found
      packageId: string;      // from ManifestMarket.packageId
      decimals: number;       // from CurrencyRecord.decimals if linked, else 9
    }
    ```
-3. Use `useLiveQuery` to reactively query `db.manifestMarkets` and `db.currencies`. Build the merged rows in a `useMemo` join -- key on `coinType` since both tables share this field (ManifestMarket.coinType and CurrencyRecord.coinType). The join is a full outer join: a row appears if it exists in either table. Currencies in `db.currencies` without a matching `manifestMarket` entry (e.g., newly created currencies not yet discovered by manifest sync) still appear in the grid with available local data. ManifestMarket entries without a matching CurrencyRecord appear as "public" currencies.
+3. Use `useLiveQuery` to reactively query `db.manifestMarkets`, `db.currencies`, and `db.treasuries`. Build the merged rows in a `useMemo` join:
+   - Key on `coinType` since ManifestMarket.coinType and CurrencyRecord.coinType share this field.
+   - For treasury balance: iterate `db.treasuries`, for each treasury find the `TreasuryBalanceEntry` whose `coinType` matches the currency's `coinType`. Since the relationship is 1:1, at most one treasury will have a matching balance entry.
+   - The join is a full outer join: a row appears if it exists in either `manifestMarkets` or `currencies`. Currencies in `db.currencies` without a matching `manifestMarket` entry (e.g., newly created currencies not yet discovered by manifest sync) still appear in the grid with available local data. ManifestMarket entries without a matching CurrencyRecord appear as "public" currencies.
 4. The page does NOT require an active character to render the DataGrid. All markets are public chain data from manifestMarkets. The `status` column needs `suiAddress` from `useActiveCharacter` -- when no character is selected, all rows show "public" status. Admin actions in the detail panel require a character.
-5. Define DataGrid columns: Symbol, Name, Total Supply, Fee (bps), Creator, Status. Text columns (Symbol, Name, Creator, Status) use `excelFilterFn`. Numeric columns (Total Supply, Fee) use `enableColumnFilter: false`.
+5. Define DataGrid columns: Symbol, Name, Total Supply, Treasury Balance, Fee (bps), Creator, Status. Text columns (Symbol, Name, Creator, Status) use `excelFilterFn`. Numeric columns (Total Supply, Fee, Treasury Balance) use `enableColumnFilter: false`.
 6. Add toolbar with: global search, archive toggle button, create button (or ConnectWalletButton when disconnected), refresh button to re-run `discoverMarkets()`.
 7. Implement row click handler that sets `selectedCurrencyId` state. Use DataGrid's `selectedRowId` and `onRowClick` props (already supported, see DataGrid.tsx lines 34-36).
 8. No detail panel yet in this phase -- just the grid.
@@ -140,12 +167,30 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
 ### Phase 2: Currency Detail Panel
 
 1. Move `CurrencyManagement` component from Treasury.tsx into Currencies.tsx (or a new `components/CurrencyDetail.tsx` file).
-2. Move `MarketDetail` order-book section from Market.tsx into the detail panel.
-3. Merge the SSU link action from Market.tsx MarketDetail.
-4. Wire the detail panel to appear below the DataGrid when a row is selected.
-5. Include admin actions (mint, burn, authorize, fees) from CurrencyManagement.
-6. Include order book DataGrid (sell listings + buy orders) from MarketDetail.
-7. Move shared utilities into Currencies.tsx as local functions (same pattern as Market.tsx and Treasury.tsx): `formatTokenAmount` (from both files), `formatPrice` (from Market.tsx), `StatBox`, `AdminToggle`, `AdminPanel`, `FormField`. These are small, view-specific helpers -- no need for a separate shared file.
+2. Wire the detail panel to appear below the DataGrid when a row is selected.
+3. Include admin actions (mint, burn, authorize, fees) from CurrencyManagement.
+4. Include Market<T> order book DataGrid (sell listings + buy orders) from MarketDetail.
+5. Include treasury section in the detail panel:
+   - Show treasury balance for the selected currency (from `TreasuryRecord` matching on coinType).
+   - Show treasury admins (derived from currency admins in the 1:1 model).
+   - Deposit action (open to anyone) -- uses `buildTreasuryDeposit` from `chain-shared/src/treasury.ts`.
+   - Withdraw action (admin only) -- uses `buildTreasuryWithdraw` from `chain-shared/src/treasury.ts`.
+6. Move shared utilities into Currencies.tsx as local functions (same pattern as Market.tsx and Treasury.tsx): `formatTokenAmount` (from both files), `formatPrice` (from Market.tsx), `StatBox`, `AdminToggle`, `AdminPanel`, `FormField`. These are small, view-specific helpers -- no need for a separate shared file.
+
+### Phase 2b: Exchange Order Book Integration
+
+1. Create exchange query functions in `packages/chain-shared/src/exchange.ts`:
+   - `queryOrderBook(client: SuiGraphQLClient, bookObjectId: string): Promise<OrderBookInfo | null>` -- fetch order book details (fee, counts).
+   - `queryOrders(client: SuiGraphQLClient, bookObjectId: string): Promise<OrderInfo[]>` -- enumerate bid/ask orders from dynamic fields.
+   - These follow the same pattern as `queryTreasuryDetails` / `queryTreasuryBalances` in treasury.ts: use `getObjectJson` for the book object and `listDynamicFieldsGql` for order entries.
+2. Create app-level exchange query wrapper in `apps/periscope/src/chain/exchange-queries.ts`:
+   - `discoverExchangePairs(client: SuiGraphQLClient): Promise<void>` -- discover all exchange OrderBook<A,B> shared objects and cache them in a new `db.manifestExchangePairs` table (or inline in manifestMarkets if simpler).
+   - `fetchExchangeOrders(client: SuiGraphQLClient, bookObjectId: string): Promise<OrderInfo[]>` -- fetch orders for a specific book.
+3. Add exchange order book section to the Currencies detail panel:
+   - For the selected currency, find all exchange pairs where `coinTypeA === currency.coinType` or `coinTypeB === currency.coinType`.
+   - Show a collapsible section per pair: pair name (e.g., "TOKEN_A / TOKEN_B"), bid/ask order DataGrid.
+   - Place bid / place ask / cancel actions using `buildPlaceBid`, `buildPlaceAsk`, `buildCancelBid`, `buildCancelAsk` from `chain-shared/src/exchange.ts`.
+4. If no exchange pairs exist for the selected currency, show "No exchange pairs" with an optional "Create Pair" action (calls `buildCreatePair`).
 
 ### Phase 3: Create Form + Archive + Wallet Connect
 
@@ -178,6 +223,7 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
    - **Keep**: `StatusBanner` (lines 1367-1413) -- used by treasury creation at line 322. `StatBox` (lines 1415-1428) -- used by TreasuryDetail (not currently, but may be needed). `FormField` (lines 1491-1504) -- used by TreasuryDetail admin address input.
    - **Keep**: Treasury component lines 1-414 (Treasury function + treasury state + treasury JSX), TreasuryDetail (lines 530-709), and all treasury-related state/imports.
    - Net effect: Treasury.tsx shrinks from ~1628 lines to ~600 lines.
+   - **Do NOT** include SSU link action in Currencies detail panel -- SSU linking stays in Structures/Deployables only.
 4. Delete `apps/periscope/src/views/Market.tsx`.
 5. Remove the `LazyMarket` import and `MarketPage` wrapper from router.tsx.
 6. Verify all imports in other files that reference Market.tsx or Treasury.tsx currency exports are updated.
@@ -192,33 +238,25 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
 
 | File | Action | Description |
 |------|--------|-------------|
-| `apps/periscope/src/views/Currencies.tsx` | Create | New unified Currencies page with DataGrid + detail panel |
+| `apps/periscope/src/views/Currencies.tsx` | Create | New unified Currencies page with DataGrid + detail panel (market order book, exchange order book, treasury, admin actions) |
 | `apps/periscope/src/views/Market.tsx` | Delete | Fully subsumed by Currencies.tsx |
 | `apps/periscope/src/views/Treasury.tsx` | Modify | Remove currency creation/management section; keep treasury-wallet only |
 | `apps/periscope/src/router.tsx` | Modify | Add `/currencies` route, redirect `/markets` -> `/currencies`, add lazy import |
 | `apps/periscope/src/components/Sidebar.tsx` | Modify | Rename "Markets" nav item to "Currencies", change route to `/currencies` |
 | `apps/periscope/src/chain/currency-sync.ts` | Create | Extracted `syncCurrenciesFromManifest()` helper |
+| `packages/chain-shared/src/exchange.ts` | Modify | Add `queryOrderBook()` and `queryOrders()` query functions for exchange order books |
+| `apps/periscope/src/chain/exchange-queries.ts` | Create | App-level exchange query wrapper with `discoverExchangePairs()` and `fetchExchangeOrders()` |
 
-## Open Questions
+## Resolved Questions
 
-1. **What happens to the Treasury balance column in the Currencies DataGrid?**
-   - **Option A: Include Treasury Balance column** -- Query `db.treasuries` balances for each coin type and show in the grid. Pros: gives a complete financial picture per currency. Cons: treasury balances are per-treasury, not per-currency -- a user may have multiple treasuries. Adds query complexity.
-   - **Option B: Omit Treasury Balance column** -- Only show market data (total supply, creator, status). Pros: simpler, no ambiguity about which treasury's balance to show. Cons: users lose visibility into treasury holdings from the currencies view.
-   - **Recommendation:** Option B -- omit for now. Treasury balances are a treasury-centric concept (one treasury holds many currencies). The Currencies page focuses on the market/token side. Users can check treasury balances on `/treasury`. Can revisit later if demand arises.
+1. **Treasury balance column in Currencies DataGrid** -- **Included.** The original plan assumed treasuries were separate shared wallets (one treasury holds many currencies). The user clarified: a treasury is always tied to a currency (1:1). Each currency has exactly one treasury. The currency's admins can withdraw; anyone can deposit. This removes all ambiguity -- the Treasury Balance column looks up the single treasury matching the currency's coinType via `TreasuryBalanceEntry.coinType`. Treasury deposit/withdraw actions are included in the detail panel.
 
-2. **Should the exchange (exchange.ts) order book be included in the Currencies detail panel?**
-   - **Option A: Include exchange support** -- The exchange module (`packages/chain-shared/src/exchange.ts`) supports generic coin pair trading (create_pair, place_bid, place_ask). Adding exchange order book to the currencies detail panel gives a complete trading view. Pros: complete trading picture. Cons: exchange is a separate concept (coin-to-coin pairs, not item-to-coin markets), significant additional complexity, exchange UI may not exist yet.
-   - **Option B: Exclude exchange** -- Only include the Market<T> order book (SSU sell listings and buy orders). Pros: matches current scope, exchange is a separate feature. Cons: misses exchange data.
-   - **Recommendation:** Option B -- the exchange module is a separate trading concept (coin pairs) distinct from the Market<T> item marketplace. It should remain a separate future feature if/when an exchange UI is built.
+2. **Exchange order book in Currencies detail panel** -- **Included (Option A).** The exchange module (`chain-shared/src/exchange.ts`) supports coin-pair trading with `buildCreatePair`, `buildPlaceBid`, `buildPlaceAsk`, `buildCancelBid`, `buildCancelAsk`. Types `OrderBookInfo` and `OrderInfo` exist in `chain-shared/src/types.ts`. Query functions for fetching order book state need to be created (Phase 2b). The detail panel will show exchange pairs where the selected currency is either coinTypeA or coinTypeB, with bid/ask order grids and place/cancel actions. Full standalone exchange UI (pair management, cross-currency trading dashboard) remains deferred.
 
-3. **Should the "Link to SSU" action move to Currencies or stay only in Structures?**
-   - **Option A: Include in Currencies detail panel** -- Keep the SSU link action from Market.tsx in the Currencies detail panel. Pros: users managing a currency can link SSUs directly. Cons: SSU linking is a structure-level action that also belongs in the Structures view.
-   - **Option B: Move to Structures only** -- Remove SSU linking from the currency view entirely, have it only in the Structures detail card. Pros: cleaner separation of concerns. Cons: currency creators lose a convenient shortcut.
-   - **Recommendation:** Option A -- keep it in the Currencies detail panel. It is a market-level action (linking a market to an SSU config) and fits naturally alongside market management. The Structures view can independently offer the same action from its own context.
+3. **SSU link action placement** -- **Structures only (Option B).** SSU linking is removed from the Currencies detail panel. It is a structure-level action that belongs in the Structures/Deployables view. The Market.tsx SSU link code is NOT migrated to Currencies.tsx.
 
 ## Deferred
 
-- **Exchange UI** -- Building a full exchange (coin-pair) trading interface. Separate concern from the Market<T> item marketplace.
-- **Treasury balance in Currencies grid** -- Showing per-currency treasury holdings in the DataGrid. Requires resolving multi-treasury ambiguity.
+- **Full exchange trading dashboard** -- A standalone exchange UI for managing all coin pairs, cross-currency arbitrage, and pair creation. This plan only adds per-currency exchange pair viewing in the detail panel.
 - **manifestMarkets enrichment with totalSupply** -- Currently `totalSupply` is cached in ManifestMarket but may be stale. A background refresh mechanism could keep it current. Low priority for initial overhaul.
 - **Bulk currency actions** -- Multi-select in DataGrid for bulk archive/unarchive. DataGrid does not currently support multi-select.
