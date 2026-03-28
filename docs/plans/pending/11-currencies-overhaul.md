@@ -66,10 +66,10 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
 1. **Top-level DataGrid** showing ALL currencies from `db.manifestMarkets` (all chain-cached markets) merged with `db.currencies` (user's local currency records). Columns:
    - Name (from coin metadata or parsed from coinType)
    - Ticker/Symbol
-   - Total Supply (from MarketInfo, fetched on-demand or cached in manifestMarkets)
-   - Treasury Balance (optional -- amount held in any treasury for this coin type)
+   - Total Supply (from ManifestMarket.totalSupply, cached during discoverMarkets)
    - Creator (resolved to character name via manifestCharacters)
    - Status (Mine/Authorized/Public based on whether user is creator/authorized/neither)
+   - Fee (basis points, from ManifestMarket.feeBps)
    - Archived (hidden column, filterable)
 
 2. **Archive toggle** in the toolbar -- same pattern as PrivateMaps.tsx. Archived currencies hidden by default, toggle to show.
@@ -104,7 +104,7 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
 | Treasury page scope | Keep `/treasury` for treasury-wallet management only | Treasuries (shared wallets) are a distinct concept from currencies. Removing the currency section from Treasury.tsx simplifies it. |
 | Wallet connect pattern | Use ConnectWalletButton from WalletConnect.tsx | Matches existing pattern in Standings.tsx. Show ConnectWalletButton in place of "Create" button when wallet disconnected. |
 | Market.tsx disposition | Delete after merging into Currencies.tsx | All Market.tsx functionality (order book, SSU link) moves into the Currencies detail panel. File is fully subsumed. |
-| Treasury.tsx currency section | Remove (lines ~416-527) | Currency creation and CurrencyManagement move to Currencies.tsx. TreasuryDetail and treasury creation stay. |
+| Treasury.tsx currency section | Remove lines 416-527 (JSX) + 711-1363 (CurrencyManagement) + 1506-1627 (CreateCurrencyForm + formatTokenAmount) | Currency creation and CurrencyManagement move to Currencies.tsx. Lines 1-414 (Treasury component + treasury state) and 530-709 (TreasuryDetail) stay. StatusBanner (line 1367-1413), StatBox (line 1415-1428), and FormField (line 1491-1504) are also used by the treasury section and must stay or be shared. |
 | Order book placement | Expandable section in detail panel | The order book is per-currency context -- it belongs in the selected currency's detail view, not as a separate page. |
 
 ## Implementation Phases
@@ -115,24 +115,27 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
 2. Build a `UnifiedCurrencyRow` type that merges ManifestMarket + CurrencyRecord data:
    ```
    interface UnifiedCurrencyRow {
-     id: string;             // manifestMarket.id or currency.id
-     marketId: string;       // Market<T> object ID
+     id: string;             // manifestMarket.id or CurrencyRecord.id (for unsynced local currencies)
      coinType: string;
-     symbol: string;
-     name: string;
-     totalSupply?: number;
-     creator: string;
-     creatorName?: string;
-     status: "mine" | "authorized" | "public";
-     archived: boolean;
+     symbol: string;         // parsed from coinType: last segment, strip _TOKEN suffix
+     name: string;           // from CurrencyRecord.name if exists, else "{symbol} Token"
+     totalSupply?: number;   // from ManifestMarket.totalSupply (cached)
+     creator: string;        // from ManifestMarket.creator
+     creatorName?: string;   // resolved from db.manifestCharacters
+     feeBps: number;         // from ManifestMarket.feeBps
+     status: "mine" | "authorized" | "public";  // based on suiAddress match
+     archived: boolean;      // from CurrencyRecord._archived if linked
      currencyRecordId?: string;  // link to db.currencies for local actions
+     packageId: string;      // from ManifestMarket.packageId
+     decimals: number;       // from CurrencyRecord.decimals if linked, else 9
    }
    ```
-3. Use `useLiveQuery` to reactively query `db.manifestMarkets` and `db.currencies`. Build the merged rows in a `useMemo` join.
-4. Define DataGrid columns: Symbol, Name, Total Supply, Creator, Status. All text columns use `excelFilterFn` from ColumnFilter.
-5. Add toolbar with: global search, archive toggle button, create button (or ConnectWalletButton when disconnected), refresh button to re-run `discoverMarkets()`.
-6. Implement row click handler that sets `selectedCurrencyId` state.
-7. No detail panel yet in this phase -- just the grid.
+3. Use `useLiveQuery` to reactively query `db.manifestMarkets` and `db.currencies`. Build the merged rows in a `useMemo` join -- key on `coinType` since both tables share this field (ManifestMarket.coinType and CurrencyRecord.coinType). The join is a full outer join: a row appears if it exists in either table. Currencies in `db.currencies` without a matching `manifestMarket` entry (e.g., newly created currencies not yet discovered by manifest sync) still appear in the grid with available local data. ManifestMarket entries without a matching CurrencyRecord appear as "public" currencies.
+4. The page does NOT require an active character to render the DataGrid. All markets are public chain data from manifestMarkets. The `status` column needs `suiAddress` from `useActiveCharacter` -- when no character is selected, all rows show "public" status. Admin actions in the detail panel require a character.
+5. Define DataGrid columns: Symbol, Name, Total Supply, Fee (bps), Creator, Status. Text columns (Symbol, Name, Creator, Status) use `excelFilterFn`. Numeric columns (Total Supply, Fee) use `enableColumnFilter: false`.
+6. Add toolbar with: global search, archive toggle button, create button (or ConnectWalletButton when disconnected), refresh button to re-run `discoverMarkets()`.
+7. Implement row click handler that sets `selectedCurrencyId` state. Use DataGrid's `selectedRowId` and `onRowClick` props (already supported, see DataGrid.tsx lines 34-36).
+8. No detail panel yet in this phase -- just the grid.
 
 ### Phase 2: Currency Detail Panel
 
@@ -142,13 +145,13 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
 4. Wire the detail panel to appear below the DataGrid when a row is selected.
 5. Include admin actions (mint, burn, authorize, fees) from CurrencyManagement.
 6. Include order book DataGrid (sell listings + buy orders) from MarketDetail.
-7. Move shared utilities (`formatTokenAmount`, `formatPrice`, `StatBox`, `AdminToggle`, `AdminPanel`, `FormField`) into the new file or a shared location.
+7. Move shared utilities into Currencies.tsx as local functions (same pattern as Market.tsx and Treasury.tsx): `formatTokenAmount` (from both files), `formatPrice` (from Market.tsx), `StatBox`, `AdminToggle`, `AdminPanel`, `FormField`. These are small, view-specific helpers -- no need for a separate shared file.
 
 ### Phase 3: Create Form + Archive + Wallet Connect
 
-1. Move `CreateCurrencyForm` from Treasury.tsx into Currencies.tsx.
+1. Move `CreateCurrencyForm` component (Treasury.tsx lines 1506-1615) and the `handleCreateCurrency` function (Treasury.tsx lines 199-277) into Currencies.tsx. The handler calls `buildPublishToken` and `parsePublishResult` from `@tehfrontier/chain-shared`, uses `signAndExecute` from `useDAppKit()`, and writes to `db.currencies.add()`.
 2. Change the default decimals from `useState(9)` to `useState(2)` in the create form.
-3. Implement the create button logic: show `ConnectWalletButton` when `!account`, show the "Create" button when connected.
+3. Implement the create button logic: replace the current plain text "EVE Vault not connected" (Treasury.tsx line 1594) with `ConnectWalletButton` from `@/components/WalletConnect`. Pattern: `{account ? <CreateButton /> : <ConnectWalletButton />}` matching Standings.tsx lines 704-705.
 4. Move archive/unarchive logic: `handleArchiveCurrency` from Treasury.tsx. Add archive button per-row or in the detail panel toolbar.
 5. Add the archive toggle button in the DataGrid toolbar (same pattern as PrivateMaps.tsx).
 6. Ensure the grid filters out archived currencies by default and shows them when toggle is active.
@@ -163,10 +166,18 @@ A single page at `/currencies` replaces both `/markets` and the currency-managem
    - Keep `treasuryRoute` as-is.
 2. In `Sidebar.tsx`:
    - Replace the "Markets" nav item: change `to` from `/markets` to `/currencies`, change `label` from "Markets" to "Currencies". Keep `Coins` icon.
-3. In `Treasury.tsx`:
-   - Remove the entire "Coin Creation Section" (the `<section>` starting around line 417).
-   - Remove: `CreateCurrencyForm`, `CurrencyManagement`, `StatusBanner` (if only used by currency section), all currency-related state (`currencies`, `filteredCurrencies`, `showArchived`, `creating`, `symbol`, `tokenName`, `description`, `decimals`, `selectedCurrencyId`, `buildStatus`, `buildError`), the `syncMarkets` callback and effect, and `handleCreateCurrency`, `handleArchiveCurrency`.
-   - Keep: Treasury management section (treasury selector, create treasury, TreasuryDetail), the `StatBox`/utility functions if still needed by TreasuryDetail.
+3. In `Treasury.tsx` (1628 lines total):
+   - Remove the "Coin Creation Section" JSX (`<section>` at line 417 through line 527).
+   - Remove `CurrencyManagement` component (lines 711-1363) and `CreateCurrencyForm` (lines 1506-1615).
+   - Remove `AdminToggle` (lines 1430-1474) -- only used by CurrencyManagement.
+   - Remove `AdminPanel` (lines 1476-1489) -- only used by CurrencyManagement.
+   - Remove `formatTokenAmount` (lines 1619-1627) -- only used by CurrencyManagement.
+   - Remove currency-related state from the `Treasury` component: `currencies`, `filteredCurrencies`, `showArchived`, `creating`, `symbol`, `tokenName`, `description`, `decimals`, `selectedCurrencyId`, the `syncMarkets` callback and its useEffect, `handleCreateCurrency`, `handleArchiveCurrency`.
+   - **Keep** `buildStatus` and `buildError` state -- also used by `handleCreateTreasury` (line 287) and StatusBanner (line 322). Simplify the `isProcessing` guard (line 89-90) from `buildStatus === "building" || "minting" || "burning"` to just `buildStatus === "building"` since "minting"/"burning" states only came from currency management. Also simplify the `BuildStatus` type to remove "minting" and "burning" variants.
+   - Remove currency-related imports: `discoverMarkets`, `buildPublishToken`, `parsePublishResult`, `getCoinMetadata`, `CurrencyRecord`, `Archive`, `ArchiveRestore`, `Package`, `Plus`.
+   - **Keep**: `StatusBanner` (lines 1367-1413) -- used by treasury creation at line 322. `StatBox` (lines 1415-1428) -- used by TreasuryDetail (not currently, but may be needed). `FormField` (lines 1491-1504) -- used by TreasuryDetail admin address input.
+   - **Keep**: Treasury component lines 1-414 (Treasury function + treasury state + treasury JSX), TreasuryDetail (lines 530-709), and all treasury-related state/imports.
+   - Net effect: Treasury.tsx shrinks from ~1628 lines to ~600 lines.
 4. Delete `apps/periscope/src/views/Market.tsx`.
 5. Remove the `LazyMarket` import and `MarketPage` wrapper from router.tsx.
 6. Verify all imports in other files that reference Market.tsx or Treasury.tsx currency exports are updated.
