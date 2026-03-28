@@ -20,6 +20,7 @@ import type {
 	LogOffset,
 	LogSession,
 	ManifestCharacter,
+	ManifestExchangePair,
 	ManifestLocation,
 	ManifestMapLocation,
 	ManifestMarket,
@@ -131,6 +132,9 @@ class PeriscopeDB extends Dexie {
 
 	// Treasury
 	treasuries!: EntityTable<TreasuryRecord, "id">;
+
+	// Exchange pairs (OrderBook discovery cache)
+	manifestExchangePairs!: EntityTable<ManifestExchangePair, "id">;
 
 	constructor() {
 		super("frontier-periscope");
@@ -574,9 +578,10 @@ class PeriscopeDB extends Dexie {
 			manifestPrivateMapsV2: "id, name, creator, mode, registryId, tenant, cachedAt, _archived",
 		});
 
-		// V32: Treasury -- shared multi-user wallet for holding Coin<T> balances
+		// V32: Treasury + Exchange pairs
 		this.version(32).stores({
-			treasuries: "id, owner",
+			treasuries: "id, owner, coinType",
+			manifestExchangePairs: "id, coinTypeA, coinTypeB, cachedAt",
 		});
 	}
 }
