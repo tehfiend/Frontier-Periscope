@@ -1,4 +1,7 @@
+import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { Transaction } from "@mysten/sui/transactions";
+import { getObjectJson, listDynamicFieldsGql } from "./graphql-queries";
+import type { OrderBookInfo, OrderInfo } from "./types";
 
 export interface CreatePairParams {
 	packageId: string;
@@ -107,4 +110,91 @@ export function buildCancelAsk(params: CancelOrderParams): Transaction {
 	});
 
 	return tx;
+}
+
+// ── Query Functions ────────────────────────────────────────────────────────
+
+/**
+ * Fetch an order book's details by object ID.
+ * Parses coin type parameters from the on-chain type repr and reads
+ * fee_bps, bid_count, ask_count from the object fields.
+ */
+export async function queryOrderBook(
+	client: SuiGraphQLClient,
+	bookObjectId: string,
+): Promise<OrderBookInfo | null> {
+	try {
+		const obj = await getObjectJson(client, bookObjectId);
+		if (!obj.json) return null;
+
+		const fields = obj.json;
+		const typeRepr = obj.type ?? "";
+
+		// Extract coin types from "PKG::exchange::OrderBook<CoinTypeA, CoinTypeB>"
+		const match = typeRepr.match(/::exchange::OrderBook<(.+),\s*(.+)>$/);
+		const coinTypeA = match ? match[1].trim() : "";
+		const coinTypeB = match ? match[2].trim() : "";
+
+		return {
+			objectId: bookObjectId,
+			coinTypeA,
+			coinTypeB,
+			bidCount: Number(fields.bid_count ?? 0),
+			askCount: Number(fields.ask_count ?? 0),
+			feeBps: Number(fields.fee_bps ?? 0),
+		};
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Enumerate all bid and ask orders from an order book's dynamic fields.
+ * Orders are stored as dynamic fields keyed by BidKey/AskKey structs.
+ * Follows the same pagination pattern as queryMarketListings.
+ */
+export async function queryOrders(
+	client: SuiGraphQLClient,
+	bookObjectId: string,
+): Promise<OrderInfo[]> {
+	const orders: OrderInfo[] = [];
+
+	try {
+		let cursor: string | null = null;
+		let hasMore = true;
+
+		while (hasMore) {
+			const page = await listDynamicFieldsGql(client, bookObjectId, {
+				cursor,
+				limit: 50,
+			});
+
+			for (const df of page.entries) {
+				const isBid = df.nameType.includes("BidKey");
+				const isAsk = df.nameType.includes("AskKey");
+				if (!isBid && !isAsk) continue;
+
+				const fields = df.valueJson as Record<string, unknown> | undefined;
+				if (!fields) continue;
+
+				const nameObj = df.nameJson as Record<string, unknown> | null;
+				const orderId = nameObj ? Number(nameObj.order_id ?? 0) : 0;
+
+				orders.push({
+					orderId: Number(fields.order_id ?? orderId),
+					owner: String(fields.owner ?? ""),
+					price: Number(fields.price ?? 0),
+					amount: Number(fields.amount ?? 0),
+					isBid,
+				});
+			}
+
+			hasMore = page.hasNextPage;
+			cursor = page.cursor;
+		}
+	} catch {
+		// Return whatever we've collected so far
+	}
+
+	return orders;
 }
