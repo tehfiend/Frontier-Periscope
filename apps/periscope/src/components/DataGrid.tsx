@@ -10,7 +10,7 @@ import {
 	getSortedRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
-import { ChevronDown, ChevronUp, ChevronsUpDown, Search, X } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Search, X } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { ColumnFilter } from "./ColumnFilter";
 
@@ -34,6 +34,8 @@ interface DataGridProps<T> {
 	selectedRowId?: string;
 	/** Callback when a row is clicked (optional). */
 	onRowClick?: (rowId: string) => void;
+	/** When provided, renders a download button that exports filtered rows. */
+	onExport?: (rows: T[]) => void;
 }
 
 export function DataGrid<T>({
@@ -46,6 +48,7 @@ export function DataGrid<T>({
 	enableSearch = true,
 	selectedRowId,
 	onRowClick,
+	onExport,
 }: DataGridProps<T>) {
 	const [sorting, setSorting] = useState<SortingState>([]);
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -110,6 +113,16 @@ export function DataGrid<T>({
 					</button>
 				)}
 				{actions}
+				{onExport && (
+					<button
+						type="button"
+						onClick={() => onExport(table.getFilteredRowModel().rows.map((r) => r.original))}
+						className="flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+						title="Export CSV"
+					>
+						<Download size={14} />
+					</button>
+				)}
 			</div>
 
 			{/* Table */}
@@ -163,22 +176,23 @@ export function DataGrid<T>({
 							</tr>
 						) : (
 							table.getRowModel().rows.map((row) => {
-							const isSelected = selectedRowId != null && row.id === selectedRowId;
-							return (
-								<tr
-									key={row.id}
-									onClick={onRowClick ? () => onRowClick(row.id) : undefined}
-									className={`border-b border-zinc-800/30 transition-colors hover:bg-zinc-800/30 ${
-										onRowClick ? "cursor-pointer" : ""
-									} ${isSelected ? "bg-cyan-900/20 border-l-2 border-l-cyan-500" : ""}`}
-								>
-									{row.getVisibleCells().map((cell) => (
-										<td key={cell.id} className="px-3 py-2 text-zinc-300">
-											{flexRender(cell.column.columnDef.cell, cell.getContext())}
-										</td>
-									))}
-								</tr>
-							); })
+								const isSelected = selectedRowId != null && row.id === selectedRowId;
+								return (
+									<tr
+										key={row.id}
+										onClick={onRowClick ? () => onRowClick(row.id) : undefined}
+										className={`border-b border-zinc-800/30 transition-colors hover:bg-zinc-800/30 ${
+											onRowClick ? "cursor-pointer" : ""
+										} ${isSelected ? "bg-cyan-900/20 border-l-2 border-l-cyan-500" : ""}`}
+									>
+										{row.getVisibleCells().map((cell) => (
+											<td key={cell.id} className="px-3 py-2 text-zinc-300">
+												{flexRender(cell.column.columnDef.cell, cell.getContext())}
+											</td>
+										))}
+									</tr>
+								);
+							})
 						)}
 					</tbody>
 				</table>

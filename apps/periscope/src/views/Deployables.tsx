@@ -18,6 +18,7 @@ import {
 	crossReferencePrivateMapLocations,
 } from "@/chain/manifest";
 import type { OwnedAssembly } from "@/chain/queries";
+import { AddToMapDialog } from "@/components/AddToMapDialog";
 import { CopyAddress } from "@/components/CopyAddress";
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { EditableCell } from "@/components/EditableCell";
@@ -27,9 +28,9 @@ import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPan
 import type { AssemblyStatus, Celestial, DeployableIntel, SolarSystem } from "@/db/types";
 import { PLANET_TYPE_NAMES, ensureCelestialsLoaded } from "@/lib/celestials";
 import { FUEL_CRITICAL_HOURS, FUEL_WARNING_HOURS } from "@/lib/constants";
+import { type CsvColumn, exportToCsv } from "@/lib/csv";
 import { formatLocation } from "@/lib/format";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import { Link } from "@tanstack/react-router";
 import {
 	AlertTriangle,
 	AppWindow,
@@ -41,7 +42,6 @@ import {
 	Package,
 	Puzzle,
 	RefreshCw,
-	Settings2,
 	Telescope,
 	Trash2,
 	User,
@@ -278,6 +278,19 @@ export function Deployables() {
 		return map;
 	}, [systems]);
 
+	// ── Market Currency Lookup ───────────────────────────────────────────────
+	const manifestMarkets = useLiveQuery(() => db.manifestMarkets.toArray(), []) ?? [];
+	const currencyByMarketId = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const m of manifestMarkets) {
+			// Extract ticker from coinType (e.g. "0xabc::token::TOKEN" -> "TOKEN")
+			const parts = m.coinType.split("::");
+			const ticker = parts.length >= 3 ? parts[parts.length - 1] : m.coinType;
+			map.set(m.id, ticker);
+		}
+		return map;
+	}, [manifestMarkets]);
+
 	// ── Contacts / Standings ─────────────────────────────────────────────────
 	const contacts = useContacts();
 
@@ -313,6 +326,7 @@ export function Deployables() {
 	const [syncStatus, setSyncStatus] = useState<string | null>(null);
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [deployTarget, setDeployTarget] = useState<StructureRow | null>(null);
+	const [addToMapTarget, setAddToMapTarget] = useState<StructureRow | null>(null);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [revokingId, setRevokingId] = useState<string | null>(null);
 	const { revoke: executeRevoke } = useExtensionRevoke();
@@ -714,8 +728,12 @@ export function Deployables() {
 			{
 				id: "extension",
 				accessorFn: (d) => {
-					const info = classifyExtension(d.extensionType, tenant as TenantId);
 					const extConfig = extensionConfigMap.get(d.objectId);
+					const info = classifyExtension(
+						d.extensionType,
+						tenant as TenantId,
+						extConfig?.publishedPackageId,
+					);
 					if (extConfig?.registryName) return `${info.status} (${extConfig.registryName})`;
 					return info.status;
 				},
@@ -724,8 +742,12 @@ export function Deployables() {
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
-					const info = classifyExtension(r.extensionType, tenant as TenantId);
 					const extConfig = extensionConfigMap.get(r.objectId);
+					const info = classifyExtension(
+						r.extensionType,
+						tenant as TenantId,
+						extConfig?.publishedPackageId,
+					);
 
 					const actionLabel =
 						info.status === "periscope-outdated"
@@ -736,7 +758,18 @@ export function Deployables() {
 
 					return (
 						<div className="flex items-center gap-1.5">
-							{info.status === "default" && <span className="text-xs text-zinc-600">None</span>}
+							{info.status === "default" &&
+								(r.ownership === "mine" ? (
+									<button
+										type="button"
+										onClick={() => setDeployTarget(r)}
+										className="text-xs text-cyan-400 hover:text-cyan-300"
+									>
+										Deploy
+									</button>
+								) : (
+									<span className="text-xs text-zinc-600">--</span>
+								))}
 							{info.status === "periscope" && (
 								<>
 									<Telescope size={14} className="text-cyan-500" />
@@ -763,19 +796,8 @@ export function Deployables() {
 									<span className="text-xs text-amber-400">Custom</span>
 								</>
 							)}
-							{r.ownership === "mine" && (
+							{r.ownership === "mine" && info.status !== "default" && (
 								<div className="ml-auto flex items-center gap-1">
-									{/* Configure button for standings extensions */}
-									{info.status === "periscope" && extConfig && (
-										<button
-											type="button"
-											onClick={() => setDeployTarget(r)}
-											className="rounded px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-											title="Configure extension"
-										>
-											<Settings2 size={10} className="inline" />
-										</button>
-									)}
 									<button
 										type="button"
 										onClick={() => setDeployTarget(r)}
@@ -788,6 +810,16 @@ export function Deployables() {
 						</div>
 					);
 				},
+			},
+			{
+				id: "currency",
+				accessorFn: (d) => {
+					const extConfig = extensionConfigMap.get(d.objectId);
+					return extConfig?.marketId ? (currencyByMarketId.get(extConfig.marketId) ?? "") : "";
+				},
+				header: "Currency",
+				size: 100,
+				filterFn: excelFilterFn,
 			},
 			{
 				id: "location",
@@ -806,6 +838,7 @@ export function Deployables() {
 							systems={systems}
 							systemNames={systemNames}
 							onSave={handleSaveLocation}
+							onAddToMap={setAddToMapTarget}
 						/>
 					);
 				},
@@ -813,9 +846,13 @@ export function Deployables() {
 			{
 				id: "parent",
 				accessorFn: (d) => {
-					if (d.parentId) return parentLabels.get(d.parentId) ?? "";
-					// Network nodes with no parent show themselves
-					if (d.assemblyType.toLowerCase().includes("node")) return d.label;
+					if (d.parentId) {
+						return `${parentLabels.get(d.parentId) ?? ""} ${d.parentId}`;
+					}
+					// Network nodes with no parent show themselves (include both IDs for filtering)
+					if (d.assemblyType.toLowerCase().includes("node")) {
+						return `${d.label} ${d.id} ${d.objectId}`;
+					}
 					return "";
 				},
 				header: "Parent",
@@ -974,6 +1011,7 @@ export function Deployables() {
 			handleSaveParent,
 			handleRemove,
 			extensionConfigMap,
+			currencyByMarketId,
 			data,
 			parentLabels,
 			systems,
@@ -1054,6 +1092,69 @@ export function Deployables() {
 				emptyMessage='No structures found. Click "Sync Chain" to discover your on-chain deployables, or add targets in the Watchlist.'
 				selectedRowId={selectedId ?? undefined}
 				onRowClick={(id) => setSelectedId(id === selectedId ? null : id)}
+				onExport={(rows) => {
+					const csvCols: CsvColumn<StructureRow>[] = [
+						{ header: "Status", accessor: (r) => r.status },
+						{ header: "Name", accessor: (r) => r.label },
+						{ header: "Object ID", accessor: (r) => r.objectId },
+						{ header: "Type", accessor: (r) => r.assemblyType },
+						{
+							header: "Category",
+							accessor: (r) => resolveCategory(r.assemblyType, assemblyCategoryMap),
+						},
+						{
+							header: "Extension",
+							accessor: (r) => {
+								const ext = extensionConfigMap.get(r.objectId);
+								const info = classifyExtension(
+									r.extensionType,
+									tenant as TenantId,
+									ext?.publishedPackageId,
+								);
+								return info.template?.name ?? info.status;
+							},
+						},
+						{
+							header: "Currency",
+							accessor: (r) => {
+								const ext = extensionConfigMap.get(r.objectId);
+								return ext?.marketId ? (currencyByMarketId.get(ext.marketId) ?? "") : "";
+							},
+						},
+						{
+							header: "Location",
+							accessor: (r) => {
+								const sysName = r.systemId ? (systemNames.get(r.systemId) ?? "") : "";
+								return formatLocation(sysName || undefined, r.lPoint);
+							},
+						},
+						{
+							header: "Parent",
+							accessor: (r) => (r.parentId ? (parentLabels.get(r.parentId) ?? "") : ""),
+						},
+						{
+							header: "Standing",
+							accessor: (r) =>
+								r.ownership === "mine"
+									? "Mine"
+									: String(standingByName.get(r.ownerName ?? "") ?? ""),
+						},
+						{
+							header: "Owner",
+							accessor: (r) => r.ownerName ?? r.owner,
+						},
+						{
+							header: "Runtime (hours)",
+							accessor: (r) => {
+								const h = fuelHoursRemaining(r);
+								return h !== null ? Math.round(h * 10) / 10 : "";
+							},
+						},
+						{ header: "Notes", accessor: (r) => r.notes ?? "" },
+						{ header: "Updated", accessor: (r) => r.updatedAt },
+					];
+					exportToCsv(rows, csvCols, "structures");
+				}}
 				actions={
 					<>
 						{/* Quick filters */}
@@ -1105,6 +1206,9 @@ export function Deployables() {
 				row={data.find((d) => d.id === selectedId) ?? null}
 				systemNames={systemNames}
 				onSaveNotes={handleSaveNotes}
+				onDeploy={(row) => setDeployTarget(row)}
+				onConfigure={(row) => setDeployTarget(row)}
+				onAddToMap={(row) => setAddToMapTarget(row)}
 				onReset={handleRevoke}
 				isResetting={
 					revokingId != null && revokingId === data.find((d) => d.id === selectedId)?.objectId
@@ -1124,6 +1228,10 @@ export function Deployables() {
 					tenant={tenant as TenantId}
 					onClose={() => setDeployTarget(null)}
 				/>
+			)}
+
+			{addToMapTarget && (
+				<AddToMapDialog structureRow={addToMapTarget} onClose={() => setAddToMapTarget(null)} />
 			)}
 		</div>
 	);
@@ -1157,11 +1265,13 @@ function LocationEditor({
 	systems,
 	systemNames,
 	onSave,
+	onAddToMap,
 }: {
 	row: StructureRow;
 	systems: SolarSystem[];
 	systemNames: Map<number, string>;
 	onSave: (row: StructureRow, systemId: number | undefined, lPoint: string | undefined) => void;
+	onAddToMap?: (row: StructureRow) => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const [selectedSystem, setSelectedSystem] = useState<number | null>(row.systemId ?? null);
@@ -1264,9 +1374,15 @@ function LocationEditor({
 				>
 					{"\u2014"}
 				</button>
-				<Link to="/private-maps" className="text-[10px] text-cyan-500 hover:text-cyan-400">
-					Add to map
-				</Link>
+				{onAddToMap && (
+					<button
+						type="button"
+						onClick={() => onAddToMap(row)}
+						className="text-[10px] text-cyan-500 hover:text-cyan-400"
+					>
+						Add to map
+					</button>
+				)}
 			</div>
 		);
 	}
