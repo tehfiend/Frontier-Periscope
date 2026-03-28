@@ -501,6 +501,19 @@ export interface ManifestMarket {
 	// No tenant -- market packageId is shared across tenants
 }
 
+export interface ManifestExchangePair {
+	/** OrderBook shared object ID */
+	id: string;
+	/** Full coin type A */
+	coinTypeA: string;
+	/** Full coin type B */
+	coinTypeB: string;
+	/** Fee in basis points */
+	feeBps: number;
+	/** When this entry was last cached */
+	cachedAt: string;
+}
+
 export interface ManifestRegistry {
 	/** StandingsRegistry object ID */
 	id: string;

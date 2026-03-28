@@ -20,6 +20,7 @@ import type {
 	LogOffset,
 	LogSession,
 	ManifestCharacter,
+	ManifestExchangePair,
 	ManifestLocation,
 	ManifestMapLocation,
 	ManifestMarket,
@@ -127,6 +128,9 @@ class PeriscopeDB extends Dexie {
 
 	// Structure Extension Configs (standings-based)
 	structureExtensionConfigs!: EntityTable<StructureExtensionConfig, "id">;
+
+	// Exchange pairs (OrderBook discovery cache)
+	manifestExchangePairs!: EntityTable<ManifestExchangePair, "id">;
 
 	constructor() {
 		super("frontier-periscope");
@@ -568,6 +572,11 @@ class PeriscopeDB extends Dexie {
 			subscribedRegistries: "id, name, ticker, creator, tenant, subscribedAt, _archived",
 			manifestPrivateMaps: "id, name, creator, tenant, cachedAt, _archived",
 			manifestPrivateMapsV2: "id, name, creator, mode, registryId, tenant, cachedAt, _archived",
+		});
+
+		// V32: Exchange pairs -- OrderBook discovery cache for Currencies view
+		this.version(32).stores({
+			manifestExchangePairs: "id, coinTypeA, coinTypeB, cachedAt",
 		});
 	}
 }

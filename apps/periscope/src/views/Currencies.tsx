@@ -1,4 +1,3 @@
-import { useSuiClient } from "@/hooks/useSuiClient";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -6,6 +5,7 @@ import {
 	Archive,
 	ArchiveRestore,
 	ChevronDown,
+	ChevronUp,
 	Flame,
 	Loader2,
 	Package,
@@ -13,21 +13,22 @@ import {
 	RefreshCw,
 	Send,
 	Settings,
-	ShoppingBag,
-	Store,
 	UserMinus,
 	UserPlus,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { TenantId } from "@/chain/config";
-import { discoverMarkets } from "@/chain/manifest";
+import { syncCurrenciesFromManifest } from "@/chain/currency-sync";
+import { discoverExchangePairs, fetchExchangeOrders } from "@/chain/exchange-queries";
 import { CopyAddress } from "@/components/CopyAddress";
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
+import { ConnectWalletButton } from "@/components/WalletConnect";
 import { db, notDeleted } from "@/db";
-import type { CurrencyRecord } from "@/db/types";
+import type { CurrencyRecord, ManifestExchangePair, ManifestMarket } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import {
 	buildAddAuthorized,
 	buildBurn,
@@ -35,10 +36,7 @@ import {
 	buildMint,
 	buildPublishToken,
 	buildRemoveAuthorized,
-	buildSetSsuMarketLink,
 	buildUpdateFee,
-	discoverSsuUnifiedConfig,
-	getCoinMetadata,
 	getContractAddresses,
 	parsePublishResult,
 	queryMarketBuyOrders,
@@ -48,18 +46,35 @@ import {
 	queryOwnedCoins,
 	queryTreasuryCap,
 } from "@tehfrontier/chain-shared";
-import type { MarketBuyOrder, MarketInfo, MarketSellListing } from "@tehfrontier/chain-shared";
+import type {
+	MarketBuyOrder,
+	MarketInfo,
+	MarketSellListing,
+	OrderInfo,
+} from "@tehfrontier/chain-shared";
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 type BuildStatus = "idle" | "building" | "minting" | "burning" | "done" | "error";
 
-/** Assembly type names that are SSU-class structures */
-const SSU_TYPE_NAMES = new Set([
-	"Smart Storage Unit",
-	"Heavy Storage",
-	"Protocol Depot",
-	"Portable Storage",
-	"Gatekeeper",
-]);
+interface UnifiedCurrencyRow {
+	id: string;
+	coinType: string;
+	symbol: string;
+	name: string;
+	totalSupply?: number;
+	treasuryBalance?: string;
+	creator: string;
+	creatorName?: string;
+	feeBps: number;
+	status: "mine" | "authorized" | "public";
+	archived: boolean;
+	currencyRecordId?: string;
+	treasuryId?: string;
+	packageId: string;
+	decimals: number;
+	marketId?: string;
+}
 
 interface MarketOrderRow {
 	id: string;
@@ -74,140 +89,314 @@ interface MarketOrderRow {
 	timestamp: Date;
 }
 
-export function Market() {
+interface ExchangeOrderRow {
+	id: string;
+	side: "Bid" | "Ask";
+	price: number;
+	amount: number;
+	owner: string;
+	ownerName?: string;
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+
+function formatTokenAmount(raw: bigint, decimals: number): string {
+	if (decimals === 0) return raw.toString();
+	const divisor = 10n ** BigInt(decimals);
+	const whole = raw / divisor;
+	const frac = raw % divisor;
+	if (frac === 0n) return whole.toString();
+	const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
+	return `${whole}.${fracStr}`;
+}
+
+function formatPrice(raw: bigint, decimals: number): string {
+	if (decimals === 0) return raw.toLocaleString("en-US");
+	const divisor = 10n ** BigInt(decimals);
+	const whole = raw / divisor;
+	const frac = raw % divisor;
+	const wholeStr = whole.toLocaleString("en-US");
+	if (frac === 0n) return wholeStr;
+	const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
+	return `${wholeStr}.${fracStr}`;
+}
+
+// ── Shared UI Components ─────────────────────────────────────────────────────
+
+function StatusBanner({
+	status,
+	error,
+	onDismiss,
+}: {
+	status: BuildStatus;
+	error: string;
+	onDismiss: () => void;
+}) {
+	const messages: Record<string, string> = {
+		building: "Building and publishing token on-chain...",
+		minting: "Minting tokens...",
+		burning: "Burning tokens...",
+		error: "Operation failed",
+	};
+
+	const isError = status === "error";
+
+	return (
+		<div
+			className={`rounded-lg border p-4 ${
+				isError ? "border-red-900/50 bg-red-950/20" : "border-cyan-900/50 bg-cyan-950/20"
+			}`}
+		>
+			<div className="flex items-center gap-2">
+				{isError ? (
+					<AlertCircle size={16} className="text-red-400" />
+				) : (
+					<Loader2 size={16} className="animate-spin text-cyan-400" />
+				)}
+				<span className={`text-sm ${isError ? "text-red-300" : "text-cyan-300"}`}>
+					{messages[status] ?? "Processing..."}
+				</span>
+			</div>
+			{error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+			{isError && (
+				<button
+					type="button"
+					onClick={onDismiss}
+					className="mt-2 text-xs text-zinc-400 hover:text-zinc-300"
+				>
+					Dismiss
+				</button>
+			)}
+		</div>
+	);
+}
+
+function StatBox({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-2.5">
+			<p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">{label}</p>
+			<p className="mt-0.5 text-sm font-semibold text-zinc-200">{value}</p>
+		</div>
+	);
+}
+
+function AdminToggle({
+	active,
+	onClick,
+	icon,
+	label,
+	color,
+}: {
+	active: boolean;
+	onClick: () => void;
+	icon: React.ReactNode;
+	label: string;
+	color: "cyan" | "red" | "amber" | "purple";
+}) {
+	const colorMap = {
+		cyan: {
+			active: "bg-cyan-600/20 text-cyan-400",
+			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
+		},
+		red: {
+			active: "bg-red-600/20 text-red-400",
+			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
+		},
+		amber: {
+			active: "bg-amber-600/20 text-amber-400",
+			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
+		},
+		purple: {
+			active: "bg-purple-600/20 text-purple-400",
+			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
+		},
+	};
+
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+				active ? colorMap[color].active : colorMap[color].idle
+			}`}
+		>
+			{icon}
+			{label}
+		</button>
+	);
+}
+
+function AdminPanel({ title, children }: { title: string; children: React.ReactNode }) {
+	return (
+		<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
+			<h4 className="mb-3 text-xs font-medium text-zinc-400">{title}</h4>
+			{children}
+		</div>
+	);
+}
+
+function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+	return (
+		<div className="block">
+			<span className="mb-1 block text-xs text-zinc-500">{label}</span>
+			{children}
+		</div>
+	);
+}
+
+// ── Main Component ───────────────────────────────────────────────────────────
+
+export function Currencies() {
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
+	const walletAddress = account?.address;
 	const tenant = useActiveTenant();
-	const currencies = useLiveQuery(() => db.currencies.filter(notDeleted).toArray());
-	const [showArchived, setShowArchived] = useState(false);
-	const filteredCurrencies = useMemo(
-		() => (currencies ?? []).filter((c) => !c._archived || showArchived),
-		[currencies, showArchived],
-	);
+	const suiClient = useSuiClient();
 
+	// ── Data from IndexedDB ──────────────────────────────────────────────────
+	const manifestMarkets = useLiveQuery(() => db.manifestMarkets.toArray()) ?? [];
+	const currencies = useLiveQuery(() => db.currencies.filter(notDeleted).toArray()) ?? [];
+	const manifestChars = useLiveQuery(() => db.manifestCharacters.toArray()) ?? [];
+	const exchangePairs = useLiveQuery(() => db.manifestExchangePairs.toArray()) ?? [];
+
+	// ── State ────────────────────────────────────────────────────────────────
+	const [showArchived, setShowArchived] = useState(false);
+	const [selectedCurrencyId, setSelectedCurrencyId] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
 	const [symbol, setSymbol] = useState("");
 	const [tokenName, setTokenName] = useState("");
 	const [description, setDescription] = useState("");
-	const [decimals, setDecimals] = useState(9);
+	const [decimals, setDecimals] = useState(2);
 	const [buildStatus, setBuildStatus] = useState<BuildStatus>("idle");
 	const [buildError, setBuildError] = useState("");
-	const [selectedId, setSelectedId] = useState<string | null>(null);
-
-	// Auto-select first non-archived market when list loads and nothing is selected.
-	// Only re-run when filteredCurrencies changes -- omit selectedId to avoid a set/dep loop.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: selectedId intentionally omitted to prevent infinite loop
-	useEffect(() => {
-		if (!selectedId && filteredCurrencies.length > 0) {
-			setSelectedId(filteredCurrencies[0].id);
-		}
-	}, [filteredCurrencies]);
-
-	const suiClient = useSuiClient();
+	const [isSyncing, setIsSyncing] = useState(false);
 
 	const isProcessing =
 		buildStatus === "building" || buildStatus === "minting" || buildStatus === "burning";
 
-	// Sync currencies from manifest cache -- reads cached Market<T> objects
-	const syncMarkets = useCallback(async () => {
-		if (!suiAddress) return;
-
-		try {
-			// Refresh manifest cache first
-			await discoverMarkets(suiClient);
-
-			// Read from cached manifest
-			const markets = await db.manifestMarkets.toArray();
-			const validMarketIds = new Set<string>();
-
-			for (const market of markets) {
-				const walletAddr = account?.address;
-				if (
-					market.creator !== suiAddress &&
-					!market.authorized.includes(suiAddress) &&
-					(!walletAddr ||
-						(market.creator !== walletAddr && !market.authorized.includes(walletAddr)))
-				) {
-					continue;
-				}
-
-				validMarketIds.add(market.id);
-
-				const existing = await db.currencies.where("coinType").equals(market.coinType).first();
-				if (existing) {
-					if (!existing.marketId) {
-						await db.currencies.update(existing.id, {
-							marketId: market.id,
-						});
-					}
-					continue;
-				}
-
-				const parts = market.coinType.split("::");
-				const packageId = parts[0] ?? "";
-				const moduleName = parts.length >= 2 ? parts[1] : "";
-				const structName = parts.length >= 3 ? parts[2] : moduleName;
-				const sym = structName.replace(/_TOKEN$/, "");
-
-				let coinDecimals = 9;
-				try {
-					const meta = await getCoinMetadata(suiClient, market.coinType);
-					if (meta) coinDecimals = meta.decimals;
-				} catch {
-					// Fall back to 9 if metadata unavailable
-				}
-
-				const now = new Date().toISOString();
-				await db.currencies.add({
-					id: crypto.randomUUID(),
-					symbol: sym,
-					name: `${sym} Token`,
-					description: "",
-					moduleName,
-					coinType: market.coinType,
-					packageId,
-					marketId: market.id,
-					decimals: coinDecimals,
-					createdAt: now,
-					updatedAt: now,
-				});
-			}
-
-			// Remove currencies whose Market is on an old/incompatible package
-			const allCurrencies = await db.currencies.filter(notDeleted).toArray();
-			for (const c of allCurrencies) {
-				if (c.marketId && !validMarketIds.has(c.marketId)) {
-					await db.currencies.delete(c.id);
-				}
-			}
-		} catch {
-			// Silent -- sync is best-effort
+	// ── Character name lookup ────────────────────────────────────────────────
+	const charNameMap = useMemo(() => {
+		const m = new Map<string, string>();
+		for (const c of manifestChars) {
+			if (c.suiAddress && c.name) m.set(c.suiAddress, c.name);
 		}
-	}, [suiAddress, suiClient, account?.address]);
+		return m;
+	}, [manifestChars]);
 
+	// ── Build unified rows ───────────────────────────────────────────────────
+	const unifiedRows = useMemo<UnifiedCurrencyRow[]>(() => {
+		// Index currencies by coinType for fast join
+		const currencyByCoinType = new Map<string, CurrencyRecord>();
+		for (const c of currencies) {
+			currencyByCoinType.set(c.coinType, c);
+		}
+
+		// Index manifest markets by coinType
+		const marketByCoinType = new Map<string, ManifestMarket>();
+		for (const m of manifestMarkets) {
+			marketByCoinType.set(m.coinType, m);
+		}
+
+		// Collect all unique coinTypes
+		const allCoinTypes = new Set<string>();
+		for (const m of manifestMarkets) allCoinTypes.add(m.coinType);
+		for (const c of currencies) allCoinTypes.add(c.coinType);
+
+		const rows: UnifiedCurrencyRow[] = [];
+
+		for (const coinType of allCoinTypes) {
+			const market = marketByCoinType.get(coinType);
+			const currency = currencyByCoinType.get(coinType);
+
+			// Determine status relative to the active character
+			let status: "mine" | "authorized" | "public" = "public";
+			if (suiAddress && market) {
+				if (market.creator === suiAddress || market.creator === walletAddress) {
+					status = "mine";
+				} else if (
+					market.authorized.includes(suiAddress) ||
+					(walletAddress && market.authorized.includes(walletAddress))
+				) {
+					status = "authorized";
+				}
+			} else if (suiAddress && currency && !market) {
+				// Currency record without manifest market -- likely user-created
+				status = "mine";
+			}
+
+			const archived = currency?._archived ?? false;
+			const creator = market?.creator ?? "";
+			const parts = coinType.split("::");
+			const pkgId = currency?.packageId ?? parts[0] ?? "";
+			const structName = parts.length >= 3 ? parts[2] : (parts[1] ?? "");
+			const sym = currency?.symbol ?? structName.replace(/_TOKEN$/, "");
+
+			rows.push({
+				id: currency?.id ?? market?.id ?? coinType,
+				coinType,
+				symbol: sym,
+				name: currency?.name ?? `${sym} Token`,
+				totalSupply: market?.totalSupply,
+				creator,
+				creatorName: charNameMap.get(creator),
+				feeBps: market?.feeBps ?? 0,
+				status,
+				archived,
+				currencyRecordId: currency?.id,
+				packageId: pkgId,
+				decimals: currency?.decimals ?? 9,
+				marketId: currency?.marketId ?? market?.id,
+			});
+		}
+
+		return rows;
+	}, [manifestMarkets, currencies, suiAddress, walletAddress, charNameMap]);
+
+	// ── Filtered rows (archive toggle) ───────────────────────────────────────
+	const filteredRows = useMemo(
+		() => unifiedRows.filter((r) => !r.archived || showArchived),
+		[unifiedRows, showArchived],
+	);
+
+	// ── Sync ─────────────────────────────────────────────────────────────────
+	const handleSync = useCallback(async () => {
+		setIsSyncing(true);
+		try {
+			if (suiAddress) {
+				await syncCurrenciesFromManifest(suiClient, suiAddress, walletAddress);
+			}
+			await discoverExchangePairs(suiClient);
+		} catch {
+			// Silent
+		} finally {
+			setIsSyncing(false);
+		}
+	}, [suiClient, suiAddress, walletAddress]);
+
+	// Auto-sync on mount
 	useEffect(() => {
-		syncMarkets();
-	}, [syncMarkets]);
+		handleSync();
+	}, [handleSync]);
 
-	if (!activeCharacter || !suiAddress) {
-		return (
-			<div className="flex h-full items-center justify-center">
-				<div className="text-center">
-					<Store size={48} className="mx-auto mb-4 text-zinc-700" />
-					<p className="text-sm text-zinc-500">Select a character to manage markets</p>
-					<a
-						href="/manifest"
-						className="mt-2 inline-block text-xs text-cyan-400 hover:text-cyan-300"
-					>
-						Go to Manifest &rarr;
-					</a>
-				</div>
-			</div>
-		);
-	}
+	// ── Auto-select first row ────────────────────────────────────────────────
+	// biome-ignore lint/correctness/useExhaustiveDependencies: selectedCurrencyId intentionally omitted
+	useEffect(() => {
+		if (!selectedCurrencyId && filteredRows.length > 0) {
+			setSelectedCurrencyId(filteredRows[0].id);
+		}
+	}, [filteredRows]);
 
+	// ── Archive toggle ───────────────────────────────────────────────────────
+	const handleArchive = async (row: UnifiedCurrencyRow, archived: boolean) => {
+		if (row.currencyRecordId) {
+			await db.currencies.update(row.currencyRecordId, { _archived: archived });
+			if (archived && selectedCurrencyId === row.id) setSelectedCurrencyId(null);
+		}
+	};
+
+	// ── Create currency ──────────────────────────────────────────────────────
 	async function handleCreateCurrency() {
 		if (!symbol.trim() || !tokenName.trim()) return;
 
@@ -222,9 +411,7 @@ export function Market() {
 				decimals,
 			});
 
-			const result = await signAndExecute({
-				transaction: tx,
-			});
+			const result = await signAndExecute({ transaction: tx });
 
 			const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
 			const fullResult = await suiClient.waitForTransaction({
@@ -243,10 +430,7 @@ export function Market() {
 				modules?: string[];
 			}> = changedObjects.map((change) => {
 				if (change.outputState === "PackageWrite" && change.idOperation === "Created") {
-					return {
-						type: "published",
-						packageId: change.objectId,
-					};
+					return { type: "published", packageId: change.objectId };
 				}
 				return {
 					type: change.idOperation === "Created" ? "created" : "mutated",
@@ -288,86 +472,97 @@ export function Market() {
 		}
 	}
 
-	const selectedCurrency = filteredCurrencies.find((c) => c.id === selectedId);
+	// ── DataGrid columns ─────────────────────────────────────────────────────
+	const columns = useMemo<ColumnDef<UnifiedCurrencyRow, unknown>[]>(
+		() => [
+			{
+				accessorKey: "symbol",
+				header: "Symbol",
+				size: 80,
+				filterFn: excelFilterFn,
+				cell: ({ row }) => <span className="font-medium text-zinc-100">{row.original.symbol}</span>,
+			},
+			{
+				accessorKey: "name",
+				header: "Name",
+				size: 150,
+				filterFn: excelFilterFn,
+			},
+			{
+				accessorKey: "totalSupply",
+				header: "Total Supply",
+				size: 120,
+				enableColumnFilter: false,
+				cell: ({ row }) => {
+					const { totalSupply, decimals } = row.original;
+					if (totalSupply == null) return <span className="text-zinc-600">--</span>;
+					return (
+						<span className="font-mono text-xs">
+							{formatTokenAmount(BigInt(totalSupply), decimals)}
+						</span>
+					);
+				},
+			},
+			{
+				accessorKey: "feeBps",
+				header: "Fee (bps)",
+				size: 80,
+				enableColumnFilter: false,
+				cell: ({ row }) => <span className="font-mono text-xs">{row.original.feeBps}</span>,
+			},
+			{
+				id: "creator",
+				accessorFn: (row) => row.creatorName ?? row.creator,
+				header: "Creator",
+				size: 120,
+				filterFn: excelFilterFn,
+				cell: ({ row }) => {
+					const { creator, creatorName } = row.original;
+					if (creatorName) {
+						return (
+							<span className="text-xs" title={creator}>
+								{creatorName}
+							</span>
+						);
+					}
+					if (!creator) return <span className="text-zinc-600">--</span>;
+					return (
+						<CopyAddress
+							address={creator}
+							sliceStart={6}
+							sliceEnd={4}
+							className="text-xs text-zinc-500"
+						/>
+					);
+				},
+			},
+			{
+				accessorKey: "status",
+				header: "Status",
+				size: 90,
+				filterFn: excelFilterFn,
+				cell: ({ row }) => {
+					const s = row.original.status;
+					const colorMap = {
+						mine: "bg-cyan-900/40 text-cyan-400",
+						authorized: "bg-amber-900/40 text-amber-400",
+						public: "bg-zinc-800 text-zinc-500",
+					};
+					return (
+						<span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${colorMap[s]}`}>
+							{s}
+						</span>
+					);
+				},
+			},
+		],
+		[],
+	);
 
-	const handleArchiveCurrency = async (id: string, archived: boolean) => {
-		await db.currencies.update(id, { _archived: archived });
-		if (archived && selectedId === id) setSelectedId(null);
-	};
+	const selectedRow = filteredRows.find((r) => r.id === selectedCurrencyId);
 
 	return (
-		<div className="flex h-full flex-col gap-4 p-4">
-			{/* Header bar: title + market selector + create */}
-			<div className="flex items-center gap-3">
-				<span className="shrink-0 text-sm text-zinc-400">Market:</span>
-				<div className="relative max-w-sm min-w-0 flex-1">
-					<select
-						value={selectedId ?? ""}
-						onChange={(e) => setSelectedId(e.target.value || null)}
-						className="w-full appearance-none rounded-lg border border-zinc-700 bg-zinc-800 py-2 pl-3 pr-8 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
-					>
-						<option value="">Select a market...</option>
-						{filteredCurrencies.map((c) => (
-							<option key={c.id} value={c.id}>
-								{c.symbol} -- {c.name}
-								{c.marketId ? "" : " (no market)"}
-								{c._archived ? " (archived)" : ""}
-							</option>
-						))}
-					</select>
-					<ChevronDown
-						size={14}
-						className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500"
-					/>
-				</div>
-
-				{/* Archive toggle */}
-				<button
-					type="button"
-					onClick={() => setShowArchived(!showArchived)}
-					title={showArchived ? "Hide archived" : "Show archived"}
-					className={`shrink-0 rounded-lg p-2 text-xs transition-colors ${
-						showArchived
-							? "bg-amber-900/30 text-amber-400"
-							: "text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
-					}`}
-				>
-					<Archive size={14} />
-				</button>
-
-				{/* Archive / Unarchive selected currency */}
-				{selectedCurrency && (
-					<button
-						type="button"
-						onClick={() => handleArchiveCurrency(selectedCurrency.id, !selectedCurrency._archived)}
-						title={selectedCurrency._archived ? "Unarchive" : "Archive"}
-						className="shrink-0 rounded-lg p-2 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-400"
-					>
-						{selectedCurrency._archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-					</button>
-				)}
-
-				{/* Create button / form toggle */}
-				{creating ? (
-					<button
-						type="button"
-						onClick={() => setCreating(false)}
-						className="shrink-0 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-					>
-						Cancel
-					</button>
-				) : (
-					<button
-						type="button"
-						onClick={() => setCreating(true)}
-						className="flex shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-zinc-700 px-5 py-2 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
-					>
-						<Plus size={14} />
-						Create
-					</button>
-				)}
-			</div>
-
+		<div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
 			{/* Status Banner */}
 			{buildStatus !== "idle" && buildStatus !== "done" && (
 				<StatusBanner
@@ -393,7 +588,7 @@ export function Market() {
 				</div>
 			)}
 
-			{/* Create Currency Form (inline, shown when creating) */}
+			{/* Create Currency Form */}
 			{creating && (
 				<CreateCurrencyForm
 					symbol={symbol}
@@ -411,50 +606,116 @@ export function Market() {
 				/>
 			)}
 
-			{/* Market detail (fills remaining space) */}
-			<div className="min-h-0 flex-1">
-				{selectedCurrency ? (
-					<MarketDetail
-						currency={selectedCurrency}
-						tenant={tenant}
-						suiAddress={suiAddress}
-						onStatusChange={(s, e) => {
-							setBuildStatus(s);
-							setBuildError(e ?? "");
-						}}
-						onMarketCreated={syncMarkets}
-					/>
-				) : (
-					<div className="flex h-full items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/30">
-						<div className="text-center">
-							<ShoppingBag size={32} className="mx-auto mb-2 text-zinc-700" />
-							<p className="text-sm text-zinc-500">
-								{(currencies ?? []).length > 0
-									? "Select a market to view orders"
-									: "No markets yet -- create one to get started"}
-							</p>
-						</div>
-					</div>
-				)}
-			</div>
+			{/* DataGrid */}
+			<DataGrid
+				columns={columns}
+				data={filteredRows}
+				keyFn={(r) => r.id}
+				searchPlaceholder="Search currencies..."
+				emptyMessage="No currencies found"
+				selectedRowId={selectedCurrencyId ?? undefined}
+				onRowClick={(id) => setSelectedCurrencyId(id)}
+				actions={
+					<>
+						{/* Archive toggle */}
+						<button
+							type="button"
+							onClick={() => setShowArchived(!showArchived)}
+							title={showArchived ? "Hide archived" : "Show archived"}
+							className={`shrink-0 rounded-lg p-2 text-xs transition-colors ${
+								showArchived
+									? "bg-amber-900/30 text-amber-400"
+									: "text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
+							}`}
+						>
+							<Archive size={14} />
+						</button>
+
+						{/* Archive / Unarchive selected */}
+						{selectedRow?.currencyRecordId && (
+							<button
+								type="button"
+								onClick={() => selectedRow && handleArchive(selectedRow, !selectedRow.archived)}
+								title={selectedRow.archived ? "Unarchive" : "Archive"}
+								className="shrink-0 rounded-lg p-2 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-400"
+							>
+								{selectedRow.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+							</button>
+						)}
+
+						{/* Create / Connect */}
+						{creating ? (
+							<button
+								type="button"
+								onClick={() => setCreating(false)}
+								className="shrink-0 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+							>
+								Cancel
+							</button>
+						) : account ? (
+							<button
+								type="button"
+								onClick={() => setCreating(true)}
+								className="flex shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-zinc-700 px-5 py-2 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
+							>
+								<Plus size={14} />
+								Create
+							</button>
+						) : (
+							<ConnectWalletButton />
+						)}
+
+						{/* Refresh */}
+						<button
+							type="button"
+							onClick={handleSync}
+							disabled={isSyncing}
+							title="Refresh currencies"
+							className="shrink-0 rounded-lg p-2 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-400 disabled:opacity-50"
+						>
+							<RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
+						</button>
+					</>
+				}
+			/>
+
+			{/* Detail Panel */}
+			{selectedRow && (
+				<CurrencyDetail
+					row={selectedRow}
+					tenant={tenant}
+					suiAddress={suiAddress ?? ""}
+					charNameMap={charNameMap}
+					exchangePairs={exchangePairs}
+					onStatusChange={(s, e) => {
+						setBuildStatus(s);
+						setBuildError(e ?? "");
+					}}
+					onSync={handleSync}
+				/>
+			)}
 		</div>
 	);
 }
 
-// ── Market Detail (expanded view) ────────────────────────────────────
+// ── Currency Detail Panel ────────────────────────────────────────────────────
 
-function MarketDetail({
-	currency,
+function CurrencyDetail({
+	row,
 	tenant,
 	suiAddress,
+	charNameMap,
+	exchangePairs,
 	onStatusChange,
-	onMarketCreated,
+	onSync,
 }: {
-	currency: CurrencyRecord;
+	row: UnifiedCurrencyRow;
 	tenant: TenantId;
 	suiAddress: string;
+	charNameMap: Map<string, string>;
+	exchangePairs: ManifestExchangePair[];
 	onStatusChange: (status: BuildStatus, error?: string) => void;
-	onMarketCreated: () => void;
+	onSync: () => void;
 }) {
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
@@ -481,34 +742,38 @@ function MarketDetail({
 	const [showFees, setShowFees] = useState(false);
 	const [feeBps, setFeeBps] = useState("");
 	const [feeRecipient, setFeeRecipient] = useState("");
-	const [linkSsuId, setLinkSsuId] = useState("");
 
-	const isPublished = !!currency.packageId;
-	const hasMarket = !!currency.marketId;
+	// Exchange section
+	const [exchangeOrders, setExchangeOrders] = useState<Map<string, OrderInfo[]>>(new Map());
+	const [loadingExchange, setLoadingExchange] = useState(false);
+	const [expandedPair, setExpandedPair] = useState<string | null>(null);
+
+	const hasMarket = !!row.marketId;
 	const addresses = getContractAddresses(tenant);
 	const marketPkg = addresses.market?.packageId;
 	const isCreator = marketInfo?.creator === suiAddress;
 	const isAuthorized = isCreator || (marketInfo?.authorized ?? []).includes(suiAddress);
 
-	// Address -> character name lookup from manifest
-	const manifestChars = useLiveQuery(() => db.manifestCharacters.toArray()) ?? [];
-	const charNameMap = useMemo(() => {
-		const m = new Map<string, string>();
-		for (const c of manifestChars) {
-			if (c.suiAddress && c.name) m.set(c.suiAddress, c.name);
-		}
-		return m;
-	}, [manifestChars]);
-
-	// SSU location lookup: ssuObjectId -> system name
-	// Sources: public manifest, private map cache, local deployables
+	// SSU location lookup for market orders
 	const manifestLocs = useLiveQuery(() => db.manifestLocations.toArray()) ?? [];
 	const mapLocs = useLiveQuery(() => db.manifestMapLocations.toArray()) ?? [];
 	const systems = useLiveQuery(() => db.solarSystems.toArray()) ?? [];
 	const allDeployables = useLiveQuery(() => db.deployables.toArray()) ?? [];
+
+	const SSU_TYPE_NAMES = useMemo(
+		() =>
+			new Set([
+				"Smart Storage Unit",
+				"Heavy Storage",
+				"Protocol Depot",
+				"Portable Storage",
+				"Gatekeeper",
+			]),
+		[],
+	);
 	const allSsus = useMemo(
 		() => allDeployables.filter((d) => SSU_TYPE_NAMES.has(d.assemblyType)),
-		[allDeployables],
+		[allDeployables, SSU_TYPE_NAMES],
 	);
 
 	const ssuLocationMap = useMemo(() => {
@@ -518,14 +783,10 @@ function MarketDetail({
 		}
 
 		const loc = new Map<string, string>();
-
-		// Public manifest locations (LocationRevealedEvent)
 		for (const m of manifestLocs) {
 			const name = sysNames.get(m.solarsystem);
 			if (name) loc.set(m.id, m.lPoint ? `${name} ${m.lPoint}` : name);
 		}
-
-		// Private map cache (already decrypted, no re-decrypt needed)
 		for (const m of mapLocs) {
 			if (m.structureId && m.solarSystemId && !loc.has(m.structureId)) {
 				const name = sysNames.get(m.solarSystemId);
@@ -535,22 +796,25 @@ function MarketDetail({
 				}
 			}
 		}
-
-		// Local deployables (user's own structures)
 		for (const d of allSsus) {
 			if (d.objectId && d.systemId && !loc.has(d.objectId)) {
 				const name = sysNames.get(d.systemId);
 				if (name) loc.set(d.objectId, d.lPoint ? `${name} ${d.lPoint}` : name);
 			}
 		}
-
 		return loc;
 	}, [manifestLocs, mapLocs, systems, allSsus]);
 
-	// Trade nodes for "Link to SSU" action
-	const tradeNodes = useLiveQuery(() => db.tradeNodes.toArray()) ?? [];
+	// Exchange pairs for this currency
+	const currencyPairs = useMemo(
+		() => exchangePairs.filter((p) => p.coinTypeA === row.coinType || p.coinTypeB === row.coinType),
+		[exchangePairs, row.coinType],
+	);
 
-	// Unified order rows for the DataGrid
+	// Market order rows
+	const coinDecimals = row.decimals;
+	const coinSymbol = row.symbol;
+
 	const orderRows = useMemo<MarketOrderRow[]>(() => {
 		const rows: MarketOrderRow[] = [];
 		for (const l of sellListings) {
@@ -583,9 +847,6 @@ function MarketDetail({
 		}
 		return rows;
 	}, [sellListings, buyOrders, itemNameMap, charNameMap, ssuLocationMap]);
-
-	const coinDecimals = currency.decimals;
-	const coinSymbol = currency.symbol;
 
 	const orderColumns = useMemo<ColumnDef<MarketOrderRow, unknown>[]>(
 		() => [
@@ -685,10 +946,7 @@ function MarketDetail({
 					const d = row.original.timestamp;
 					return (
 						<span className="whitespace-nowrap text-xs text-zinc-500" title={d.toLocaleString()}>
-							{d.toLocaleDateString([], {
-								month: "numeric",
-								day: "numeric",
-							})}{" "}
+							{d.toLocaleDateString([], { month: "numeric", day: "numeric" })}{" "}
 							{d.toLocaleTimeString([], {
 								hour: "2-digit",
 								minute: "2-digit",
@@ -702,18 +960,79 @@ function MarketDetail({
 		[coinDecimals, coinSymbol],
 	);
 
-	// Load market info + orders when market is selected
-	useEffect(() => {
-		if (hasMarket && currency.marketId) {
-			loadAll();
-		}
-	}, [currency.marketId, hasMarket]);
+	// Exchange order columns
+	const exchangeColumns = useMemo<ColumnDef<ExchangeOrderRow, unknown>[]>(
+		() => [
+			{
+				accessorKey: "side",
+				header: "Side",
+				size: 56,
+				filterFn: excelFilterFn,
+				cell: ({ row }) => {
+					const s = row.original.side;
+					return (
+						<span
+							className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+								s === "Bid" ? "bg-emerald-900/40 text-emerald-400" : "bg-red-900/40 text-red-400"
+							}`}
+						>
+							{s}
+						</span>
+					);
+				},
+			},
+			{
+				accessorKey: "price",
+				header: "Price",
+				size: 100,
+				enableColumnFilter: false,
+				cell: ({ row }) => <span className="font-mono text-xs">{row.original.price}</span>,
+			},
+			{
+				accessorKey: "amount",
+				header: "Amount",
+				size: 100,
+				enableColumnFilter: false,
+				cell: ({ row }) => (
+					<span className="font-mono text-xs">{row.original.amount.toLocaleString()}</span>
+				),
+			},
+			{
+				id: "owner",
+				accessorFn: (r) => r.ownerName ?? r.owner,
+				header: "Owner",
+				size: 120,
+				filterFn: excelFilterFn,
+				cell: ({ row }) => {
+					const { owner, ownerName } = row.original;
+					if (ownerName) {
+						return (
+							<span className="text-xs" title={owner}>
+								{ownerName}
+							</span>
+						);
+					}
+					return (
+						<CopyAddress
+							address={owner}
+							sliceStart={6}
+							sliceEnd={4}
+							className="text-xs text-zinc-500"
+						/>
+					);
+				},
+			},
+		],
+		[],
+	);
+
+	// ── Data loading ─────────────────────────────────────────────────────────
 
 	async function loadMarketInfo() {
-		if (!currency.marketId) return;
+		if (!row.marketId) return;
 		setLoadingMarket(true);
 		try {
-			const info = await queryMarketDetails(suiClient, currency.marketId);
+			const info = await queryMarketDetails(suiClient, row.marketId);
 			setMarketInfo(info);
 			if (info?.totalSupply != null) {
 				setTotalSupply(BigInt(info.totalSupply));
@@ -726,28 +1045,26 @@ function MarketDetail({
 	}
 
 	async function loadOrders() {
-		if (!currency.marketId || !marketPkg) return;
+		if (!row.marketId || !marketPkg) return;
 		setLoadingOrders(true);
 		try {
 			const [sells, buys] = await Promise.all([
-				queryMarketListings(suiClient, currency.marketId, marketPkg),
-				queryMarketBuyOrders(suiClient, currency.marketId, marketPkg),
+				queryMarketListings(suiClient, row.marketId, marketPkg),
+				queryMarketBuyOrders(suiClient, row.marketId, marketPkg),
 			]);
 			setSellListings(sells);
 			setBuyOrders(buys);
 
-			// Resolve item names for all typeIds in the orders
+			// Resolve item names
 			const typeIds = new Set<number>();
 			for (const l of sells) typeIds.add(l.typeId);
 			for (const o of buys) typeIds.add(o.typeId);
 			if (typeIds.size > 0) {
 				const names = new Map<number, string>();
-				// First pass: check local gameTypes DB
 				const dbTypes = await db.gameTypes.bulkGet([...typeIds]);
 				for (const t of dbTypes) {
 					if (t) names.set(t.id, t.name);
 				}
-				// Second pass: fetch missing from World API
 				const missing = [...typeIds].filter((id) => !names.has(id));
 				await Promise.all(
 					missing.map(async (id) => {
@@ -778,10 +1095,10 @@ function MarketDetail({
 	}
 
 	async function loadOwnedCoins() {
-		if (!currency.coinType) return;
+		if (!row.coinType) return;
 		setLoadingCoins(true);
 		try {
-			const coins = await queryOwnedCoins(suiClient, suiAddress, currency.coinType);
+			const coins = await queryOwnedCoins(suiClient, suiAddress, row.coinType);
 			setOwnedCoins(coins);
 		} catch {
 			setOwnedCoins([]);
@@ -790,17 +1107,45 @@ function MarketDetail({
 		}
 	}
 
+	async function loadExchangeOrders(pairId: string) {
+		setLoadingExchange(true);
+		try {
+			const orders = await fetchExchangeOrders(suiClient, pairId);
+			setExchangeOrders((prev) => new Map(prev).set(pairId, orders));
+		} catch {
+			setExchangeOrders((prev) => new Map(prev).set(pairId, []));
+		} finally {
+			setLoadingExchange(false);
+		}
+	}
+
+	// Load market info + orders on selection change
+	// biome-ignore lint/correctness/useExhaustiveDependencies: loadAll changes every render
+	useEffect(() => {
+		if (hasMarket && row.marketId) {
+			loadAll();
+		}
+		// Reset admin panels on selection change
+		setShowMint(false);
+		setShowBurn(false);
+		setShowAuth(false);
+		setShowFees(false);
+	}, [row.marketId, hasMarket]);
+
+	// ── Admin handlers ───────────────────────────────────────────────────────
+
 	async function handleMint() {
-		if (!mintAmount || !currency.marketId || !currency.coinType || !marketPkg) return;
+		if (!mintAmount || !row.marketId || !row.coinType || !marketPkg) return;
 
 		onStatusChange("minting");
 		try {
-			const amount = BigInt(Math.floor(Number(mintAmount) * 10 ** currency.decimals));
+			const amount = BigInt(Math.floor(Number(mintAmount) * 10 ** row.decimals));
 			const recipient = mintRecipient.trim() || suiAddress;
+
 			const tx = buildMint({
 				packageId: marketPkg,
-				marketId: currency.marketId,
-				coinType: currency.coinType,
+				marketId: row.marketId,
+				coinType: row.coinType,
 				amount: Number(amount),
 				recipient,
 				senderAddress: suiAddress,
@@ -818,14 +1163,14 @@ function MarketDetail({
 	}
 
 	async function handleBurn() {
-		if (!burnCoinId || !currency.marketId || !currency.coinType || !marketPkg) return;
+		if (!burnCoinId || !row.marketId || !row.coinType || !marketPkg) return;
 
 		onStatusChange("burning");
 		try {
 			const tx = buildBurn({
 				packageId: marketPkg,
-				marketId: currency.marketId,
-				coinType: currency.coinType,
+				marketId: row.marketId,
+				coinType: row.coinType,
 				coinObjectId: burnCoinId,
 				senderAddress: suiAddress,
 			});
@@ -841,14 +1186,14 @@ function MarketDetail({
 	}
 
 	async function handleAddAuthorized() {
-		if (!authAddress.trim() || !currency.marketId || !currency.coinType || !marketPkg) return;
+		if (!authAddress.trim() || !row.marketId || !row.coinType || !marketPkg) return;
 
 		onStatusChange("building");
 		try {
 			const tx = buildAddAuthorized({
 				packageId: marketPkg,
-				marketId: currency.marketId,
-				coinType: currency.coinType,
+				marketId: row.marketId,
+				coinType: row.coinType,
 				addr: authAddress.trim(),
 				senderAddress: suiAddress,
 			});
@@ -863,14 +1208,14 @@ function MarketDetail({
 	}
 
 	async function handleRemoveAuthorized(addr: string) {
-		if (!currency.marketId || !currency.coinType || !marketPkg) return;
+		if (!row.marketId || !row.coinType || !marketPkg) return;
 
 		onStatusChange("building");
 		try {
 			const tx = buildRemoveAuthorized({
 				packageId: marketPkg,
-				marketId: currency.marketId,
-				coinType: currency.coinType,
+				marketId: row.marketId,
+				coinType: row.coinType,
 				addr,
 				senderAddress: suiAddress,
 			});
@@ -884,14 +1229,14 @@ function MarketDetail({
 	}
 
 	async function handleUpdateFee() {
-		if (!currency.marketId || !currency.coinType || !marketPkg) return;
+		if (!row.marketId || !row.coinType || !marketPkg) return;
 
 		onStatusChange("building");
 		try {
 			const tx = buildUpdateFee({
 				packageId: marketPkg,
-				marketId: currency.marketId,
-				coinType: currency.coinType,
+				marketId: row.marketId,
+				coinType: row.coinType,
 				feeBps: Number(feeBps) || 0,
 				feeRecipient: feeRecipient.trim() || suiAddress,
 				senderAddress: suiAddress,
@@ -907,129 +1252,80 @@ function MarketDetail({
 	}
 
 	async function handleDiscoverMarket() {
-		if (!currency.coinType || !marketPkg) return;
+		if (!row.coinType || !marketPkg) return;
 
 		onStatusChange("building");
 		try {
-			const markets = await queryMarkets(suiClient, marketPkg, currency.coinType);
+			const markets = await queryMarkets(suiClient, marketPkg, row.coinType);
 
 			if (markets.length === 0) {
-				const treasuryCapId = await queryTreasuryCap(suiClient, currency.coinType, suiAddress);
+				const treasuryCapId = await queryTreasuryCap(suiClient, row.coinType, suiAddress);
 				if (!treasuryCapId) {
 					onStatusChange(
 						"error",
 						"No Market found on-chain and no TreasuryCap" +
 							" in your wallet. The Market may have been" +
-							" created with a different market package" +
-							" version.",
+							" created with a different market package version.",
 					);
 					return;
 				}
 
 				const tx = buildCreateMarket({
 					packageId: marketPkg,
-					coinType: currency.coinType,
+					coinType: row.coinType,
 					treasuryCapId,
 					senderAddress: suiAddress,
 				});
 
-				const result = await signAndExecute({
-					transaction: tx,
-				});
+				const result = await signAndExecute({ transaction: tx });
 
 				const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
 				const fullResult = await suiClient.waitForTransaction({
 					digest,
-					include: {
-						effects: true,
-						objectTypes: true,
-					},
+					include: { effects: true, objectTypes: true },
 				});
 				const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
 				const changedObjects = fullTx?.effects?.changedObjects ?? [];
 				const objectTypesMap = fullTx?.objectTypes ?? {};
 
-				let marketId: string | undefined;
+				let newMarketId: string | undefined;
 				for (const change of changedObjects) {
 					const objType = objectTypesMap[change.objectId] ?? "";
 					if (objType.includes("::market::Market<")) {
-						marketId = change.objectId;
+						newMarketId = change.objectId;
 						break;
 					}
 				}
 
-				if (marketId) {
-					await db.currencies.update(currency.id, {
-						marketId,
+				if (newMarketId && row.currencyRecordId) {
+					await db.currencies.update(row.currencyRecordId, {
+						marketId: newMarketId,
 						updatedAt: new Date().toISOString(),
 					});
 				}
 
 				onStatusChange("done");
-				onMarketCreated();
+				onSync();
 				return;
 			}
 
 			const market = markets[0];
-			await db.currencies.update(currency.id, {
-				marketId: market.objectId,
-				updatedAt: new Date().toISOString(),
-			});
-
-			onStatusChange("done");
-			onMarketCreated();
-		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
-		}
-	}
-
-	async function handleLinkToSsu(ssuObjectId: string) {
-		if (!currency.marketId || !currency.coinType) return;
-
-		const ssuUnifiedAddresses = getContractAddresses(tenant).ssuUnified;
-		const ssuUnifiedPkg = ssuUnifiedAddresses?.packageId;
-		if (!ssuUnifiedPkg) return;
-
-		onStatusChange("building");
-		try {
-			const currentConfigId = await discoverSsuUnifiedConfig(
-				suiClient,
-				ssuUnifiedPkg,
-				ssuObjectId,
-			);
-			if (!currentConfigId) {
-				onStatusChange(
-					"error",
-					"No SsuUnifiedConfig found on-chain for this SSU. Deploy the SSU extension first.",
-				);
-				return;
-			}
-
-			const tx = buildSetSsuMarketLink({
-				packageId: ssuUnifiedPkg,
-				ssuConfigId: currentConfigId,
-				marketId: currency.marketId,
-				senderAddress: suiAddress,
-			});
-
-			await signAndExecute({ transaction: tx });
-
-			const tn = tradeNodes.find((t) => t.id === ssuObjectId);
-			if (tn) {
-				await db.tradeNodes.update(tn.id, {
-					marketConfigId: currentConfigId,
+			if (row.currencyRecordId) {
+				await db.currencies.update(row.currencyRecordId, {
+					marketId: market.objectId,
+					updatedAt: new Date().toISOString(),
 				});
 			}
 
 			onStatusChange("done");
-			onMarketCreated();
+			onSync();
 		} catch (err) {
 			onStatusChange("error", err instanceof Error ? err.message : String(err));
 		}
 	}
 
 	return (
-		<div className="flex h-full flex-col gap-4 overflow-y-auto">
+		<div className="flex flex-col gap-4">
 			{/* Market Identity */}
 			<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
 				<div className="mb-4 flex items-center justify-between">
@@ -1039,8 +1335,8 @@ function MarketDetail({
 						</div>
 						<div>
 							<h2 className="text-lg font-bold text-zinc-100">
-								{currency.symbol}
-								<span className="ml-2 text-sm font-normal text-zinc-400">{currency.name}</span>
+								{row.symbol}
+								<span className="ml-2 text-sm font-normal text-zinc-400">{row.name}</span>
 							</h2>
 							{hasMarket ? (
 								<span className="rounded bg-green-500/10 px-1.5 py-0.5 text-xs font-medium text-green-400">
@@ -1066,7 +1362,7 @@ function MarketDetail({
 					)}
 				</div>
 
-				{/* Metadata fields */}
+				{/* Market metadata */}
 				{loadingMarket ? (
 					<div className="flex items-center gap-2 py-4 text-xs text-zinc-500">
 						<Loader2 size={14} className="animate-spin" />
@@ -1074,13 +1370,12 @@ function MarketDetail({
 					</div>
 				) : hasMarket && marketInfo ? (
 					<>
-						{/* Stat boxes */}
 						<div className="mb-4 grid grid-cols-3 gap-3">
 							<StatBox
 								label="Total Supply"
 								value={
 									totalSupply != null
-										? `${formatTokenAmount(totalSupply, currency.decimals)} ${currency.symbol}`
+										? `${formatTokenAmount(totalSupply, row.decimals)} ${row.symbol}`
 										: "--"
 								}
 							/>
@@ -1088,12 +1383,11 @@ function MarketDetail({
 							<StatBox label="Authorized" value={String(marketInfo.authorized.length)} />
 						</div>
 
-						{/* Metadata rows */}
 						<div className="grid grid-cols-2 gap-x-6 gap-y-2 border-t border-zinc-800 pt-3 text-xs">
 							<div>
 								<span className="text-zinc-500">Market ID</span>
 								<CopyAddress
-									address={currency.marketId ?? ""}
+									address={row.marketId ?? ""}
 									sliceStart={12}
 									sliceEnd={6}
 									className="font-mono text-zinc-400"
@@ -1119,7 +1413,7 @@ function MarketDetail({
 							</div>
 							<div className="col-span-2">
 								<span className="text-zinc-500">Coin Type</span>
-								<p className="mt-0.5 truncate font-mono text-zinc-400">{currency.coinType}</p>
+								<p className="mt-0.5 truncate font-mono text-zinc-400">{row.coinType}</p>
 							</div>
 						</div>
 					</>
@@ -1128,7 +1422,7 @@ function MarketDetail({
 				) : null}
 
 				{/* No market -- discover/create prompt */}
-				{isPublished && !hasMarket && (
+				{row.packageId && !hasMarket && (
 					<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
 						<h4 className="mb-2 text-xs font-medium text-amber-400">No Market Linked</h4>
 						<p className="mb-3 text-xs text-zinc-500">
@@ -1143,14 +1437,14 @@ function MarketDetail({
 								Find / Create Market
 							</button>
 						) : (
-							<span className="text-xs text-zinc-500">Connect wallet</span>
+							<ConnectWalletButton />
 						)}
 					</div>
 				)}
 
-				{/* Admin Actions -- always visible for authorized users */}
+				{/* Admin Actions */}
 				{hasMarket && isAuthorized && (
-					<div className="border-t border-zinc-800 pt-3 mt-3">
+					<div className="mt-3 border-t border-zinc-800 pt-3">
 						<div className="flex flex-wrap items-center gap-2">
 							<AdminToggle
 								active={showMint}
@@ -1209,79 +1503,17 @@ function MarketDetail({
 									/>
 								</>
 							)}
-
-							{/* Link Market to SSU -- inline */}
-							<div className="ml-auto flex items-center gap-2">
-								<select
-									value={linkSsuId}
-									onChange={(e) => setLinkSsuId(e.target.value)}
-									className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-200 focus:border-cyan-500 focus:outline-none"
-								>
-									<option value="">Link to SSU...</option>
-									{allSsus.map((ssu) => (
-										<option key={ssu.objectId} value={ssu.objectId}>
-											{ssu.label || `${ssu.objectId.slice(0, 14)}...`}
-											{ssu.systemId ? ` (System ${ssu.systemId})` : ""}
-										</option>
-									))}
-								</select>
-								{account ? (
-									<button
-										type="button"
-										onClick={() => {
-											if (linkSsuId) handleLinkToSsu(linkSsuId);
-										}}
-										disabled={!linkSsuId}
-										className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
-									>
-										Link
-									</button>
-								) : (
-									<span className="text-xs text-zinc-500">Connect wallet to link</span>
-								)}
-							</div>
 						</div>
 					</div>
 				)}
 			</div>
 
-			{/* Order Book */}
-			{hasMarket && (
-				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-					{loadingOrders ? (
-						<div className="flex items-center justify-center gap-2 py-8 text-xs text-zinc-500">
-							<Loader2 size={14} className="animate-spin" />
-							Loading orders...
-						</div>
-					) : (
-						<DataGrid
-							columns={orderColumns}
-							data={orderRows}
-							keyFn={(r) => r.id}
-							searchPlaceholder="Search orders..."
-							emptyMessage="No market orders yet."
-							actions={
-								<button
-									type="button"
-									onClick={loadOrders}
-									disabled={loadingOrders}
-									className="flex shrink-0 items-center gap-1 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-								>
-									<RefreshCw size={12} />
-									Refresh
-								</button>
-							}
-						/>
-					)}
-				</div>
-			)}
-
-			{/* Expanded Admin Panels */}
+			{/* Admin Panels */}
 			{hasMarket && isAuthorized && (showMint || showBurn || showAuth || showFees) && (
 				<div className="space-y-3">
 					{/* Mint Form */}
 					{showMint && (
-						<AdminPanel title={`Mint ${currency.symbol}`}>
+						<AdminPanel title={`Mint ${row.symbol}`}>
 							<div className="space-y-3">
 								<FormField label="Amount">
 									<input
@@ -1310,10 +1542,10 @@ function MarketDetail({
 										disabled={!mintAmount}
 										className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
 									>
-										Mint {currency.symbol}
+										Mint {row.symbol}
 									</button>
 								) : (
-									<span className="text-xs text-zinc-500">EVE Vault not connected</span>
+									<ConnectWalletButton />
 								)}
 							</div>
 						</AdminPanel>
@@ -1321,14 +1553,14 @@ function MarketDetail({
 
 					{/* Burn Form */}
 					{showBurn && (
-						<AdminPanel title={`Burn ${currency.symbol}`}>
+						<AdminPanel title={`Burn ${row.symbol}`}>
 							{loadingCoins ? (
 								<div className="flex items-center gap-2 text-xs text-zinc-500">
 									<Loader2 size={12} className="animate-spin" />
 									Loading your coins...
 								</div>
 							) : ownedCoins.length === 0 ? (
-								<p className="text-xs text-zinc-600">No {currency.symbol} coins in your wallet.</p>
+								<p className="text-xs text-zinc-600">No {row.symbol} coins in your wallet.</p>
 							) : (
 								<div className="space-y-2">
 									<FormField label="Select Coin to Burn">
@@ -1340,7 +1572,7 @@ function MarketDetail({
 											<option value="">Choose a coin...</option>
 											{ownedCoins.map((c) => (
 												<option key={c.objectId} value={c.objectId}>
-													{formatTokenAmount(c.balance, currency.decimals)} {currency.symbol} (
+													{formatTokenAmount(c.balance, row.decimals)} {row.symbol} (
 													{c.objectId.slice(0, 10)}
 													...)
 												</option>
@@ -1357,14 +1589,14 @@ function MarketDetail({
 											Burn Selected Coin
 										</button>
 									) : (
-										<span className="text-xs text-zinc-500">EVE Vault not connected</span>
+										<ConnectWalletButton />
 									)}
 								</div>
 							)}
 						</AdminPanel>
 					)}
 
-					{/* Authorization Form (creator only) */}
+					{/* Authorization Form */}
 					{showAuth && isCreator && (
 						<AdminPanel title="Add Authorized Minter">
 							<div className="space-y-3">
@@ -1388,7 +1620,6 @@ function MarketDetail({
 								</button>
 							</div>
 
-							{/* Current authorized list */}
 							{marketInfo && marketInfo.authorized.length > 0 && (
 								<div className="mt-3 border-t border-zinc-800 pt-3">
 									<p className="mb-1.5 text-xs text-zinc-500">
@@ -1398,9 +1629,7 @@ function MarketDetail({
 										{marketInfo.authorized.map((addr) => (
 											<div key={addr} className="flex items-center justify-between">
 												<span className="font-mono text-xs text-zinc-400">
-													{addr.slice(0, 12)}
-													...
-													{addr.slice(-6)}
+													{addr.slice(0, 12)}...{addr.slice(-6)}
 													{addr === suiAddress && <span className="ml-1 text-cyan-400">(you)</span>}
 												</span>
 												<button
@@ -1419,7 +1648,7 @@ function MarketDetail({
 						</AdminPanel>
 					)}
 
-					{/* Fee Management (creator only) */}
+					{/* Fee Management */}
 					{showFees && isCreator && (
 						<AdminPanel title="Update Fee Configuration">
 							<div className="space-y-3">
@@ -1456,150 +1685,121 @@ function MarketDetail({
 					)}
 				</div>
 			)}
-		</div>
-	);
-}
 
-// ── Shared UI Components ─────────────────────────────────────────────
-
-function StatusBanner({
-	status,
-	error,
-	onDismiss,
-}: {
-	status: BuildStatus;
-	error: string;
-	onDismiss: () => void;
-}) {
-	const messages: Record<string, string> = {
-		building: "Building and publishing token on-chain...",
-		minting: "Minting tokens...",
-		burning: "Burning tokens...",
-		error: "Operation failed",
-	};
-
-	const isError = status === "error";
-
-	return (
-		<div
-			className={`mb-6 rounded-lg border p-4 ${
-				isError ? "border-red-900/50 bg-red-950/20" : "border-cyan-900/50 bg-cyan-950/20"
-			}`}
-		>
-			<div className="flex items-center gap-2">
-				{isError ? (
-					<AlertCircle size={16} className="text-red-400" />
-				) : (
-					<Loader2 size={16} className="animate-spin text-cyan-400" />
-				)}
-				<span className={`text-sm ${isError ? "text-red-300" : "text-cyan-300"}`}>
-					{messages[status] ?? "Processing..."}
-				</span>
-			</div>
-			{error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-			{isError && (
-				<button
-					type="button"
-					onClick={onDismiss}
-					className="mt-2 text-xs text-zinc-400 hover:text-zinc-300"
-				>
-					Dismiss
-				</button>
+			{/* Market Order Book */}
+			{hasMarket && (
+				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+					<h3 className="mb-3 text-sm font-medium text-zinc-300">Market Order Book</h3>
+					{loadingOrders ? (
+						<div className="flex items-center justify-center gap-2 py-8 text-xs text-zinc-500">
+							<Loader2 size={14} className="animate-spin" />
+							Loading orders...
+						</div>
+					) : (
+						<DataGrid
+							columns={orderColumns}
+							data={orderRows}
+							keyFn={(r) => r.id}
+							searchPlaceholder="Search orders..."
+							emptyMessage="No market orders yet."
+							actions={
+								<button
+									type="button"
+									onClick={loadOrders}
+									disabled={loadingOrders}
+									className="flex shrink-0 items-center gap-1 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+								>
+									<RefreshCw size={12} />
+									Refresh
+								</button>
+							}
+						/>
+					)}
+				</div>
 			)}
+
+			{/* Exchange Pairs Section */}
+			<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+				<h3 className="mb-3 text-sm font-medium text-zinc-300">Exchange Pairs</h3>
+				{currencyPairs.length === 0 ? (
+					<p className="text-xs text-zinc-600">No exchange pairs found for this currency.</p>
+				) : (
+					<div className="space-y-2">
+						{currencyPairs.map((pair) => {
+							const isExpanded = expandedPair === pair.id;
+							const pairOrders = exchangeOrders.get(pair.id) ?? [];
+							const otherCoinType =
+								pair.coinTypeA === row.coinType ? pair.coinTypeB : pair.coinTypeA;
+							const otherSymbol =
+								otherCoinType
+									.split("::")
+									.pop()
+									?.replace(/_TOKEN$/, "") ?? otherCoinType;
+
+							const exchangeRows: ExchangeOrderRow[] = pairOrders.map((o) => ({
+								id: `${pair.id}-${o.orderId}`,
+								side: o.isBid ? "Bid" : "Ask",
+								price: o.price,
+								amount: o.amount,
+								owner: o.owner,
+								ownerName: charNameMap.get(o.owner),
+							}));
+
+							return (
+								<div key={pair.id} className="rounded-lg border border-zinc-800 bg-zinc-900/80">
+									<button
+										type="button"
+										onClick={() => {
+											if (isExpanded) {
+												setExpandedPair(null);
+											} else {
+												setExpandedPair(pair.id);
+												if (!exchangeOrders.has(pair.id)) {
+													loadExchangeOrders(pair.id);
+												}
+											}
+										}}
+										className="flex w-full items-center justify-between px-3 py-2 text-left"
+									>
+										<span className="text-xs text-zinc-300">
+											{row.symbol} / {otherSymbol}
+											<span className="ml-2 text-zinc-600">Fee: {pair.feeBps} bps</span>
+										</span>
+										{isExpanded ? (
+											<ChevronUp size={14} className="text-zinc-500" />
+										) : (
+											<ChevronDown size={14} className="text-zinc-500" />
+										)}
+									</button>
+									{isExpanded && (
+										<div className="border-t border-zinc-800 p-3">
+											{loadingExchange ? (
+												<div className="flex items-center gap-2 py-4 text-xs text-zinc-500">
+													<Loader2 size={12} className="animate-spin" />
+													Loading orders...
+												</div>
+											) : (
+												<DataGrid
+													columns={exchangeColumns}
+													data={exchangeRows}
+													keyFn={(r) => r.id}
+													searchPlaceholder="Search exchange orders..."
+													emptyMessage="No orders in this book."
+												/>
+											)}
+										</div>
+									)}
+								</div>
+							);
+						})}
+					</div>
+				)}
+			</div>
 		</div>
 	);
 }
 
-function StatBox({
-	label,
-	value,
-}: {
-	label: string;
-	value: string;
-}) {
-	return (
-		<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-2.5">
-			<p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">{label}</p>
-			<p className="mt-0.5 text-sm font-semibold text-zinc-200">{value}</p>
-		</div>
-	);
-}
-
-function AdminToggle({
-	active,
-	onClick,
-	icon,
-	label,
-	color,
-}: {
-	active: boolean;
-	onClick: () => void;
-	icon: React.ReactNode;
-	label: string;
-	color: "cyan" | "red" | "amber" | "purple";
-}) {
-	const colorMap = {
-		cyan: {
-			active: "bg-cyan-600/20 text-cyan-400",
-			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
-		},
-		red: {
-			active: "bg-red-600/20 text-red-400",
-			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
-		},
-		amber: {
-			active: "bg-amber-600/20 text-amber-400",
-			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
-		},
-		purple: {
-			active: "bg-purple-600/20 text-purple-400",
-			idle: "bg-zinc-800 text-zinc-400 hover:text-zinc-200",
-		},
-	};
-
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-				active ? colorMap[color].active : colorMap[color].idle
-			}`}
-		>
-			{icon}
-			{label}
-		</button>
-	);
-}
-
-function AdminPanel({
-	title,
-	children,
-}: {
-	title: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-3">
-			<h4 className="mb-3 text-xs font-medium text-zinc-400">{title}</h4>
-			{children}
-		</div>
-	);
-}
-
-function FormField({
-	label,
-	children,
-}: {
-	label: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<div className="block">
-			<span className="mb-1 block text-xs text-zinc-500">{label}</span>
-			{children}
-		</div>
-	);
-}
+// ── Create Currency Form ─────────────────────────────────────────────────────
 
 function CreateCurrencyForm({
 	symbol,
@@ -1689,9 +1889,7 @@ function CreateCurrencyForm({
 							)}
 						</button>
 					) : (
-						<span className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-zinc-500">
-							EVE Vault not connected
-						</span>
+						<ConnectWalletButton />
 					)}
 					<button
 						type="button"
@@ -1710,28 +1908,4 @@ function CreateCurrencyForm({
 			</div>
 		</div>
 	);
-}
-
-// ── Utilities ────────────────────────────────────────────────────────
-
-function formatTokenAmount(raw: bigint, decimals: number): string {
-	if (decimals === 0) return raw.toString();
-	const divisor = 10n ** BigInt(decimals);
-	const whole = raw / divisor;
-	const frac = raw % divisor;
-	if (frac === 0n) return whole.toString();
-	const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
-	return `${whole}.${fracStr}`;
-}
-
-/** Format a bigint price with commas in the whole part. */
-function formatPrice(raw: bigint, decimals: number): string {
-	if (decimals === 0) return raw.toLocaleString("en-US");
-	const divisor = 10n ** BigInt(decimals);
-	const whole = raw / divisor;
-	const frac = raw % divisor;
-	const wholeStr = whole.toLocaleString("en-US");
-	if (frac === 0n) return wholeStr;
-	const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
-	return `${wholeStr}.${fracStr}`;
 }
