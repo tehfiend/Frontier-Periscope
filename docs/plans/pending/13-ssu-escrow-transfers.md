@@ -10,7 +10,7 @@ Selling and buying items on SSU markets does not properly move items to and from
 
 The `ssu_unified.move` contract has the correct inventory manipulation functions (`admin_to_escrow`, `admin_from_escrow`, `admin_to_player`, `admin_escrow_to_player`, etc.) that use the world package's `storage_unit` API to move items between inventories. However, these inventory operations are never composed with the market operations in a single transaction. The sell/buy/fill TX builders in `ssu-unified.ts` and `market-standings.ts` only call market functions -- they never include inventory withdrawal or deposit steps.
 
-This plan adds multi-step PTB (Programmable Transaction Block) composition so that sell listings escrow items on creation, buy operations deliver items to the buyer, and cancellations return items from escrow. The fix requires a small Move contract addition (one new function in `ssu_unified.move`) plus TypeScript TX builder and UI changes.
+This plan adds multi-step PTB (Programmable Transaction Block) composition so that sell listings escrow items on creation, buy operations deliver items to the buyer, and cancellations return items from escrow. The fix requires Move contract changes (one new function + switching from owned to shared config objects in `ssu_unified.move`) plus TypeScript TX builder and UI changes.
 
 Note: The extension authorization in the world package's `storage_unit` functions checks that the `Auth` witness type (e.g., `SsuUnifiedAuth`) is registered on the StorageUnit's extension field -- it does NOT check the TX sender's address. The sender authorization in `ssu_unified.move` is a separate layer (`assert_authorized` checks owner/delegate). The `player_to_escrow` and `player_to_owner` functions demonstrate this -- they skip `assert_authorized` but still provide `SsuUnifiedAuth {}` to the storage_unit functions successfully. This means a new `public_escrow_to_self` function can allow any player to withdraw from escrow without needing admin/delegate status, as long as the SsuUnifiedAuth extension is registered on the SSU.
 
@@ -240,13 +240,11 @@ Also add a TS TX builder for the new Move function:
 
 1. In `apps/ssu-dapp/src/components/ListingAdminList.tsx`:
    - Update `handleCancel` to use `buildCancelListingWithReturn` (return items from escrow).
-   - Update `handleUpdate` -- if quantity is reduced, return excess items from escrow; if increased, escrow more items.
+   - Update `handleUpdate` to use `buildUpdateListingWithEscrowDelta` -- if quantity is reduced, return excess items from escrow; if increased, escrow more items.
 
 2. In `apps/ssu-dapp/src/components/EditListingDialog.tsx`:
-   - Update to handle quantity changes with corresponding inventory movements.
-
-3. In `apps/ssu-dapp/src/components/ListingCard.tsx`:
-   - Update buy handler to use composite TX builder.
+   - Pass `oldQuantity` (from listing) to `buildUpdateListingWithEscrowDelta`.
+   - Add ssuConfigId, ssuObjectId, characterObjectId, ssuUnifiedPackageId to the params (same threading as Phase 3).
 
 ## File Summary
 
