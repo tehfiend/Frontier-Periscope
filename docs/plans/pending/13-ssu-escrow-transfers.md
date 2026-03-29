@@ -289,6 +289,8 @@ Also add a TS TX builder for the new Move function:
    - **Option C: Store config fields on the StorageUnit as dynamic fields** -- Eliminate SsuUnifiedConfig as a separate object. Use dynamic fields on the SSU itself. Pros: No ownership issue (StorageUnit is shared). Cons: Invasive change, different storage/query pattern.
    - **Recommendation:** Option A. Shared objects are the standard Sui pattern for objects referenced by multiple users. Gas overhead is negligible for small config objects. The existing `assert_authorized` checks protect mutations.
 
+**Dependency:** This plan depends on Plan 12 (SSU Market Linking) being implemented first. Plan 12 publishes the `ssu_unified` contract and wires up the SSU dapp to read config from chain. This plan modifies the same contract with additional functions and the owned->shared change. Both plans can be combined into a single contract publish.
+
 ## Deferred
 
 - **On-chain escrow enforcement** -- Verifying on-chain that items in escrow match active listings. Currently relies on correct client-side PTB composition. A future contract upgrade could add listing-aware escrow validation.
