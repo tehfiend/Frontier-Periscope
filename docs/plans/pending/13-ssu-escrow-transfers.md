@@ -130,6 +130,7 @@ All four market trade operations atomically compose payment handling with invent
 | Config ownership | Change SsuUnifiedConfig from owned to shared | Non-owner players cannot reference owned objects on Sui, even as `&` immutable references. The buyer calling `buy_and_receive` needs `&SsuUnifiedConfig`. Shared objects are reference-able by anyone while still protected by `assert_authorized` for admin mutations. Standard Sui pattern. Gas overhead negligible for small config objects. |
 | Quantity casting | Accept u64 from market, cast to u32 for storage_unit | Market uses u64 quantities, storage_unit uses u32. Cast with bounds check. Practical item quantities never approach u32 max (4 billion). |
 | buy_and_receive authorization | No admin check -- payment IS the authorization | The function calls `market::buy_from_listing` internally, which handles payment. If buyer doesn't pay enough, the market call aborts and no items move. The `type_id` is read from the listing (not caller input), preventing item type mismatch attacks. This is fundamentally more secure than an unrestricted `public_escrow_to_self` function that any player could call to drain escrow without paying. |
+| Cancel seller constraint | Only the listing creator can cancel | `market::cancel_sell_listing` asserts `listing.seller == ctx.sender()`. Since `escrow_and_list` sets the seller to the calling admin/delegate address, only that same address can later call `cancel_and_unescrow`. A different delegate cannot cancel another delegate's listing. Acceptable for hackathon scope. |
 | Backwards compatibility | None needed | Prototyping phase, no users. Existing owned configs will need to be recreated as shared. |
 
 ## Implementation Phases
@@ -151,24 +152,27 @@ All four market trade operations atomically compose payment handling with invent
    const EQuantityOverflow: u64 = 4;
    ```
 
-3. Change `create_config` (line 116): replace `transfer::transfer(config, ctx.sender())` with `transfer::share_object(config)`.
+3. Update the `SsuUnifiedConfig` struct doc comment (line 15): change "Per-user owned SSU config" to "Shared SSU config" since it will now be a shared object.
 
-4. Change `create_config_with_market` (line 151): same -- `transfer::share_object(config)`.
+4. Change `create_config` (line 116): replace `transfer::transfer(config, ctx.sender())` with `transfer::share_object(config)`.
 
-5. Add composite trade functions after the existing player functions (~line 391):
+5. Change `create_config_with_market` (line 151): same -- `transfer::share_object(config)`.
+
+6. Add composite trade functions after the existing player functions (~line 391):
 
    **`escrow_and_list<T>`** -- admin atomically escrows items + creates listing:
-   - Takes: `config: &SsuUnifiedConfig`, `market: &mut market::market::Market<T>`, `storage_unit: &mut StorageUnit`, `character: &Character`, `ssu_id: ID`, `type_id: u64`, `price_per_unit: u64`, `quantity: u64`, `clock: &Clock`, `ctx: &mut TxContext`
+   - Takes: `config: &SsuUnifiedConfig`, `market: &mut market::market::Market<T>`, `storage_unit: &mut StorageUnit`, `character: &Character`, `type_id: u64`, `price_per_unit: u64`, `quantity: u64`, `clock: &Clock`, `ctx: &mut TxContext`
    - Calls `assert_authorized(config, ctx)`
    - Asserts `quantity <= 0xFFFFFFFF` (EQuantityOverflow)
+   - Reads `ssu_id` from `config.ssu_id` (prevents mismatched SSU IDs)
    - Withdraws items from owner inventory: `storage_unit::withdraw_item` + `storage_unit::deposit_to_open_inventory`
-   - Creates listing: `market::market::post_sell_listing(market, ssu_id, type_id, price_per_unit, quantity, clock, ctx)`
+   - Creates listing: `market::market::post_sell_listing(market, config.ssu_id, type_id, price_per_unit, quantity, clock, ctx)`
 
    **`buy_and_receive<T>`** -- buyer atomically pays + receives items:
    - Takes: `_config: &SsuUnifiedConfig`, `market: &mut market::market::Market<T>`, `storage_unit: &mut StorageUnit`, `character: &Character` (SSU owner's), `recipient: &Character` (buyer's), `listing_id: u64`, `quantity: u64`, `payment: Coin<T>`, `clock: &Clock`, `ctx: &mut TxContext`
    - Returns: `Coin<T>` (change)
    - No admin check -- authorization comes from successful market purchase
-   - Reads `type_id` from listing: `market::market::borrow_sell_listing(market, listing_id)` -> `market::market::listing_type_id(listing)`
+   - Reads `type_id` from listing in a scope block so the immutable borrow drops before the mutable call: `let type_id = { let listing = market::market::borrow_sell_listing(market, listing_id); market::market::listing_type_id(listing) };` (u64 is copied out; the `&SellListing` ref dies at the closing brace)
    - Asserts `quantity <= 0xFFFFFFFF`
    - Executes purchase: `market::market::buy_from_listing(market, listing_id, quantity, payment, clock, ctx)` -> returns change
    - Transfers items: `storage_unit::withdraw_from_open_inventory` (type_id from listing, quantity as u32) + `storage_unit::deposit_to_owned` (to recipient)
@@ -177,7 +181,7 @@ All four market trade operations atomically compose payment handling with invent
    **`cancel_and_unescrow<T>`** -- admin atomically cancels listing + returns items from escrow:
    - Takes: `config: &SsuUnifiedConfig`, `market: &mut market::market::Market<T>`, `storage_unit: &mut StorageUnit`, `character: &Character`, `listing_id: u64`, `ctx: &mut TxContext`
    - Calls `assert_authorized(config, ctx)`
-   - Reads listing: gets `type_id` and `quantity` from listing via accessors (before cancel destroys it)
+   - Reads listing via immutable borrow in a scope block so the ref drops before the mutable cancel call: `let (type_id, quantity) = { let listing = market::market::borrow_sell_listing(market, listing_id); (market::market::listing_type_id(listing), market::market::listing_quantity(listing)) };` (u64 values are copied out; the `&SellListing` ref dies at the closing brace)
    - Asserts `quantity <= 0xFFFFFFFF`
    - Cancels listing: `market::market::cancel_sell_listing(market, listing_id, ctx)`
    - Returns items: `storage_unit::withdraw_from_open_inventory` + `storage_unit::deposit_item`
@@ -190,9 +194,9 @@ All four market trade operations atomically compose payment handling with invent
    - Delivers items: `storage_unit::withdraw_item` + `storage_unit::deposit_to_owned` (to buyer_character)
    - Note: `type_id` passed by caller because buy orders don't store ssu_id. Verified by `fill_buy_order`'s internal type_id check.
 
-6. Build: `sui move build` from `contracts/ssu_unified/`.
-7. Publish: `sui client publish --gas-budget 500000000`.
-8. Record new package ID.
+7. Build: `sui move build` from `contracts/ssu_unified/`.
+8. Publish: `sui client publish --gas-budget 500000000`.
+9. Record new package ID.
 
 ### Phase 2: Update chain-shared Config & TX Builders
 
@@ -201,8 +205,9 @@ All four market trade operations atomically compose payment handling with invent
 2. In `packages/chain-shared/src/ssu-unified.ts`, rewrite the 4 trade TX builders to call the new composite functions:
 
    **`buildEscrowAndList`** (replaces `buildEscrowAndListWithStandings`):
-   - Params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId` (storage unit), `characterObjectId`, `coinType`, `marketId`, `ssuId` (as ID), `typeId`, `pricePerUnit`, `quantity`, `senderAddress`
-   - Single moveCall: `ssu_unified::escrow_and_list<coinType>` with args: config, market, storage_unit, character, ssu_id, type_id, price_per_unit, quantity, clock
+   - Params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId` (storage unit), `characterObjectId`, `coinType`, `marketId`, `typeId`, `pricePerUnit`, `quantity`, `senderAddress`
+   - Single moveCall: `ssu_unified::escrow_and_list<coinType>` with args: config, market, storage_unit, character, type_id, price_per_unit, quantity, clock
+   - Note: `ssu_id` is read from config on-chain, not passed as parameter
 
    **`buildBuyAndReceive`** (replaces `buildBuyFromListingWithStandings`):
    - Params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId`, `ownerCharacterObjectId`, `buyerCharacterObjectId`, `coinType`, `marketId`, `listingId`, `quantity`, `coinObjectIds`, `senderAddress`
@@ -219,56 +224,74 @@ All four market trade operations atomically compose payment handling with invent
 
 3. Keep old function names as deprecated aliases or remove them (no backwards compat needed).
 
-### Phase 3: Thread TransferContext to Market Dialogs
+### Phase 3: Thread Missing Data to Market Dialogs
 
-The `TransferContext` data (ssuConfigId, ssuObjectId, characterObjectId, etc.) is already available in `SsuView.tsx` but not passed through to market dialog components.
+**Note:** This phase and Phase 5 are logically interleaved -- Phase 5 step 1 extends `useOwnerCharacter` to return the owner character object ID, and this phase threads it to dialogs. Implement them together.
 
-1. In `apps/ssu-dapp/src/components/ContentTabs.tsx`: Pass `transferContext` to `MarketContent` as a new prop.
+Some data is already available in dialog components and some is not:
+- `ssuConfig` (with `ssuConfigId`, `packageId` a.k.a. ssuUnifiedPackageId) -- already threaded to all dialogs (`SellDialog` via `ContentTabs`; the rest via `MarketOrdersGrid`)
+- `ssuObjectId` -- threaded to `SellDialog` (via ContentTabs) and `FillBuyOrderDialog` (via MarketOrdersGrid), but NOT to `BuyFromListingDialog` or `CancelListingDialog`
+- SSU owner's character object ID -- not available in any dialog; resolved in Phase 5, threaded here
+- Buyer's character object ID -- not available in any dialog; resolved per-dialog in Phase 4/5
 
-2. In `apps/ssu-dapp/src/components/MarketContent.tsx`: Accept `transferContext` prop and forward relevant fields to `MarketOrdersGrid`.
+1. In `apps/ssu-dapp/src/components/MarketOrdersGrid.tsx`: Pass `ssuObjectId` to `BuyFromListingDialog` and `CancelListingDialog` (it's already a prop on MarketOrdersGrid but not forwarded to these two dialogs).
 
-3. In `apps/ssu-dapp/src/components/MarketOrdersGrid.tsx`: Accept transfer data props and forward to `SellDialog`, `BuyFromListingDialog`, `CancelListingDialog`, `FillBuyOrderDialog`.
+2. In `apps/ssu-dapp/src/components/BuyFromListingDialog.tsx` and `CancelListingDialog.tsx`: Accept new `ssuObjectId` prop.
 
-4. In each dialog: Accept new props for `ssuConfigId`, `ssuUnifiedPackageId`, `characterObjectId`, `ssuObjectId`.
+3. Thread the SSU owner's character object ID from `SsuView.tsx` (after Phase 5 step 1 extends `useOwnerCharacter`) through `ContentTabs` as a new `ownerCharacterObjectId` prop. From `ContentTabs`, forward it two ways:
+   - To `SellDialog` directly (SellDialog is rendered by ContentTabs, not by MarketOrdersGrid)
+   - To `MarketContent` -> `MarketOrdersGrid` -> `BuyFromListingDialog`, `CancelListingDialog`, `FillBuyOrderDialog`
 
 ### Phase 4: Update Dialog Components
+
+Note: `ssuConfig.packageId` IS the ssuUnified package ID and `ssuConfig.ssuConfigId` is the config object ID -- both already available in every dialog via the existing `ssuConfig` prop. No separate `ssuUnifiedPackageId` or `ssuConfigId` prop needed.
 
 1. **SellDialog.tsx** -- update `handleSell`:
    - Import `buildEscrowAndList`
    - Replace `buildEscrowAndListWithStandings` / `buildPostSellListing` calls
-   - Pass additional params: `ssuUnifiedPackageId` (from `ssuConfig.packageId`), `ssuConfigId`, `ssuObjectId`, `characterObjectId`
+   - Use `ssuConfig.packageId` as ssuUnifiedPackageId, `ssuConfig.ssuConfigId`, `ssuObjectId` (already a prop), `ownerCharacterObjectId` (new prop from Phase 3/5)
 
 2. **BuyFromListingDialog.tsx** -- update `handleBuy`:
    - Import `buildBuyAndReceive`
    - Replace `buildBuyFromListingWithStandings` / `buildBuyFromListing` calls
-   - Pass additional params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId`, `ownerCharacterObjectId` (SSU owner -- from config), `buyerCharacterObjectId` (connected wallet's character)
-   - The buyer's character object ID must be resolved from the connected wallet address
+   - Use `ssuConfig.packageId`, `ssuConfig.ssuConfigId`, `ssuObjectId` (new prop from Phase 3), `ownerCharacterObjectId` (new prop from Phase 3/5), `buyerCharacterObjectId` (connected wallet's character, resolved via `useCharacter`)
+   - The buyer's character object ID is resolved from the connected wallet address using the existing `useCharacter` hook
 
 3. **CancelListingDialog.tsx** -- update handler:
    - Import `buildCancelAndUnescrow`
    - Replace `buildCancelListingWithStandings` / `buildCancelSellListing` calls
-   - Pass additional params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId`, `characterObjectId`
+   - Use `ssuConfig.packageId`, `ssuConfig.ssuConfigId`, `ssuObjectId` (new prop from Phase 3), `ownerCharacterObjectId` (new prop from Phase 3/5)
 
 4. **FillBuyOrderDialog.tsx** -- update `handleFill`:
    - Import `buildFillAndDeliver`
    - Replace `buildFillBuyOrderWithStandings` / `buildFillBuyOrder` calls
-   - Pass additional params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId`, `characterObjectId`, `buyerCharacterObjectId`
+   - Use `ssuConfig.packageId`, `ssuConfig.ssuConfigId`, `ssuObjectId` (already a prop), `ownerCharacterObjectId` (new prop from Phase 3/5), `buyerCharacterObjectId` (resolved from `order.buyer` address)
    - The buyer's character object ID must be resolved from the buy order's `buyer` address
 
-5. **ListingCard.tsx** and **ListingAdminList.tsx**: Same updates as their respective dialog patterns.
+5. **ListingCard.tsx**, **ListingAdminList.tsx**, **ListingBuyerList.tsx**: These components are dead code -- not imported anywhere in the app (ListingBuyerList imports ListingCard internally, but no file outside this group imports any of the three). The active market UI goes through `MarketOrdersGrid` -> individual dialog components. Remove all three files to avoid stale TX builder references.
 
-### Phase 5: Buyer Character Resolution
+### Phase 5: Character Object Resolution
 
-The `buy_and_receive` and `fill_and_deliver` composite functions need the buyer's/seller's character object reference as an on-chain `&Character`.
+The composite functions need Character object references for both the SSU owner and the buyer/seller counterpart. Two distinct resolution paths:
 
-1. Add or extend a `useCharacterObjectId(address)` hook in `apps/ssu-dapp/src/hooks/`:
-   - For the connected wallet's character: query the manifest or on-chain character registry
-   - For a buy order's buyer: resolve from the `buyer` address field
-   - For a sell listing's seller: resolve from the listing's `seller` address
+**SSU owner's Character object ID** (needed by `buy_and_receive`, `escrow_and_list`, `cancel_and_unescrow`, `fill_and_deliver`):
+- Already resolvable: `useOwnerCharacter(assembly.ownerCapId)` in `SsuView.tsx` internally resolves the Character object ID from the OwnerCap's owner but only returns the name.
+- Fix: Extend `useOwnerCharacter` to return both the name and the character object ID. Thread the owner character object ID into the transfer context or directly to the market dialogs.
 
-2. Update `BuyFromListingDialog` to resolve and pass the SSU owner's character object ID (from the listing's seller address or from the SSU config owner).
+**Counterpart's Character object ID** (needed by `buy_and_receive` for buyer, `fill_and_deliver` for buy-order buyer):
 
-3. Update `FillBuyOrderDialog` to resolve and pass the buyer's character object ID from the order's buyer address.
+1. Extend `useOwnerCharacter` hook in `apps/ssu-dapp/src/hooks/useOwnerCharacter.ts` to also return `characterObjectId: string | null`.
+
+2. The existing `useCharacter(walletAddress)` hook already resolves a wallet address to a `CharacterInfo` with `characterObjectId`. No new hook is needed.
+   - For the connected wallet's character: already available via `useCharacter(walletAddress)` in `SsuView.tsx`
+   - For a buy order's buyer address: call `useCharacter(order.buyer)` inside `FillBuyOrderDialog`
+   - Note: `useCharacter` uses the PlayerProfile lookup pattern, which works for any wallet address
+
+3. Thread the SSU owner's character object ID from `SsuView.tsx` through to `ContentTabs` -> `MarketContent` -> `MarketOrdersGrid` -> dialog components.
+
+4. Update `BuyFromListingDialog`: buyer's character = connected wallet's character (from `useCharacter`); SSU owner's character = threaded from SsuView.
+
+5. Update `FillBuyOrderDialog`: the buyer's character object ID must be resolved from `order.buyer` address using `useCharacter(order.buyer)` inside the dialog.
 
 ## File Summary
 
@@ -278,16 +301,18 @@ The `buy_and_receive` and `fill_and_deliver` composite functions need the buyer'
 | `contracts/ssu_unified/sources/ssu_unified.move` | Edit | Change config to shared objects; add 4 composite trade functions |
 | `packages/chain-shared/src/config.ts` | Edit | Update ssuUnified package IDs for both tenants after republish |
 | `packages/chain-shared/src/ssu-unified.ts` | Edit | Rewrite 4 trade TX builders to call ssu_unified composite functions |
-| `apps/ssu-dapp/src/components/ContentTabs.tsx` | Edit | Thread transferContext to MarketContent |
-| `apps/ssu-dapp/src/components/MarketContent.tsx` | Edit | Accept and forward transferContext |
-| `apps/ssu-dapp/src/components/MarketOrdersGrid.tsx` | Edit | Accept and forward transfer data to dialogs |
+| `apps/ssu-dapp/src/components/ContentTabs.tsx` | Edit | Thread SSU owner character object ID to MarketContent and SellDialog |
+| `apps/ssu-dapp/src/components/MarketContent.tsx` | Edit | Accept and forward SSU owner character object ID to MarketOrdersGrid |
+| `apps/ssu-dapp/src/components/MarketOrdersGrid.tsx` | Edit | Forward ssuObjectId + owner character ID to all market dialogs |
 | `apps/ssu-dapp/src/components/SellDialog.tsx` | Edit | Use buildEscrowAndList composite builder |
 | `apps/ssu-dapp/src/components/BuyFromListingDialog.tsx` | Edit | Use buildBuyAndReceive composite builder |
 | `apps/ssu-dapp/src/components/CancelListingDialog.tsx` | Edit | Use buildCancelAndUnescrow composite builder |
 | `apps/ssu-dapp/src/components/FillBuyOrderDialog.tsx` | Edit | Use buildFillAndDeliver composite builder |
-| `apps/ssu-dapp/src/components/ListingAdminList.tsx` | Edit | Use composite builders for cancel |
-| `apps/ssu-dapp/src/components/ListingCard.tsx` | Edit | Use composite buy builder |
-| `apps/ssu-dapp/src/hooks/useCharacter.ts` | Edit | Add character object ID resolution from address |
+| `apps/ssu-dapp/src/components/ListingAdminList.tsx` | Delete | Dead code -- not imported anywhere |
+| `apps/ssu-dapp/src/components/ListingBuyerList.tsx` | Delete | Dead code -- not imported anywhere |
+| `apps/ssu-dapp/src/components/ListingCard.tsx` | Delete | Dead code -- not imported anywhere |
+| `apps/ssu-dapp/src/hooks/useOwnerCharacter.ts` | Edit | Return characterObjectId alongside name |
+| `apps/ssu-dapp/src/views/SsuView.tsx` | Edit | Thread SSU owner character object ID to market dialogs |
 
 ## Open Questions
 
