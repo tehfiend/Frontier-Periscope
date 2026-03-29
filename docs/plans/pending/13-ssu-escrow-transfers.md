@@ -1,299 +1,317 @@
 # Plan: SSU Escrow Transfer Fixes
 
-**Status:** Pending
+**Status:** Draft
 **Created:** 2026-03-28
-**Module:** chain-shared, ssu-dapp
+**Module:** chain-shared, ssu-dapp, contracts/ssu_unified
 
 ## Overview
 
-Selling and buying items on SSU markets does not properly move items to and from escrow. The root cause is architectural: the market contracts (`market.move` and the separate `market_standings` module) operate purely as order books -- they track sell listings and buy orders with coin escrow, but have no integration with the game's inventory system. When a seller posts a listing, items stay in the SSU inventory with no lock or transfer. When a buyer purchases items, coins move to the seller but no items move to the buyer. The same gap exists for filling buy orders.
+Buying and selling items on SSU markets is fundamentally broken: items never move. The market contract (`market.move`) is a pure payment/order-book system -- it tracks sell listings and buy orders with coin escrow, but has zero knowledge of item inventories. When a seller posts a listing, items stay in the SSU owner inventory with no reservation. When a buyer pays for items, they receive nothing. When a buy order is filled, payment goes to the seller but no items are delivered.
 
-The `ssu_unified.move` contract has the correct inventory manipulation functions (`admin_to_escrow`, `admin_from_escrow`, `admin_to_player`, `admin_escrow_to_player`, etc.) that use the world package's `storage_unit` API to move items between inventories. However, these inventory operations are never composed with the market operations in a single transaction. The sell/buy/fill TX builders in `ssu-unified.ts` and `market-standings.ts` only call market functions -- they never include inventory withdrawal or deposit steps.
+The `ssu_unified.move` contract has the correct inventory manipulation functions (`admin_to_escrow`, `admin_from_escrow`, `admin_to_player`, `admin_escrow_to_player`, etc.) that use the world package's `storage_unit` API to move items between inventories. However, these are never composed with market operations, and the admin-only authorization prevents buyers from triggering item delivery.
 
-This plan adds multi-step PTB (Programmable Transaction Block) composition so that sell listings escrow items on creation, buy operations deliver items to the buyer, and cancellations return items from escrow. The fix requires Move contract changes (one new function + switching from owned to shared config objects in `ssu_unified.move`) plus TypeScript TX builder and UI changes.
+The fix adds composite Move entry points to `ssu_unified` that atomically combine market operations with inventory transfers in a single function call. This guarantees that items always move when payment happens. The contract gains a `market` dependency so it can call `market::buy_from_listing` etc. internally. For buy operations specifically, the composite function provides authorization through the market call itself -- if payment succeeds, items are delivered.
 
-Note: The extension authorization in the world package's `storage_unit` functions checks that the `Auth` witness type (e.g., `SsuUnifiedAuth`) is registered on the StorageUnit's extension field -- it does NOT check the TX sender's address. The sender authorization in `ssu_unified.move` is a separate layer (`assert_authorized` checks owner/delegate). The `player_to_escrow` and `player_to_owner` functions demonstrate this -- they skip `assert_authorized` but still provide `SsuUnifiedAuth {}` to the storage_unit functions successfully. This means a new `public_escrow_to_self` function can allow any player to withdraw from escrow without needing admin/delegate status, as long as the SsuUnifiedAuth extension is registered on the SSU.
+A secondary fix is required: `SsuUnifiedConfig` objects are currently address-owned, meaning only the owner can reference them in transactions. Since buyer-side operations need to reference the config, it must be changed to a shared object.
 
 ## Current State
 
-### Market Contract (`contracts/market/sources/market.move`)
+### Market contract (`contracts/market/sources/market.move`)
 
-The `market.move` contract manages an order book:
-- `post_sell_listing` (line 300-338): Records listing metadata (seller, ssuId, typeId, price, quantity) as a dynamic field. **Does not take any Item object or call any inventory function.** Items are not moved.
-- `buy_from_listing` (line 512-553): Decrements listing quantity, splits payment coin, transfers proceeds to seller. **Does not produce or transfer any Item to buyer.** Returns change coin only.
-- `cancel_sell_listing` (line 366-381): Removes the listing dynamic field. **Does not return any items.**
-- `fill_buy_order` (line 455-509): Decrements buy order quantity, splits escrowed coin, pays the seller. **Does not take any Item from seller or give items to buyer.**
-- `post_buy_order` (line 386-428): Records order metadata + escrows `Coin<T>`. No item handling.
+The market contract manages an order book with sell listings and buy orders stored as dynamic fields on a `Market<T>` shared object:
+
+- `post_sell_listing` (line 300-338): Records listing metadata (seller, ssuId, typeId, price, quantity) as a dynamic field. **Does not withdraw or escrow items.**
+- `buy_from_listing` (line 512-553): Decrements listing quantity, splits payment coin, applies fees, transfers proceeds to seller. **Does not transfer items to buyer.** Returns change coin only.
+- `cancel_sell_listing` (line 366-381): Removes listing dynamic field. **Does not return any items.**
+- `fill_buy_order` (line 455-509): Decrements buy order quantity, splits escrowed coin, pays seller. **Does not deliver items to buyer.**
+- `post_buy_order` (line 386-428): Records order + escrows `Coin<T>`. No item handling.
 - `cancel_buy_order` (line 431-451): Returns escrowed coin to buyer. No item handling.
 
-The `market_standings` contract (deployed on-chain but source not in repo) appears to be a standings-gated wrapper around the same order book pattern. The TS builders in `market-standings.ts` call `market_standings::post_sell_listing`, `market_standings::buy_from_listing`, etc. with identical signatures (no Item parameter).
+The contract exposes public accessors: `borrow_sell_listing`, `listing_type_id`, `listing_quantity`, `borrow_buy_order`, `order_buyer`, etc. These enable other contracts to read order book state.
 
-### SSU Unified Contract (`contracts/ssu_unified/sources/ssu_unified.move`)
+### SSU Unified contract (`contracts/ssu_unified/sources/ssu_unified.move`)
 
-The `ssu_unified.move` contract has inventory movement functions:
-- `admin_to_escrow` (line 267-282): Withdraws from owner inventory -> deposits to open/escrow inventory. Requires authorized caller (owner/delegate).
-- `admin_from_escrow` (line 285-300): Withdraws from open/escrow inventory -> deposits to owner inventory.
-- `admin_to_player` (line 303-319): Withdraws from owner inventory -> deposits to player's owned inventory.
-- `admin_escrow_to_self` (line 322-337): Withdraws from escrow -> deposits to sender's owned inventory.
-- `admin_escrow_to_player` (line 339-356): Withdraws from escrow -> deposits to recipient's owned inventory.
-- `player_to_escrow` (line 367-377): Player deposits a pre-withdrawn item into escrow.
-- `player_to_owner` (line 380-390): Player deposits a pre-withdrawn item into owner inventory.
+Has inventory management functions using `SsuUnifiedAuth` witness for world-package extension authorization:
 
-These all use the `SsuUnifiedAuth` witness for the world package's extension-authenticated `storage_unit` functions.
+- `admin_to_escrow` (line 267-282): withdraw_item + deposit_to_open_inventory. **Admin only.**
+- `admin_from_escrow` (line 285-300): withdraw_from_open_inventory + deposit_item. **Admin only.**
+- `admin_to_player` (line 303-319): withdraw_item + deposit_to_owned (recipient). **Admin only.**
+- `admin_escrow_to_player` (line 340-356): withdraw_from_open_inventory + deposit_to_owned (recipient). **Admin only.**
+- `admin_escrow_to_self` (line 322-337): withdraw_from_open_inventory + deposit_to_owned (sender).
+- `player_to_escrow` (line 367-377): deposit_to_open_inventory. **No auth check.**
+- `player_to_owner` (line 380-390): deposit_item. **No auth check.**
 
-### TX Builders (`packages/chain-shared/src/ssu-unified.ts`)
+Depends on `world` only (Move.toml line 6). No `market` dependency.
 
-- `buildEscrowAndListWithStandings` (line 218-241): Calls `market_standings::post_sell_listing` only. Comment says "Items stay in SSU inventory -- no withdraw step needed." **This is the bug.** Items should be moved to escrow when listed.
-- `buildBuyFromListingWithStandings` (line 258-296): Calls `market_standings::buy_from_listing` only. Returns change coin. **Does not deliver items to buyer.**
-- `buildCancelListingWithStandings` (line 310-323): Calls `market_standings::cancel_sell_listing` only. **Does not return items from escrow.**
-- `buildFillBuyOrderWithStandings` (line 344-367): Calls `market_standings::fill_buy_order` only. **Does not withdraw items from seller's inventory.**
+**Config ownership issue:** `SsuUnifiedConfig` is created with `transfer::transfer(config, ctx.sender())` (lines 116, 151) making it an **address-owned object**. On Sui, only the owner can reference an owned object in a transaction -- even as an immutable `&` reference. This means non-owner players cannot call `player_to_escrow`, `player_to_owner`, or any function taking `&SsuUnifiedConfig`. The composite buy function (`buy_and_receive`) would have the same problem -- the buyer can't reference the config.
 
-- `buildPostSellListing` in `market.ts` (line 326-344): Calls `market::post_sell_listing`. Same issue.
-- `buildBuyFromListing` in `market.ts` (line 180-213): Calls `market::buy_from_listing`. Same issue.
-- `buildFillBuyOrder` in `market.ts` (line 151-167): Calls `market::fill_buy_order`. Same issue.
+### TX builders (`packages/chain-shared/src/ssu-unified.ts`)
 
-### UI Components (`apps/ssu-dapp/src/components/`)
+- `buildEscrowAndListWithStandings` (line 218-241): Calls `market_standings::post_sell_listing` only. Despite the "escrow" name, **no escrow happens**.
+- `buildBuyFromListingWithStandings` (line 258-296): Calls `market_standings::buy_from_listing` only. **No item delivery.**
+- `buildCancelListingWithStandings` (line 310-323): Calls `market_standings::cancel_sell_listing` only. **No unescrow.**
+- `buildFillBuyOrderWithStandings` (line 344-367): Calls `market_standings::fill_buy_order` only. **No item transfer.**
 
-- `SellDialog.tsx` (line 68-106): Calls `buildEscrowAndListWithStandings` or `buildPostSellListing`. No inventory movement.
-- `BuyFromListingDialog.tsx` (line 58-107): Calls `buildBuyFromListingWithStandings` or `buildBuyFromListing`. No item delivery.
-- `FillBuyOrderDialog.tsx` (line 50-103): Calls `buildFillBuyOrderWithStandings` or `buildFillBuyOrder`. No item withdrawal.
-- `CancelListingDialog.tsx` (line 40-73): Calls `buildCancelListingWithStandings` or `buildCancelSellListing`. No item return.
-- `ListingCard.tsx` (line 53-81): Calls `buildBuyFromListingWithStandings` directly. Same issue.
-- `ListingAdminList.tsx` (line 61-77): Calls `buildCancelListingWithStandings`. Same issue.
-- `CancelBuyOrderDialog.tsx` (line 39-57): Calls `buildCancelBuyOrder` -- this is correct (coin-only, no items).
-- `CreateBuyOrderDialog.tsx` (line 108-125): Calls `buildPostBuyOrder` -- this is correct (coin escrow only).
+### TX builders (`packages/chain-shared/src/market.ts`)
 
-### TransferDialog.tsx (Correct Reference Implementation)
+- `buildPostSellListing` (line 326-344): Calls `market::post_sell_listing` only.
+- `buildBuyFromListing` (line 180-213): Calls `market::buy_from_listing` only.
+- `buildCancelSellListing` (line 384-395): Calls `market::cancel_sell_listing` only.
+- `buildFillBuyOrder` (line 151-167): Calls `market::fill_buy_order` only.
 
-The `TransferDialog.tsx` (line 67-244) correctly demonstrates how to compose inventory operations in PTBs:
+### UI components (`apps/ssu-dapp/src/components/`)
+
+- `SellDialog.tsx`: Calls `buildEscrowAndListWithStandings` or `buildPostSellListing` -- payment side only.
+- `BuyFromListingDialog.tsx`: Calls `buildBuyFromListingWithStandings` or `buildBuyFromListing` -- payment side only.
+- `FillBuyOrderDialog.tsx`: Calls `buildFillBuyOrderWithStandings` or `buildFillBuyOrder` -- payment side only.
+- `CancelListingDialog.tsx`: Calls `buildCancelListingWithStandings` or `buildCancelSellListing` -- no inventory changes.
+
+### Reference implementation: `TransferDialog.tsx`
+
+The `TransferDialog.tsx` (line 67-244) correctly demonstrates inventory transfer PTB patterns:
 - `buildOwnerCapTransferPtb`: borrow_owner_cap -> withdraw_by_owner -> deposit_by_owner -> return_owner_cap
 - `buildAdminMarketPtb`: calls `ssu_unified::admin_to_escrow` / `admin_from_escrow` / etc.
-- `buildPlayerMarketPtb`: borrow_owner_cap -> withdraw_by_owner -> return_owner_cap -> `ssu_unified::player_to_escrow` / `player_to_owner`
+- `buildPlayerMarketPtb`: borrow_owner_cap -> withdraw_by_owner -> return_owner_cap -> `ssu_unified::player_to_escrow`
 
-These patterns are exactly what the sell/buy TX builders need to use.
+### Parameter availability
 
-### Parameter Availability
+The dapp components already have most data needed:
+- `SsuConfigResult` from `useSsuConfig.ts`: has `ssuConfigId`, `packageId`, `marketStandingsPackageId`, `marketId`, `registryId`, `owner`, `delegates`
+- `TransferContext` from `SsuView.tsx`: has `ssuConfigId`, `marketPackageId`, `characterObjectId`, `ssuObjectId`, `isAuthorized`, `slotCaps`
+- Missing: buyer-side dialogs need the buyer's Character object ID, and the `TransferContext` data isn't threaded through to market dialogs.
 
-The dapp components and hooks already have all the data needed for the fix:
-- `SsuConfigResult` from `useSsuConfig.ts`: has `ssuConfigId`, `packageId` (ssu_unified), `marketStandingsPackageId`, `marketId`, `registryId`, `owner`, `delegates`
-- `TransferContext` from `SsuView.tsx`: has `ssuConfigId`, `marketPackageId` (ssu_unified package), `characterObjectId`, `ssuObjectId`, `isAuthorized`, `slotCaps` (OwnerCap refs)
-- `SellDialog`: receives `ssuObjectId`, `ssuConfig`, `tribeId`, `charId`, and `item` (with typeId)
-- `FillBuyOrderDialog`: receives `ssuObjectId`, `ssuConfig`, `tribeId`, `charId`, and `order` (with typeId)
-- `BuyFromListingDialog`: receives `ssuConfig` and `listing` (with ssuId for the SSU where items come from)
+### Summary of bugs
 
-The missing piece: buyer-side dialogs need the buyer's Character object ID and an OwnerCap reference for the SSU where items should be delivered. This data exists in the `TransferContext` but is not currently passed through to `MarketContent` -> `MarketOrdersGrid` -> `BuyFromListingDialog`/`FillBuyOrderDialog`.
+| Operation | Payment | Item Transfer | Bug |
+|-----------|---------|---------------|-----|
+| Create sell listing | N/A | No escrow | Items remain in owner inventory, not reserved |
+| Buy from listing | Buyer pays seller | No transfer | Buyer receives nothing |
+| Cancel listing | N/A | No unescrow | Items were never escrowed |
+| Fill buy order | Escrowed coin to seller | No delivery | Buyer paid but gets no items |
 
 ## Target State
 
-All market operations compose inventory steps with market steps in a single PTB:
+All four market trade operations atomically compose payment handling with inventory transfer. The `ssu_unified` Move contract gains composite entry points that call both `market` functions and `storage_unit` inventory functions in one Move function call, guaranteeing atomicity.
 
-1. **Sell (post listing):** admin_to_escrow + market::post_sell_listing -- items moved to escrow, then listing created.
-2. **Buy from listing:** market::buy_from_listing + public_escrow_to_self -- payment processed, then items moved from escrow to buyer's player inventory. Buyer executes.
-3. **Cancel listing:** market::cancel_sell_listing + admin_from_escrow -- listing removed, then items returned from escrow to owner inventory. Seller (admin) executes.
-4. **Fill buy order:** admin_to_escrow + market::fill_buy_order -- items moved to escrow, then payment released to seller. Buyer picks up items later via public_escrow_to_self.
-5. **Cancel buy order:** Unchanged (coin-only, already correct).
-6. **Create buy order:** Unchanged (coin-only, already correct).
+### Trade flow after fix
 
-The seller (SSU owner/delegate) orchestrates item escrow through the `ssu_unified` contract. The buyer receives items in their player inventory slot at the SSU where the items are located.
+**Sell (escrow + list):**
+1. Admin calls `ssu_unified::escrow_and_list<T>`
+2. Items move: owner inventory -> escrow (open) inventory
+3. Listing created on Market<T>
+4. Single atomic TX -- items are always escrowed when listing is created
+
+**Buy (pay + receive):**
+1. Buyer calls `ssu_unified::buy_and_receive<T>`
+2. Payment: buyer coin -> seller (with fees)
+3. Items move: escrow -> buyer's owned inventory
+4. Change coin returned to buyer
+5. Single atomic TX -- buyer always receives items when they pay
+
+**Cancel (delist + unescrow):**
+1. Admin calls `ssu_unified::cancel_and_unescrow<T>`
+2. Listing removed from Market<T>
+3. Items move: escrow -> owner inventory
+4. Single atomic TX -- items always return when listing is cancelled
+
+**Fill buy order (deliver + get paid):**
+1. Admin calls `ssu_unified::fill_and_deliver<T>`
+2. Payment: escrowed coin split -> seller
+3. Items move: owner inventory -> buyer's owned inventory
+4. Single atomic TX -- items always delivered when order is filled
 
 ## Design Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Fix location | One new Move function + composite TX builders in `ssu-unified.ts` | Market contracts untouched. Only `ssu_unified.move` gets one addition (`public_escrow_to_self`). All composition via PTBs. |
-| Escrow model | Move items to SSU "open" inventory on listing; move from open to buyer on purchase | The SSU open/escrow inventory is the natural holding area. `admin_to_escrow` (owner -> open) already exists for the sell side. |
-| Buy-side delivery | New `public_escrow_to_self` function in ssu_unified.move | Mirrors `player_to_escrow` (unrestricted deposit) with `public_escrow_to_self` (unrestricted withdrawal from escrow to own inventory). The storage_unit extension check provides the Auth witness. No admin/delegate status required for buyers. |
-| Config ownership model | Change SsuUnifiedConfig from owned to shared | Currently owned objects -- non-owners can't reference them in TXs, making `player_to_escrow`/`player_to_owner` unusable. Shared objects are reference-able by anyone while still protected by `assert_authorized` for mutations. |
-| PTB composition pattern | Follow `TransferDialog.tsx` patterns for cap borrow/return | Proven pattern already used for manual inventory transfers. |
-| Backwards compatibility | None needed -- prototyping phase, no users | Per project conventions, no migration support. |
-| Parameter threading | Thread `TransferContext` data through ContentTabs -> MarketContent -> dialogs | The data already exists in the component tree; it just needs to be passed down. |
+| Composition approach | Composite Move entry points in ssu_unified | PTB composition works for admin operations but NOT for buy -- the buyer isn't the admin, so they can't call admin inventory functions in a separate PTB step. A composite Move function for buy provides authorization through the market call itself: the buyer pays via `market::buy_from_listing` inside the function, and items are delivered atomically. Making all 4 operations composite is consistent, prevents race conditions (reading listing quantity then acting on it), and simplifies TX builders. |
+| Market dependency | ssu_unified depends on market package directly | The composite functions call market functions (post_sell_listing, buy_from_listing, etc.). Direct dependency is cleanest. The market package is stable. |
+| market_standings bypass | Composite functions call market directly, not market_standings | Adding market_standings dependency would increase contract complexity. The composite functions call `market::market::` functions directly. Standings enforcement for buy operations is deferred. Sell operations still work because `market::post_sell_listing` checks `is_authorized(market, sender)`. |
+| Config ownership | Change SsuUnifiedConfig from owned to shared | Non-owner players cannot reference owned objects on Sui, even as `&` immutable references. The buyer calling `buy_and_receive` needs `&SsuUnifiedConfig`. Shared objects are reference-able by anyone while still protected by `assert_authorized` for admin mutations. Standard Sui pattern. Gas overhead negligible for small config objects. |
+| Quantity casting | Accept u64 from market, cast to u32 for storage_unit | Market uses u64 quantities, storage_unit uses u32. Cast with bounds check. Practical item quantities never approach u32 max (4 billion). |
+| buy_and_receive authorization | No admin check -- payment IS the authorization | The function calls `market::buy_from_listing` internally, which handles payment. If buyer doesn't pay enough, the market call aborts and no items move. The `type_id` is read from the listing (not caller input), preventing item type mismatch attacks. This is fundamentally more secure than an unrestricted `public_escrow_to_self` function that any player could call to drain escrow without paying. |
+| Backwards compatibility | None needed | Prototyping phase, no users. Existing owned configs will need to be recreated as shared. |
 
 ## Implementation Phases
 
-### Phase 1: Fix `SsuUnifiedConfig` Ownership Model + Add `public_escrow_to_self`
+### Phase 1: Update ssu_unified Move Contract
 
-**Critical finding:** `SsuUnifiedConfig` is currently an address-owned object (`transfer::transfer(config, ctx.sender())`). On Sui, only the owner can reference an owned object in a transaction -- even as an immutable `&` reference. This means the existing `player_to_escrow` and `player_to_owner` functions are **unusable by non-owner players**, because a non-owner player cannot pass `tx.object(ssuConfigId)` in their PTB.
+1. In `contracts/ssu_unified/Move.toml`, add `market` dependency:
+   ```toml
+   [dependencies]
+   world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "v0.0.21" }
+   market = { local = "../market" }
+   ```
 
-The fix is to make `SsuUnifiedConfig` a shared object so that anyone can reference it. The `assert_authorized` check in admin functions still prevents unauthorized modifications. Player/public functions use `_config: &SsuUnifiedConfig` as a read-only reference, which is safe with shared objects.
+2. In `contracts/ssu_unified/sources/ssu_unified.move`, add imports and error constant:
+   ```move
+   use sui::coin::Coin;
+   use sui::clock::Clock;
 
-1. In `contracts/ssu_unified/sources/ssu_unified.move`:
-   - Change `create_config` (line 87-117): replace `transfer::transfer(config, ctx.sender())` with `transfer::share_object(config)`.
-   - Change `create_config_with_market` (line 120-152): same change -- `transfer::share_object(config)`.
-   - Add `public_escrow_to_self` function:
-     ```move
-     /// Public: any player can withdraw from escrow to their own player inventory.
-     /// Mirrors player_to_escrow (any player can deposit to escrow).
-     /// The storage_unit extension check ensures SsuUnifiedAuth is registered.
-     public fun public_escrow_to_self(
-         _config: &SsuUnifiedConfig,
-         storage_unit: &mut StorageUnit,
-         character: &Character,
-         type_id: u64,
-         quantity: u32,
-         ctx: &mut TxContext,
-     ) {
-         let item = storage_unit::withdraw_from_open_inventory(
-             storage_unit, character, SsuUnifiedAuth {}, type_id, quantity, ctx,
-         );
-         storage_unit::deposit_to_owned(
-             storage_unit, character, item, SsuUnifiedAuth {}, ctx,
-         );
-     }
-     ```
-   - Note: Changing from owned to shared means admin functions (`set_standings_config`, `set_market`, `add_delegate`, etc.) that take `&mut SsuUnifiedConfig` still work -- shared objects support mutable borrows. The `assert!(config.owner == ctx.sender(), ENotOwner)` check prevents non-owners from modifying.
+   const EQuantityOverflow: u64 = 4;
+   ```
 
-2. Build: `sui move build` from `contracts/ssu_unified/`.
-3. Publish: `sui client publish --gas-budget 500000000`.
-4. Update `packages/chain-shared/src/config.ts`: set new `ssuUnified.packageId` for both tenants, move old ID to `previousOriginalPackageIds`.
+3. Change `create_config` (line 116): replace `transfer::transfer(config, ctx.sender())` with `transfer::share_object(config)`.
 
-**Impact on existing SsuUnifiedConfig objects:** Existing configs created with the old contract are address-owned and cannot be retroactively converted to shared. Users with existing configs will need to create new shared configs. Since this is the prototyping phase with no real users, this is acceptable.
+4. Change `create_config_with_market` (line 151): same -- `transfer::share_object(config)`.
 
-Security note: `public_escrow_to_self` allows any player to withdraw any items from escrow to their own player inventory at any time. In the current prototyping phase this is acceptable -- the escrow inventory should only contain items that are actively listed for sale. In a production system, this would need on-chain verification that the withdrawal corresponds to a completed purchase. See Deferred section.
+5. Add composite trade functions after the existing player functions (~line 391):
 
-### Phase 2: Add Composite TX Builders
+   **`escrow_and_list<T>`** -- admin atomically escrows items + creates listing:
+   - Takes: `config: &SsuUnifiedConfig`, `market: &mut market::market::Market<T>`, `storage_unit: &mut StorageUnit`, `character: &Character`, `ssu_id: ID`, `type_id: u64`, `price_per_unit: u64`, `quantity: u64`, `clock: &Clock`, `ctx: &mut TxContext`
+   - Calls `assert_authorized(config, ctx)`
+   - Asserts `quantity <= 0xFFFFFFFF` (EQuantityOverflow)
+   - Withdraws items from owner inventory: `storage_unit::withdraw_item` + `storage_unit::deposit_to_open_inventory`
+   - Creates listing: `market::market::post_sell_listing(market, ssu_id, type_id, price_per_unit, quantity, clock, ctx)`
 
-Add new composite TX builder functions to `packages/chain-shared/src/ssu-unified.ts`. Each builds a single PTB with multiple moveCall steps.
+   **`buy_and_receive<T>`** -- buyer atomically pays + receives items:
+   - Takes: `_config: &SsuUnifiedConfig`, `market: &mut market::market::Market<T>`, `storage_unit: &mut StorageUnit`, `character: &Character` (SSU owner's), `recipient: &Character` (buyer's), `listing_id: u64`, `quantity: u64`, `payment: Coin<T>`, `clock: &Clock`, `ctx: &mut TxContext`
+   - Returns: `Coin<T>` (change)
+   - No admin check -- authorization comes from successful market purchase
+   - Reads `type_id` from listing: `market::market::borrow_sell_listing(market, listing_id)` -> `market::market::listing_type_id(listing)`
+   - Asserts `quantity <= 0xFFFFFFFF`
+   - Executes purchase: `market::market::buy_from_listing(market, listing_id, quantity, payment, clock, ctx)` -> returns change
+   - Transfers items: `storage_unit::withdraw_from_open_inventory` (type_id from listing, quantity as u32) + `storage_unit::deposit_to_owned` (to recipient)
+   - Returns change coin
 
-1. **`buildSellWithEscrow`** (seller = SSU owner/delegate)
-   - Step 1: `ssu_unified::admin_to_escrow(config, storage_unit, character, type_id, quantity)` -- moves items from owner inventory to escrow
-   - Step 2: `market_standings::post_sell_listing(market, registry, tribe_id, char_id, ssu_id, type_id, price, quantity, clock)` -- creates listing
-   - Parameters: ssuConfigId, ssuObjectId, characterObjectId, typeId, quantity, marketId, coinType, pricePerUnit, registryId, tribeId, charId, senderAddress, ssuUnifiedPackageId, marketStandingsPackageId
-   - Also support `market::post_sell_listing` fallback (when `marketModule === "market"`)
+   **`cancel_and_unescrow<T>`** -- admin atomically cancels listing + returns items from escrow:
+   - Takes: `config: &SsuUnifiedConfig`, `market: &mut market::market::Market<T>`, `storage_unit: &mut StorageUnit`, `character: &Character`, `listing_id: u64`, `ctx: &mut TxContext`
+   - Calls `assert_authorized(config, ctx)`
+   - Reads listing: gets `type_id` and `quantity` from listing via accessors (before cancel destroys it)
+   - Asserts `quantity <= 0xFFFFFFFF`
+   - Cancels listing: `market::market::cancel_sell_listing(market, listing_id, ctx)`
+   - Returns items: `storage_unit::withdraw_from_open_inventory` + `storage_unit::deposit_item`
 
-2. **`buildCancelListingWithReturn`** (seller = SSU owner/delegate)
-   - Step 1: `market_standings::cancel_sell_listing(market, listing_id)` -- removes listing
-   - Step 2: `ssu_unified::admin_from_escrow(config, storage_unit, character, type_id, quantity)` -- returns items from escrow to owner inventory
-   - Parameters: ssuConfigId, ssuObjectId, characterObjectId, typeId, quantity, marketId, coinType, listingId, senderAddress, ssuUnifiedPackageId, marketStandingsPackageId
+   **`fill_and_deliver<T>`** -- admin atomically fills buy order + delivers items to buyer:
+   - Takes: `config: &SsuUnifiedConfig`, `market: &mut market::market::Market<T>`, `storage_unit: &mut StorageUnit`, `character: &Character` (SSU owner's), `buyer_character: &Character`, `order_id: u64`, `type_id: u64`, `quantity: u64`, `ctx: &mut TxContext`
+   - Calls `assert_authorized(config, ctx)`
+   - Asserts `quantity <= 0xFFFFFFFF`
+   - Fills order: `market::market::fill_buy_order(market, order_id, type_id, quantity, ctx)` -- pays seller from escrow
+   - Delivers items: `storage_unit::withdraw_item` + `storage_unit::deposit_to_owned` (to buyer_character)
+   - Note: `type_id` passed by caller because buy orders don't store ssu_id. Verified by `fill_buy_order`'s internal type_id check.
 
-3. **`buildBuyWithDelivery`** (buyer = any player)
-   - Step 1: Merge+split coins for payment (existing pattern from `buildBuyFromListingWithStandings`)
-   - Step 2: `market_standings::buy_from_listing(market, listing_id, quantity, payment, clock)` -> returns change
-   - Step 3: `tx.transferObjects([change], sender)` -- return change to buyer
-   - Step 4: `ssu_unified::public_escrow_to_self(config, storage_unit, character, type_id, quantity)` -- delivers items from escrow to buyer's player inventory
-   - Parameters: ssuConfigId, ssuObjectId, characterObjectId (buyer's), typeId, quantity, marketId, coinType, listingId, coinObjectIds, senderAddress, ssuUnifiedPackageId, marketStandingsPackageId
-   - Requires buyer's Character object to be passed as a TX object
+6. Build: `sui move build` from `contracts/ssu_unified/`.
+7. Publish: `sui client publish --gas-budget 500000000`.
+8. Record new package ID.
 
-4. **`buildFillBuyOrderWithItems`** (seller fills a buy order)
-   - When seller is SSU owner/delegate (admin):
-     - Step 1: `ssu_unified::admin_to_escrow(config, storage_unit, character, type_id, quantity)` -- move seller's items to escrow (for audit trail; could skip directly to buyer)
-     - Step 2: `market_standings::fill_buy_order(market, registry, tribe_id, char_id, ssu_id, order_id, type_id, quantity, clock)` -- processes payment
-   - Note: Items remain in escrow for the buyer to pick up via `public_escrow_to_self`, OR the admin can deliver directly. For simplicity in v1, items go to escrow and the buyer picks them up.
-   - Parameters: ssuConfigId, ssuObjectId, characterObjectId, typeId, quantity, marketId, coinType, registryId, tribeId, charId, orderId, senderAddress, ssuUnifiedPackageId, marketStandingsPackageId
+### Phase 2: Update chain-shared Config & TX Builders
 
-5. **`buildUpdateListingWithEscrowDelta`** (seller = SSU owner/delegate)
-   - Calculate delta = newQuantity - oldQuantity
-   - If delta > 0: `ssu_unified::admin_to_escrow(config, storage_unit, character, type_id, delta)` -- escrow more
-   - If delta < 0: `ssu_unified::admin_from_escrow(config, storage_unit, character, type_id, |delta|)` -- un-escrow
-   - Then: `market_standings::update_sell_listing(market, listing_id, new_price, new_quantity)` (or `market::update_sell_listing`)
-   - Parameters: ssuConfigId, ssuObjectId, characterObjectId, typeId, oldQuantity, newQuantity, newPrice, marketId, coinType, listingId, senderAddress, ssuUnifiedPackageId, marketStandingsPackageId/marketPackageId
+1. In `packages/chain-shared/src/config.ts`, update `ssuUnified.packageId` for both tenants with the new published package ID. Move current IDs to `previousOriginalPackageIds`.
 
-Also add a TS TX builder for the new Move function:
+2. In `packages/chain-shared/src/ssu-unified.ts`, rewrite the 4 trade TX builders to call the new composite functions:
 
-6. **`buildPublicEscrowToSelf`** (standalone, for manual pickup)
-   - Calls `ssu_unified::public_escrow_to_self(config, storage_unit, character, type_id, quantity)`
-   - Parameters: ssuUnifiedPackageId, ssuConfigId, ssuObjectId, characterObjectId, typeId, quantity, senderAddress
+   **`buildEscrowAndList`** (replaces `buildEscrowAndListWithStandings`):
+   - Params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId` (storage unit), `characterObjectId`, `coinType`, `marketId`, `ssuId` (as ID), `typeId`, `pricePerUnit`, `quantity`, `senderAddress`
+   - Single moveCall: `ssu_unified::escrow_and_list<coinType>` with args: config, market, storage_unit, character, ssu_id, type_id, price_per_unit, quantity, clock
+
+   **`buildBuyAndReceive`** (replaces `buildBuyFromListingWithStandings`):
+   - Params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId`, `ownerCharacterObjectId`, `buyerCharacterObjectId`, `coinType`, `marketId`, `listingId`, `quantity`, `coinObjectIds`, `senderAddress`
+   - Merge coins (existing pattern), then moveCall: `ssu_unified::buy_and_receive<coinType>` with args: config, market, storage_unit, owner_character, buyer_character, listing_id, quantity, payment_coin, clock
+   - Transfer returned change coin to sender
+
+   **`buildCancelAndUnescrow`** (replaces `buildCancelListingWithStandings`):
+   - Params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId`, `characterObjectId`, `coinType`, `marketId`, `listingId`, `senderAddress`
+   - Single moveCall: `ssu_unified::cancel_and_unescrow<coinType>` with args: config, market, storage_unit, character, listing_id
+
+   **`buildFillAndDeliver`** (replaces `buildFillBuyOrderWithStandings`):
+   - Params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId`, `characterObjectId`, `buyerCharacterObjectId`, `coinType`, `marketId`, `orderId`, `typeId`, `quantity`, `senderAddress`
+   - Single moveCall: `ssu_unified::fill_and_deliver<coinType>` with args: config, market, storage_unit, character, buyer_character, order_id, type_id, quantity
+
+3. Keep old function names as deprecated aliases or remove them (no backwards compat needed).
 
 ### Phase 3: Thread TransferContext to Market Dialogs
 
-1. In `apps/ssu-dapp/src/components/ContentTabs.tsx`:
-   - Pass `transferContext` to `MarketContent` as a new prop.
+The `TransferContext` data (ssuConfigId, ssuObjectId, characterObjectId, etc.) is already available in `SsuView.tsx` but not passed through to market dialog components.
 
-2. In `apps/ssu-dapp/src/components/MarketContent.tsx`:
-   - Accept `transferContext` prop.
-   - Pass relevant fields to `MarketOrdersGrid`.
+1. In `apps/ssu-dapp/src/components/ContentTabs.tsx`: Pass `transferContext` to `MarketContent` as a new prop.
 
-3. In `apps/ssu-dapp/src/components/MarketOrdersGrid.tsx`:
-   - Accept `transferContext` prop.
-   - Pass to `BuyFromListingDialog`, `FillBuyOrderDialog`, `CancelListingDialog`, `SellDialog`.
+2. In `apps/ssu-dapp/src/components/MarketContent.tsx`: Accept `transferContext` prop and forward relevant fields to `MarketOrdersGrid`.
 
-4. In each dialog:
-   - Accept new props for ssuConfigId, ssuUnifiedPackageId, characterObjectId, ssuObjectId.
-   - Use these to call the composite TX builders from Phase 2.
+3. In `apps/ssu-dapp/src/components/MarketOrdersGrid.tsx`: Accept transfer data props and forward to `SellDialog`, `BuyFromListingDialog`, `CancelListingDialog`, `FillBuyOrderDialog`.
 
-### Phase 4: Update Sell Flow
+4. In each dialog: Accept new props for `ssuConfigId`, `ssuUnifiedPackageId`, `characterObjectId`, `ssuObjectId`.
 
-1. In `apps/ssu-dapp/src/components/SellDialog.tsx`:
-   - Replace `buildEscrowAndListWithStandings` / `buildPostSellListing` with `buildSellWithEscrow`.
-   - Add `ssuConfigId`, `ssuObjectId`, `characterObjectId`, `ssuUnifiedPackageId` to the params.
-   - The seller must be authorized (owner/delegate) -- this is already enforced by the `canSell` check in `ContentTabs.tsx`.
+### Phase 4: Update Dialog Components
 
-2. In `apps/ssu-dapp/src/components/CancelListingDialog.tsx`:
-   - Replace `buildCancelListingWithStandings` / `buildCancelSellListing` with `buildCancelListingWithReturn`.
-   - Need to pass typeId and quantity from the listing to restore items from escrow.
+1. **SellDialog.tsx** -- update `handleSell`:
+   - Import `buildEscrowAndList`
+   - Replace `buildEscrowAndListWithStandings` / `buildPostSellListing` calls
+   - Pass additional params: `ssuUnifiedPackageId` (from `ssuConfig.packageId`), `ssuConfigId`, `ssuObjectId`, `characterObjectId`
 
-### Phase 5: Update Buy and Fill Flows
+2. **BuyFromListingDialog.tsx** -- update `handleBuy`:
+   - Import `buildBuyAndReceive`
+   - Replace `buildBuyFromListingWithStandings` / `buildBuyFromListing` calls
+   - Pass additional params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId`, `ownerCharacterObjectId` (SSU owner -- from config), `buyerCharacterObjectId` (connected wallet's character)
+   - The buyer's character object ID must be resolved from the connected wallet address
 
-1. In `apps/ssu-dapp/src/components/BuyFromListingDialog.tsx`:
-   - Replace `buildBuyFromListingWithStandings` / `buildBuyFromListing` with `buildBuyWithDelivery`.
-   - Add `ssuConfigId`, `ssuObjectId`, `characterObjectId`, `ssuUnifiedPackageId` to the params.
-   - The buyer's Character object ID comes from `TransferContext.characterObjectId` (threaded in Phase 3).
+3. **CancelListingDialog.tsx** -- update handler:
+   - Import `buildCancelAndUnescrow`
+   - Replace `buildCancelListingWithStandings` / `buildCancelSellListing` calls
+   - Pass additional params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId`, `characterObjectId`
 
-2. In `apps/ssu-dapp/src/components/FillBuyOrderDialog.tsx`:
-   - Replace `buildFillBuyOrderWithStandings` / `buildFillBuyOrder` with `buildFillBuyOrderWithItems`.
-   - The seller (who fills the order) must be authorized (owner/delegate). This is the same authorization check already present.
+4. **FillBuyOrderDialog.tsx** -- update `handleFill`:
+   - Import `buildFillAndDeliver`
+   - Replace `buildFillBuyOrderWithStandings` / `buildFillBuyOrder` calls
+   - Pass additional params: `ssuUnifiedPackageId`, `ssuConfigId`, `ssuObjectId`, `characterObjectId`, `buyerCharacterObjectId`
+   - The buyer's character object ID must be resolved from the buy order's `buyer` address
 
-3. In `apps/ssu-dapp/src/components/ListingCard.tsx`:
-   - Replace `buildBuyFromListingWithStandings` with `buildBuyWithDelivery`.
-   - Thread the same new props from MarketContent/MarketOrdersGrid.
+5. **ListingCard.tsx** and **ListingAdminList.tsx**: Same updates as their respective dialog patterns.
 
-### Phase 6: Update Admin Listing Management
+### Phase 5: Buyer Character Resolution
 
-1. In `apps/ssu-dapp/src/components/ListingAdminList.tsx`:
-   - Update `handleCancel` to use `buildCancelListingWithReturn` (return items from escrow).
-   - Update `handleUpdate` to use `buildUpdateListingWithEscrowDelta` -- if quantity is reduced, return excess items from escrow; if increased, escrow more items.
+The `buy_and_receive` and `fill_and_deliver` composite functions need the buyer's/seller's character object reference as an on-chain `&Character`.
 
-2. In `apps/ssu-dapp/src/components/EditListingDialog.tsx`:
-   - Pass `oldQuantity` (from listing) to `buildUpdateListingWithEscrowDelta`.
-   - Add ssuConfigId, ssuObjectId, characterObjectId, ssuUnifiedPackageId to the params (same threading as Phase 3).
+1. Add or extend a `useCharacterObjectId(address)` hook in `apps/ssu-dapp/src/hooks/`:
+   - For the connected wallet's character: query the manifest or on-chain character registry
+   - For a buy order's buyer: resolve from the `buyer` address field
+   - For a sell listing's seller: resolve from the listing's `seller` address
+
+2. Update `BuyFromListingDialog` to resolve and pass the SSU owner's character object ID (from the listing's seller address or from the SSU config owner).
+
+3. Update `FillBuyOrderDialog` to resolve and pass the buyer's character object ID from the order's buyer address.
 
 ## File Summary
 
 | File | Action | Description |
 |------|--------|-------------|
-| `contracts/ssu_unified/sources/ssu_unified.move` | Edit | Change config from owned to shared objects, add `public_escrow_to_self` function |
-| `packages/chain-shared/src/config.ts` | Edit | Update `ssuUnified.packageId` for both tenants after republish |
-| `packages/chain-shared/src/ssu-unified.ts` | Edit | Add composite TX builders: `buildSellWithEscrow`, `buildCancelListingWithReturn`, `buildBuyWithDelivery`, `buildFillBuyOrderWithItems`, `buildUpdateListingWithEscrowDelta`, `buildPublicEscrowToSelf` |
-| `apps/ssu-dapp/src/components/ContentTabs.tsx` | Edit | Thread `transferContext` to MarketContent |
-| `apps/ssu-dapp/src/components/MarketContent.tsx` | Edit | Accept and forward `transferContext` |
+| `contracts/ssu_unified/Move.toml` | Edit | Add `market` dependency |
+| `contracts/ssu_unified/sources/ssu_unified.move` | Edit | Change config to shared objects; add 4 composite trade functions |
+| `packages/chain-shared/src/config.ts` | Edit | Update ssuUnified package IDs for both tenants after republish |
+| `packages/chain-shared/src/ssu-unified.ts` | Edit | Rewrite 4 trade TX builders to call ssu_unified composite functions |
+| `apps/ssu-dapp/src/components/ContentTabs.tsx` | Edit | Thread transferContext to MarketContent |
+| `apps/ssu-dapp/src/components/MarketContent.tsx` | Edit | Accept and forward transferContext |
 | `apps/ssu-dapp/src/components/MarketOrdersGrid.tsx` | Edit | Accept and forward transfer data to dialogs |
-| `apps/ssu-dapp/src/components/SellDialog.tsx` | Edit | Use `buildSellWithEscrow` composite builder |
-| `apps/ssu-dapp/src/components/CancelListingDialog.tsx` | Edit | Use `buildCancelListingWithReturn` composite builder |
-| `apps/ssu-dapp/src/components/BuyFromListingDialog.tsx` | Edit | Use `buildBuyWithDelivery` composite builder |
-| `apps/ssu-dapp/src/components/FillBuyOrderDialog.tsx` | Edit | Use `buildFillBuyOrderWithItems` composite builder |
-| `apps/ssu-dapp/src/components/ListingAdminList.tsx` | Edit | Use composite builders for cancel/edit |
-| `apps/ssu-dapp/src/components/EditListingDialog.tsx` | Edit | Handle quantity changes with inventory movements |
+| `apps/ssu-dapp/src/components/SellDialog.tsx` | Edit | Use buildEscrowAndList composite builder |
+| `apps/ssu-dapp/src/components/BuyFromListingDialog.tsx` | Edit | Use buildBuyAndReceive composite builder |
+| `apps/ssu-dapp/src/components/CancelListingDialog.tsx` | Edit | Use buildCancelAndUnescrow composite builder |
+| `apps/ssu-dapp/src/components/FillBuyOrderDialog.tsx` | Edit | Use buildFillAndDeliver composite builder |
+| `apps/ssu-dapp/src/components/ListingAdminList.tsx` | Edit | Use composite builders for cancel |
 | `apps/ssu-dapp/src/components/ListingCard.tsx` | Edit | Use composite buy builder |
+| `apps/ssu-dapp/src/hooks/useCharacter.ts` | Edit | Add character object ID resolution from address |
 
 ## Open Questions
 
-1. **Should `public_escrow_to_self` have any access restrictions beyond the extension check?**
-   - **Option A: Unrestricted (current Phase 1 design)** -- Any player can withdraw any items from escrow to their own player inventory at any time. The storage_unit extension check is the only guard. Pros: Simple, enables single-TX buy-and-deliver flow. Cons: Malicious player could drain escrow items that aren't theirs (e.g., items listed for someone else's buy order).
-   - **Option B: Add a "purchased quantity" tracking field** -- The contract tracks how many items of each type a player is entitled to withdraw, incremented by buy/fill operations. Pros: Secure escrow. Cons: Requires the ssu_unified contract to depend on the market contract (to verify purchases), adding complexity and cross-package dependencies.
-   - **Option C: Accept the risk for now, add on-chain enforcement later** -- Ship unrestricted `public_escrow_to_self` for the prototype. Document the security limitation. Tighten in a future contract upgrade when cross-package escrow verification is designed.
-   - **Recommendation:** Option C. This is a prototyping phase with no real users. The risk is that a bad actor drains escrow -- but the SSU owner controls what goes into escrow and can stop listing if this happens. On-chain enforcement is deferred.
+1. **Standings enforcement for composite functions**
+   - **Option A: Bypass standings** -- Composite functions call `market::market::` directly, skipping `market_standings` standings checks. Pros: simple, no additional dependency. Cons: any player can buy regardless of standings.
+   - **Option B: Add market_standings dependency** -- Composite functions call `market_standings::` for standings enforcement. Pros: full standings enforcement. Cons: more complex contract, additional dependency, may have Move dependency graph issues.
+   - **Option C: Client-side standings check** -- Dapp validates standings before allowing the TX. Not enforced on-chain. Pros: no contract changes. Cons: bypassable.
+   - **Recommendation:** Option A for the hackathon. Sell side already enforces via `market::is_authorized`. Buy-side standings enforcement is nice-to-have.
 
-2. **Should `update_sell_listing` (quantity change) trigger inventory movements?**
-   - **Option A: Yes, move items to/from escrow on quantity change** -- If quantity increases, escrow more items. If quantity decreases, return items from escrow. Pros: Escrow always matches listing quantity. Cons: More complex TX builder; requires knowing the old quantity to compute delta.
-   - **Option B: No, only handle full listing lifecycle (create/cancel)** -- Update only changes price/quantity on the listing metadata. Quantity mismatches resolved on purchase (fail if insufficient escrow). Pros: Simpler. Cons: Could allow overselling if seller lists more than what's in escrow.
-   - **Recommendation:** Option A. The TX builder knows the current listing quantity (from the listing data passed to the edit dialog). Computing the delta and composing the appropriate escrow/un-escrow step is straightforward and prevents inventory inconsistencies.
+2. **Buyer character resolution for fill_and_deliver**
+   - **Option A: Off-chain resolution** -- Seller's client resolves buyer's character object ID from the buy order's `buyer` address before building the TX. Pros: straightforward query. Cons: extra query step.
+   - **Option B: On-chain resolution** -- Function takes buyer address and resolves character internally. Pros: single step. Cons: Move doesn't support arbitrary object lookups -- not feasible without a registry.
+   - **Recommendation:** Option A. The buyer address is available from the BuyOrder query. The SSU dapp can resolve the character object ID via manifest/character cache or an on-chain query.
 
-3. **Should items be escrowed during fill-buy-order, or delivered directly to escrow for buyer pickup?**
-   - **Option A: Escrow then buyer pickup** -- Seller moves items to escrow via `admin_to_escrow`, fills the order, buyer later calls `public_escrow_to_self`. Pros: Consistent with sell-listing model. Cons: Two-step for the buyer (fill TX + pickup TX), unless items are auto-delivered.
-   - **Option B: Direct delivery via admin_escrow_to_player in same PTB** -- Seller escrows items, then immediately delivers to buyer's player inventory. Pros: Single TX, items arrive instantly. Cons: Requires knowing the buyer's Character object ID at fill time (available from the buy order's buyer address, but needs resolution).
-   - **Option C: Two-PTB approach for v1** -- Fill TX only handles coins. Items stay in owner inventory. Buyer manually requests items via a separate UI action.
-   - **Recommendation:** Option A for v1. The buyer already needs to be at the SSU to pick up items. The `public_escrow_to_self` function handles this. The UI can show "items in escrow -- click to claim" for completed purchases.
-
-4. **Should `SsuUnifiedConfig` be shared or use a different discovery/reference pattern?**
-   - **Option A: Shared object (current Phase 1 design)** -- Change `transfer::transfer` to `transfer::share_object`. Anyone can reference the config in TXs. Admin functions are still owner-protected. Pros: Simplest fix. Enables player functions. Cons: Shared objects have slightly higher gas costs due to consensus ordering. Config objects are small so this is negligible.
-   - **Option B: Make config immutable after creation** -- Use `transfer::freeze_object`. Pros: Zero-cost reads. Cons: Cannot update config (market link, delegates, thresholds). Would require destroy+recreate pattern for changes.
-   - **Option C: Store config fields on the StorageUnit as dynamic fields** -- Eliminate SsuUnifiedConfig as a separate object. Use dynamic fields on the SSU itself. Pros: No ownership issue (StorageUnit is shared). Cons: Invasive change, different storage/query pattern.
-   - **Recommendation:** Option A. Shared objects are the standard Sui pattern for objects referenced by multiple users. Gas overhead is negligible for small config objects. The existing `assert_authorized` checks protect mutations.
-
-**Dependency:** This plan depends on Plan 12 (SSU Market Linking) being implemented first. Plan 12 publishes the `ssu_unified` contract and wires up the SSU dapp to read config from chain. This plan modifies the same contract with additional functions and the owned->shared change. Both plans can be combined into a single contract publish.
+3. **Escrow quantity tracking for partial buys**
+   - When a listing is partially bought, `buy_and_receive` withdraws only the purchased quantity from escrow. But the escrow (open inventory) is a shared pool per type_id -- it doesn't track per-listing quantities.
+   - **Option A: Accept shared pool** -- As long as total escrowed >= total listed, this works. The composite `escrow_and_list` guarantees items are escrowed at listing time, keeping the pool balanced.
+   - **Option B: Per-listing escrow tracking** -- Track escrowed quantities per listing_id on-chain. Significant complexity.
+   - **Recommendation:** Option A. The composite function guarantees escrow-on-list, so the pool stays balanced. If admin creates multiple listings for the same type_id, the pool works naturally.
 
 ## Deferred
 
-- **On-chain escrow enforcement** -- Verifying on-chain that items in escrow match active listings. Currently relies on correct client-side PTB composition. A future contract upgrade could add listing-aware escrow validation.
-- **Cross-SSU purchases** -- Buying items from an SSU other than the one the buyer is currently viewing. Requires item delivery to a different SSU.
-- **Partial fill inventory tracking** -- When a buy order is partially filled, tracking which items have been delivered and which are pending.
-- **Automated settlement** -- A background process that detects completed trades and settles item transfers automatically.
+- **Standings enforcement for composite buy** -- The composite `buy_and_receive` bypasses `market_standings`. Can be added by depending on `market_standings` or reimplementing the standings check.
+- **Edit listing quantity adjustment** -- When updating a listing's quantity via `update_sell_listing`, the escrowed amount should be adjusted. Requires a new composite `update_and_adjust_escrow` function.
+- **Non-standings market variants** -- The `market.ts` TX builders (`buildPostSellListing`, `buildBuyFromListing`, etc.) should also be updated or deprecated in favor of the unified composite versions.
+- **On-chain escrow enforcement** -- Verifying on-chain that total escrow >= total listed quantity. Currently relies on correct client-side TX builder usage.
+- **Automated buyer notification** -- UI to show "items in escrow -- claim available" for completed purchases.
