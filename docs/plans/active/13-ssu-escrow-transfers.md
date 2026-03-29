@@ -320,6 +320,7 @@ The composite functions need Character object references for both the SSU owner 
 ## Open Questions
 
 None -- all resolved. See Design Decisions table.
+
 ## Deferred
 
 - **Standings enforcement for composite buy** -- The composite `buy_and_receive` bypasses `market_standings`. Can be added by depending on `market_standings` or reimplementing the standings check.
