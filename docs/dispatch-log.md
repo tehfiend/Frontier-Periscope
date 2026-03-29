@@ -128,6 +128,12 @@
 
 ## 2026-03-28 -- ssu-escrow-transfers
 - **Action:** CREATE
-- **File:** docs/plans/pending/13-ssu-escrow-transfers.md
+- **File:** docs/plans/active/13-ssu-escrow-transfers.md
 - **Passes:** 5 (4 with changes, pass 5 trivial line-number fix)
-- **Result:** pending -- 5-phase plan fixing SSU market escrow transfers. Deep dive found market contracts (market.move, market_standings) are pure order books with no inventory integration -- items never move on sell/buy/cancel/fill. Fix: add `market` dependency to ssu_unified, create 4 composite Move functions (escrow_and_list, buy_and_receive, cancel_and_unescrow, fill_and_deliver) that atomically combine market operations with inventory transfers. buy_and_receive is secure -- payment via market::buy_from_listing IS the authorization, type_id read from listing prevents item mismatch. Also: switch SsuUnifiedConfig from owned to shared objects (Sui prevents non-owners from referencing owned objects). 3 open questions remain (standings enforcement, buyer character resolution, escrow pool tracking).
+- **Result:** active -- 5-phase plan fixing SSU market escrow transfers. 4 composite Move functions (escrow_and_list, buy_and_receive, cancel_and_unescrow, fill_and_deliver) atomically combine market + inventory operations. buy_and_receive authorization via payment. SsuUnifiedConfig changed from owned to shared.
+
+## 2026-03-29 -- ssu-escrow-transfers (resolve questions)
+- **Action:** UPDATE
+- **File:** docs/plans/active/13-ssu-escrow-transfers.md
+- **Passes:** 1
+- **Result:** active -- resolved 3 open questions (A: bypass standings for hackathon, A: off-chain buyer character resolution, A: shared escrow pool)
