@@ -125,3 +125,9 @@
 - **File:** plans/active/12-ssu-market-linking.md
 - **Passes:** 2
 - **Result:** active -- stripped legacy concerns, fresh contract design
+
+## 2026-03-28 -- ssu-escrow-transfers
+- **Action:** CREATE
+- **File:** docs/plans/pending/13-ssu-escrow-transfers.md
+- **Passes:** 4 (4 with changes)
+- **Result:** pending -- 6-phase plan fixing SSU market escrow transfers. Deep dive found market contracts (market.move, market_standings) are pure order books with no inventory integration -- items never move on sell/buy/cancel. ssu_unified.move has the inventory functions but they're never composed with market operations. Critical finding: SsuUnifiedConfig is an owned object, making player_to_escrow/player_to_owner unusable by non-owners (Sui prevents non-owners from referencing owned objects). Fix: switch config to shared objects, add public_escrow_to_self function, compose inventory+market operations in PTBs. Depends on Plan 12. 4 open questions remain (escrow access control, edit-listing delta, fill-order delivery model, config sharing pattern).
