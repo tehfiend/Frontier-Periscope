@@ -27,7 +27,7 @@ const quickActions = [
 	{ to: "/map", icon: MapIcon, label: "Star Map" },
 	{ to: "/private-maps", icon: Lock, label: "Private Maps" },
 	{ to: "/standings", icon: BookUser, label: "Standings" },
-	{ to: "/markets", icon: Coins, label: "Markets" },
+	{ to: "/currencies", icon: Coins, label: "Currencies" },
 ] as const;
 
 // ── DashboardCard ────────────────────────────────────────────────────────────
@@ -218,7 +218,7 @@ export function Dashboard() {
 					</DashboardCard>
 
 					{/* Markets */}
-					<DashboardCard icon={Coins} title="Markets" to="/markets">
+					<DashboardCard icon={Coins} title="Currencies" to="/currencies">
 						{marketCount > 0 ? (
 							<p>
 								<span className="text-zinc-200">

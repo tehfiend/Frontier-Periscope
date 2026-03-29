@@ -1,5 +1,9 @@
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { db } from "@/db";
 import type { CurrencyRecord } from "@/db/types";
+import { type TenantId, getContractAddresses, queryDecommissionedMarkets } from "@tehfrontier/chain-shared";
+import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ChevronDown, Coins } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -32,18 +36,33 @@ const SUI_OPTION: CurrencyOption = {
 export function CurrencySelector({ value, onChange }: CurrencySelectorProps) {
 	const [open, setOpen] = useState(false);
 
+	const client = useSuiClient();
+	const tenant = useActiveTenant();
+
 	// Reactive currency list from IndexedDB, excluding archived
 	const currencies = useLiveQuery(() => db.currencies.filter((c) => !c._archived).toArray(), []);
 
+	// Query decommissioned markets from on-chain registry
+	const decomPkg = tenant ? getContractAddresses(tenant as TenantId).decommission?.packageId : undefined;
+	const { data: decommissioned } = useQuery({
+		queryKey: ["decommissioned-markets", decomPkg],
+		queryFn: () => queryDecommissionedMarkets(client, decomPkg!),
+		enabled: !!decomPkg,
+		staleTime: 120_000,
+	});
+
 	const options: CurrencyOption[] = useMemo(() => {
-		const currencyOptions: CurrencyOption[] = (currencies ?? []).map((c: CurrencyRecord) => ({
-			coinType: c.coinType,
-			symbol: c.symbol,
-			name: c.name || c.symbol,
-			label: `${c.symbol} -- ${c.name || c.coinType}`,
-		}));
+		const decomSet = decommissioned ?? new Set<string>();
+		const currencyOptions: CurrencyOption[] = (currencies ?? [])
+			.filter((c: CurrencyRecord) => !c.marketId || !decomSet.has(c.marketId))
+			.map((c: CurrencyRecord) => ({
+				coinType: c.coinType,
+				symbol: c.symbol,
+				name: c.name || c.symbol,
+				label: `${c.symbol} -- ${c.name || c.coinType}`,
+			}));
 		return [SUI_OPTION, ...currencyOptions];
-	}, [currencies]);
+	}, [currencies, decommissioned]);
 
 	const selected =
 		options.find((o) => (value ? o.coinType === value : o.coinType === undefined)) ?? SUI_OPTION;

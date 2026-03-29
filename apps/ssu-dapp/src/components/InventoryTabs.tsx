@@ -120,13 +120,13 @@ export function InventoryTabs({
 		if (hasCapForSource && hasOtherCap) return true;
 
 		// Market path: admin can transfer from owner/escrow slots
+		// (escrow withdraw requires ssu_market extension functions)
 		if (hasMarket && isAuthorized) {
 			if (currentSlot.slotType === "owner" || currentSlot.slotType === "open") return true;
 		}
 
 		// Market path: player can transfer from their own player slot to owner/escrow
 		if (hasMarket && hasCapForSource && currentSlot.slotType === "player") {
-			// Player has cap for their own slot -- they can use player_to_escrow/player_to_owner
 			return true;
 		}
 
@@ -235,6 +235,7 @@ export function InventoryTabs({
 			ssuConfigId: transferContext.ssuConfigId,
 			marketPackageId: transferContext.marketPackageId,
 			isAuthorized: transferContext.isAuthorized,
+			extensionModule: transferContext.extensionModule,
 		};
 	})();
 
@@ -297,7 +298,7 @@ export function InventoryTabs({
 						</span>
 						{slot.items.length > 0 && (
 							<span className="ml-1 rounded-full bg-zinc-600/50 px-1.5 py-0.5 text-xs">
-								{slot.items.length}
+								{slot.items.length} · {(slot.usedCapacity / 1000).toLocaleString()} m³
 							</span>
 						)}
 					</button>
@@ -315,14 +316,16 @@ export function InventoryTabs({
 						canSell &&
 						(currentSlot.slotType === "owner"
 							? !!onSell
-							: currentSlot.slotType === "player"
+							: currentSlot.slotType === "player" &&
+									currentSlot.characterObjectId === transferContext?.characterObjectId
 								? !!onPlayerSell
 								: false)
 					}
 					onSell={
 						currentSlot.slotType === "owner"
 							? onSell
-							: currentSlot.slotType === "player"
+							: currentSlot.slotType === "player" &&
+									currentSlot.characterObjectId === transferContext?.characterObjectId
 								? onPlayerSell
 								: undefined
 					}

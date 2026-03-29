@@ -1,45 +1,28 @@
 import { useCoinMetadata } from "@/hooks/useCoinMetadata";
 import type { InventoryItem } from "@/hooks/useInventory";
-import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
-import { getTenant, getWorldPublishedAt } from "@/lib/constants";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import type { Transaction } from "@mysten/sui/transactions";
-import {
-	buildEscrowAndListWithStandings,
-	buildPlayerEscrowAndListWithStandings,
-	formatBaseUnits,
-	parseDisplayPrice,
-} from "@tehfrontier/chain-shared";
+import { buildEscrowAndList, formatBaseUnits, parseDisplayPrice } from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
 interface SellDialogProps {
 	item: InventoryItem;
 	ssuObjectId: string;
-	characterObjectId: string;
-	/** SSU OwnerCap (for owner sell) */
-	ownerCap?: OwnerCapInfo;
-	/** Character OwnerCap (for player sell) */
-	charOwnerCap?: OwnerCapInfo;
-	charOwnerCapId?: string;
 	ssuConfig: SsuConfigResult;
 	coinType: string;
-	isPlayerSell?: boolean;
+	/** SSU owner's Character object ID (for escrow TX builders). */
+	ownerCharacterObjectId: string | null;
 	onClose: () => void;
 }
 
 export function SellDialog({
 	item,
 	ssuObjectId,
-	characterObjectId,
-	ownerCap,
-	charOwnerCap,
-	charOwnerCapId,
 	ssuConfig,
 	coinType,
-	isPlayerSell,
+	ownerCharacterObjectId,
 	onClose,
 }: SellDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -63,7 +46,11 @@ export function SellDialog({
 	const maxQty = item.quantity;
 
 	async function handleSell() {
-		if (!account?.address || !ssuConfig.marketId) return;
+		if (!account?.address || !ssuConfig.marketId || !coinType) return;
+		if (!ownerCharacterObjectId) {
+			setError("SSU owner character not resolved");
+			return;
+		}
 		if (qty <= 0 || qty > maxQty) {
 			setError(`Quantity must be between 1 and ${maxQty}`);
 			return;
@@ -76,49 +63,19 @@ export function SellDialog({
 		setError(null);
 		setSuccess(null);
 
-		const worldPkg = getWorldPublishedAt(getTenant());
-
 		try {
-			let tx: Transaction;
-			if (isPlayerSell && charOwnerCap && charOwnerCapId) {
-				tx = buildPlayerEscrowAndListWithStandings({
-					packageId: ssuConfig.packageId,
-					ssuConfigId: ssuConfig.ssuConfigId,
-					marketId: ssuConfig.marketId,
-					coinType,
-					registryId: ssuConfig.registryId ?? "",
-					worldPackageId: worldPkg,
-					ssuObjectId,
-					characterObjectId,
-					ownerCapReceivingId: charOwnerCapId,
-					ownerCapVersion: String(charOwnerCap.version),
-					ownerCapDigest: charOwnerCap.digest,
-					ownerCapTypeArg: `${worldPkg}::character::Character`,
-					typeId: item.typeId,
-					quantity: qty,
-					pricePerUnit: priceBase,
-					senderAddress: account.address,
-				});
-			} else if (ownerCap) {
-				tx = buildEscrowAndListWithStandings({
-					packageId: ssuConfig.packageId,
-					ssuConfigId: ssuConfig.ssuConfigId,
-					marketId: ssuConfig.marketId,
-					coinType,
-					registryId: ssuConfig.registryId ?? "",
-					worldPackageId: worldPkg,
-					ssuObjectId,
-					characterObjectId,
-					ownerCapReceivingId: ownerCap.objectId,
-					typeId: item.typeId,
-					quantity: qty,
-					pricePerUnit: priceBase,
-					senderAddress: account.address,
-				});
-			} else {
-				setError("Missing required capabilities");
-				return;
-			}
+			const tx = buildEscrowAndList({
+				ssuUnifiedPackageId: ssuConfig.packageId,
+				ssuConfigId: ssuConfig.ssuConfigId,
+				ssuObjectId,
+				characterObjectId: ownerCharacterObjectId,
+				coinType,
+				marketId: ssuConfig.marketId,
+				typeId: item.typeId,
+				pricePerUnit: priceBase,
+				quantity: qty,
+				senderAddress: account.address,
+			});
 
 			await signAndExecute(tx);
 			setSuccess(
@@ -137,9 +94,7 @@ export function SellDialog({
 		>
 			<div className="p-4">
 				<div className="mb-4 flex items-center justify-between">
-					<h3 className="text-sm font-medium text-zinc-200">
-						{isPlayerSell ? "Sell from Storage" : "Sell Item"}
-					</h3>
+					<h3 className="text-sm font-medium text-zinc-200">Sell Item</h3>
 					<button
 						type="button"
 						onClick={() => {
@@ -168,11 +123,9 @@ export function SellDialog({
 					</div>
 				) : (
 					<div className="space-y-3">
-						{isPlayerSell && (
-							<p className="text-[10px] text-zinc-600">
-								Items will be escrowed until sold or canceled.
-							</p>
-						)}
+						<p className="text-[10px] text-zinc-600">
+							Items will be listed as a virtual sell listing.
+						</p>
 
 						{/* Item info */}
 						<div>

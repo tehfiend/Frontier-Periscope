@@ -27,7 +27,6 @@ const LazyStandings = lazy(() =>
 const LazyDashboard = lazy(() =>
 	import("@/views/Dashboard").then((m) => ({ default: m.Dashboard })),
 );
-const LazyTreasury = lazy(() => import("@/views/Treasury").then((m) => ({ default: m.Treasury })));
 
 function LoadingFallback() {
 	return (
@@ -97,14 +96,6 @@ function DashboardPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
 			<LazyDashboard />
-		</Suspense>
-	);
-}
-
-function TreasuryPage() {
-	return (
-		<Suspense fallback={<LoadingFallback />}>
-			<LazyTreasury />
 		</Suspense>
 	);
 }
@@ -203,14 +194,6 @@ const currenciesRoute = createRoute({
 	component: CurrenciesPage,
 });
 
-const marketsRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/markets",
-	beforeLoad: () => {
-		throw redirect({ to: "/currencies" });
-	},
-});
-
 const settingsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/settings",
@@ -253,12 +236,6 @@ const standingsRoute = createRoute({
 	component: StandingsPage,
 });
 
-const treasuryRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/treasury",
-	component: TreasuryPage,
-});
-
 const workersRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/workers",
@@ -285,15 +262,12 @@ const routeTree = rootRoute.addChildren([
 	sonarRoute,
 	extensionsRoute,
 	currenciesRoute,
-	marketsRoute,
 	assetsRoute,
 	manifestRoute,
 	walletRoute,
 	jumpPlannerRoute,
 	privateMapsRoute,
 	standingsRoute,
-	treasuryRoute,
-
 	workersRoute,
 	settingsRoute,
 	setupRoute,

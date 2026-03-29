@@ -30,8 +30,13 @@ interface OwnerResponse {
 	} | null;
 }
 
+export interface OwnerCharacterInfo {
+	characterName: string | null;
+	characterObjectId: string;
+}
+
 /**
- * Resolve the SSU owner's character name from the ownerCapId.
+ * Resolve the SSU owner's character name and object ID from the ownerCapId.
  *
  * 1. Look up the OwnerCap<StorageUnit> object -> its owner is the Character.
  * 2. Fetch the Character object -> read metadata.name.
@@ -41,7 +46,7 @@ export function useOwnerCharacter(ownerCapId: string | undefined) {
 
 	return useQuery({
 		queryKey: ["owner-character", ownerCapId],
-		queryFn: async (): Promise<string | null> => {
+		queryFn: async (): Promise<OwnerCharacterInfo | null> => {
 			if (!ownerCapId) return null;
 
 			// Step 1: Find the Character that owns this OwnerCap
@@ -58,7 +63,12 @@ export function useOwnerCharacter(ownerCapId: string | undefined) {
 			if (!charResult.json) return null;
 
 			const meta = charResult.json.metadata as Record<string, unknown> | undefined;
-			return meta?.name ? String(meta.name) : null;
+			const characterName = meta?.name ? String(meta.name) : null;
+
+			return {
+				characterName,
+				characterObjectId: characterId,
+			};
 		},
 		enabled: !!ownerCapId,
 		staleTime: 5 * 60_000,

@@ -14,12 +14,12 @@ interface MarketContentProps {
 	buyOrders: BuyOrderWithName[];
 	listingsLoading?: boolean;
 	buyOrdersLoading?: boolean;
-	characterObjectId?: string;
 	isConnected: boolean;
 	coinType: string;
 	walletAddress?: string;
 	ssuObjectId: string;
-	ownerCapReceivingId?: string;
+	/** SSU owner's Character object ID (for escrow TX builders). */
+	ownerCharacterObjectId?: string | null;
 }
 
 export function MarketContent({
@@ -28,12 +28,11 @@ export function MarketContent({
 	buyOrders,
 	listingsLoading,
 	buyOrdersLoading,
-	characterObjectId,
 	isConnected,
 	coinType,
 	walletAddress,
 	ssuObjectId,
-	ownerCapReceivingId,
+	ownerCharacterObjectId,
 }: MarketContentProps) {
 	const [showBuyOrderDialog, setShowBuyOrderDialog] = useState(false);
 	const marketPkg = getMarketPackageId();
@@ -120,14 +119,13 @@ export function MarketContent({
 				<MarketOrdersGrid
 					rows={rows}
 					ssuConfig={ssuConfig}
-					characterObjectId={characterObjectId}
 					coinType={coinType}
 					ssuObjectId={ssuObjectId}
-					ownerCapReceivingId={ownerCapReceivingId}
 					isConnected={isConnected}
 					coinDecimals={decimals}
 					coinSymbol={symbol}
 					marketPackageId={marketPkg}
+					ownerCharacterObjectId={ownerCharacterObjectId}
 				/>
 			)}
 

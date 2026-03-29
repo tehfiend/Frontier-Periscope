@@ -1,9 +1,10 @@
 import type { TenantId } from "@/chain/config";
-import { buildConfigureGateStandings, buildConfigureSsuUnified } from "@/chain/transactions";
+import { buildConfigureGateStandings, buildConfigureSsuStandings } from "@/chain/transactions";
+import { ContactPicker } from "@/components/ContactPicker";
 import { db } from "@/db";
-import type { StructureExtensionConfig, TreasuryRecord } from "@/db/types";
+import type { StructureExtensionConfig } from "@/db/types";
 import { useSuiClient } from "@/hooks/useSuiClient";
-import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
+import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
 import {
 	REGISTRY_STANDING_LABELS,
 	discoverSsuUnifiedConfig,
@@ -83,10 +84,12 @@ function GateStandingsConfig({
 	values,
 	onChange,
 	account,
+	resolvedTreasuryId,
 }: {
 	values: GateConfigValues;
 	onChange: (v: GateConfigValues) => void;
 	account: { address: string } | null;
+	resolvedTreasuryId: string | null;
 }) {
 	const durationMinutes = Math.round(Number(values.permitDurationMs) / 60_000);
 	const isCustomCurrency = !!values.tollCoinType;
@@ -98,15 +101,6 @@ function GateStandingsConfig({
 		const match = (currencies ?? []).find((c) => c.coinType === values.tollCoinType);
 		return match?.symbol ?? "TOKEN";
 	}, [values.tollCoinType, currencies]);
-
-	// Load user's treasuries for the revenue destination picker
-	const treasuries = useLiveQuery(() => db.treasuries.toArray(), []);
-	const userTreasuries = useMemo(() => {
-		if (!account) return [];
-		return (treasuries ?? []).filter(
-			(t: TreasuryRecord) => t.owner === account.address || t.admins.includes(account.address),
-		);
-	}, [treasuries, account]);
 
 	return (
 		<div className="space-y-4">
@@ -194,36 +188,18 @@ function GateStandingsConfig({
 				</div>
 			)}
 
-			{/* Treasury Selector (custom currency + treasury destination) */}
+			{/* Treasury info (custom currency + treasury destination) */}
 			{isCustomCurrency && values.revenueDestination === "treasury" && (
 				<div>
-					<label className="mb-1.5 block text-xs font-medium text-zinc-400">Treasury</label>
-					{userTreasuries.length > 0 ? (
-						<select
-							value={values.tollTreasuryId ?? ""}
-							onChange={(e) =>
-								onChange({
-									...values,
-									tollTreasuryId: e.target.value || undefined,
-								})
-							}
-							className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
-						>
-							<option value="">Select a treasury...</option>
-							{userTreasuries.map((t: TreasuryRecord) => (
-								<option key={t.id} value={t.id}>
-									{t.name || `${t.id.slice(0, 16)}...`}
-								</option>
-							))}
-						</select>
+					{resolvedTreasuryId ? (
+						<p className="rounded border border-zinc-700 bg-zinc-800/50 px-3 py-2 font-mono text-xs text-zinc-400">
+							Treasury: {resolvedTreasuryId.slice(0, 16)}...
+						</p>
 					) : (
-						<p className="rounded border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-500">
-							No treasuries found. Create one in the Treasury view.
+						<p className="rounded border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-400">
+							Selected currency has no treasury.
 						</p>
 					)}
-					<p className="mt-1 text-xs text-zinc-600">
-						Toll revenue will be deposited into the selected treasury.
-					</p>
 				</div>
 			)}
 
@@ -231,12 +207,16 @@ function GateStandingsConfig({
 			{(!isCustomCurrency || values.revenueDestination === "direct") && (
 				<div>
 					<label className="mb-1.5 block text-xs font-medium text-zinc-400">Toll Recipient</label>
+					<ContactPicker
+						placeholder="Search character or paste address..."
+						onSelect={(char) => onChange({ ...values, tollRecipient: char.suiAddress })}
+					/>
 					<input
 						type="text"
 						value={values.tollRecipient}
 						onChange={(e) => onChange({ ...values, tollRecipient: e.target.value })}
 						placeholder="0x..."
-						className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+						className="mt-1.5 w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
 					/>
 				</div>
 			)}
@@ -269,26 +249,17 @@ function GateStandingsConfig({
 function SsuStandingsConfig({
 	values,
 	onChange,
+	hasRegistry,
 }: {
 	values: SsuConfigValues;
 	onChange: (v: SsuConfigValues) => void;
+	hasRegistry: boolean;
 }) {
 	return (
 		<div className="space-y-4">
-			<StandingSlider
-				label="Min Deposit Standing"
-				value={values.minDeposit}
-				onChange={(v) => onChange({ ...values, minDeposit: v })}
-			/>
-			<StandingSlider
-				label="Min Withdraw Standing"
-				value={values.minWithdraw}
-				onChange={(v) => onChange({ ...values, minWithdraw: v })}
-			/>
-
 			<div>
 				<label className="mb-1.5 block text-xs font-medium text-zinc-400">
-					Market ID (optional)
+					Market (optional)
 				</label>
 				<MarketSelector
 					value={values.marketId}
@@ -298,6 +269,28 @@ function SsuStandingsConfig({
 					Link a Market object to enable trading on this SSU.
 				</p>
 			</div>
+
+			{hasRegistry && (
+				<>
+					<StandingSlider
+						label="Min Deposit Standing"
+						value={values.minDeposit}
+						onChange={(v) => onChange({ ...values, minDeposit: v })}
+					/>
+					<StandingSlider
+						label="Min Withdraw Standing"
+						value={values.minWithdraw}
+						onChange={(v) => onChange({ ...values, minWithdraw: v })}
+					/>
+				</>
+			)}
+
+			{!hasRegistry && values.marketId && (
+				<p className="text-xs text-zinc-500">
+					Select a standings registry above to control who can deposit and withdraw.
+					Without one, the SSU is open to everyone.
+				</p>
+			)}
 		</div>
 	);
 }
@@ -375,8 +368,9 @@ function StandingsExtensionPanelInner({
 	onConfigured,
 }: Omit<StandingsExtensionPanelProps, "characterId" | "ownerCapId">) {
 	const account = useCurrentAccount();
-	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
-	const gqlClient = useSuiClient();
+	const { signAndExecuteTransaction: signAndExecute, connectWallet } = useDAppKit();
+	const wallets = useWallets();
+	const suiClient = useSuiClient();
 
 	// Registry selection
 	const [registryId, setRegistryId] = useState<string | null>(existingConfig?.registryId ?? null);
@@ -400,65 +394,91 @@ function StandingsExtensionPanelInner({
 		marketId: existingConfig?.marketId ?? "",
 	});
 
+	// Resolve treasury ID from the selected toll currency
+	const currencies = useLiveQuery(() => db.currencies.filter((c) => !c._archived).toArray(), []);
+	const resolvedTreasuryId = useMemo(() => {
+		if (!gateConfig.tollCoinType) return null;
+		const match = (currencies ?? []).find((c) => c.coinType === gateConfig.tollCoinType);
+		return match?.treasuryId ?? null;
+	}, [gateConfig.tollCoinType, currencies]);
+
 	const [status, setStatus] = useState<ConfigStatus>("idle");
 	const [error, setError] = useState<string | null>(null);
 
 	const isConfiguring = status === "building" || status === "signing" || status === "confirming";
 
 	async function handleApply() {
-		if (!account || !registryId) return;
+		// Gates require a registry; SSUs can work with just a market
+		if (structureKind === "gate" && !registryId) return;
+		if (structureKind === "ssu" && !registryId && !ssuConfig.marketId) return;
+
+		// Connect wallet if needed
+		let senderAddress = account?.address;
+		if (!senderAddress) {
+			const eveVault = wallets.find(
+				(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
+			);
+			const wallet = eveVault || wallets[0];
+			if (!wallet) return;
+			const result = await connectWallet({ wallet });
+			senderAddress = result.accounts[0]?.address;
+			if (!senderAddress) return;
+		}
 
 		setStatus("building");
 		setError(null);
 
 		try {
 			let tx: import("@mysten/sui/transactions").Transaction;
-			let isCreate = false;
 
 			if (structureKind === "gate") {
 				tx = buildConfigureGateStandings({
 					tenant,
 					gateId: assemblyId,
-					registryId,
+					registryId: registryId!,
 					minAccess: gateConfig.minAccess,
 					freeAccess: gateConfig.freeAccess,
 					tollFee: BigInt(gateConfig.tollFee || "0"),
-					tollRecipient: gateConfig.tollRecipient || account.address,
+					tollRecipient: gateConfig.tollRecipient || senderAddress,
 					permitDurationMs: gateConfig.permitDurationMs,
-					senderAddress: account.address,
+					senderAddress,
 					tollCoinType: gateConfig.tollCoinType,
 				});
-			} else {
-				const result = buildConfigureSsuUnified({
+			} else if (registryId) {
+				tx = buildConfigureSsuStandings({
 					tenant,
 					ssuId: assemblyId,
 					registryId,
 					minDeposit: ssuConfig.minDeposit,
 					minWithdraw: ssuConfig.minWithdraw,
-					marketId: ssuConfig.marketId || undefined,
+					senderAddress,
 					ssuConfigId: existingConfig?.ssuConfigId,
-					senderAddress: account.address,
+					marketId: ssuConfig.marketId || undefined,
 				});
-				tx = result.tx;
-				isCreate = result.isCreate;
+			} else {
+				// SSU market-only -- no on-chain standings TX, just save locally
+				await saveConfigToDb();
+				setStatus("done");
+				onConfigured?.();
+				return;
 			}
 
 			setStatus("signing");
 			await signAndExecute({ transaction: tx });
 
-			// For SSU create, discover the new config object ID on-chain
-			let ssuConfigId = existingConfig?.ssuConfigId;
-			if (structureKind === "ssu" && isCreate) {
+			// For new SSU configs, discover the created SsuUnifiedConfig object ID
+			let createdConfigId: string | undefined;
+			if (structureKind === "ssu" && !existingConfig?.ssuConfigId) {
 				setStatus("confirming");
 				const addrs = getContractAddresses(tenant);
-				const pkgId = addrs.ssuUnified?.packageId ?? addrs.ssuStandings?.packageId;
+				const pkgId = addrs.ssuUnified?.packageId;
 				if (pkgId) {
-					ssuConfigId = (await discoverSsuUnifiedConfig(gqlClient, pkgId, assemblyId)) ?? undefined;
+					createdConfigId =
+						(await discoverSsuUnifiedConfig(suiClient, pkgId, assemblyId)) ?? undefined;
 				}
 			}
 
-			// Save config to IndexedDB
-			await saveConfigToDb(ssuConfigId);
+			await saveConfigToDb(createdConfigId);
 
 			setStatus("done");
 			onConfigured?.();
@@ -469,16 +489,23 @@ function StandingsExtensionPanelInner({
 	}
 
 	async function saveConfigToDb(ssuConfigId?: string) {
-		if (!registryId) return;
+		// For gates, registry is required
+		if (structureKind === "gate" && !registryId) return;
 
-		const registries = await db.subscribedRegistries.where("id").equals(registryId).toArray();
-		const registryName = registries[0]?.name;
+		let registryName: string | undefined;
+		if (registryId) {
+			const registries = await db.subscribedRegistries
+				.where("id")
+				.equals(registryId)
+				.toArray();
+			registryName = registries[0]?.name;
+		}
 
 		const config: StructureExtensionConfig = {
 			id: assemblyId,
 			assemblyId,
 			assemblyType,
-			registryId,
+			registryId: registryId ?? undefined,
 			registryName,
 			...(structureKind === "gate" && {
 				minAccess: gateConfig.minAccess,
@@ -488,13 +515,13 @@ function StandingsExtensionPanelInner({
 				permitDurationMs: Number(gateConfig.permitDurationMs),
 				tollCoinType: gateConfig.tollCoinType,
 				tollTreasuryId:
-					gateConfig.revenueDestination === "treasury" ? gateConfig.tollTreasuryId : undefined,
+					gateConfig.revenueDestination === "treasury" ? resolvedTreasuryId ?? undefined : undefined,
 			}),
 			...(structureKind === "ssu" && {
 				minDeposit: ssuConfig.minDeposit,
 				minWithdraw: ssuConfig.minWithdraw,
 				marketId: ssuConfig.marketId || undefined,
-				ssuConfigId,
+				ssuConfigId: ssuConfigId || existingConfig?.ssuConfigId,
 			}),
 		};
 
@@ -513,15 +540,15 @@ function StandingsExtensionPanelInner({
 			</div>
 
 			{/* Structure-type-specific config */}
-			{registryId && (
-				<>
-					{structureKind === "gate" && (
-						<GateStandingsConfig values={gateConfig} onChange={setGateConfig} account={account} />
-					)}
-					{structureKind === "ssu" && (
-						<SsuStandingsConfig values={ssuConfig} onChange={setSsuConfig} />
-					)}
-				</>
+			{structureKind === "gate" && registryId && (
+				<GateStandingsConfig values={gateConfig} onChange={setGateConfig} account={account} resolvedTreasuryId={resolvedTreasuryId} />
+			)}
+			{structureKind === "ssu" && (
+				<SsuStandingsConfig
+					values={ssuConfig}
+					onChange={setSsuConfig}
+					hasRegistry={!!registryId}
+				/>
 			)}
 
 			{/* Status feedback */}
@@ -550,20 +577,22 @@ function StandingsExtensionPanelInner({
 				</div>
 			)}
 
-			{status === "done" && (
+			{status === "done" ? (
 				<div className="rounded-lg border border-green-900/50 bg-green-950/20 p-3">
 					<div className="flex items-center gap-2">
 						<CheckCircle2 size={14} className="text-green-400" />
 						<span className="text-xs text-green-300">Configuration applied successfully!</span>
 					</div>
 				</div>
-			)}
-
-			{/* Apply button */}
+			) : (
 			<button
 				type="button"
 				onClick={handleApply}
-				disabled={!registryId || !account || isConfiguring}
+				disabled={
+					isConfiguring ||
+					(structureKind === "gate" && !registryId) ||
+					(structureKind === "ssu" && !registryId && !ssuConfig.marketId)
+				}
 				className="w-full rounded-lg bg-cyan-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
 			>
 				{isConfiguring ? (
@@ -577,6 +606,7 @@ function StandingsExtensionPanelInner({
 					"Apply Configuration"
 				)}
 			</button>
+			)}
 		</div>
 	);
 }

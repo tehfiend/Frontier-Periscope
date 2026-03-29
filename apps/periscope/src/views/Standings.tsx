@@ -1,5 +1,4 @@
-import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { useDAppKit } from "@mysten/dapp-kit-react";
+import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	AlertCircle,
@@ -25,7 +24,6 @@ import { discoverRegistries } from "@/chain/manifest";
 import { ContactPicker } from "@/components/ContactPicker";
 import { CopyAddress } from "@/components/CopyAddress";
 import { StandingBadge } from "@/components/StandingBadge";
-import { ConnectWalletButton } from "@/components/WalletConnect";
 import { db } from "@/db";
 import type { Contact, RegistryStanding } from "@/db/types";
 import type { ManifestRegistry } from "@/db/types";
@@ -208,6 +206,7 @@ export function Standings() {
 					tenant={tenant}
 					chainAddress={chainAddress}
 					walletAddress={walletAddress}
+					creatorCharacterId={activeCharacter?.characterId != null ? Number(activeCharacter.characterId) : undefined}
 				/>
 			)}
 		</div>
@@ -611,10 +610,12 @@ function MyRegistriesTab({
 	tenant,
 	chainAddress,
 	walletAddress,
+	creatorCharacterId,
 }: {
 	tenant: string;
 	chainAddress?: string | null;
 	walletAddress?: string;
+	creatorCharacterId?: number;
 }) {
 	const client = useSuiClient();
 	const dAppKit = useDAppKit();
@@ -633,10 +634,10 @@ function MyRegistriesTab({
 	const cachedRegistries = useLiveQuery(() => db.manifestRegistries.toArray()) ?? [];
 	const myRegistries = useMemo(() => {
 		const all = cachedRegistries.map(toRegistryInfo);
-		return walletAddress
-			? all.filter((r) => r.owner === walletAddress || r.admins.includes(walletAddress))
-			: [];
-	}, [cachedRegistries, walletAddress]);
+		const addrs = [walletAddress, chainAddress].filter(Boolean) as string[];
+		if (addrs.length === 0) return [];
+		return all.filter((r) => addrs.includes(r.owner) || r.admins.some((a) => addrs.includes(a)));
+	}, [cachedRegistries, walletAddress, chainAddress]);
 
 	// Refresh registries from chain into manifest cache
 	const handleRefresh = useCallback(async () => {
@@ -692,7 +693,7 @@ function MyRegistriesTab({
 						<RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
 						Refresh
 					</button>
-					{packageId && walletAddress ? (
+					{packageId && (
 						<button
 							type="button"
 							onClick={() => setShowCreateDialog(true)}
@@ -701,9 +702,7 @@ function MyRegistriesTab({
 							<Plus size={14} />
 							Create Registry
 						</button>
-					) : packageId ? (
-						<ConnectWalletButton className="text-xs" />
-					) : null}
+					)}
 				</div>
 			</div>
 
@@ -820,7 +819,7 @@ function MyRegistriesTab({
 
 										{/* Actions */}
 										<div className="flex items-center gap-2">
-											{packageId && walletAddress ? (
+											{packageId && (
 												<button
 													type="button"
 													onClick={() => setShowSetStandingDialog(true)}
@@ -829,9 +828,7 @@ function MyRegistriesTab({
 													<Plus size={12} />
 													Set Standing
 												</button>
-											) : packageId ? (
-												<ConnectWalletButton className="text-xs" />
-											) : null}
+											)}
 											{isOwner && packageId && (
 												<button
 													type="button"
@@ -860,31 +857,32 @@ function MyRegistriesTab({
 			)}
 
 			{/* Dialogs */}
-			{showCreateDialog && packageId && walletAddress && (
+			{showCreateDialog && packageId && (
 				<CreateRegistryDialog
 					packageId={packageId}
-					senderAddress={walletAddress}
+					senderAddress={walletAddress ?? ""}
+					creatorCharacterId={creatorCharacterId}
 					onClose={() => setShowCreateDialog(false)}
 					onCreated={handleRefresh}
 				/>
 			)}
 
-			{showSetStandingDialog && selectedRegistry && packageId && walletAddress && (
+			{showSetStandingDialog && selectedRegistry && packageId && (
 				<SetRegistryStandingDialog
 					packageId={packageId}
 					registry={selectedRegistry}
-					senderAddress={walletAddress}
+					senderAddress={walletAddress ?? chainAddress ?? ""}
 					tenant={tenant}
 					onClose={() => setShowSetStandingDialog(false)}
 					onSet={handleRefresh}
 				/>
 			)}
 
-			{showAddAdminDialog && selectedRegistry && packageId && walletAddress && (
+			{showAddAdminDialog && selectedRegistry && packageId && (
 				<AddAdminDialog
 					packageId={packageId}
 					registryId={selectedRegistry.objectId}
-					senderAddress={walletAddress}
+					senderAddress={walletAddress ?? chainAddress ?? ""}
 					onClose={() => setShowAddAdminDialog(false)}
 					onAdded={handleRefresh}
 				/>
@@ -1496,15 +1494,21 @@ function EditContactDialog({
 function CreateRegistryDialog({
 	packageId,
 	senderAddress,
+	creatorCharacterId,
 	onClose,
 	onCreated,
 }: {
 	packageId: string;
 	senderAddress: string;
+	/** On-chain character item ID of the creator -- auto-added with +3 standing. */
+	creatorCharacterId?: number;
 	onClose: () => void;
 	onCreated: () => void;
 }) {
 	const dAppKit = useDAppKit();
+	const wallets = useWallets();
+	const account = useCurrentAccount();
+	const client = useSuiClient();
 	const [name, setName] = useState("");
 	const [ticker, setTicker] = useState("");
 	const [defaultStanding, setDefaultStanding] = useState(0);
@@ -1515,6 +1519,20 @@ function CreateRegistryDialog({
 
 	const handleCreate = async () => {
 		if (!name.trim() || !tickerValid) return;
+
+		// Connect wallet if needed
+		let sender = account?.address;
+		if (!sender) {
+			const eveVault = wallets.find(
+				(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
+			);
+			const wallet = eveVault || wallets[0];
+			if (!wallet) return;
+			const result = await dAppKit.connectWallet({ wallet });
+			sender = result.accounts[0]?.address;
+			if (!sender) return;
+		}
+
 		setIsPending(true);
 		setError(null);
 
@@ -1524,11 +1542,46 @@ function CreateRegistryDialog({
 				name: name.trim(),
 				ticker: ticker.trim(),
 				defaultStanding: displayToStanding(defaultStanding),
-				senderAddress,
+				senderAddress: sender,
 			});
 
-			await dAppKit.signAndExecuteTransaction({ transaction: tx });
-			await new Promise((r) => setTimeout(r, 3000));
+			const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+
+			// Auto-add creator with +3 standing
+			if (creatorCharacterId) {
+				const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
+				if (digest) {
+					const fullResult = await client.waitForTransaction({
+						digest,
+						include: { effects: true, objectTypes: true },
+					});
+					const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
+					const changedObjects = fullTx?.effects?.changedObjects ?? [];
+					const objectTypesMap = fullTx?.objectTypes ?? {};
+
+					let newRegistryId: string | undefined;
+					for (const change of changedObjects) {
+						const objType = objectTypesMap[change.objectId] ?? "";
+						if (objType.includes("::standings_registry::StandingsRegistry")) {
+							newRegistryId = change.objectId;
+							break;
+						}
+					}
+
+					if (newRegistryId) {
+						const standingTx = buildSetCharacterStanding({
+							packageId,
+							registryId: newRegistryId,
+							characterId: creatorCharacterId,
+							standing: displayToStanding(3), // +3 = best standing
+							senderAddress: sender,
+						});
+						await dAppKit.signAndExecuteTransaction({ transaction: standingTx });
+					}
+				}
+			}
+
+			await new Promise((r) => setTimeout(r, 2000));
 			onCreated();
 			onClose();
 		} catch (err) {
@@ -1633,6 +1686,8 @@ function SetRegistryStandingDialog({
 	onSet: () => void;
 }) {
 	const dAppKit = useDAppKit();
+	const wallets = useWallets();
+	const account = useCurrentAccount();
 	const [kind, setKind] = useState<"character" | "tribe">("tribe");
 	const [standing, setStanding] = useState(0);
 	const [isPending, setIsPending] = useState(false);
@@ -1669,6 +1724,20 @@ function SetRegistryStandingDialog({
 
 	const handleSet = async () => {
 		if (!canSubmit) return;
+
+		// Connect wallet if needed
+		let sender = account?.address;
+		if (!sender) {
+			const eveVault = wallets.find(
+				(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
+			);
+			const wallet = eveVault || wallets[0];
+			if (!wallet) return;
+			const result = await dAppKit.connectWallet({ wallet });
+			sender = result.accounts[0]?.address;
+			if (!sender) return;
+		}
+
 		setIsPending(true);
 		setError(null);
 
@@ -1681,7 +1750,7 @@ function SetRegistryStandingDialog({
 					registryId: registry.objectId,
 					tribeId: selectedTribe.id,
 					standing: rawStanding,
-					senderAddress,
+					senderAddress: sender,
 				});
 				await dAppKit.signAndExecuteTransaction({ transaction: tx });
 			} else if (kind === "character" && selectedCharacter) {
@@ -1690,7 +1759,7 @@ function SetRegistryStandingDialog({
 					registryId: registry.objectId,
 					characterId: Number(selectedCharacter.characterItemId),
 					standing: rawStanding,
-					senderAddress,
+					senderAddress: sender,
 				});
 				await dAppKit.signAndExecuteTransaction({ transaction: tx });
 			}

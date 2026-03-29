@@ -39,6 +39,10 @@ export interface CharacterInfo {
 	characterAddress: string;
 	characterName: string | null;
 	characterOwnerCapId: string | null;
+	/** Numeric in-game character ID (key.item_id). */
+	characterItemId: number | null;
+	/** Numeric tribe ID (tribe_id). */
+	tribeId: number | null;
 }
 
 /**
@@ -78,6 +82,8 @@ export function useCharacter(walletAddress: string | undefined) {
 			// Fetch the Character object to get the name + owner_cap_id
 			let characterName: string | null = null;
 			let characterOwnerCapId: string | null = null;
+			let characterItemId: number | null = null;
+			let tribeId: number | null = null;
 			try {
 				const charResult = await getObjectJson(client, characterId);
 				const meta = charResult.json?.metadata as Record<string, unknown> | undefined;
@@ -85,8 +91,11 @@ export function useCharacter(walletAddress: string | undefined) {
 				characterOwnerCapId = charResult.json?.owner_cap_id
 					? String(charResult.json.owner_cap_id)
 					: null;
+				const keyFields = charResult.json?.key as Record<string, unknown> | undefined;
+				characterItemId = keyFields?.item_id != null ? Number(keyFields.item_id) : null;
+				tribeId = charResult.json?.tribe_id != null ? Number(charResult.json.tribe_id) : null;
 			} catch {
-				// Non-fatal -- name and cap ID are optional
+				// Non-fatal -- name, cap ID, and numeric IDs are optional
 			}
 
 			return {
@@ -94,6 +103,8 @@ export function useCharacter(walletAddress: string | undefined) {
 				characterAddress: walletAddress,
 				characterName,
 				characterOwnerCapId,
+				characterItemId,
+				tribeId,
 			};
 		},
 		enabled: !!walletAddress,

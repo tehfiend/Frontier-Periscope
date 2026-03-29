@@ -110,6 +110,108 @@ export function buildMint(params: MintParams): Transaction {
 	return tx;
 }
 
+export interface MintToTreasuryParams {
+	packageId: string;
+	marketId: string;
+	coinType: string;
+	treasuryId: string;
+	amount: bigint;
+	senderAddress: string;
+}
+
+/** Build a TX to mint tokens and deposit directly into a Treasury. Single TX. */
+export function buildMintToTreasury(params: MintToTreasuryParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	tx.moveCall({
+		target: `${params.packageId}::market::mint_to_treasury`,
+		typeArguments: [params.coinType],
+		arguments: [
+			tx.object(params.marketId),
+			tx.object(params.treasuryId),
+			tx.pure.u64(params.amount),
+		],
+	});
+
+	return tx;
+}
+
+export interface FillBuyOrderParams {
+	packageId: string;
+	marketId: string;
+	coinType: string;
+	orderId: number;
+	typeId: number;
+	quantity: number;
+	senderAddress: string;
+}
+
+/** Build a TX to fill (partially or fully) a buy order on Market<T>. Authorized sellers only. */
+export function buildFillBuyOrder(params: FillBuyOrderParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	tx.moveCall({
+		target: `${params.packageId}::market::fill_buy_order`,
+		typeArguments: [params.coinType],
+		arguments: [
+			tx.object(params.marketId),
+			tx.pure.u64(params.orderId),
+			tx.pure.u64(params.typeId),
+			tx.pure.u64(params.quantity),
+		],
+	});
+
+	return tx;
+}
+
+export interface BuyFromListingParams {
+	packageId: string;
+	marketId: string;
+	coinType: string;
+	listingId: number;
+	quantity: number;
+	coinObjectIds: string[];
+	senderAddress: string;
+}
+
+/** Build a TX to buy items from a sell listing on Market<T>. Returns change to sender. */
+export function buildBuyFromListing(params: BuyFromListingParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	if (params.coinObjectIds.length === 0) {
+		throw new Error("No coin objects provided for payment");
+	}
+	let paymentCoin: ReturnType<typeof tx.object>;
+	if (params.coinObjectIds.length === 1) {
+		paymentCoin = tx.object(params.coinObjectIds[0]);
+	} else {
+		const [baseCoin, ...restCoins] = params.coinObjectIds;
+		tx.mergeCoins(
+			tx.object(baseCoin),
+			restCoins.map((id) => tx.object(id)),
+		);
+		paymentCoin = tx.object(baseCoin);
+	}
+
+	const [change] = tx.moveCall({
+		target: `${params.packageId}::market::buy_from_listing`,
+		typeArguments: [params.coinType],
+		arguments: [
+			tx.object(params.marketId),
+			tx.pure.u64(params.listingId),
+			tx.pure.u64(params.quantity),
+			paymentCoin,
+			tx.object(CLOCK_REF),
+		],
+	});
+
+	tx.transferObjects([change], params.senderAddress);
+	return tx;
+}
+
 export interface BurnParams {
 	packageId: string;
 	marketId: string;

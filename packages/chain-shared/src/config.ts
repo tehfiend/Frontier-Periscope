@@ -41,7 +41,7 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			claimsRegistryObjectId: "0xa443242e14ddcdbfa0b6ad63305df464ac110fb6abc59b2ed59db8a37f42082f",
 		},
 		market: {
-			packageId: "0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a",
+			packageId: "0x1e5910d677d83f72f0e73b5815cd02abf6251d429f5ae2e13f27fb931e75e80d",
 		},
 		privateMap: {
 			packageId: "0x2be1058fa8b002b81d4f91fd33065f17e2a3bbd9799ea0d934b74aaff8160a17",
@@ -56,8 +56,8 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			configObjectId: "0x312a3ea9282b1b702da100c288c520aa452eced3dd325e718c06196b1b9db627",
 		},
 		ssuStandings: {
-			packageId: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
-			configObjectId: "0x87dc574e707930ffeaf337617c16eb8ec8bfee3e7a00f02cc0789ee7f9555c5a",
+			packageId: "0xbd77ff3325c9df2d80f525c043d49228a8d0eab8402faec90ef8329cf8c1f0bf",
+			configObjectId: "0xe696973fd1ac39a260a348cbe24aba6eb722ce20e29b8f4420551c0c1bc81ba1",
 		},
 		marketStandings: {
 			packageId: "0xbfaf85431b9f5dd9675b08dd483725d3c53b8433e6c7345c54e5023863a9c9f9",
@@ -72,10 +72,22 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0xade891ec8e8eca5f7594a16fc57ab78b8b20d62a1706218c334be8d7b59214ed",
 		},
 		ssuUnified: {
-			packageId: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
+			packageId: "0x51c36d31b89cf1e7d3feb96ed6376f7c49b41d64419122428106ba9daed2a83f",
+			originalPackageId: "0x51c36d31b89cf1e7d3feb96ed6376f7c49b41d64419122428106ba9daed2a83f",
+			previousOriginalPackageIds: [
+				"0x5f8d1a1da12b0d9a6934a0db38af1200612971380730371ac75e6d1acdb88294",
+				"0x0a6a70355f96e07417aa2e5b59c1e2ea8757c5ade5e8000bfc8daab93bfee2be",
+			],
 		},
-		treasury: { packageId: "" },
-		gateTollCustom: { packageId: "", configObjectId: "" },
+		treasury: { packageId: "0xe0ca570a3a5da2d72254b3f6db62b46b8595e1e6ed4b8d455af343d208c357eb" },
+		gateTollCustom: {
+			packageId: "0x200200b3b2e381497a005c29f9abecc7a46bbd2b4d016bbb7f32bcf6d9e57c6a",
+			configObjectId: "0x3821916eab3892fae7ad4ad8811de60305e90fff88fc7fd71189bb77fb1c2f78",
+		},
+		decommission: {
+			packageId: "0x611cd2c50af0dccfae35ac2c4a9f706a428cf9c32650c9d3b60fabb8ebda68d3",
+			registryObjectId: "0xb4af01e89e6fc2e673f8145a5875b440d1da6b38926198f1e1694e16f37e406c",
+		},
 	},
 	utopia: {
 		gateUnified: {
@@ -112,7 +124,7 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			claimsRegistryObjectId: "0xa443242e14ddcdbfa0b6ad63305df464ac110fb6abc59b2ed59db8a37f42082f",
 		},
 		market: {
-			packageId: "0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a",
+			packageId: "0x1e5910d677d83f72f0e73b5815cd02abf6251d429f5ae2e13f27fb931e75e80d",
 		},
 		privateMap: {
 			packageId: "0x2be1058fa8b002b81d4f91fd33065f17e2a3bbd9799ea0d934b74aaff8160a17",
@@ -128,8 +140,8 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			configObjectId: "0x312a3ea9282b1b702da100c288c520aa452eced3dd325e718c06196b1b9db627",
 		},
 		ssuStandings: {
-			packageId: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
-			configObjectId: "0x87dc574e707930ffeaf337617c16eb8ec8bfee3e7a00f02cc0789ee7f9555c5a",
+			packageId: "0xbd77ff3325c9df2d80f525c043d49228a8d0eab8402faec90ef8329cf8c1f0bf",
+			configObjectId: "0xe696973fd1ac39a260a348cbe24aba6eb722ce20e29b8f4420551c0c1bc81ba1",
 		},
 		marketStandings: {
 			packageId: "0xbfaf85431b9f5dd9675b08dd483725d3c53b8433e6c7345c54e5023863a9c9f9",
@@ -144,10 +156,22 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0xade891ec8e8eca5f7594a16fc57ab78b8b20d62a1706218c334be8d7b59214ed",
 		},
 		ssuUnified: {
-			packageId: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
+			packageId: "0xfffb9242bf2221cc0b9f89f8df7b452a90a20a79981aca0d57ac90b8de710fd7",
+			originalPackageId: "0xfffb9242bf2221cc0b9f89f8df7b452a90a20a79981aca0d57ac90b8de710fd7",
+			previousOriginalPackageIds: [
+				"0x5f8d1a1da12b0d9a6934a0db38af1200612971380730371ac75e6d1acdb88294",
+				"0xd3168c9b6db1ff6671d45b056dccd62acc7fa05835eb3079bce10d70af8950ea",
+			],
 		},
-		treasury: { packageId: "" },
-		gateTollCustom: { packageId: "", configObjectId: "" },
+		treasury: { packageId: "0xe0ca570a3a5da2d72254b3f6db62b46b8595e1e6ed4b8d455af343d208c357eb" },
+		gateTollCustom: {
+			packageId: "0x200200b3b2e381497a005c29f9abecc7a46bbd2b4d016bbb7f32bcf6d9e57c6a",
+			configObjectId: "0x3821916eab3892fae7ad4ad8811de60305e90fff88fc7fd71189bb77fb1c2f78",
+		},
+		decommission: {
+			packageId: "0x611cd2c50af0dccfae35ac2c4a9f706a428cf9c32650c9d3b60fabb8ebda68d3",
+			registryObjectId: "0xb4af01e89e6fc2e673f8145a5875b440d1da6b38926198f1e1694e16f37e406c",
+		},
 	},
 };
 

@@ -23,3 +23,4 @@ export * from "./wasm-init";
 export * from "./private-map-standings";
 export * from "./treasury";
 export * from "./gate-toll-custom";
+export * from "./decommission";

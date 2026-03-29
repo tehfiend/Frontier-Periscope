@@ -1,3 +1,4 @@
+import { useCharacter } from "@/hooks/useCharacter";
 import type { SellListingWithName } from "@/hooks/useMarketListings";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
@@ -5,34 +6,36 @@ import { useSuiClient } from "@/hooks/useSuiClient";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useQuery } from "@tanstack/react-query";
-import { buildBuyFromListingWithStandings, formatBaseUnits, queryOwnedCoins } from "@tehfrontier/chain-shared";
+import { buildBuyAndReceive, formatBaseUnits, queryOwnedCoins } from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
 interface BuyFromListingDialogProps {
 	listing: SellListingWithName;
 	ssuConfig: SsuConfigResult;
-	characterObjectId: string;
 	coinType: string;
-	ssuObjectId: string;
 	coinDecimals: number;
 	coinSymbol: string;
+	ssuObjectId: string;
+	/** SSU owner's Character object ID (for escrow TX builders). */
+	ownerCharacterObjectId: string | null;
 	onClose: () => void;
 }
 
 export function BuyFromListingDialog({
 	listing,
 	ssuConfig,
-	characterObjectId,
 	coinType,
-	ssuObjectId,
 	coinDecimals,
 	coinSymbol,
+	ssuObjectId,
+	ownerCharacterObjectId,
 	onClose,
 }: BuyFromListingDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const account = useCurrentAccount();
 	const suiClient = useSuiClient();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
+	const { data: buyerCharacter } = useCharacter(account?.address);
 	const [quantity, setQuantity] = useState("1");
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
@@ -56,6 +59,14 @@ export function BuyFromListingDialog({
 
 	async function handleBuy() {
 		if (!account?.address || !ssuConfig.marketId) return;
+		if (!ownerCharacterObjectId) {
+			setError("SSU owner character not resolved");
+			return;
+		}
+		if (!buyerCharacter?.characterObjectId) {
+			setError("Your character not resolved -- ensure you have a character in-game");
+			return;
+		}
 		if (qty <= 0 || qty > maxQty) {
 			setError(`Quantity must be between 1 and ${maxQty}`);
 			return;
@@ -69,14 +80,14 @@ export function BuyFromListingDialog({
 		setSuccess(null);
 
 		try {
-			const tx = buildBuyFromListingWithStandings({
-				packageId: ssuConfig.packageId,
+			const tx = buildBuyAndReceive({
+				ssuUnifiedPackageId: ssuConfig.packageId,
 				ssuConfigId: ssuConfig.ssuConfigId,
-				marketId: ssuConfig.marketId,
-				coinType,
-				registryId: ssuConfig.registryId ?? "",
 				ssuObjectId,
-				characterObjectId,
+				ownerCharacterObjectId,
+				buyerCharacterObjectId: buyerCharacter.characterObjectId,
+				coinType,
+				marketId: ssuConfig.marketId,
 				listingId: listing.listingId,
 				quantity: qty,
 				coinObjectIds: ownedCoins.map((c) => c.objectId),

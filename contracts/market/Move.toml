@@ -1,0 +1,10 @@
+[package]
+name = "market"
+edition = "2024.beta"
+
+[dependencies]
+treasury = { local = "../treasury" }
+
+[addresses]
+market = "0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a"
+treasury = "0xe0ca570a3a5da2d72254b3f6db62b46b8595e1e6ed4b8d455af343d208c357eb"

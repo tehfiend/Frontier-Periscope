@@ -1,11 +1,11 @@
 import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
+import { useCharacter } from "@/hooks/useCharacter";
 import { useCoinMetadata } from "@/hooks/useCoinMetadata";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
-import { getTenant, getWorldPublishedAt } from "@/lib/constants";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { buildPlayerFillBuyOrderWithStandings, formatBaseUnits } from "@tehfrontier/chain-shared";
+import { buildFillAndDeliver, formatBaseUnits } from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
 interface FillBuyOrderDialogProps {
@@ -13,8 +13,8 @@ interface FillBuyOrderDialogProps {
 	ssuConfig: SsuConfigResult;
 	coinType: string;
 	ssuObjectId: string;
-	characterObjectId: string;
-	ownerCapReceivingId: string;
+	/** SSU owner's Character object ID (for escrow TX builders). */
+	ownerCharacterObjectId: string | null;
 	onClose: () => void;
 }
 
@@ -23,14 +23,14 @@ export function FillBuyOrderDialog({
 	ssuConfig,
 	coinType,
 	ssuObjectId,
-	characterObjectId,
-	ownerCapReceivingId,
+	ownerCharacterObjectId,
 	onClose,
 }: FillBuyOrderDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
 	const { data: coinMeta } = useCoinMetadata(coinType);
+	const { data: buyerCharacter } = useCharacter(order.buyer);
 	const decimals = coinMeta?.decimals ?? 9;
 	const [quantity, setQuantity] = useState(String(order.quantity));
 	const [error, setError] = useState<string | null>(null);
@@ -46,6 +46,14 @@ export function FillBuyOrderDialog({
 
 	async function handleFill() {
 		if (!account?.address || !ssuConfig.marketId) return;
+		if (!ownerCharacterObjectId) {
+			setError("SSU owner character not resolved");
+			return;
+		}
+		if (!buyerCharacter?.characterObjectId) {
+			setError("Buyer character not resolved");
+			return;
+		}
 		if (qty <= 0 || qty > maxQty) {
 			setError(`Quantity must be between 1 and ${maxQty}`);
 			return;
@@ -55,15 +63,14 @@ export function FillBuyOrderDialog({
 		setSuccess(null);
 
 		try {
-			const tx = buildPlayerFillBuyOrderWithStandings({
-				packageId: ssuConfig.packageId,
+			const tx = buildFillAndDeliver({
+				ssuUnifiedPackageId: ssuConfig.packageId,
 				ssuConfigId: ssuConfig.ssuConfigId,
-				marketId: ssuConfig.marketId,
-				coinType,
-				worldPackageId: getWorldPublishedAt(getTenant()),
 				ssuObjectId,
-				characterObjectId,
-				ownerCapReceivingId,
+				characterObjectId: ownerCharacterObjectId,
+				buyerCharacterObjectId: buyerCharacter.characterObjectId,
+				coinType,
+				marketId: ssuConfig.marketId,
 				orderId: order.orderId,
 				typeId: order.typeId,
 				quantity: qty,

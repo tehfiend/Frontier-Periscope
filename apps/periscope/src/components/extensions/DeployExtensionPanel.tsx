@@ -39,7 +39,9 @@ export function DeployExtensionPanel({
 	onClose,
 }: DeployExtensionPanelProps) {
 	const templates = getTemplatesForAssemblyType(assembly.type);
-	const [selected, setSelected] = useState<ExtensionTemplate | null>(null);
+	const [selected, setSelected] = useState<ExtensionTemplate | null>(
+		templates.length === 1 ? templates[0] : null,
+	);
 	const { deploy, reset, status, txDigest, error } = useExtensionDeploy();
 
 	const isDeploying = status === "building" || status === "signing" || status === "confirming";

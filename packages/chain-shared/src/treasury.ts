@@ -221,11 +221,29 @@ export async function queryTreasuryBalances(
 				const coinTypeMatch = df.nameType.match(/BalanceKey<(.+)>$/);
 				if (!coinTypeMatch) continue;
 
-				// Balance<T> value is stored as a MoveValue with { value: u64 }
-				const valueFields = df.valueJson as Record<string, unknown> | undefined;
-				const amount = valueFields?.value != null
-					? BigInt(String(valueFields.value))
-					: BigInt(0);
+				let amount = BigInt(0);
+
+				if (df.valueJson != null) {
+					// MoveValue case: json is inline.
+					// Balance<T> may serialize as { value: u64 } or as a raw number.
+					const v = df.valueJson;
+					if (typeof v === "number" || typeof v === "string") {
+						amount = BigInt(v);
+					} else if (typeof v === "object" && v !== null) {
+						const fields = v as Record<string, unknown>;
+						if (fields.value != null) amount = BigInt(String(fields.value));
+					}
+				} else if (df.valueAddress) {
+					// MoveObject case: wrapped object, fetch by address
+					try {
+						const obj = await getObjectJson(client, df.valueAddress);
+						if (obj.json?.value != null) {
+							amount = BigInt(String(obj.json.value));
+						}
+					} catch {
+						// non-fatal
+					}
+				}
 
 				balances.push({
 					coinType: coinTypeMatch[1],
@@ -268,4 +286,73 @@ function decodeTreasuryName(nameField: unknown): string {
 		}
 	}
 	return "";
+}
+
+// ── Treasury Discovery ──────────────────────────────────────────────────────
+
+/**
+ * Discover Treasury object IDs created by a given owner address.
+ * Queries TreasuryCreatedEvent and returns a map of treasury_id -> name.
+ */
+export async function discoverTreasuries(
+	client: SuiGraphQLClient,
+	treasuryPackageId: string,
+	ownerAddress: string,
+): Promise<Array<{ treasuryId: string; name: string }>> {
+	const QUERY = `
+		query($eventType: String!, $first: Int, $after: String) {
+			events(filter: { eventType: $eventType }, first: $first, after: $after) {
+				nodes {
+					json
+				}
+				pageInfo { hasNextPage endCursor }
+			}
+		}
+	`;
+
+	interface Resp {
+		events: {
+			nodes: Array<{ json: Record<string, unknown> }>;
+			pageInfo: { hasNextPage: boolean; endCursor: string | null };
+		};
+	}
+
+	const eventType = `${treasuryPackageId}::treasury::TreasuryCreatedEvent`;
+	const results: Array<{ treasuryId: string; name: string }> = [];
+	let cursor: string | null = null;
+	let hasMore = true;
+
+	while (hasMore) {
+		try {
+			const resp: { data?: Resp } = await client.query({
+				query: QUERY,
+				variables: { eventType, first: 50, after: cursor },
+			});
+			const events = resp.data?.events;
+			if (!events) break;
+
+			for (const node of events.nodes) {
+				const j = node.json;
+				if (String(j.owner ?? "") === ownerAddress) {
+					const nameBytes = j.name;
+					let name = "";
+					if (Array.isArray(nameBytes)) {
+						try {
+							name = new TextDecoder().decode(new Uint8Array(nameBytes.map(Number)));
+						} catch { /* ignore */ }
+					} else if (typeof nameBytes === "string") {
+						name = nameBytes;
+					}
+					results.push({ treasuryId: String(j.treasury_id ?? ""), name });
+				}
+			}
+
+			hasMore = events.pageInfo.hasNextPage;
+			cursor = events.pageInfo.endCursor;
+		} catch {
+			break;
+		}
+	}
+
+	return results;
 }
