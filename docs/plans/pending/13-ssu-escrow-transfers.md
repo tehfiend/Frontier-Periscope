@@ -1,6 +1,6 @@
 # Plan: SSU Escrow Transfer Fixes
 
-**Status:** Draft
+**Status:** Active
 **Created:** 2026-03-28
 **Module:** chain-shared, ssu-dapp, contracts/ssu_unified
 
@@ -132,6 +132,9 @@ All four market trade operations atomically compose payment handling with invent
 | buy_and_receive authorization | No admin check -- payment IS the authorization | The function calls `market::buy_from_listing` internally, which handles payment. If buyer doesn't pay enough, the market call aborts and no items move. The `type_id` is read from the listing (not caller input), preventing item type mismatch attacks. This is fundamentally more secure than an unrestricted `public_escrow_to_self` function that any player could call to drain escrow without paying. |
 | Cancel seller constraint | Only the listing creator can cancel | `market::cancel_sell_listing` asserts `listing.seller == ctx.sender()`. Since `escrow_and_list` sets the seller to the calling admin/delegate address, only that same address can later call `cancel_and_unescrow`. A different delegate cannot cancel another delegate's listing. Acceptable for hackathon scope. |
 | Backwards compatibility | None needed | Prototyping phase, no users. Existing owned configs will need to be recreated as shared. |
+| Standings enforcement | Bypass for hackathon (Option A) | Composite functions call `market::market::` directly, skipping `market_standings` standings checks. Sell side already enforces via `market::is_authorized`. Buy-side standings enforcement is nice-to-have, deferred. |
+| Buyer character resolution | Off-chain resolution (Option A) | Seller's client resolves buyer's character object ID from the buy order's `buyer` address before building the TX. The address is available from the BuyOrder query; the dapp resolves via manifest/character cache or on-chain query. On-chain resolution not feasible without a registry. |
+| Escrow quantity tracking | Shared pool (Option A) | The escrow (open inventory) is a shared pool per type_id, not tracked per-listing. The composite `escrow_and_list` guarantees items are escrowed at listing time, keeping the pool balanced. Per-listing tracking adds significant complexity with no practical benefit. |
 
 ## Implementation Phases
 
@@ -316,23 +319,7 @@ The composite functions need Character object references for both the SSU owner 
 
 ## Open Questions
 
-1. **Standings enforcement for composite functions**
-   - **Option A: Bypass standings** -- Composite functions call `market::market::` directly, skipping `market_standings` standings checks. Pros: simple, no additional dependency. Cons: any player can buy regardless of standings.
-   - **Option B: Add market_standings dependency** -- Composite functions call `market_standings::` for standings enforcement. Pros: full standings enforcement. Cons: more complex contract, additional dependency, may have Move dependency graph issues.
-   - **Option C: Client-side standings check** -- Dapp validates standings before allowing the TX. Not enforced on-chain. Pros: no contract changes. Cons: bypassable.
-   - **Recommendation:** Option A for the hackathon. Sell side already enforces via `market::is_authorized`. Buy-side standings enforcement is nice-to-have.
-
-2. **Buyer character resolution for fill_and_deliver**
-   - **Option A: Off-chain resolution** -- Seller's client resolves buyer's character object ID from the buy order's `buyer` address before building the TX. Pros: straightforward query. Cons: extra query step.
-   - **Option B: On-chain resolution** -- Function takes buyer address and resolves character internally. Pros: single step. Cons: Move doesn't support arbitrary object lookups -- not feasible without a registry.
-   - **Recommendation:** Option A. The buyer address is available from the BuyOrder query. The SSU dapp can resolve the character object ID via manifest/character cache or an on-chain query.
-
-3. **Escrow quantity tracking for partial buys**
-   - When a listing is partially bought, `buy_and_receive` withdraws only the purchased quantity from escrow. But the escrow (open inventory) is a shared pool per type_id -- it doesn't track per-listing quantities.
-   - **Option A: Accept shared pool** -- As long as total escrowed >= total listed, this works. The composite `escrow_and_list` guarantees items are escrowed at listing time, keeping the pool balanced.
-   - **Option B: Per-listing escrow tracking** -- Track escrowed quantities per listing_id on-chain. Significant complexity.
-   - **Recommendation:** Option A. The composite function guarantees escrow-on-list, so the pool stays balanced. If admin creates multiple listings for the same type_id, the pool works naturally.
-
+None -- all resolved. See Design Decisions table.
 ## Deferred
 
 - **Standings enforcement for composite buy** -- The composite `buy_and_receive` bypasses `market_standings`. Can be added by depending on `market_standings` or reimplementing the standings check.
