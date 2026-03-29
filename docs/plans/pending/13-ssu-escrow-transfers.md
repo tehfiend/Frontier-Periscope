@@ -88,9 +88,9 @@ The missing piece: buyer-side dialogs need the buyer's Character object ID and a
 All market operations compose inventory steps with market steps in a single PTB:
 
 1. **Sell (post listing):** admin_to_escrow + market::post_sell_listing -- items moved to escrow, then listing created.
-2. **Buy from listing:** market::buy_from_listing + admin_escrow_to_player -- payment processed, then items moved from escrow to buyer's player inventory.
-3. **Cancel listing:** market::cancel_sell_listing + admin_from_escrow -- listing removed, then items returned from escrow to owner inventory.
-4. **Fill buy order:** admin_to_escrow + market::fill_buy_order -- items moved to escrow (or directly to buyer), then payment released. (Alternatively, for the seller: withdraw items from their inventory, then fill the order.)
+2. **Buy from listing:** market::buy_from_listing + public_escrow_to_self -- payment processed, then items moved from escrow to buyer's player inventory. Buyer executes.
+3. **Cancel listing:** market::cancel_sell_listing + admin_from_escrow -- listing removed, then items returned from escrow to owner inventory. Seller (admin) executes.
+4. **Fill buy order:** admin_to_escrow + market::fill_buy_order -- items moved to escrow, then payment released to seller. Buyer picks up items later via public_escrow_to_self.
 5. **Cancel buy order:** Unchanged (coin-only, already correct).
 6. **Create buy order:** Unchanged (coin-only, already correct).
 
@@ -103,42 +103,52 @@ The seller (SSU owner/delegate) orchestrates item escrow through the `ssu_unifie
 | Fix location | One new Move function + composite TX builders in `ssu-unified.ts` | Market contracts untouched. Only `ssu_unified.move` gets one addition (`public_escrow_to_self`). All composition via PTBs. |
 | Escrow model | Move items to SSU "open" inventory on listing; move from open to buyer on purchase | The SSU open/escrow inventory is the natural holding area. `admin_to_escrow` (owner -> open) already exists for the sell side. |
 | Buy-side delivery | New `public_escrow_to_self` function in ssu_unified.move | Mirrors `player_to_escrow` (unrestricted deposit) with `public_escrow_to_self` (unrestricted withdrawal from escrow to own inventory). The storage_unit extension check provides the Auth witness. No admin/delegate status required for buyers. |
+| Config ownership model | Change SsuUnifiedConfig from owned to shared | Currently owned objects -- non-owners can't reference them in TXs, making `player_to_escrow`/`player_to_owner` unusable. Shared objects are reference-able by anyone while still protected by `assert_authorized` for mutations. |
 | PTB composition pattern | Follow `TransferDialog.tsx` patterns for cap borrow/return | Proven pattern already used for manual inventory transfers. |
 | Backwards compatibility | None needed -- prototyping phase, no users | Per project conventions, no migration support. |
 | Parameter threading | Thread `TransferContext` data through ContentTabs -> MarketContent -> dialogs | The data already exists in the component tree; it just needs to be passed down. |
 
 ## Implementation Phases
 
-### Phase 1: Add `public_escrow_to_self` to `ssu_unified.move`
+### Phase 1: Fix `SsuUnifiedConfig` Ownership Model + Add `public_escrow_to_self`
 
-The buyer needs authority to withdraw purchased items from escrow. The existing admin functions (`admin_escrow_to_self`, `admin_escrow_to_player`) require the caller to be owner/delegate, which buyers typically are not. The solution follows the same pattern as `player_to_escrow` and `player_to_owner` -- provide `SsuUnifiedAuth` to the world package functions without checking caller authorization.
+**Critical finding:** `SsuUnifiedConfig` is currently an address-owned object (`transfer::transfer(config, ctx.sender())`). On Sui, only the owner can reference an owned object in a transaction -- even as an immutable `&` reference. This means the existing `player_to_escrow` and `player_to_owner` functions are **unusable by non-owner players**, because a non-owner player cannot pass `tx.object(ssuConfigId)` in their PTB.
 
-1. Add to `contracts/ssu_unified/sources/ssu_unified.move`:
-   ```move
-   /// Public: any player can withdraw from escrow to their own player inventory.
-   /// Mirrors player_to_escrow (any player can deposit to escrow).
-   /// The storage_unit extension check ensures SsuUnifiedAuth is registered.
-   public fun public_escrow_to_self(
-       _config: &SsuUnifiedConfig,
-       storage_unit: &mut StorageUnit,
-       character: &Character,
-       type_id: u64,
-       quantity: u32,
-       ctx: &mut TxContext,
-   ) {
-       let item = storage_unit::withdraw_from_open_inventory(
-           storage_unit, character, SsuUnifiedAuth {}, type_id, quantity, ctx,
-       );
-       storage_unit::deposit_to_owned(
-           storage_unit, character, item, SsuUnifiedAuth {}, ctx,
-       );
-   }
-   ```
+The fix is to make `SsuUnifiedConfig` a shared object so that anyone can reference it. The `assert_authorized` check in admin functions still prevents unauthorized modifications. Player/public functions use `_config: &SsuUnifiedConfig` as a read-only reference, which is safe with shared objects.
+
+1. In `contracts/ssu_unified/sources/ssu_unified.move`:
+   - Change `create_config` (line 87-117): replace `transfer::transfer(config, ctx.sender())` with `transfer::share_object(config)`.
+   - Change `create_config_with_market` (line 120-152): same change -- `transfer::share_object(config)`.
+   - Add `public_escrow_to_self` function:
+     ```move
+     /// Public: any player can withdraw from escrow to their own player inventory.
+     /// Mirrors player_to_escrow (any player can deposit to escrow).
+     /// The storage_unit extension check ensures SsuUnifiedAuth is registered.
+     public fun public_escrow_to_self(
+         _config: &SsuUnifiedConfig,
+         storage_unit: &mut StorageUnit,
+         character: &Character,
+         type_id: u64,
+         quantity: u32,
+         ctx: &mut TxContext,
+     ) {
+         let item = storage_unit::withdraw_from_open_inventory(
+             storage_unit, character, SsuUnifiedAuth {}, type_id, quantity, ctx,
+         );
+         storage_unit::deposit_to_owned(
+             storage_unit, character, item, SsuUnifiedAuth {}, ctx,
+         );
+     }
+     ```
+   - Note: Changing from owned to shared means admin functions (`set_standings_config`, `set_market`, `add_delegate`, etc.) that take `&mut SsuUnifiedConfig` still work -- shared objects support mutable borrows. The `assert!(config.owner == ctx.sender(), ENotOwner)` check prevents non-owners from modifying.
+
 2. Build: `sui move build` from `contracts/ssu_unified/`.
 3. Publish: `sui client publish --gas-budget 500000000`.
 4. Update `packages/chain-shared/src/config.ts`: set new `ssuUnified.packageId` for both tenants, move old ID to `previousOriginalPackageIds`.
 
-Security note: This allows any player to withdraw any items from escrow to their own player inventory at any time. In the current prototyping phase this is acceptable -- the escrow inventory should only contain items that are actively listed for sale. In a production system, this would need on-chain verification that the withdrawal corresponds to a completed purchase. See Deferred section.
+**Impact on existing SsuUnifiedConfig objects:** Existing configs created with the old contract are address-owned and cannot be retroactively converted to shared. Users with existing configs will need to create new shared configs. Since this is the prototyping phase with no real users, this is acceptable.
+
+Security note: `public_escrow_to_self` allows any player to withdraw any items from escrow to their own player inventory at any time. In the current prototyping phase this is acceptable -- the escrow inventory should only contain items that are actively listed for sale. In a production system, this would need on-chain verification that the withdrawal corresponds to a completed purchase. See Deferred section.
 
 ### Phase 2: Add Composite TX Builders
 
@@ -242,7 +252,7 @@ Also add a TS TX builder for the new Move function:
 
 | File | Action | Description |
 |------|--------|-------------|
-| `contracts/ssu_unified/sources/ssu_unified.move` | Edit | Add `public_escrow_to_self` function (any player can withdraw from escrow to own inventory) |
+| `contracts/ssu_unified/sources/ssu_unified.move` | Edit | Change config from owned to shared objects, add `public_escrow_to_self` function |
 | `packages/chain-shared/src/config.ts` | Edit | Update `ssuUnified.packageId` for both tenants after republish |
 | `packages/chain-shared/src/ssu-unified.ts` | Edit | Add composite TX builders: `buildSellWithEscrow`, `buildCancelListingWithReturn`, `buildBuyWithDelivery`, `buildFillBuyOrderWithItems`, `buildUpdateListingWithEscrowDelta`, `buildPublicEscrowToSelf` |
 | `apps/ssu-dapp/src/components/ContentTabs.tsx` | Edit | Thread `transferContext` to MarketContent |
@@ -274,6 +284,12 @@ Also add a TS TX builder for the new Move function:
    - **Option B: Direct delivery via admin_escrow_to_player in same PTB** -- Seller escrows items, then immediately delivers to buyer's player inventory. Pros: Single TX, items arrive instantly. Cons: Requires knowing the buyer's Character object ID at fill time (available from the buy order's buyer address, but needs resolution).
    - **Option C: Two-PTB approach for v1** -- Fill TX only handles coins. Items stay in owner inventory. Buyer manually requests items via a separate UI action.
    - **Recommendation:** Option A for v1. The buyer already needs to be at the SSU to pick up items. The `public_escrow_to_self` function handles this. The UI can show "items in escrow -- click to claim" for completed purchases.
+
+4. **Should `SsuUnifiedConfig` be shared or use a different discovery/reference pattern?**
+   - **Option A: Shared object (current Phase 1 design)** -- Change `transfer::transfer` to `transfer::share_object`. Anyone can reference the config in TXs. Admin functions are still owner-protected. Pros: Simplest fix. Enables player functions. Cons: Shared objects have slightly higher gas costs due to consensus ordering. Config objects are small so this is negligible.
+   - **Option B: Make config immutable after creation** -- Use `transfer::freeze_object`. Pros: Zero-cost reads. Cons: Cannot update config (market link, delegates, thresholds). Would require destroy+recreate pattern for changes.
+   - **Option C: Store config fields on the StorageUnit as dynamic fields** -- Eliminate SsuUnifiedConfig as a separate object. Use dynamic fields on the SSU itself. Pros: No ownership issue (StorageUnit is shared). Cons: Invasive change, different storage/query pattern.
+   - **Recommendation:** Option A. Shared objects are the standard Sui pattern for objects referenced by multiple users. Gas overhead is negligible for small config objects. The existing `assert_authorized` checks protect mutations.
 
 ## Deferred
 
