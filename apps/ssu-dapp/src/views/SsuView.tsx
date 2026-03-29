@@ -2,6 +2,7 @@ import { AssemblyActions } from "@/components/AssemblyActions";
 import { ContentTabs } from "@/components/ContentTabs";
 import { ExtensionInfo } from "@/components/ExtensionInfo";
 import { PublishToMapDialog } from "@/components/PublishToMapDialog";
+import { SsuConfigInfo } from "@/components/SsuConfigInfo";
 import { SsuInfoCard } from "@/components/SsuInfoCard";
 import type { CapRef, TransferContext } from "@/components/TransferDialog";
 import { VisibilitySettings } from "@/components/VisibilitySettings";
@@ -48,8 +49,8 @@ export function SsuView({ objectId }: SsuViewProps) {
 		character?.characterOwnerCapId ?? undefined,
 	);
 
-	// SSU owner character name (from ownerCapId)
-	const { data: ownerCharacterName } = useOwnerCharacter(assembly?.ownerCapId);
+	// SSU owner character info (name + object ID, from ownerCapId)
+	const { data: ownerCharacterInfo } = useOwnerCharacter(assembly?.ownerCapId);
 
 	// SsuConfig detection -- only when SSU has a ssu_market extension
 	const { data: ssuConfig } = useSsuConfig(objectId, assembly?.extensionType);
@@ -79,9 +80,19 @@ export function SsuView({ objectId }: SsuViewProps) {
 		// Need at least a character to transfer (either as owner or as market participant)
 		if (!character || !assembly) return null;
 
-		// Without ssu_market extension, require SSU ownership for transfers
+		// Without an extension, require SSU ownership for transfers
 		if (!ssuConfig && !isOwner) return null;
 		if (!ssuConfig && !ownerCapInfo) return null;
+
+		// Extension-based inventory functions: ssu_unified or ssu_market
+		const hasSsuUnifiedExt = assembly.extensionType?.includes("::ssu_unified::");
+		const hasSsuMarketExt = assembly.extensionType?.includes("::ssu_market::");
+		const hasExtension = hasSsuUnifiedExt || hasSsuMarketExt;
+		const extensionPkg = hasSsuUnifiedExt
+			? getContractAddresses(getTenant() as TenantId).ssuUnified?.packageId
+			: hasSsuMarketExt
+				? getContractAddresses(getTenant() as TenantId).ssuMarket?.packageId
+				: undefined;
 
 		const worldPkg = getWorldPackageId(getTenant());
 		const slotCaps = new Map<string, CapRef>();
@@ -104,15 +115,19 @@ export function SsuView({ objectId }: SsuViewProps) {
 			});
 		}
 
+		// Determine the module name for moveCall targets
+		const extensionModule = hasSsuUnifiedExt ? "ssu_unified" : "ssu_market";
+
 		return {
 			ssuObjectId: objectId,
 			characterObjectId: character.characterObjectId,
 			characterName: character.characterName,
 			slotCaps,
-			ssuConfigId: ssuConfig?.ssuConfigId,
-			marketPackageId: ssuConfig?.packageId,
+			ssuConfigId: hasExtension ? ssuConfig?.ssuConfigId : undefined,
+			marketPackageId: extensionPkg,
 			marketId: ssuConfig?.marketId,
 			isAuthorized,
+			extensionModule,
 		};
 	}, [
 		isOwner,
@@ -167,7 +182,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 			<SsuInfoCard
 				assembly={assembly}
 				itemId={getItemId()}
-				ownerCharacterName={ownerCharacterName}
+				ownerCharacterName={ownerCharacterInfo?.characterName ?? null}
 				connectedWalletAddress={walletAddress}
 				connectedCharacterName={character?.characterName}
 				isOwner={isOwner}
@@ -179,6 +194,9 @@ export function SsuView({ objectId }: SsuViewProps) {
 			{/* Visibility toggle -- SSU config owner only */}
 			{isSsuOwner && ssuConfig && <VisibilitySettings ssuConfig={ssuConfig} />}
 
+			{/* Standings config info */}
+			{ssuConfig && <SsuConfigInfo ssuConfig={ssuConfig} />}
+
 			{/* Card 2: Content Tabs (Inventory + Market) */}
 			{inventories && (
 				<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
@@ -188,11 +206,6 @@ export function SsuView({ objectId }: SsuViewProps) {
 						transferContext={transferContext}
 						ssuConfig={ssuConfig ?? null}
 						ssuObjectId={objectId}
-						characterObjectId={character?.characterObjectId}
-						ownerCap={ownerCapInfo ?? undefined}
-						charOwnerCap={charOwnerCapInfo ?? undefined}
-						charOwnerCapId={character?.characterOwnerCapId ?? undefined}
-						isOwner={isOwner}
 						isConnected={!!account}
 						coinType={ssuConfig?.coinType ?? ""}
 						listings={listings ?? []}
@@ -200,7 +213,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 						listingsLoading={listingsLoading}
 						buyOrdersLoading={buyOrdersLoading}
 						walletAddress={walletAddress}
-						characterOwnerCapId={charOwnerCapInfo?.objectId}
+						ownerCharacterObjectId={ownerCharacterInfo?.characterObjectId ?? null}
 					/>
 				</div>
 			)}
@@ -220,6 +233,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 				characterObjectId={character?.characterObjectId}
 				ownerCap={ownerCapInfo ?? undefined}
 				ssuObjectId={objectId}
+				ssuConfig={ssuConfig ?? undefined}
 			/>
 
 			{/* Publish to Map button (visible when wallet connected and contract deployed) */}

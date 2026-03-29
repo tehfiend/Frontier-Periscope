@@ -1,0 +1,10 @@
+[package]
+name = "gate_toll_custom"
+edition = "2024.beta"
+
+[dependencies]
+treasury = { local = "../treasury" }
+
+[addresses]
+gate_toll_custom = "0x0"
+treasury = "0xe0ca570a3a5da2d72254b3f6db62b46b8595e1e6ed4b8d455af343d208c357eb"

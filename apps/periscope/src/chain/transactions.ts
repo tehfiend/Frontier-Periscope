@@ -236,49 +236,34 @@ export function buildConfigureGateStandings(params: ConfigureGateStandingsParams
 	});
 }
 
-interface ConfigureSsuUnifiedParams {
+interface ConfigureSsuStandingsParams {
 	tenant: TenantId;
 	ssuId: string;
 	registryId: string;
 	minDeposit: number;
 	minWithdraw: number;
-	/** Market ID to link (optional). */
-	marketId?: string;
-	/** Existing per-SSU SsuUnifiedConfig object ID (omit for first-time creation). */
-	ssuConfigId?: string;
 	senderAddress: string;
+	/** Existing SsuUnifiedConfig object ID (for reconfiguration). */
+	ssuConfigId?: string;
+	/** Optional market ID to link at creation time. */
+	marketId?: string;
 }
 
 /**
- * Result of building an SSU unified config transaction.
- * `isCreate` indicates whether this creates a new config (caller should
- * discover the new object ID after TX confirmation and persist it).
+ * Build a TX to configure standings-based access for an SSU.
+ * Uses the ssu_unified contract with per-user owned SsuUnifiedConfig objects.
+ * If ssuConfigId is provided, updates the existing config; otherwise creates a new one.
  */
-export interface ConfigureSsuUnifiedResult {
-	tx: Transaction;
-	isCreate: boolean;
-}
-
-/**
- * Build a TX to configure standings-based access for an SSU via ssu_unified.
- *
- * - First-time (no ssuConfigId): calls buildCreateSsuUnifiedConfig to create
- *   a per-SSU config owned by the caller.
- * - Update (has ssuConfigId): calls buildSetSsuUnifiedConfig to update the
- *   existing config's standings thresholds.
- */
-export function buildConfigureSsuUnified(
-	params: ConfigureSsuUnifiedParams,
-): ConfigureSsuUnifiedResult {
+export function buildConfigureSsuStandings(params: ConfigureSsuStandingsParams): Transaction {
 	const addrs = getContractAddresses(params.tenant);
-	const ssuUnified = addrs.ssuUnified ?? addrs.ssuStandings;
-	if (!ssuUnified) {
-		throw new Error(`SSU unified contract not deployed on ${params.tenant}`);
+	const ssuUnified = addrs.ssuUnified;
+	if (!ssuUnified?.packageId) {
+		throw new Error(`SSU unified not deployed on ${params.tenant}`);
 	}
 
 	if (params.ssuConfigId) {
-		// Update existing per-SSU config
-		const tx = buildSetSsuUnifiedConfig({
+		// Reconfigure existing SsuUnifiedConfig
+		return buildSetSsuUnifiedConfig({
 			packageId: ssuUnified.packageId,
 			ssuConfigId: params.ssuConfigId,
 			registryId: params.registryId,
@@ -286,30 +271,18 @@ export function buildConfigureSsuUnified(
 			minWithdraw: params.minWithdraw,
 			senderAddress: params.senderAddress,
 		});
-
-		// If marketId provided, add market link in the same TX
-		if (params.marketId) {
-			tx.moveCall({
-				target: `${ssuUnified.packageId}::ssu_unified::set_market`,
-				arguments: [tx.object(params.ssuConfigId), tx.pure.id(params.marketId)],
-			});
-		}
-
-		return { tx, isCreate: false };
 	}
 
-	// First-time: create a new per-SSU config owned by the caller
-	const tx = buildCreateSsuUnifiedConfig({
+	// Create new SsuUnifiedConfig
+	return buildCreateSsuUnifiedConfig({
 		packageId: ssuUnified.packageId,
 		ssuId: params.ssuId,
 		registryId: params.registryId,
 		minDeposit: params.minDeposit,
 		minWithdraw: params.minWithdraw,
-		marketId: params.marketId || undefined,
+		marketId: params.marketId,
 		senderAddress: params.senderAddress,
 	});
-
-	return { tx, isCreate: true };
 }
 
 // ── Remove Extension Transaction ────────────────────────────────────────────
@@ -328,7 +301,7 @@ interface RemoveExtensionParams {
  *
  * Flow:
  *   1. character::borrow_owner_cap<T>() -> (ownerCap, receipt)
- *   2. {module}::remove_extension(assembly, ownerCap)
+ *   2. {module}::revoke_extension_authorization(assembly, ownerCap)
  *   3. character::return_owner_cap<T>() -> consume receipt
  */
 export function buildRemoveExtension(params: RemoveExtensionParams): Transaction {
@@ -355,7 +328,7 @@ export function buildRemoveExtension(params: RemoveExtensionParams): Transaction
 
 	// Step 2: Remove extension
 	tx.moveCall({
-		target: `${worldTarget}::${entry.module}::remove_extension`,
+		target: `${worldTarget}::${entry.module}::revoke_extension_authorization`,
 		arguments: [tx.object(assemblyId), ownerCap],
 	});
 

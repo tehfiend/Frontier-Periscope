@@ -821,6 +821,8 @@ export interface CurrencyRecord extends SyncMeta {
 	decimals: number;
 	createdAt: string;
 	updatedAt: string;
+	/** Treasury shared object ID linked to this currency */
+	treasuryId?: string;
 	/** Locally archived -- hidden from UI but not deleted */
 	_archived?: boolean;
 }

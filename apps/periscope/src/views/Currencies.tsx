@@ -1,9 +1,8 @@
-import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
+import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	AlertCircle,
-	Archive,
-	ArchiveRestore,
+	Ban,
 	ChevronDown,
 	ChevronUp,
 	Flame,
@@ -33,24 +32,36 @@ import {
 	buildAddAuthorized,
 	buildBurn,
 	buildCreateMarket,
+	buildCreateTreasury,
+	buildDecommission,
 	buildMint,
+	buildMintToTreasury,
 	buildPublishToken,
+	buildRecommission,
 	buildRemoveAuthorized,
+	buildTreasuryDeposit,
+	buildTreasuryWithdraw,
 	buildUpdateFee,
 	getContractAddresses,
 	parsePublishResult,
+	queryDecommissionedMarkets,
 	queryMarketBuyOrders,
 	queryMarketDetails,
 	queryMarketListings,
 	queryMarkets,
 	queryOwnedCoins,
+	queryTreasuryBalances,
 	queryTreasuryCap,
+	queryTreasuryDetails,
+	discoverTreasuries,
 } from "@tehfrontier/chain-shared";
 import type {
 	MarketBuyOrder,
 	MarketInfo,
 	MarketSellListing,
 	OrderInfo,
+	TreasuryBalance,
+	TreasuryInfo,
 } from "@tehfrontier/chain-shared";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -68,7 +79,7 @@ interface UnifiedCurrencyRow {
 	creatorName?: string;
 	feeBps: number;
 	status: "mine" | "authorized" | "public";
-	archived: boolean;
+	decommissioned: boolean;
 	currencyRecordId?: string;
 	treasuryId?: string;
 	packageId: string;
@@ -248,7 +259,8 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
 
 export function Currencies() {
 	const account = useCurrentAccount();
-	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
+	const { signAndExecuteTransaction: signAndExecute, connectWallet } = useDAppKit();
+	const wallets = useWallets();
 	const { activeCharacter } = useActiveCharacter();
 	const suiAddress = activeCharacter?.suiAddress;
 	const walletAddress = account?.address;
@@ -260,9 +272,11 @@ export function Currencies() {
 	const currencies = useLiveQuery(() => db.currencies.filter(notDeleted).toArray()) ?? [];
 	const manifestChars = useLiveQuery(() => db.manifestCharacters.toArray()) ?? [];
 	const exchangePairs = useLiveQuery(() => db.manifestExchangePairs.toArray()) ?? [];
+	const treasuries = useLiveQuery(() => db.treasuries.toArray()) ?? [];
 
 	// ── State ────────────────────────────────────────────────────────────────
-	const [showArchived, setShowArchived] = useState(false);
+	const [showDecommissioned, setShowDecommissioned] = useState(false);
+	const [decommissionedSet, setDecommissionedSet] = useState<Set<string>>(new Set());
 	const [selectedCurrencyId, setSelectedCurrencyId] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
 	const [symbol, setSymbol] = useState("");
@@ -299,6 +313,17 @@ export function Currencies() {
 			marketByCoinType.set(m.coinType, m);
 		}
 
+		// Index treasuries by coinType (1:1 relationship)
+		const treasuryByCoinType = new Map<string, { id: string; balance?: string }>();
+		for (const t of treasuries) {
+			if (!t.coinType) continue;
+			const bal = t.balances.find((b) => b.coinType === t.coinType);
+			treasuryByCoinType.set(t.coinType, {
+				id: t.id,
+				balance: bal?.amount,
+			});
+		}
+
 		// Collect all unique coinTypes
 		const allCoinTypes = new Set<string>();
 		for (const m of manifestMarkets) allCoinTypes.add(m.coinType);
@@ -309,6 +334,7 @@ export function Currencies() {
 		for (const coinType of allCoinTypes) {
 			const market = marketByCoinType.get(coinType);
 			const currency = currencyByCoinType.get(coinType);
+			const treasury = treasuryByCoinType.get(coinType);
 
 			// Determine status relative to the active character
 			let status: "mine" | "authorized" | "public" = "public";
@@ -326,7 +352,8 @@ export function Currencies() {
 				status = "mine";
 			}
 
-			const archived = currency?._archived ?? false;
+			const marketObjectId = market?.id ?? currency?.marketId;
+			const decommissioned = marketObjectId ? decommissionedSet.has(marketObjectId) : false;
 			const creator = market?.creator ?? "";
 			const parts = coinType.split("::");
 			const pkgId = currency?.packageId ?? parts[0] ?? "";
@@ -339,12 +366,14 @@ export function Currencies() {
 				symbol: sym,
 				name: currency?.name ?? `${sym} Token`,
 				totalSupply: market?.totalSupply,
+				treasuryBalance: treasury?.balance,
 				creator,
 				creatorName: charNameMap.get(creator),
 				feeBps: market?.feeBps ?? 0,
 				status,
-				archived,
+				decommissioned,
 				currencyRecordId: currency?.id,
+				treasuryId: treasury?.id ?? currency?.treasuryId,
 				packageId: pkgId,
 				decimals: currency?.decimals ?? 9,
 				marketId: currency?.marketId ?? market?.id,
@@ -352,28 +381,36 @@ export function Currencies() {
 		}
 
 		return rows;
-	}, [manifestMarkets, currencies, suiAddress, walletAddress, charNameMap]);
+	}, [manifestMarkets, currencies, treasuries, decommissionedSet, suiAddress, walletAddress, charNameMap]);
 
-	// ── Filtered rows (archive toggle) ───────────────────────────────────────
+	// ── Filtered rows (decommission toggle) ─────────────────────────────────
 	const filteredRows = useMemo(
-		() => unifiedRows.filter((r) => !r.archived || showArchived),
-		[unifiedRows, showArchived],
+		() => unifiedRows.filter((r) => !r.decommissioned || showDecommissioned),
+		[unifiedRows, showDecommissioned],
 	);
 
 	// ── Sync ─────────────────────────────────────────────────────────────────
+	const addresses = getContractAddresses(tenant);
+
 	const handleSync = useCallback(async () => {
 		setIsSyncing(true);
 		try {
 			if (suiAddress) {
 				await syncCurrenciesFromManifest(suiClient, suiAddress, walletAddress);
 			}
-			await discoverExchangePairs(suiClient);
+			await discoverExchangePairs(suiClient, tenant);
+			// Query on-chain decommission registry via events
+			const decomPkgId = addresses.decommission?.packageId;
+			if (decomPkgId) {
+				const set = await queryDecommissionedMarkets(suiClient, decomPkgId);
+				setDecommissionedSet(set);
+			}
 		} catch {
 			// Silent
 		} finally {
 			setIsSyncing(false);
 		}
-	}, [suiClient, suiAddress, walletAddress]);
+	}, [suiClient, suiAddress, walletAddress, tenant, addresses.decommission?.registryObjectId]);
 
 	// Auto-sync on mount
 	useEffect(() => {
@@ -388,11 +425,61 @@ export function Currencies() {
 		}
 	}, [filteredRows]);
 
-	// ── Archive toggle ───────────────────────────────────────────────────────
-	const handleArchive = async (row: UnifiedCurrencyRow, archived: boolean) => {
-		if (row.currencyRecordId) {
-			await db.currencies.update(row.currencyRecordId, { _archived: archived });
-			if (archived && selectedCurrencyId === row.id) setSelectedCurrencyId(null);
+	// ── Decommission toggle ─────────────────────────────────────────────────
+	const handleDecommission = async (row: UnifiedCurrencyRow, decommission: boolean) => {
+		if (!row.marketId) return;
+		const decomPkg = addresses.decommission;
+		if (!decomPkg?.packageId || !decomPkg.registryObjectId) return;
+
+		// Connect wallet if needed
+		let senderAddress = account?.address;
+		if (!senderAddress) {
+			const eveVault = wallets.find(
+				(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
+			);
+			const wallet = eveVault || wallets[0];
+			if (!wallet) return;
+			const result = await connectWallet({ wallet });
+			senderAddress = result.accounts[0]?.address;
+			if (!senderAddress) return;
+		}
+
+		setBuildStatus("building");
+		setBuildError("");
+
+		try {
+			const tx = decommission
+				? buildDecommission({
+						packageId: decomPkg.packageId,
+						registryObjectId: decomPkg.registryObjectId,
+						marketId: row.marketId,
+						senderAddress,
+					})
+				: buildRecommission({
+						packageId: decomPkg.packageId,
+						registryObjectId: decomPkg.registryObjectId,
+						marketId: row.marketId,
+						senderAddress,
+					});
+
+			await signAndExecute({ transaction: tx });
+
+			// Update local state immediately
+			setDecommissionedSet((prev) => {
+				const next = new Set(prev);
+				if (decommission) {
+					next.add(row.marketId!);
+				} else {
+					next.delete(row.marketId!);
+				}
+				return next;
+			});
+
+			if (decommission && selectedCurrencyId === row.id) setSelectedCurrencyId(null);
+			setBuildStatus("done");
+		} catch (err) {
+			setBuildStatus("error");
+			setBuildError(err instanceof Error ? err.message : String(err));
 		}
 	};
 
@@ -404,12 +491,24 @@ export function Currencies() {
 		setBuildError("");
 
 		try {
+			const sym = symbol.trim().toUpperCase();
 			const tx = await buildPublishToken({
-				symbol: symbol.trim().toUpperCase(),
+				symbol: sym,
 				name: tokenName.trim(),
 				description: description.trim() || `${tokenName.trim()} token`,
 				decimals,
 			});
+
+			// Append treasury creation to the same PTB (single wallet prompt)
+			const treasuryPkg = addresses.treasury?.packageId;
+			if (treasuryPkg) {
+				tx.moveCall({
+					target: `${treasuryPkg}::treasury::create_treasury`,
+					arguments: [
+						tx.pure.vector("u8", Array.from(new TextEncoder().encode(`${sym} Treasury`))),
+					],
+				});
+			}
 
 			const result = await signAndExecute({ transaction: tx });
 
@@ -446,16 +545,40 @@ export function Currencies() {
 				);
 			}
 
+			// Find the Treasury object created in the same TX
+			let newTreasuryId: string | undefined;
+			for (const change of objectChanges) {
+				if (
+					change.type === "created" &&
+					change.objectType?.includes("::treasury::Treasury")
+				) {
+					newTreasuryId = change.objectId;
+					break;
+				}
+			}
+
+			if (newTreasuryId && suiAddress) {
+				await db.treasuries.put({
+					id: newTreasuryId,
+					name: `${sym} Treasury`,
+					owner: suiAddress,
+					admins: [],
+					balances: [],
+					coinType: parsed.coinType,
+				});
+			}
+
 			const now = new Date().toISOString();
 			await db.currencies.add({
 				id: crypto.randomUUID(),
-				symbol: symbol.trim().toUpperCase(),
+				symbol: sym,
 				name: tokenName.trim(),
 				description: description.trim(),
 				moduleName: parsed.moduleName,
 				coinType: parsed.coinType,
 				packageId: parsed.packageId,
 				marketId: parsed.marketId,
+				treasuryId: newTreasuryId,
 				decimals,
 				createdAt: now,
 				updatedAt: now,
@@ -504,6 +627,21 @@ export function Currencies() {
 				},
 			},
 			{
+				accessorKey: "treasuryBalance",
+				header: "Treasury",
+				size: 110,
+				enableColumnFilter: false,
+				cell: ({ row }) => {
+					const { treasuryBalance, decimals, symbol } = row.original;
+					if (!treasuryBalance) return <span className="text-zinc-600">--</span>;
+					return (
+						<span className="font-mono text-xs">
+							{formatTokenAmount(BigInt(treasuryBalance), decimals)} {symbol}
+						</span>
+					);
+				},
+			},
+			{
 				accessorKey: "feeBps",
 				header: "Fee (bps)",
 				size: 80,
@@ -542,6 +680,13 @@ export function Currencies() {
 				size: 90,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
+					if (row.original.decommissioned) {
+						return (
+							<span className="rounded bg-red-900/40 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+								decommissioned
+							</span>
+						);
+					}
 					const s = row.original.status;
 					const colorMap = {
 						mine: "bg-cyan-900/40 text-cyan-400",
@@ -617,33 +762,21 @@ export function Currencies() {
 				onRowClick={(id) => setSelectedCurrencyId(id)}
 				actions={
 					<>
-						{/* Archive toggle */}
+						{/* Decommissioned toggle */}
 						<button
 							type="button"
-							onClick={() => setShowArchived(!showArchived)}
-							title={showArchived ? "Hide archived" : "Show archived"}
+							onClick={() => setShowDecommissioned(!showDecommissioned)}
+							title={showDecommissioned ? "Hide decommissioned" : "Show decommissioned"}
 							className={`shrink-0 rounded-lg p-2 text-xs transition-colors ${
-								showArchived
+								showDecommissioned
 									? "bg-amber-900/30 text-amber-400"
 									: "text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
 							}`}
 						>
-							<Archive size={14} />
+							<Ban size={14} />
 						</button>
 
-						{/* Archive / Unarchive selected */}
-						{selectedRow?.currencyRecordId && (
-							<button
-								type="button"
-								onClick={() => selectedRow && handleArchive(selectedRow, !selectedRow.archived)}
-								title={selectedRow.archived ? "Unarchive" : "Archive"}
-								className="shrink-0 rounded-lg p-2 text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-400"
-							>
-								{selectedRow.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-							</button>
-						)}
-
-						{/* Create / Connect */}
+						{/* Create toggle */}
 						{creating ? (
 							<button
 								type="button"
@@ -652,7 +785,7 @@ export function Currencies() {
 							>
 								Cancel
 							</button>
-						) : account ? (
+						) : (
 							<button
 								type="button"
 								onClick={() => setCreating(true)}
@@ -661,8 +794,6 @@ export function Currencies() {
 								<Plus size={14} />
 								Create
 							</button>
-						) : (
-							<ConnectWalletButton />
 						)}
 
 						{/* Refresh */}
@@ -692,6 +823,7 @@ export function Currencies() {
 						setBuildError(e ?? "");
 					}}
 					onSync={handleSync}
+					onDecommission={(decom) => handleDecommission(selectedRow, decom)}
 				/>
 			)}
 		</div>
@@ -708,6 +840,7 @@ function CurrencyDetail({
 	exchangePairs,
 	onStatusChange,
 	onSync,
+	onDecommission,
 }: {
 	row: UnifiedCurrencyRow;
 	tenant: TenantId;
@@ -716,6 +849,7 @@ function CurrencyDetail({
 	exchangePairs: ManifestExchangePair[];
 	onStatusChange: (status: BuildStatus, error?: string) => void;
 	onSync: () => void;
+	onDecommission: (decommission: boolean) => void;
 }) {
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
@@ -732,7 +866,6 @@ function CurrencyDetail({
 	// Admin panel state
 	const [showMint, setShowMint] = useState(false);
 	const [mintAmount, setMintAmount] = useState("");
-	const [mintRecipient, setMintRecipient] = useState("");
 	const [showBurn, setShowBurn] = useState(false);
 	const [burnCoinId, setBurnCoinId] = useState("");
 	const [ownedCoins, setOwnedCoins] = useState<Array<{ objectId: string; balance: bigint }>>([]);
@@ -742,6 +875,16 @@ function CurrencyDetail({
 	const [showFees, setShowFees] = useState(false);
 	const [feeBps, setFeeBps] = useState("");
 	const [feeRecipient, setFeeRecipient] = useState("");
+
+	// Treasury state
+	const [treasuryId, setTreasuryId] = useState<string | null>(row.treasuryId ?? null);
+	const [treasuryInfo, setTreasuryInfo] = useState<TreasuryInfo | null>(null);
+	const [treasuryBalances, setTreasuryBalances] = useState<TreasuryBalance[]>([]);
+	const [loadingTreasury, setLoadingTreasury] = useState(false);
+	const [showDeposit, setShowDeposit] = useState(false);
+	const [depositAmount, setDepositAmount] = useState("");
+	const [showWithdraw, setShowWithdraw] = useState(false);
+	const [withdrawAmount, setWithdrawAmount] = useState("");
 
 	// Exchange section
 	const [exchangeOrders, setExchangeOrders] = useState<Map<string, OrderInfo[]>>(new Map());
@@ -1090,8 +1233,57 @@ function CurrencyDetail({
 		}
 	}
 
+	async function loadTreasuryData() {
+		let tid = treasuryId ?? row.treasuryId;
+
+		// Discover treasury on-chain if not found locally
+		if (!tid && addresses.treasury?.packageId) {
+			try {
+				const discovered = await discoverTreasuries(suiClient, addresses.treasury.packageId, suiAddress);
+				for (const t of discovered) {
+					// Match by name convention: "SYMBOL Treasury"
+					if (t.name.startsWith(row.symbol)) {
+						tid = t.treasuryId;
+						// Persist for future lookups
+						if (row.currencyRecordId) {
+							await db.currencies.update(row.currencyRecordId, { treasuryId: tid });
+						}
+						await db.treasuries.put({
+							id: tid,
+							name: t.name,
+							owner: suiAddress,
+							admins: [],
+							balances: [],
+							coinType: row.coinType,
+						});
+						break;
+					}
+				}
+			} catch {
+				// non-fatal
+			}
+		}
+
+		if (!tid) return;
+		setLoadingTreasury(true);
+		try {
+			const [info, balances] = await Promise.all([
+				queryTreasuryDetails(suiClient, tid),
+				queryTreasuryBalances(suiClient, tid),
+			]);
+			setTreasuryInfo(info);
+			setTreasuryBalances(balances);
+			setTreasuryId(tid);
+		} catch {
+			setTreasuryInfo(null);
+			setTreasuryBalances([]);
+		} finally {
+			setLoadingTreasury(false);
+		}
+	}
+
 	async function loadAll() {
-		await Promise.all([loadMarketInfo(), loadOrders()]);
+		await Promise.all([loadMarketInfo(), loadOrders(), loadTreasuryData()]);
 	}
 
 	async function loadOwnedCoins() {
@@ -1119,18 +1311,146 @@ function CurrencyDetail({
 		}
 	}
 
-	// Load market info + orders on selection change
+	// Load market info + orders + treasury on selection change
 	// biome-ignore lint/correctness/useExhaustiveDependencies: loadAll changes every render
 	useEffect(() => {
-		if (hasMarket && row.marketId) {
-			loadAll();
-		}
-		// Reset admin panels on selection change
+		// Reset local state on row change
+		setTreasuryId(row.treasuryId ?? null);
+		setTreasuryInfo(null);
+		setTreasuryBalances([]);
 		setShowMint(false);
 		setShowBurn(false);
 		setShowAuth(false);
 		setShowFees(false);
-	}, [row.marketId, hasMarket]);
+		setShowDeposit(false);
+		setShowWithdraw(false);
+
+		if (hasMarket && row.marketId) {
+			loadAll();
+		} else if (row.treasuryId) {
+			loadTreasuryData();
+		}
+	}, [row.id]);
+
+	// ── Treasury handlers ────────────────────────────────────────────────────
+
+	const treasuryPkg = addresses.treasury?.packageId;
+	const isTreasuryAdmin =
+		treasuryInfo != null &&
+		(treasuryInfo.owner === suiAddress || treasuryInfo.admins.includes(suiAddress));
+
+	async function handleCreateTreasury() {
+		if (!treasuryPkg) return;
+
+		onStatusChange("building");
+		try {
+			const tx = buildCreateTreasury({
+				packageId: treasuryPkg,
+				name: `${row.symbol} Treasury`,
+				senderAddress: suiAddress,
+			});
+
+			const result = await signAndExecute({ transaction: tx });
+
+			// Find the created Treasury object
+			const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
+			const fullResult = await suiClient.waitForTransaction({
+				digest,
+				include: { effects: true, objectTypes: true },
+			});
+			const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
+			const changedObjects = fullTx?.effects?.changedObjects ?? [];
+			const objectTypesMap = fullTx?.objectTypes ?? {};
+
+			let newTreasuryId: string | undefined;
+			for (const change of changedObjects) {
+				const objType = objectTypesMap[change.objectId] ?? "";
+				if (objType.includes("::treasury::Treasury")) {
+					newTreasuryId = change.objectId;
+					break;
+				}
+			}
+
+			if (newTreasuryId) {
+				// Save to local DB for future lookups
+				await db.treasuries.put({
+					id: newTreasuryId,
+					name: `${row.symbol} Treasury`,
+					owner: suiAddress,
+					admins: [],
+					balances: [],
+					coinType: row.coinType,
+				});
+				// Also persist on the currency record
+				if (row.currencyRecordId) {
+					await db.currencies.update(row.currencyRecordId, { treasuryId: newTreasuryId });
+				}
+				setTreasuryId(newTreasuryId);
+				onStatusChange("done");
+				setTimeout(() => loadTreasuryData(), 1500);
+			} else {
+				onStatusChange("done");
+			}
+		} catch (err) {
+			onStatusChange("error", err instanceof Error ? err.message : String(err));
+		}
+	}
+
+	async function handleDeposit() {
+		if (!depositAmount || !treasuryId || !row.coinType || !treasuryPkg) return;
+
+		onStatusChange("building");
+		try {
+			const amount = BigInt(Math.floor(Number(depositAmount) * 10 ** row.decimals));
+			const coins = await queryOwnedCoins(suiClient, suiAddress, row.coinType);
+			if (coins.length === 0) {
+				onStatusChange("error", `No ${row.symbol} coins in your wallet to deposit.`);
+				return;
+			}
+
+			const tx = buildTreasuryDeposit({
+				packageId: treasuryPkg,
+				treasuryId,
+				coinType: row.coinType,
+				coinObjectIds: coins.map((c) => c.objectId),
+				amount,
+				senderAddress: suiAddress,
+			});
+
+			await signAndExecute({ transaction: tx });
+			setShowDeposit(false);
+			setDepositAmount("");
+			onStatusChange("done");
+			setTimeout(() => loadTreasuryData(), 1500);
+		} catch (err) {
+			onStatusChange("error", err instanceof Error ? err.message : String(err));
+		}
+	}
+
+	async function handleWithdraw() {
+		if (!withdrawAmount || !treasuryId || !row.coinType || !treasuryPkg) return;
+
+		onStatusChange("building");
+		try {
+			const amount = BigInt(Math.floor(Number(withdrawAmount) * 10 ** row.decimals));
+
+			const tx = buildTreasuryWithdraw({
+				packageId: treasuryPkg,
+				treasuryId,
+				coinType: row.coinType,
+				amount,
+				senderAddress: suiAddress,
+			});
+
+			await signAndExecute({ transaction: tx });
+			setShowWithdraw(false);
+			setWithdrawAmount("");
+			onStatusChange("done");
+			setTimeout(() => loadTreasuryData(), 1500);
+		} catch (err) {
+			onStatusChange("error", err instanceof Error ? err.message : String(err));
+		}
+	}
 
 	// ── Admin handlers ───────────────────────────────────────────────────────
 
@@ -1140,23 +1460,45 @@ function CurrencyDetail({
 		onStatusChange("minting");
 		try {
 			const amount = BigInt(Math.floor(Number(mintAmount) * 10 ** row.decimals));
-			const recipient = mintRecipient.trim() || suiAddress;
 
-			const tx = buildMint({
-				packageId: marketPkg,
-				marketId: row.marketId,
-				coinType: row.coinType,
-				amount,
-				recipient,
-				senderAddress: suiAddress,
-			});
+			// Resolve treasury: check local state, then row, then query DB directly
+			const tid =
+				treasuryId ??
+				row.treasuryId ??
+				(await db.treasuries.filter((t) => t.coinType === row.coinType).first())?.id ??
+				null;
 
+			let tx: import("@mysten/sui/transactions").Transaction;
+			if (tid) {
+				// Single-TX: mint directly into treasury
+				tx = buildMintToTreasury({
+					packageId: marketPkg,
+					marketId: row.marketId,
+					coinType: row.coinType,
+					treasuryId: tid,
+					amount,
+					senderAddress: suiAddress,
+				});
+			} else {
+				// No treasury: mint to self
+				tx = buildMint({
+					packageId: marketPkg,
+					marketId: row.marketId,
+					coinType: row.coinType,
+					amount,
+					recipient: suiAddress,
+					senderAddress: suiAddress,
+				});
+			}
 			await signAndExecute({ transaction: tx });
+
 			setShowMint(false);
 			setMintAmount("");
-			setMintRecipient("");
 			onStatusChange("done");
-			setTimeout(() => loadMarketInfo(), 1500);
+			setTimeout(() => {
+				loadMarketInfo();
+				loadTreasuryData();
+			}, 1500);
 		} catch (err) {
 			onStatusChange("error", err instanceof Error ? err.message : String(err));
 		}
@@ -1338,7 +1680,11 @@ function CurrencyDetail({
 								{row.symbol}
 								<span className="ml-2 text-sm font-normal text-zinc-400">{row.name}</span>
 							</h2>
-							{hasMarket ? (
+							{row.decommissioned ? (
+								<span className="rounded bg-red-500/10 px-1.5 py-0.5 text-xs font-medium text-red-400">
+									Decommissioned
+								</span>
+							) : hasMarket ? (
 								<span className="rounded bg-green-500/10 px-1.5 py-0.5 text-xs font-medium text-green-400">
 									Market Active
 								</span>
@@ -1349,6 +1695,21 @@ function CurrencyDetail({
 							)}
 						</div>
 					</div>
+					<div className="flex items-center gap-2">
+						{row.status === "mine" && row.marketId && (
+							<button
+								type="button"
+								onClick={() => onDecommission(!row.decommissioned)}
+								title={row.decommissioned ? "Recommission" : "Decommission"}
+								className={`rounded-lg p-2 transition-colors ${
+									row.decommissioned
+										? "text-amber-400 hover:bg-amber-900/30"
+										: "text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
+								}`}
+							>
+								<Ban size={14} />
+							</button>
+						)}
 					{hasMarket && (
 						<button
 							type="button"
@@ -1360,6 +1721,7 @@ function CurrencyDetail({
 							Refresh
 						</button>
 					)}
+					</div>
 				</div>
 
 				{/* Market metadata */}
@@ -1526,15 +1888,11 @@ function CurrencyDetail({
 										className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
 									/>
 								</FormField>
-								<FormField label="Recipient (blank = your wallet)">
-									<input
-										type="text"
-										value={mintRecipient}
-										onChange={(e) => setMintRecipient(e.target.value)}
-										placeholder={suiAddress.slice(0, 16)}
-										className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-									/>
-								</FormField>
+								{row.treasuryId && (
+									<p className="text-xs text-zinc-500">
+										Minted tokens will be sent to the treasury.
+									</p>
+								)}
 								{account ? (
 									<button
 										type="button"
@@ -1717,6 +2075,189 @@ function CurrencyDetail({
 					)}
 				</div>
 			)}
+
+			{/* Treasury Section */}
+			<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+				<div className="mb-3 flex items-center justify-between">
+					<h3 className="text-sm font-medium text-zinc-300">Treasury</h3>
+					{treasuryId && (
+						<button
+							type="button"
+							onClick={loadTreasuryData}
+							disabled={loadingTreasury}
+							className="flex items-center gap-1 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
+						>
+							<RefreshCw
+								size={12}
+								className={loadingTreasury ? "animate-spin" : ""}
+							/>
+							Refresh
+						</button>
+					)}
+				</div>
+
+				{!treasuryId ? (
+					<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
+						<p className="mb-3 text-xs text-zinc-500">
+							No treasury linked to this currency. Create one to hold {row.symbol}{" "}
+							balances and manage deposits/withdrawals.
+						</p>
+						{account ? (
+							<button
+								type="button"
+								onClick={handleCreateTreasury}
+								className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500"
+							>
+								Create Treasury
+							</button>
+						) : (
+							<ConnectWalletButton />
+						)}
+					</div>
+				) : loadingTreasury && !treasuryInfo ? (
+					<div className="flex items-center gap-2 py-4 text-xs text-zinc-500">
+						<Loader2 size={14} className="animate-spin" />
+						Loading treasury data...
+					</div>
+				) : (
+					<>
+						{/* Balance + metadata */}
+						<div className="mb-3 grid grid-cols-3 gap-3">
+							{treasuryBalances.length > 0 ? (
+								treasuryBalances.map((b) => {
+									const sym =
+										b.coinType
+											.split("::")
+											.pop()
+											?.replace(/_TOKEN$/, "") ?? "?";
+									const dec = b.coinType === row.coinType ? row.decimals : 9;
+									return (
+										<StatBox
+											key={b.coinType}
+											label={`${sym} Balance`}
+											value={formatTokenAmount(b.amount, dec)}
+										/>
+									);
+								})
+							) : (
+								<StatBox label="Balance" value="0" />
+							)}
+							<StatBox
+								label="Owner"
+								value={
+									treasuryInfo
+										? (charNameMap.get(treasuryInfo.owner) ??
+											`${treasuryInfo.owner.slice(0, 8)}...`)
+										: "--"
+								}
+							/>
+							<StatBox
+								label="Admins"
+								value={String(treasuryInfo?.admins.length ?? 0)}
+							/>
+						</div>
+
+						{/* Treasury ID */}
+						<div className="mb-3 text-xs">
+							<span className="text-zinc-500">Treasury ID: </span>
+							<CopyAddress
+								address={treasuryId}
+								sliceStart={12}
+								sliceEnd={6}
+								className="font-mono text-zinc-400"
+							/>
+						</div>
+
+						{/* Deposit / Withdraw actions */}
+						<div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 pt-3">
+							<AdminToggle
+								active={showDeposit}
+								onClick={() => {
+									setShowDeposit(!showDeposit);
+									setShowWithdraw(false);
+								}}
+								icon={<Send size={12} />}
+								label="Deposit"
+								color="cyan"
+							/>
+							{isTreasuryAdmin && (
+								<AdminToggle
+									active={showWithdraw}
+									onClick={() => {
+										setShowWithdraw(!showWithdraw);
+										setShowDeposit(false);
+									}}
+									icon={<Send size={12} className="rotate-180" />}
+									label="Withdraw"
+									color="amber"
+								/>
+							)}
+						</div>
+
+						{/* Deposit form */}
+						{showDeposit && (
+							<AdminPanel title={`Deposit ${row.symbol} to Treasury`}>
+								<div className="space-y-3">
+									<FormField label="Amount">
+										<input
+											type="number"
+											value={depositAmount}
+											onChange={(e) => setDepositAmount(e.target.value)}
+											placeholder="e.g., 100"
+											min={0}
+											step="any"
+											className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+										/>
+									</FormField>
+									{account ? (
+										<button
+											type="button"
+											onClick={handleDeposit}
+											disabled={!depositAmount}
+											className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+										>
+											Deposit {row.symbol}
+										</button>
+									) : (
+										<ConnectWalletButton />
+									)}
+								</div>
+							</AdminPanel>
+						)}
+
+						{/* Withdraw form */}
+						{showWithdraw && isTreasuryAdmin && (
+							<AdminPanel title={`Withdraw ${row.symbol} from Treasury`}>
+								<div className="space-y-3">
+									<FormField label="Amount">
+										<input
+											type="number"
+											value={withdrawAmount}
+											onChange={(e) => setWithdrawAmount(e.target.value)}
+											placeholder="e.g., 50"
+											min={0}
+											step="any"
+											className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+										/>
+									</FormField>
+									{account ? (
+										<button
+											type="button"
+											onClick={handleWithdraw}
+											disabled={!withdrawAmount}
+											className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+										>
+											Withdraw {row.symbol}
+										</button>
+									) : (
+										<ConnectWalletButton />
+									)}
+								</div>
+							</AdminPanel>
+						)}
+					</>
+				)}
+			</div>
 
 			{/* Exchange Pairs Section */}
 			<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">

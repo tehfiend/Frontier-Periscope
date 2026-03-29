@@ -100,6 +100,8 @@ export interface DynamicFieldEntry {
 	/** Value JSON (available for MoveValue dynamic fields inline) */
 	valueJson?: unknown;
 	valueType?: string;
+	/** Object address (available for MoveObject dynamic fields -- wrapped objects) */
+	valueAddress?: string;
 }
 
 /**
@@ -138,11 +140,13 @@ export async function listDynamicFieldsGql(
 			// MoveValue has json+type inline; MoveObject only has address
 			const valueJson = val && "json" in val ? val.json : undefined;
 			const valueType = val && "type" in val ? val.type?.repr : undefined;
+			const valueAddress = val && "address" in val ? (val.address as string) : undefined;
 			return {
 				nameType: node.name.type.repr,
 				nameJson: node.name.json,
 				valueJson,
 				valueType,
+				valueAddress,
 			};
 		}),
 		hasNextPage: dfs.pageInfo.hasNextPage,

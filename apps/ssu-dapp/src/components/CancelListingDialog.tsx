@@ -3,32 +3,29 @@ import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import {
-	buildCancelListingWithStandings,
-	buildPlayerCancelListingWithStandings,
-	formatBaseUnits,
-} from "@tehfrontier/chain-shared";
+import { buildCancelAndUnescrow, formatBaseUnits } from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
 interface CancelListingDialogProps {
 	listing: SellListingWithName;
 	ssuConfig: SsuConfigResult;
-	characterObjectId: string;
-	ssuObjectId: string;
 	coinType: string;
 	coinDecimals: number;
 	coinSymbol: string;
+	ssuObjectId: string;
+	/** SSU owner's Character object ID (for escrow TX builders). */
+	ownerCharacterObjectId: string | null;
 	onClose: () => void;
 }
 
 export function CancelListingDialog({
 	listing,
 	ssuConfig,
-	characterObjectId,
-	ssuObjectId,
 	coinType,
 	coinDecimals,
 	coinSymbol,
+	ssuObjectId,
+	ownerCharacterObjectId,
 	onClose,
 }: CancelListingDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -43,26 +40,24 @@ export function CancelListingDialog({
 
 	async function handleCancel() {
 		if (!account?.address || !ssuConfig.marketId) return;
+		if (!ownerCharacterObjectId) {
+			setError("SSU owner character not resolved");
+			return;
+		}
 		setError(null);
 		setSuccess(null);
 
-		const isAuthorized =
-			account.address === ssuConfig.owner || ssuConfig.delegates.includes(account.address);
-
 		try {
-			const params = {
-				packageId: ssuConfig.packageId,
+			const tx = buildCancelAndUnescrow({
+				ssuUnifiedPackageId: ssuConfig.packageId,
 				ssuConfigId: ssuConfig.ssuConfigId,
-				marketId: ssuConfig.marketId,
-				coinType,
 				ssuObjectId,
-				characterObjectId,
+				characterObjectId: ownerCharacterObjectId,
+				coinType,
+				marketId: ssuConfig.marketId,
 				listingId: listing.listingId,
 				senderAddress: account.address,
-			};
-			const tx = isAuthorized
-				? buildCancelListingWithStandings(params)
-				: buildPlayerCancelListingWithStandings(params);
+			});
 			await signAndExecute(tx);
 			setSuccess("Listing cancelled successfully");
 		} catch (err) {

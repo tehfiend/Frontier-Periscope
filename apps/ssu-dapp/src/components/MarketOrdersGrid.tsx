@@ -33,14 +33,14 @@ export interface MarketOrderRow {
 interface MarketOrdersGridProps {
 	rows: MarketOrderRow[];
 	ssuConfig: SsuConfigResult;
-	characterObjectId?: string;
 	coinType: string;
 	ssuObjectId: string;
-	ownerCapReceivingId?: string;
 	isConnected: boolean;
 	coinDecimals: number;
 	coinSymbol: string;
 	marketPackageId?: string | null;
+	/** SSU owner's Character object ID (for escrow TX builders). */
+	ownerCharacterObjectId?: string | null;
 }
 
 // ── Dialog state ────────────────────────────────────────────────────────────
@@ -58,14 +58,13 @@ type DialogState =
 export function MarketOrdersGrid({
 	rows,
 	ssuConfig,
-	characterObjectId,
 	coinType,
 	ssuObjectId,
-	ownerCapReceivingId,
 	isConnected,
 	coinDecimals,
 	coinSymbol,
 	marketPackageId,
+	ownerCharacterObjectId,
 }: MarketOrdersGridProps) {
 	const [dialog, setDialog] = useState<DialogState>(null);
 
@@ -256,15 +255,15 @@ export function MarketOrdersGrid({
 			/>
 
 			{/* Buy from listing dialog */}
-			{dialog?.type === "buyFromListing" && characterObjectId && (
+			{dialog?.type === "buyFromListing" && (
 				<BuyFromListingDialog
 					listing={dialog.listing}
 					ssuConfig={ssuConfig}
-					characterObjectId={characterObjectId}
 					coinType={coinType}
-					ssuObjectId={ssuObjectId}
 					coinDecimals={coinDecimals}
 					coinSymbol={coinSymbol}
+					ssuObjectId={ssuObjectId}
+					ownerCharacterObjectId={ownerCharacterObjectId ?? null}
 					onClose={() => setDialog(null)}
 				/>
 			)}
@@ -282,28 +281,27 @@ export function MarketOrdersGrid({
 			)}
 
 			{/* Cancel listing dialog */}
-			{dialog?.type === "cancelListing" && characterObjectId && (
+			{dialog?.type === "cancelListing" && (
 				<CancelListingDialog
 					listing={dialog.listing}
 					ssuConfig={ssuConfig}
-					characterObjectId={characterObjectId}
-					ssuObjectId={ssuObjectId}
 					coinType={coinType}
 					coinDecimals={coinDecimals}
 					coinSymbol={coinSymbol}
+					ssuObjectId={ssuObjectId}
+					ownerCharacterObjectId={ownerCharacterObjectId ?? null}
 					onClose={() => setDialog(null)}
 				/>
 			)}
 
 			{/* Fill buy order dialog */}
-			{dialog?.type === "fillBuyOrder" && characterObjectId && ownerCapReceivingId && (
+			{dialog?.type === "fillBuyOrder" && (
 				<FillBuyOrderDialog
 					order={dialog.order}
 					ssuConfig={ssuConfig}
 					coinType={coinType}
 					ssuObjectId={ssuObjectId}
-					characterObjectId={characterObjectId}
-					ownerCapReceivingId={ownerCapReceivingId}
+					ownerCharacterObjectId={ownerCharacterObjectId ?? null}
 					onClose={() => setDialog(null)}
 				/>
 			)}

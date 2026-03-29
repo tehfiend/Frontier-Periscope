@@ -2,18 +2,16 @@
  * Exchange pair discovery and order queries.
  *
  * Discovers all OrderBook shared objects on-chain and caches them in
- * db.manifestExchangePairs. Also provides on-demand order fetching
- * for a specific OrderBook.
- *
- * NOTE: queryOrderBook / queryOrders are being added to chain-shared
- * by another agent. Imports may not resolve until that work merges.
+ * db.manifestExchangePairs. Uses queryOrders from chain-shared for
+ * on-demand order fetching.
  */
 
+import type { TenantId } from "@/chain/config";
 import { db } from "@/db";
 import type { ManifestExchangePair } from "@/db/types";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import type { OrderInfo } from "@tehfrontier/chain-shared";
-import { getContractAddresses } from "@tehfrontier/chain-shared";
+import { getContractAddresses, queryOrders } from "@tehfrontier/chain-shared";
 
 // ── Discover Exchange Pairs ──────────────────────────────────────────────────
 
@@ -22,8 +20,11 @@ import { getContractAddresses } from "@tehfrontier/chain-shared";
  * `{exchangePkg}::exchange::OrderBook` type. Cache results in
  * db.manifestExchangePairs.
  */
-export async function discoverExchangePairs(client: SuiGraphQLClient): Promise<void> {
-	const addresses = getContractAddresses("stillness");
+export async function discoverExchangePairs(
+	client: SuiGraphQLClient,
+	tenant: TenantId,
+): Promise<void> {
+	const addresses = getContractAddresses(tenant);
 	const exchangePkg = addresses.exchange?.packageId;
 	if (!exchangePkg) return;
 
@@ -93,80 +94,12 @@ export async function discoverExchangePairs(client: SuiGraphQLClient): Promise<v
 
 /**
  * Fetch orders for a specific OrderBook on demand.
- * Uses dynamic field queries to read bid/ask entries.
- *
- * Returns a combined array of OrderInfo with isBid flag.
+ * Delegates to queryOrders from chain-shared which enumerates
+ * bid/ask dynamic fields with full pagination.
  */
 export async function fetchExchangeOrders(
 	client: SuiGraphQLClient,
 	bookObjectId: string,
 ): Promise<OrderInfo[]> {
-	// Query dynamic fields of the OrderBook to get orders
-	const QUERY = `
-		query($parentId: SuiAddress!, $first: Int, $after: String) {
-			owner(address: $parentId) {
-				dynamicFields(first: $first, after: $after) {
-					nodes {
-						value {
-							... on MoveObject {
-								contents { json type { repr } }
-							}
-						}
-					}
-					pageInfo { hasNextPage endCursor }
-				}
-			}
-		}
-	`;
-
-	interface DFResponse {
-		owner?: {
-			dynamicFields: {
-				nodes: Array<{
-					value?: {
-						contents?: { json: Record<string, unknown>; type: { repr: string } };
-					};
-				}>;
-				pageInfo: { hasNextPage: boolean; endCursor: string | null };
-			};
-		};
-	}
-
-	const orders: OrderInfo[] = [];
-	let cursor: string | null = null;
-	let hasMore = true;
-
-	while (hasMore) {
-		const result: { data?: DFResponse } = await client.query({
-			query: QUERY,
-			variables: { parentId: bookObjectId, first: 50, after: cursor },
-		});
-
-		const df = result.data?.owner?.dynamicFields;
-		if (!df) break;
-
-		for (const node of df.nodes) {
-			const json = node.value?.contents?.json;
-			const typeRepr = node.value?.contents?.type?.repr ?? "";
-			if (!json) continue;
-
-			// Check if this is a bid or ask order
-			const isBid = typeRepr.includes("BidOrder") || typeRepr.includes("bid");
-			const isAsk = typeRepr.includes("AskOrder") || typeRepr.includes("ask");
-			if (!isBid && !isAsk) continue;
-
-			orders.push({
-				orderId: Number(json.order_id ?? json.id ?? 0),
-				owner: String(json.owner ?? ""),
-				price: Number(json.price ?? 0),
-				amount: Number(json.amount ?? 0),
-				isBid,
-			});
-		}
-
-		hasMore = df.pageInfo.hasNextPage;
-		cursor = df.pageInfo.endCursor;
-	}
-
-	return orders;
+	return queryOrders(client, bookObjectId);
 }

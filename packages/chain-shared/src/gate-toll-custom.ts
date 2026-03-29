@@ -56,7 +56,7 @@ export function buildSetGateTollCustomConfig(
 	tx.setSender(params.senderAddress);
 
 	tx.moveCall({
-		target: `${params.packageId}::config::set_gate_config`,
+		target: `${params.packageId}::gate_toll_custom::set_gate_config`,
 		typeArguments: [params.coinType],
 		arguments: [
 			tx.object(params.configObjectId),
@@ -117,7 +117,7 @@ export function buildRequestGateTollCustomAccess(
 	}
 
 	tx.moveCall({
-		target: `${params.packageId}::config::request_access`,
+		target: `${params.packageId}::gate_toll_custom::request_access`,
 		typeArguments: [params.coinType],
 		arguments: [
 			tx.object(params.configObjectId),
@@ -175,7 +175,7 @@ export function buildRequestGateTollCustomAccessToTreasury(
 	}
 
 	tx.moveCall({
-		target: `${params.packageId}::config::request_access_to_treasury`,
+		target: `${params.packageId}::gate_toll_custom::request_access_to_treasury`,
 		typeArguments: [params.coinType],
 		arguments: [
 			tx.object(params.configObjectId),
@@ -211,7 +211,7 @@ export function buildRequestGateTollCustomFreeAccess(
 	tx.setSender(params.senderAddress);
 
 	tx.moveCall({
-		target: `${params.packageId}::config::request_free_access`,
+		target: `${params.packageId}::gate_toll_custom::request_free_access`,
 		typeArguments: [params.coinType],
 		arguments: [
 			tx.object(params.configObjectId),
@@ -276,7 +276,7 @@ async function queryGateTollCustomConfigByEnumeration(
 				if (!nameObj) continue;
 				if (String(nameObj.gate_id ?? "") !== gateId) continue;
 
-				// Extract the coin type from the key type repr: "PKG::config::GateKey<COIN_TYPE>"
+				// Extract the coin type from the key type repr: "PKG::gate_toll_custom::GateKey<COIN_TYPE>"
 				const coinTypeMatch = df.nameType.match(/GateKey<(.+)>$/);
 				const resolvedCoinType = coinTypeMatch ? coinTypeMatch[1] : (coinType ?? "");
 

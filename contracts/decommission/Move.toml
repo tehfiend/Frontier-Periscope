@@ -1,0 +1,8 @@
+[package]
+name = "decommission"
+edition = "2024.beta"
+
+[dependencies]
+
+[addresses]
+decommission = "0x0"

@@ -19,14 +19,16 @@ export interface TransferContext {
 	characterName: string | null;
 	/** Maps normalized slot key -> cap info for all writable slots */
 	slotCaps: Map<string, CapRef>;
-	/** SsuConfig object ID (present when SSU has ssu_market extension) */
+	/** SsuConfig object ID (present when SSU has extension) */
 	ssuConfigId?: string;
-	/** Latest ssu_market package ID for moveCall targets */
+	/** Latest extension package ID for moveCall targets */
 	marketPackageId?: string;
 	/** Market<T> object ID (may be null if not linked yet) */
 	marketId?: string | null;
 	/** Whether the connected wallet is the SsuConfig owner or delegate */
 	isAuthorized: boolean;
+	/** Move module name for extension functions ("ssu_unified" or "ssu_market") */
+	extensionModule?: string;
 }
 
 export interface DestinationEntry {
@@ -51,10 +53,12 @@ interface TransferDialogProps {
 	inaccessibleSlots: LabeledInventory[];
 	ssuObjectId: string;
 	characterObjectId: string;
-	/** SsuConfig object ID for ssu_market PTBs */
+	/** SsuConfig object ID for extension PTBs */
 	ssuConfigId?: string;
 	marketPackageId?: string;
 	isAuthorized?: boolean;
+	/** Move module name for extension functions */
+	extensionModule?: string;
 	onClose: () => void;
 }
 
@@ -70,6 +74,8 @@ function buildOwnerCapTransferPtb(
 	withdrawCap: CapRef,
 	depositCap: CapRef,
 ) {
+	const sameCap = withdrawCap.info.objectId === depositCap.info.objectId;
+
 	// 1. Borrow source cap (for withdraw)
 	const [wCap, wReceipt] = tx.moveCall({
 		target: `${worldPkg}::character::borrow_owner_cap`,
@@ -97,47 +103,59 @@ function buildOwnerCapTransferPtb(
 		],
 	});
 
-	// 3. Return source cap
-	tx.moveCall({
-		target: `${worldPkg}::character::return_owner_cap`,
-		typeArguments: [withdrawCap.typeArg],
-		arguments: [tx.object(characterObjectId), wCap, wReceipt],
-	});
+	if (sameCap) {
+		// Same cap for both slots -- deposit while still borrowed, then return once
+		tx.moveCall({
+			target: `${worldPkg}::storage_unit::deposit_by_owner`,
+			typeArguments: [depositCap.typeArg],
+			arguments: [tx.object(ssuObjectId), withdrawnItem, tx.object(characterObjectId), wCap],
+		});
 
-	// 4. Borrow destination cap (for deposit)
-	const [dCap, dReceipt] = tx.moveCall({
-		target: `${worldPkg}::character::borrow_owner_cap`,
-		typeArguments: [depositCap.typeArg],
-		arguments: [
-			tx.object(characterObjectId),
-			tx.receivingRef({
-				objectId: depositCap.info.objectId,
-				version: String(depositCap.info.version),
-				digest: depositCap.info.digest,
-			}),
-		],
-	});
+		tx.moveCall({
+			target: `${worldPkg}::character::return_owner_cap`,
+			typeArguments: [withdrawCap.typeArg],
+			arguments: [tx.object(characterObjectId), wCap, wReceipt],
+		});
+	} else {
+		// Different caps -- return source, borrow destination
+		tx.moveCall({
+			target: `${worldPkg}::character::return_owner_cap`,
+			typeArguments: [withdrawCap.typeArg],
+			arguments: [tx.object(characterObjectId), wCap, wReceipt],
+		});
 
-	// 5. Deposit to destination inventory
-	// NOTE: deposit_by_owner arg order is (su, item, character, cap) -- item before character
-	tx.moveCall({
-		target: `${worldPkg}::storage_unit::deposit_by_owner`,
-		typeArguments: [depositCap.typeArg],
-		arguments: [tx.object(ssuObjectId), withdrawnItem, tx.object(characterObjectId), dCap],
-	});
+		const [dCap, dReceipt] = tx.moveCall({
+			target: `${worldPkg}::character::borrow_owner_cap`,
+			typeArguments: [depositCap.typeArg],
+			arguments: [
+				tx.object(characterObjectId),
+				tx.receivingRef({
+					objectId: depositCap.info.objectId,
+					version: String(depositCap.info.version),
+					digest: depositCap.info.digest,
+				}),
+			],
+		});
 
-	// 6. Return destination cap
-	tx.moveCall({
-		target: `${worldPkg}::character::return_owner_cap`,
-		typeArguments: [depositCap.typeArg],
-		arguments: [tx.object(characterObjectId), dCap, dReceipt],
-	});
+		tx.moveCall({
+			target: `${worldPkg}::storage_unit::deposit_by_owner`,
+			typeArguments: [depositCap.typeArg],
+			arguments: [tx.object(ssuObjectId), withdrawnItem, tx.object(characterObjectId), dCap],
+		});
+
+		tx.moveCall({
+			target: `${worldPkg}::character::return_owner_cap`,
+			typeArguments: [depositCap.typeArg],
+			arguments: [tx.object(characterObjectId), dCap, dReceipt],
+		});
+	}
 }
 
-/** Build a market admin transfer PTB (no cap borrow needed) */
+/** Build an extension admin transfer PTB (no cap borrow needed) */
 function buildAdminMarketPtb(
 	tx: Transaction,
-	marketPkg: string,
+	extensionPkg: string,
+	extensionModule: string,
 	ssuConfigId: string,
 	ssuObjectId: string,
 	characterObjectId: string,
@@ -160,16 +178,17 @@ function buildAdminMarketPtb(
 	args.push(tx.pure.u64(BigInt(item.typeId)), tx.pure.u32(qty));
 
 	tx.moveCall({
-		target: `${marketPkg}::ssu_market::${fnName}`,
+		target: `${extensionPkg}::${extensionModule}::${fnName}`,
 		arguments: args,
 	});
 }
 
-/** Build a player -> escrow/owner PTB (borrow cap, withdraw, return cap, then market deposit) */
+/** Build a player -> escrow/owner PTB (borrow cap, withdraw, return cap, then extension deposit) */
 function buildPlayerMarketPtb(
 	tx: Transaction,
 	worldPkg: string,
-	marketPkg: string,
+	extensionPkg: string,
+	extensionModule: string,
 	ssuConfigId: string,
 	ssuObjectId: string,
 	characterObjectId: string,
@@ -212,9 +231,9 @@ function buildPlayerMarketPtb(
 		arguments: [tx.object(characterObjectId), wCap, wReceipt],
 	});
 
-	// 4. Call the market extension function with the withdrawn item
+	// 4. Call the extension function with the withdrawn item
 	tx.moveCall({
-		target: `${marketPkg}::ssu_market::${fnName}`,
+		target: `${extensionPkg}::${extensionModule}::${fnName}`,
 		arguments: [
 			tx.object(ssuConfigId),
 			tx.object(ssuObjectId),
@@ -261,6 +280,7 @@ export function TransferDialog({
 	ssuConfigId,
 	marketPackageId,
 	isAuthorized,
+	extensionModule = "ssu_unified",
 	onClose,
 }: TransferDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -329,6 +349,7 @@ export function TransferDialog({
 				buildAdminMarketPtb(
 					tx,
 					marketPackageId,
+					extensionModule,
 					ssuConfigId,
 					ssuObjectId,
 					characterObjectId,
@@ -364,7 +385,7 @@ export function TransferDialog({
 				const needsPlayerWithdraw = fnName === "player_to_escrow" || fnName === "player_to_owner";
 
 				if (needsPlayerWithdraw) {
-					// Player functions: borrow cap + withdraw + return cap, then market fn
+					// Player functions: borrow cap + withdraw + return cap, then extension fn
 					if (!withdrawCap) {
 						setError("Missing withdraw capability");
 						return;
@@ -373,6 +394,7 @@ export function TransferDialog({
 						tx,
 						worldPkg,
 						marketPackageId,
+						extensionModule,
 						ssuConfigId,
 						ssuObjectId,
 						characterObjectId,
@@ -387,6 +409,7 @@ export function TransferDialog({
 					buildAdminMarketPtb(
 						tx,
 						marketPackageId,
+						extensionModule,
 						ssuConfigId,
 						ssuObjectId,
 						characterObjectId,

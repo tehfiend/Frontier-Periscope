@@ -259,14 +259,11 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 		assemblyTypes: ["storage_unit", "smart_storage_unit", "protocol_depot"],
 		hasConfig: true,
 		packageIds: {
-			stillness: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
-			utopia: "0x8668a4901482851d8c216a4440f9a03327fdd320d30643aa1f4efe5ec25c568d",
+			stillness: "0x0a6a70355f96e07417aa2e5b59c1e2ea8757c5ade5e8000bfc8daab93bfee2be",
+			utopia: "0xd3168c9b6db1ff6671d45b056dccd62acc7fa05835eb3079bce10d70af8950ea",
 		},
-		configObjectIds: {
-			stillness: "0x87dc574e707930ffeaf337617c16eb8ec8bfee3e7a00f02cc0789ee7f9555c5a",
-			utopia: "0x87dc574e707930ffeaf337617c16eb8ec8bfee3e7a00f02cc0789ee7f9555c5a",
-		},
-		witnessType: "ssu_standings::SsuStandingsAuth",
+		configObjectIds: {},
+		witnessType: "ssu_unified::SsuUnifiedAuth",
 	},
 	{
 		id: "turret_standings",

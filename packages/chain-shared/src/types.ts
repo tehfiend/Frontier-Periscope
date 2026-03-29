@@ -347,4 +347,5 @@ export interface ContractAddresses {
 	};
 	treasury?: { packageId: string };
 	gateTollCustom?: { packageId: string; configObjectId: string };
+	decommission?: { packageId: string; registryObjectId: string };
 }

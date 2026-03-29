@@ -1,0 +1,8 @@
+[package]
+name = "ssu_standings"
+edition = "2024.beta"
+
+[dependencies]
+
+[addresses]
+ssu_standings = "0x0"

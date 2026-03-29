@@ -145,7 +145,7 @@ export function CharacterSwitcher() {
 			? filteredCharacters.length > 0
 				? `${filteredCharacters.length} character${filteredCharacters.length !== 1 ? "s" : ""}`
 				: undefined
-			: activeCharacter?.tenant ?? undefined;
+			: activeCharacter?.tribe ?? activeCharacter?.tenant ?? undefined;
 
 	return (
 		<>
