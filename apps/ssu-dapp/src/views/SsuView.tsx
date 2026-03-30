@@ -82,15 +82,11 @@ export function SsuView({ objectId }: SsuViewProps) {
 		if (!ssuConfig && !isOwner) return null;
 		if (!ssuConfig && !ownerCapInfo) return null;
 
-		// Extension-based inventory functions: ssu_unified or ssu_market
-		const hasSsuUnifiedExt = assembly.extensionType?.includes("::ssu_unified::");
-		const hasSsuMarketExt = assembly.extensionType?.includes("::ssu_market::");
-		const hasExtension = hasSsuUnifiedExt || hasSsuMarketExt;
-		const extensionPkg = hasSsuUnifiedExt
+		// Extension-based inventory functions
+		const hasExtension = assembly.extensionType?.includes("::ssu_unified::");
+		const extensionPkg = hasExtension
 			? getContractAddresses(getTenant() as TenantId).ssuUnified?.packageId
-			: hasSsuMarketExt
-				? getContractAddresses(getTenant() as TenantId).ssuMarket?.packageId
-				: undefined;
+			: undefined;
 
 		const worldPkg = getWorldPackageId(getTenant());
 		const slotCaps = new Map<string, CapRef>();
@@ -114,7 +110,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 		}
 
 		// Determine the module name for moveCall targets
-		const extensionModule = hasSsuUnifiedExt ? "ssu_unified" : "ssu_market";
+		const extensionModule = "ssu_unified";
 
 		return {
 			ssuObjectId: objectId,

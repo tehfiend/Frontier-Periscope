@@ -231,55 +231,6 @@ const itemDestroyedHandler: EventHandler = {
 	},
 };
 
-const bountyPostedHandler: EventHandler = {
-	sonarType: "bounty_posted",
-	filter: "global",
-	parse(event, ctx) {
-		const p = event.parsedJson;
-		const targetId = String(p.target_character_id ?? "");
-		const targetName = ctx.charNameMap.get(targetId);
-		const reward = Number(p.reward_amount ?? 0);
-		const details = `Bounty on ${targetName ?? targetId.slice(0, 10)} ` + `for ${reward} EVE`;
-
-		return [
-			{
-				...baseEntry(event, "bounty_posted"),
-				characterId: targetId || undefined,
-				characterName: targetName,
-				details,
-			},
-		];
-	},
-};
-
-const ssuMarketBuyOrderFilledHandler: EventHandler = {
-	sonarType: "ssu_market_buy_filled",
-	filter: "global",
-	parse(event, ctx) {
-		const p = event.parsedJson;
-		const ssuId = p.ssu_id as string | undefined;
-		const typeId = Number(p.type_id ?? 0);
-		const quantity = Number(p.quantity ?? 0);
-		const totalPaid = Number(p.total_paid ?? 0);
-		const seller = p.seller as string | undefined;
-		const typeName = resolveTypeName(typeId, ctx);
-		const details =
-			`${quantity}x ${typeName ?? `type#${typeId}`} ` +
-			`for ${totalPaid} EVE (seller: ${seller?.slice(0, 10) ?? "?"})`;
-
-		return [
-			{
-				...baseEntry(event, "ssu_market_buy_filled"),
-				assemblyId: ssuId,
-				assemblyName: resolveAssemblyName(ssuId, ctx),
-				typeId: Number.isNaN(typeId) ? undefined : typeId,
-				typeName,
-				quantity,
-				details,
-			},
-		];
-	},
-};
 
 // ── Tier 2 Handlers ─────────────────────────────────────────────────────────
 
@@ -643,163 +594,6 @@ function extensionHandler(sonarType: SonarEventType): EventHandler {
 	};
 }
 
-const bountyClaimedHandler: EventHandler = {
-	sonarType: "bounty_claimed",
-	filter: "global",
-	parse(event, _ctx) {
-		const p = event.parsedJson;
-		const hunter = p.hunter as string | undefined;
-		const reward = Number(p.reward_amount ?? 0);
-		const details = `Bounty claimed by ${hunter?.slice(0, 10) ?? "?"} for ${reward} EVE`;
-
-		return [
-			{
-				...baseEntry(event, "bounty_claimed"),
-				details,
-			},
-		];
-	},
-};
-
-const bountyCancelledHandler: EventHandler = {
-	sonarType: "bounty_cancelled",
-	filter: "global",
-	parse(event, _ctx) {
-		const p = event.parsedJson;
-		const bountyId = String(p.bounty_id ?? "");
-		const details = `Bounty #${bountyId} cancelled`;
-
-		return [
-			{
-				...baseEntry(event, "bounty_cancelled"),
-				details,
-			},
-		];
-	},
-};
-
-const leaseCreatedHandler: EventHandler = {
-	sonarType: "lease_created",
-	filter: "owned_assembly",
-	parse(event, ctx) {
-		const p = event.parsedJson;
-		const assemblyId = p.assembly_id as string | undefined;
-		if (!assemblyId || !ctx.ownedAssemblyIds.has(assemblyId)) return [];
-
-		const rate = Number(p.rate_per_day ?? 0);
-		const tenant = p.tenant as string | undefined;
-		const details = `Lease created: ${rate}/day to ${tenant?.slice(0, 10) ?? "?"}`;
-
-		return [
-			{
-				...baseEntry(event, "lease_created"),
-				assemblyId,
-				assemblyName: resolveAssemblyName(assemblyId, ctx),
-				details,
-			},
-		];
-	},
-};
-
-const rentCollectedHandler: EventHandler = {
-	sonarType: "rent_collected",
-	filter: "owned_assembly",
-	parse(event, ctx) {
-		const p = event.parsedJson;
-		const assemblyId = p.assembly_id as string | undefined;
-		if (!assemblyId || !ctx.ownedAssemblyIds.has(assemblyId)) return [];
-
-		const amount = Number(p.amount ?? 0);
-		const remaining = Number(p.remaining_balance ?? 0);
-		const details = `Rent collected: ${amount} (remaining: ${remaining})`;
-
-		return [
-			{
-				...baseEntry(event, "rent_collected"),
-				assemblyId,
-				assemblyName: resolveAssemblyName(assemblyId, ctx),
-				details,
-			},
-		];
-	},
-};
-
-const leaseCancelledHandler: EventHandler = {
-	sonarType: "lease_cancelled",
-	filter: "owned_assembly",
-	parse(event, ctx) {
-		const p = event.parsedJson;
-		const assemblyId = p.assembly_id as string | undefined;
-		if (!assemblyId || !ctx.ownedAssemblyIds.has(assemblyId)) return [];
-
-		const refund = Number(p.refund_amount ?? 0);
-		const details = `Lease cancelled (refund: ${refund})`;
-
-		return [
-			{
-				...baseEntry(event, "lease_cancelled"),
-				assemblyId,
-				assemblyName: resolveAssemblyName(assemblyId, ctx),
-				details,
-			},
-		];
-	},
-};
-
-const ssuMarketTransferHandler: EventHandler = {
-	sonarType: "ssu_market_transfer",
-	filter: "owned_ssu",
-	parse(event, ctx) {
-		const p = event.parsedJson;
-		const ssuId = p.ssu_id as string | undefined;
-		if (!ssuId || !ctx.ssuObjectIds.has(ssuId)) return [];
-
-		const typeId = Number(p.type_id ?? 0);
-		const quantity = Number(p.quantity ?? 0);
-		const from = p.from_slot as string | undefined;
-		const to = p.to_slot as string | undefined;
-		const details = `Transfer ${quantity}x type#${typeId} ` + `(${from ?? "?"} -> ${to ?? "?"})`;
-
-		return [
-			{
-				...baseEntry(event, "ssu_market_transfer"),
-				assemblyId: ssuId,
-				assemblyName: resolveAssemblyName(ssuId, ctx),
-				typeId: Number.isNaN(typeId) ? undefined : typeId,
-				typeName: resolveTypeName(typeId, ctx),
-				quantity,
-				details,
-			},
-		];
-	},
-};
-
-const ssuMarketSellListingCancelledHandler: EventHandler = {
-	sonarType: "ssu_market_sell_cancelled",
-	filter: "owned_ssu",
-	parse(event, ctx) {
-		const p = event.parsedJson;
-		const ssuId = p.ssu_id as string | undefined;
-		if (!ssuId || !ctx.ssuObjectIds.has(ssuId)) return [];
-
-		const typeId = Number(p.type_id ?? 0);
-		const quantity = Number(p.quantity ?? 0);
-		const listingId = String(p.listing_id ?? "");
-		const details = `Sell listing #${listingId} cancelled (${quantity}x type#${typeId})`;
-
-		return [
-			{
-				...baseEntry(event, "ssu_market_sell_cancelled"),
-				assemblyId: ssuId,
-				assemblyName: resolveAssemblyName(ssuId, ctx),
-				typeId: Number.isNaN(typeId) ? undefined : typeId,
-				typeName: resolveTypeName(typeId, ctx),
-				quantity,
-				details,
-			},
-		];
-	},
-};
 
 const marketSellListingCancelledHandler: EventHandler = {
 	sonarType: "market_sell_cancelled",
@@ -872,9 +666,6 @@ export const EVENT_HANDLER_REGISTRY: Record<string, EventHandler> = {
 
 	// ── Combat / intel ──────────────────────────────────────────────────
 	KillmailCreated: killmailHandler,
-	BountyPosted: bountyPostedHandler,
-	BountyClaimed: bountyClaimedHandler,
-	BountyCancelled: bountyCancelledHandler,
 
 	// ── Navigation ──────────────────────────────────────────────────────
 	JumpEvent: jumpHandler,
@@ -909,11 +700,6 @@ export const EVENT_HANDLER_REGISTRY: Record<string, EventHandler> = {
 	StorageUnitExtensionRevoked: extensionHandler("extension_revoked"),
 	TurretExtensionRevoked: extensionHandler("extension_revoked"),
 
-	// ── SSU Market (extension) ──────────────────────────────────────────
-	SsuMarketBuyOrderFilled: ssuMarketBuyOrderFilledHandler,
-	SsuMarketTransfer: ssuMarketTransferHandler,
-	SsuMarketSellListingCancelled: ssuMarketSellListingCancelledHandler,
-
 	// ── Gate extensions ─────────────────────────────────────────────────
 	UnifiedTollCollected: tollCollectedHandler,
 	UnifiedAccessGranted: accessGrantedHandler,
@@ -925,11 +711,6 @@ export const EVENT_HANDLER_REGISTRY: Record<string, EventHandler> = {
 	MarketBuyOrderFilled: marketBuyOrderFilledHandler,
 	MarketBuyOrderCancelled: marketBuyOrderCancelledHandler,
 	MarketSellListingCancelled: marketSellListingCancelledHandler,
-
-	// ── Lease ───────────────────────────────────────────────────────────
-	LeaseCreated: leaseCreatedHandler,
-	RentCollected: rentCollectedHandler,
-	LeaseCancelled: leaseCancelledHandler,
 
 	// ── Exchange ────────────────────────────────────────────────────────
 	ExchangeOrderPlaced: exchangeOrderPlacedHandler,

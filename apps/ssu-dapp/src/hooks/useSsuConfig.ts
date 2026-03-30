@@ -5,8 +5,6 @@ import {
 	discoverSsuUnifiedConfig,
 	getContractAddresses,
 	getObjectJson,
-	queryMarketStandingsDetails,
-	querySsuStandingsEntry,
 	querySsuUnifiedConfig,
 } from "@tehfrontier/chain-shared";
 import { useSuiClient } from "./useSuiClient";
@@ -36,11 +34,7 @@ export interface SsuConfigResult {
 }
 
 /**
- * Discover and query the config for an SSU.
- *
- * Tries the new SsuUnifiedConfig first (per-user owned objects).
- * Falls back to the legacy SsuStandingsConfig shared object for SSUs
- * that haven't been migrated yet.
+ * Discover and query the SsuUnifiedConfig for an SSU.
  */
 export function useSsuConfig(
 	ssuObjectId: string | null | undefined,
@@ -48,11 +42,7 @@ export function useSsuConfig(
 ) {
 	const client = useSuiClient();
 
-	const hasSsuExtension =
-		!!extensionType &&
-		(extensionType.includes("::ssu_unified::") ||
-			extensionType.includes("::ssu_market::") ||
-			extensionType.includes("::ssu_standings::"));
+	const hasSsuExtension = !!extensionType && extensionType.includes("::ssu_unified::");
 
 	return useQuery({
 		queryKey: ["ssu-config", ssuObjectId],
@@ -121,34 +111,6 @@ export function useSsuConfig(
 							minWithdraw: config.minWithdraw,
 						};
 					}
-				}
-			}
-
-			// ── Fallback: legacy SsuStandingsConfig (shared object) ─────
-			const ssuStandings = addrs.ssuStandings;
-			if (ssuStandings?.configObjectId) {
-				const entry = await querySsuStandingsEntry(
-					client,
-					ssuStandings.configObjectId,
-					ssuStandings.packageId,
-					ssuObjectId,
-				);
-				if (entry) {
-					return {
-						ssuConfigId: ssuStandings.configObjectId,
-						owner: entry.configOwner,
-						delegates: [],
-						marketId: null,
-						coinType: null,
-						registryId: entry.registryId || null,
-						packageId: ssuStandings.packageId,
-						marketStandingsPackageId: addrs.marketStandings?.packageId || null,
-						marketModule: null,
-						marketPackageId: null,
-						isPublic: true,
-						minDeposit: entry.minDeposit,
-						minWithdraw: entry.minWithdraw,
-					};
 				}
 			}
 

@@ -229,8 +229,6 @@ export function buildEscrowAndList(params: EscrowAndListParams): Transaction {
 	return tx;
 }
 
-/** @deprecated Use buildEscrowAndList instead. */
-export const buildEscrowAndListWithStandings = buildEscrowAndList;
 
 export interface BuyAndReceiveParams {
 	ssuUnifiedPackageId: string;
@@ -295,8 +293,6 @@ export function buildBuyAndReceive(params: BuyAndReceiveParams): Transaction {
 	return tx;
 }
 
-/** @deprecated Use buildBuyAndReceive instead. */
-export const buildBuyFromListingWithStandings = buildBuyAndReceive;
 
 export interface CancelAndUnescrowParams {
 	ssuUnifiedPackageId: string;
@@ -333,8 +329,6 @@ export function buildCancelAndUnescrow(params: CancelAndUnescrowParams): Transac
 	return tx;
 }
 
-/** @deprecated Use buildCancelAndUnescrow instead. */
-export const buildCancelListingWithStandings = buildCancelAndUnescrow;
 
 export interface FillAndDeliverParams {
 	ssuUnifiedPackageId: string;
@@ -377,8 +371,6 @@ export function buildFillAndDeliver(params: FillAndDeliverParams): Transaction {
 	return tx;
 }
 
-/** @deprecated Use buildFillAndDeliver instead. */
-export const buildFillBuyOrderWithStandings = buildFillAndDeliver;
 
 // ── SsuUnifiedConfig Query Functions ────────────────────────────────────────
 
@@ -517,41 +509,3 @@ function parseOptionId(raw: unknown): string | null {
 	return null;
 }
 
-// ── SSU Standings Config Query (Dynamic Field) ──────────────────────────────
-
-export interface SsuStandingsEntry {
-	configOwner: string;
-	registryId: string;
-	minDeposit: number;
-	minWithdraw: number;
-}
-
-/**
- * Query per-SSU standings config from a SsuStandingsConfig shared object.
- *
- * The SsuStandingsConfig stores per-SSU entries as dynamic fields keyed by
- * `SsuKey { ssu_id: address }`. Returns the parsed entry or null if no config
- * is set for the given SSU.
- */
-export async function querySsuStandingsEntry(
-	client: SuiGraphQLClient,
-	configObjectId: string,
-	packageId: string,
-	ssuId: string,
-): Promise<SsuStandingsEntry | null> {
-	try {
-		const json = await getDynamicFieldJson(client, configObjectId, {
-			type: `${packageId}::ssu_standings::SsuKey`,
-			value: ssuId,
-		});
-		if (!json) return null;
-		return {
-			configOwner: String(json.config_owner ?? ""),
-			registryId: String(json.registry_id ?? ""),
-			minDeposit: Number(json.min_deposit ?? 0),
-			minWithdraw: Number(json.min_withdraw ?? 0),
-		};
-	} catch {
-		return null;
-	}
-}
