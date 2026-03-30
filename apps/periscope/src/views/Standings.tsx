@@ -368,6 +368,7 @@ function toRegistryInfo(r: ManifestRegistry): StandingsRegistryInfo {
 
 function RegistriesTab({
 	tenant,
+	walletAddress,
 }: {
 	tenant: string;
 	walletAddress?: string;

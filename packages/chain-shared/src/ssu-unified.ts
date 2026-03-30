@@ -196,9 +196,9 @@ export interface EscrowAndListParams {
 	characterObjectId: string;
 	coinType: string;
 	marketId: string;
-	typeId: number;
+	typeId: number | bigint;
 	pricePerUnit: bigint;
-	quantity: number;
+	quantity: number | bigint;
 	senderAddress: string;
 }
 
@@ -240,8 +240,8 @@ export interface BuyAndReceiveParams {
 	buyerCharacterObjectId: string;
 	coinType: string;
 	marketId: string;
-	listingId: number;
-	quantity: number;
+	listingId: number | bigint;
+	quantity: number | bigint;
 	coinObjectIds: string[];
 	senderAddress: string;
 }
@@ -305,7 +305,7 @@ export interface CancelAndUnescrowParams {
 	characterObjectId: string;
 	coinType: string;
 	marketId: string;
-	listingId: number;
+	listingId: number | bigint;
 	senderAddress: string;
 }
 
@@ -344,9 +344,9 @@ export interface FillAndDeliverParams {
 	buyerCharacterObjectId: string;
 	coinType: string;
 	marketId: string;
-	orderId: number;
-	typeId: number;
-	quantity: number;
+	orderId: number | bigint;
+	typeId: number | bigint;
+	quantity: number | bigint;
 	senderAddress: string;
 }
 

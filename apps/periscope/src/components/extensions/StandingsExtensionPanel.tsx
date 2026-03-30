@@ -85,17 +85,18 @@ function GateStandingsConfig({
 	onChange,
 	account,
 	resolvedTreasuryId,
+	currencies,
 }: {
 	values: GateConfigValues;
 	onChange: (v: GateConfigValues) => void;
 	account: { address: string } | null;
 	resolvedTreasuryId: string | null;
+	currencies: Array<{ coinType: string; symbol: string }> | undefined;
 }) {
 	const durationMinutes = Math.round(Number(values.permitDurationMs) / 60_000);
 	const isCustomCurrency = !!values.tollCoinType;
 
 	// Resolve the selected currency symbol for the toll fee label
-	const currencies = useLiveQuery(() => db.currencies.filter((c) => !c._archived).toArray(), []);
 	const currencySymbol = useMemo(() => {
 		if (!values.tollCoinType) return "SUI";
 		const match = (currencies ?? []).find((c) => c.coinType === values.tollCoinType);
@@ -541,7 +542,7 @@ function StandingsExtensionPanelInner({
 
 			{/* Structure-type-specific config */}
 			{structureKind === "gate" && registryId && (
-				<GateStandingsConfig values={gateConfig} onChange={setGateConfig} account={account} resolvedTreasuryId={resolvedTreasuryId} />
+				<GateStandingsConfig values={gateConfig} onChange={setGateConfig} account={account} resolvedTreasuryId={resolvedTreasuryId} currencies={currencies} />
 			)}
 			{structureKind === "ssu" && (
 				<SsuStandingsConfig

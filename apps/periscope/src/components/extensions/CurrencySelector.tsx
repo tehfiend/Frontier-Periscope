@@ -107,7 +107,7 @@ export function CurrencySelector({ value, onChange }: CurrencySelectorProps) {
 						))}
 						{options.length <= 1 && (
 							<div className="px-3 py-2 text-xs text-zinc-600">
-								No custom currencies found. Create one in Treasury.
+								No custom currencies found. Create one in Currencies.
 							</div>
 						)}
 					</div>

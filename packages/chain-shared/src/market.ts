@@ -12,6 +12,8 @@
 
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { Inputs, Transaction } from "@mysten/sui/transactions";
+import { getDynamicFieldJson, getObjectJson, listDynamicFieldsGql } from "./graphql-queries";
+import type { CrossMarketListing, MarketBuyOrder, MarketInfo, MarketSellListing } from "./types";
 
 /** Immutable shared Clock object ref (0x6, genesis version 1). */
 const CLOCK_REF = Inputs.SharedObjectRef({
@@ -19,8 +21,6 @@ const CLOCK_REF = Inputs.SharedObjectRef({
 	initialSharedVersion: 1,
 	mutable: false,
 });
-import { getDynamicFieldJson, getObjectJson, listDynamicFieldsGql } from "./graphql-queries";
-import type { CrossMarketListing, MarketBuyOrder, MarketInfo, MarketSellListing } from "./types";
 
 // ── Market Creation ─────────────────────────────────────────────────────────
 
@@ -141,9 +141,9 @@ export interface FillBuyOrderParams {
 	packageId: string;
 	marketId: string;
 	coinType: string;
-	orderId: number;
-	typeId: number;
-	quantity: number;
+	orderId: number | bigint;
+	typeId: number | bigint;
+	quantity: number | bigint;
 	senderAddress: string;
 }
 
@@ -170,8 +170,8 @@ export interface BuyFromListingParams {
 	packageId: string;
 	marketId: string;
 	coinType: string;
-	listingId: number;
-	quantity: number;
+	listingId: number | bigint;
+	quantity: number | bigint;
 	coinObjectIds: string[];
 	senderAddress: string;
 }
@@ -316,9 +316,9 @@ export interface PostSellListingParams {
 	marketId: string;
 	coinType: string;
 	ssuId: string;
-	typeId: number;
+	typeId: number | bigint;
 	pricePerUnit: bigint;
-	quantity: number;
+	quantity: number | bigint;
 	senderAddress: string;
 }
 
@@ -347,9 +347,9 @@ export interface UpdateSellListingParams {
 	packageId: string;
 	marketId: string;
 	coinType: string;
-	listingId: number;
+	listingId: number | bigint;
 	pricePerUnit: bigint;
-	quantity: number;
+	quantity: number | bigint;
 	senderAddress: string;
 }
 
@@ -376,7 +376,7 @@ export interface CancelSellListingParams {
 	packageId: string;
 	marketId: string;
 	coinType: string;
-	listingId: number;
+	listingId: number | bigint;
 	senderAddress: string;
 }
 
@@ -402,9 +402,9 @@ export interface PostBuyOrderParams {
 	coinType: string;
 	coinObjectIds: string[];
 	totalAmount: bigint;
-	typeId: number;
+	typeId: number | bigint;
 	pricePerUnit: bigint;
-	quantity: number;
+	quantity: number | bigint;
 	senderAddress: string;
 }
 
@@ -455,7 +455,7 @@ export interface CancelBuyOrderParams {
 	packageId: string;
 	marketId: string;
 	coinType: string;
-	orderId: number;
+	orderId: number | bigint;
 	senderAddress: string;
 }
 

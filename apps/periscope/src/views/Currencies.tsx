@@ -815,7 +815,7 @@ export function Currencies() {
 				<CurrencyDetail
 					row={selectedRow}
 					tenant={tenant}
-					suiAddress={suiAddress ?? ""}
+					suiAddress={suiAddress}
 					charNameMap={charNameMap}
 					exchangePairs={exchangePairs}
 					onStatusChange={(s, e) => {
@@ -844,7 +844,7 @@ function CurrencyDetail({
 }: {
 	row: UnifiedCurrencyRow;
 	tenant: TenantId;
-	suiAddress: string;
+	suiAddress: string | undefined;
 	charNameMap: Map<string, string>;
 	exchangePairs: ManifestExchangePair[];
 	onStatusChange: (status: BuildStatus, error?: string) => void;
@@ -894,8 +894,8 @@ function CurrencyDetail({
 	const hasMarket = !!row.marketId;
 	const addresses = getContractAddresses(tenant);
 	const marketPkg = addresses.market?.packageId;
-	const isCreator = marketInfo?.creator === suiAddress;
-	const isAuthorized = isCreator || (marketInfo?.authorized ?? []).includes(suiAddress);
+	const isCreator = !!suiAddress && marketInfo?.creator === suiAddress;
+	const isAuthorized = isCreator || (!!suiAddress && (marketInfo?.authorized ?? []).includes(suiAddress));
 
 	// SSU location lookup for market orders
 	const manifestLocs = useLiveQuery(() => db.manifestLocations.toArray()) ?? [];
@@ -1237,7 +1237,7 @@ function CurrencyDetail({
 		let tid = treasuryId ?? row.treasuryId;
 
 		// Discover treasury on-chain if not found locally
-		if (!tid && addresses.treasury?.packageId) {
+		if (!tid && addresses.treasury?.packageId && suiAddress) {
 			try {
 				const discovered = await discoverTreasuries(suiClient, addresses.treasury.packageId, suiAddress);
 				for (const t of discovered) {
@@ -1287,7 +1287,7 @@ function CurrencyDetail({
 	}
 
 	async function loadOwnedCoins() {
-		if (!row.coinType) return;
+		if (!row.coinType || !suiAddress) return;
 		setLoadingCoins(true);
 		try {
 			const coins = await queryOwnedCoins(suiClient, suiAddress, row.coinType);
@@ -1337,10 +1337,11 @@ function CurrencyDetail({
 	const treasuryPkg = addresses.treasury?.packageId;
 	const isTreasuryAdmin =
 		treasuryInfo != null &&
+		!!suiAddress &&
 		(treasuryInfo.owner === suiAddress || treasuryInfo.admins.includes(suiAddress));
 
 	async function handleCreateTreasury() {
-		if (!treasuryPkg) return;
+		if (!treasuryPkg || !suiAddress) return;
 
 		onStatusChange("building");
 		try {
@@ -1397,7 +1398,7 @@ function CurrencyDetail({
 	}
 
 	async function handleDeposit() {
-		if (!depositAmount || !treasuryId || !row.coinType || !treasuryPkg) return;
+		if (!depositAmount || !treasuryId || !row.coinType || !treasuryPkg || !suiAddress) return;
 
 		onStatusChange("building");
 		try {
@@ -1428,7 +1429,7 @@ function CurrencyDetail({
 	}
 
 	async function handleWithdraw() {
-		if (!withdrawAmount || !treasuryId || !row.coinType || !treasuryPkg) return;
+		if (!withdrawAmount || !treasuryId || !row.coinType || !treasuryPkg || !suiAddress) return;
 
 		onStatusChange("building");
 		try {
@@ -1455,7 +1456,7 @@ function CurrencyDetail({
 	// ── Admin handlers ───────────────────────────────────────────────────────
 
 	async function handleMint() {
-		if (!mintAmount || !row.marketId || !row.coinType || !marketPkg) return;
+		if (!mintAmount || !row.marketId || !row.coinType || !marketPkg || !suiAddress) return;
 
 		onStatusChange("minting");
 		try {
@@ -1505,7 +1506,7 @@ function CurrencyDetail({
 	}
 
 	async function handleBurn() {
-		if (!burnCoinId || !row.marketId || !row.coinType || !marketPkg) return;
+		if (!burnCoinId || !row.marketId || !row.coinType || !marketPkg || !suiAddress) return;
 
 		onStatusChange("burning");
 		try {
@@ -1528,7 +1529,7 @@ function CurrencyDetail({
 	}
 
 	async function handleAddAuthorized() {
-		if (!authAddress.trim() || !row.marketId || !row.coinType || !marketPkg) return;
+		if (!authAddress.trim() || !row.marketId || !row.coinType || !marketPkg || !suiAddress) return;
 
 		onStatusChange("building");
 		try {
@@ -1550,7 +1551,7 @@ function CurrencyDetail({
 	}
 
 	async function handleRemoveAuthorized(addr: string) {
-		if (!row.marketId || !row.coinType || !marketPkg) return;
+		if (!row.marketId || !row.coinType || !marketPkg || !suiAddress) return;
 
 		onStatusChange("building");
 		try {
@@ -1571,7 +1572,7 @@ function CurrencyDetail({
 	}
 
 	async function handleUpdateFee() {
-		if (!row.marketId || !row.coinType || !marketPkg) return;
+		if (!row.marketId || !row.coinType || !marketPkg || !suiAddress) return;
 
 		onStatusChange("building");
 		try {
@@ -1594,7 +1595,7 @@ function CurrencyDetail({
 	}
 
 	async function handleDiscoverMarket() {
-		if (!row.coinType || !marketPkg) return;
+		if (!row.coinType || !marketPkg || !suiAddress) return;
 
 		onStatusChange("building");
 		try {

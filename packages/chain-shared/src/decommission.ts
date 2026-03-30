@@ -84,7 +84,7 @@ interface EventsResponse {
  * Fetches all DecommissionEvent and RecommissionEvent events emitted
  * by the decommission package, then computes the net decommissioned set.
  *
- * Returns a Set of market object IDs (0x-prefixed hex strings).
+ * Returns a Set of market addresses (0x-prefixed hex strings).
  */
 export async function queryDecommissionedMarkets(
 	client: SuiGraphQLClient,
