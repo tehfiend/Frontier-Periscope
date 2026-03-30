@@ -137,3 +137,9 @@
 - **File:** docs/plans/active/13-ssu-escrow-transfers.md
 - **Passes:** 2 (1 with changes, 1 NO_CHANGES)
 - **Result:** active -- resolved 3 open questions (A: bypass standings for hackathon, A: off-chain buyer character resolution, A: shared escrow pool). Thorough verification against codebase: all line numbers, file paths, prop threading claims, and dead code claims confirmed accurate. Minor formatting fix applied.
+
+## 2026-03-30 -- log-reader-fixes
+- **Action:** CREATE
+- **File:** docs/plans/pending/14-log-reader-fixes.md
+- **Passes:** 3 (2 with changes, pass 4 NO_CHANGES)
+- **Result:** pending -- 4-phase plan fixing log file reader/tailer bugs. Phase 1: partial line buffering and truncation reset (data loss fixes). Phase 2: \r\n line ending normalization. Phase 3: UTF-16LE byte alignment for chat logs. Phase 4: poll interval reduction (5s -> 1s) and diagnostic logging. 3 open questions remain (poll interval configurability, pending buffer persistence, logging approach). Key findings: offset advances to file.size losing partial lines, truncation check silently skips rotated files, BOM stripping in decodeChatLog breaks naive character-to-byte offset math.
