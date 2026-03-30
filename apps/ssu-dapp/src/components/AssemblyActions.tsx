@@ -40,7 +40,7 @@ export function AssemblyActions({
 
 	// Discover the EnergyConfig singleton on-chain
 	const worldPkg = getWorldPackageId(getTenant());
-	const { data: energyConfigId } = useQuery({
+	const { data: energyConfigId, isError: energyConfigError } = useQuery({
 		queryKey: ["energyConfig", worldPkg],
 		queryFn: async (): Promise<string | null> => {
 			const r: {
@@ -143,7 +143,11 @@ export function AssemblyActions({
 					</button>
 				) : (
 					<p className="text-xs text-zinc-600">
-						{!assembly.energySourceId ? "No energy source" : "Loading..."}
+						{!assembly.energySourceId
+						? "No energy source"
+						: energyConfigError
+							? "Energy config not found"
+							: "Loading..."}
 					</p>
 				)}
 			</div>

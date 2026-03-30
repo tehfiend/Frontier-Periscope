@@ -383,8 +383,8 @@ export function Deployables() {
 				let fuelData: { fuelLevel?: number; fuelExpiresAt?: string } = {};
 				try {
 					fuelData = await fetchFuelData(client, assembly.objectId);
-				} catch {
-					/* non-fatal */
+				} catch (err) {
+					console.warn(`[Deployables] Failed to fetch fuel for ${assembly.objectId}:`, err);
 				}
 
 				await db.deployables.put({

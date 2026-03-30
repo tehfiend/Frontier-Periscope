@@ -204,7 +204,7 @@ export async function discoverCharacterAndAssemblies(
 					assemblies.push({
 						objectId: assemblyId,
 						type: at.kind,
-						typeId: Number(assemblyFields.type_id) || 0,
+						typeId: Number(assemblyFields.type_id) ?? 0,
 						itemId: keyObj?.item_id ? String(keyObj.item_id) : undefined,
 						name: metaObj?.name ? String(metaObj.name) : undefined,
 						status: extractStatus(assemblyFields.status),
@@ -266,7 +266,7 @@ export async function discoverCharacterAndAssemblies(
 						assemblies.push({
 							objectId: assemblyId,
 							type: assemblyKind,
-							typeId: Number(assemblyFields.type_id) || 0,
+							typeId: Number(assemblyFields.type_id) ?? 0,
 							itemId: keyObj2?.item_id ? String(keyObj2.item_id) : undefined,
 							name: metaObj2?.name ? String(metaObj2.name) : undefined,
 							status: extractStatus(assemblyFields.status),
@@ -310,10 +310,7 @@ export async function getAssemblyExtension(
 	try {
 		const result = await getObjectJson(client, assemblyId);
 		const fields = result.json ?? {};
-		if (fields.extension) {
-			return String(fields.extension);
-		}
-		return null;
+		return parseExtension(fields.extension) ?? null;
 	} catch {
 		return null;
 	}

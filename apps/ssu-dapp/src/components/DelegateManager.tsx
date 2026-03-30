@@ -98,7 +98,8 @@ export function DelegateManager({ ssuConfig }: DelegateManagerProps) {
 		try {
 			const info = await queryMarketDetails(client, ssuConfig.marketId);
 			return info?.authorized ?? [];
-		} catch {
+		} catch (err) {
+			console.warn("[DelegateManager] Failed to query market authorized list:", err);
 			return [];
 		}
 	}

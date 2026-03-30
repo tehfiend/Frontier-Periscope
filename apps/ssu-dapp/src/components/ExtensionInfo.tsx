@@ -156,9 +156,10 @@ export function ExtensionInfo({
 			}
 			if (setDappUrl) {
 				const tenant = getTenant();
-				const generatedUrl = itemId
-					? `https://dapp.frontierperiscope.com/?tenant=${tenant}&itemId=${itemId}`
-					: `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
+				const dappBase = new URL("https://dapp.frontierperiscope.com/");
+				dappBase.searchParams.set("tenant", tenant);
+				if (itemId) dappBase.searchParams.set("itemId", itemId);
+				const generatedUrl = dappBase.toString();
 				if (generatedUrl !== (metadata?.url ?? "")) {
 					tx.moveCall({
 						target: `${worldPkg}::storage_unit::update_metadata_url`,
