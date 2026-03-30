@@ -882,19 +882,19 @@ export function Deployables() {
 							{info.status === "periscope" && (
 								<>
 									<Telescope size={14} className="text-cyan-500" />
-									{extConfig?.registryName && (
-										<span className="rounded bg-cyan-500/10 px-1 py-0.5 text-[10px] font-medium text-cyan-400">
-											{extConfig.registryName}
-										</span>
-									)}
 									{r.ownership === "mine" && (
 										<button
 											type="button"
 											onClick={() => setDeployTarget(r)}
-											className="ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-900/30"
+											className="rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-900/30"
 										>
 											Configure
 										</button>
+									)}
+									{extConfig?.registryName && (
+										<span className="ml-auto rounded bg-cyan-500/10 px-1 py-0.5 text-[10px] font-medium text-cyan-400">
+											{extConfig.registryName}
+										</span>
 									)}
 								</>
 							)}
