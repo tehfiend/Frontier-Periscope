@@ -57,25 +57,6 @@ export function getRegistryAddress(tenant?: string): string {
 	return OBJECT_REGISTRY_ADDRESSES[t] ?? OBJECT_REGISTRY_ADDRESSES.stillness;
 }
 
-/** Get the ssu_market package ID for the current tenant (latest version, for moveCall targets) */
-export function getSsuMarketPackageId(tenant?: string): string | null {
-	const t = (tenant ?? getTenant()) as TenantId;
-	return getContractAddresses(t).ssuMarket?.packageId ?? null;
-}
-
-/** Get the ssu_market original package ID for the current tenant (for type filtering in GraphQL) */
-export function getSsuMarketOriginalPackageId(tenant?: string): string | null {
-	const t = (tenant ?? getTenant()) as TenantId;
-	const m = getContractAddresses(t).ssuMarket;
-	return m?.originalPackageId ?? m?.packageId ?? null;
-}
-
-/** Get previous ssu_market original package IDs (for discovering SsuConfigs created before republish) */
-export function getSsuMarketPreviousPackageIds(tenant?: string): string[] {
-	const t = (tenant ?? getTenant()) as TenantId;
-	return getContractAddresses(t).ssuMarket?.previousOriginalPackageIds ?? [];
-}
-
 /** Get the ssu_unified package ID for the current tenant */
 export function getSsuUnifiedPackageId(tenant?: string): string | null {
 	const t = (tenant ?? getTenant()) as TenantId;

@@ -16,11 +16,27 @@
 
 import { bcs } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
-import { DEFAULT_TURRET_PRIORITY_CONFIG, SHIP_CLASSES } from "./turret-priority";
 import { ensureWasmReady } from "./wasm-init";
 
-// Re-export for convenience so the app can import from @tehfrontier/chain-shared
-export { DEFAULT_TURRET_PRIORITY_CONFIG, SHIP_CLASSES };
+export const SHIP_CLASSES = {
+	shuttle: { groupId: 31, label: "Shuttle" },
+	corvette: { groupId: 237, label: "Corvette" },
+	frigate: { groupId: 25, label: "Frigate" },
+	destroyer: { groupId: 420, label: "Destroyer" },
+	cruiser: { groupId: 26, label: "Cruiser" },
+	combatBattlecruiser: { groupId: 419, label: "Combat Battlecruiser" },
+} as const;
+
+export const DEFAULT_TURRET_PRIORITY_CONFIG = {
+	defaultWeight: 30,
+	kosWeight: 100,
+	aggressorBonus: 40,
+	betrayalBonus: 50,
+	lowHpBonus: 20,
+	lowHpThreshold: 40,
+	classBonus: 25,
+	effectiveClasses: [0, 0] as [number, number],
+};
 
 /**
  * Pre-compiled turret_priority bytecodes (base64).

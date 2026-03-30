@@ -93,27 +93,6 @@ export interface CrossMarketListing extends MarketSellListing {
 	ssuConfigId: string;
 }
 
-// ── Bounty Types ────────────────────────────────────────────────────────────
-
-export interface BountyInfo {
-	bountyId: number;
-	poster: string;
-	targetCharacterId: number;
-	rewardAmount: number;
-	expiresAt: number;
-}
-
-// ── Lease Types ─────────────────────────────────────────────────────────────
-
-export interface LeaseInfo {
-	tenant: string;
-	tenantTribe: number;
-	ratePerDay: number;
-	lastChargedAt: number;
-	landlord: string;
-	balanceAmount: number;
-}
-
 // ── Token Factory Types ─────────────────────────────────────────────────────
 
 export interface TokenInfo {
@@ -317,28 +296,12 @@ export interface ContractAddresses {
 	gateUnified?: { packageId: string; configObjectId: string };
 	gateToll?: { packageId: string; configObjectId: string };
 	exchange?: { packageId: string };
-	ssuMarket?: {
-		packageId: string;
-		originalPackageId?: string;
-		previousOriginalPackageIds?: string[];
-	};
-	bountyBoard?: { packageId: string; boardObjectId: string };
-	lease?: { packageId: string; registryObjectId: string };
-	tokenTemplate?: { packageId: string };
-	governance?: { packageId: string; claimsRegistryObjectId: string };
 	market?: { packageId: string; previousOriginalPackageIds?: string[] };
 	privateMap?: { packageId: string };
 	standings?: { packageId: string };
 	standingsRegistry?: { packageId: string };
 	gateStandings?: { packageId: string; configObjectId: string };
-	ssuStandings?: { packageId: string; configObjectId: string };
 	marketStandings?: { packageId: string };
-	tokenTemplateStandings?: { packageId: string };
-	ssuMarketStandings?: {
-		packageId: string;
-		originalPackageId?: string;
-		previousOriginalPackageIds?: string[];
-	};
 	privateMapStandings?: { packageId: string };
 	ssuUnified?: {
 		packageId: string;

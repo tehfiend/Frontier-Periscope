@@ -83,9 +83,6 @@ function getEventBadgeColor(eventType: string): string {
 		case "market_buy_filled":
 		case "market_buy_cancelled":
 		case "market_sell_cancelled":
-		case "ssu_market_buy_filled":
-		case "ssu_market_transfer":
-		case "ssu_market_sell_cancelled":
 		case "exchange_order_placed":
 		case "exchange_order_cancelled":
 			return "bg-green-500/15 text-green-400";
@@ -105,9 +102,6 @@ function getEventBadgeColor(eventType: string): string {
 		case "status_changed":
 		case "metadata_changed":
 		case "location_revealed":
-		case "lease_created":
-		case "rent_collected":
-		case "lease_cancelled":
 			return "bg-zinc-500/15 text-zinc-400";
 		// Teal -- inventory
 		case "item_deposited":
@@ -434,9 +428,6 @@ const PING_CATEGORIES: PingCategory[] = [
 		label: "Combat / Intel",
 		types: {
 			killmail: "Killmail",
-			bounty_posted: "Bounty Posted",
-			bounty_claimed: "Bounty Claimed",
-			bounty_cancelled: "Bounty Cancelled",
 		},
 	},
 	{
@@ -483,17 +474,11 @@ const PING_CATEGORIES: PingCategory[] = [
 			market_buy_filled: "Buy Order Filled",
 			market_buy_cancelled: "Buy Order Cancelled",
 			market_sell_cancelled: "Sell Listing Cancelled",
-			ssu_market_buy_filled: "SSU Buy Order Filled",
-			ssu_market_transfer: "SSU Transfer",
-			ssu_market_sell_cancelled: "SSU Sell Cancelled",
 		},
 	},
 	{
-		label: "Lease / Exchange",
+		label: "Exchange",
 		types: {
-			lease_created: "Lease Created",
-			rent_collected: "Rent Collected",
-			lease_cancelled: "Lease Cancelled",
 			exchange_order_placed: "Exchange Order Placed",
 			exchange_order_cancelled: "Exchange Order Cancelled",
 		},
