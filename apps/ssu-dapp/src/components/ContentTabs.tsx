@@ -2,7 +2,7 @@ import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
 import type { InventoryItem, SsuInventories } from "@/hooks/useInventory";
 import type { SellListingWithName } from "@/hooks/useMarketListings";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { InventoryTabs } from "./InventoryTabs";
 import { MarketContent } from "./MarketContent";
 import { SellDialog } from "./SellDialog";
@@ -49,6 +49,16 @@ export function ContentTabs({
 	} | null>(null);
 
 	const hasMarket = !!ssuConfig?.marketId;
+
+	// Build a map of typeId -> quantity in escrow (open inventory) for cancel logic
+	const escrowQuantities = useMemo(() => {
+		const openSlot = inventories.slots.find((s) => s.slotType === "open");
+		const map = new Map<number, number>();
+		for (const item of openSlot?.items ?? []) {
+			map.set(item.typeId, (map.get(item.typeId) ?? 0) + item.quantity);
+		}
+		return map;
+	}, [inventories]);
 
 	// Sell: market linked + connected + authorized (owner/delegate)
 	const isSsuAuthorized =
@@ -128,6 +138,7 @@ export function ContentTabs({
 					walletAddress={walletAddress}
 					ssuObjectId={ssuObjectId}
 					ownerCharacterObjectId={ownerCharacterObjectId}
+					escrowQuantities={escrowQuantities}
 				/>
 			)}
 

@@ -48,22 +48,27 @@ export function MarketPicker({ value, onChange }: MarketPickerProps) {
 			}
 
 			// Query regular market::Market<T>
-			const marketPkg = addrs.market?.packageId;
-			if (marketPkg) {
-				try {
-					const items = await queryMarkets(client, marketPkg);
-					for (const m of items) {
-						if (m.totalSupply == null) continue; // skip unqueryable markets
-						if (decommissioned.has(m.objectId)) continue;
-						results.push({
-							objectId: m.objectId,
-							coinSymbol: formatCoinType(m.coinType),
-							coinType: m.coinType,
-							source: "market",
-						});
+			// Search current + previous original package IDs (objects retain original type)
+			const marketCfg = addrs.market;
+			if (marketCfg?.packageId) {
+				const pkgIds = [marketCfg.packageId, ...(marketCfg.previousOriginalPackageIds ?? [])];
+				for (const pkg of pkgIds) {
+					try {
+						const items = await queryMarkets(client, pkg);
+						for (const m of items) {
+							if (m.totalSupply == null) continue;
+							if (decommissioned.has(m.objectId)) continue;
+							if (results.some((r) => r.objectId === m.objectId)) continue;
+							results.push({
+								objectId: m.objectId,
+								coinSymbol: formatCoinType(m.coinType),
+								coinType: m.coinType,
+								source: "market",
+							});
+						}
+					} catch {
+						// non-fatal
 					}
-				} catch {
-					// non-fatal
 				}
 			}
 
@@ -73,7 +78,7 @@ export function MarketPicker({ value, onChange }: MarketPickerProps) {
 				try {
 					const items = await queryAllMarketsStandings(client, msPkg);
 					for (const m of items) {
-						if (m.totalSupply == null) continue; // skip unqueryable markets
+						if (m.totalSupply == null) continue;
 						if (decommissioned.has(m.objectId)) continue;
 						if (results.some((r) => r.objectId === m.objectId)) continue;
 						results.push({

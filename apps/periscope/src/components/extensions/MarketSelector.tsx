@@ -1,7 +1,11 @@
-import { db } from "@/db";
+import { db, notDeleted } from "@/db";
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
-import { queryMarketDetails } from "@tehfrontier/chain-shared";
-import type { MarketInfo } from "@tehfrontier/chain-shared";
+import {
+	type TenantId,
+	getContractAddresses,
+	queryAllMarketsStandings,
+} from "@tehfrontier/chain-shared";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ChevronDown, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -20,10 +24,10 @@ interface MarketOption {
 }
 
 /**
- * Dropdown selector for Market objects linked to currencies in the local DB.
- * Queries db.currencies for records with non-null marketId, resolves admin
- * names and tribe names from manifest tables, and fetches MarketInfo from
- * chain to get the creator address.
+ * Dropdown selector for Market objects. Combines:
+ * 1. Local db.currencies records with marketId (user-created currencies)
+ * 2. Cached db.manifestMarkets records (chain-discovered markets)
+ * 3. Live chain query for market_standings::Market objects
  */
 export function MarketSelector({ value, onChange }: MarketSelectorProps) {
 	const [open, setOpen] = useState(false);
@@ -32,73 +36,126 @@ export function MarketSelector({ value, onChange }: MarketSelectorProps) {
 	const [customId, setCustomId] = useState(value);
 
 	const client = useSuiClient();
+	const tenant = useActiveTenant() as TenantId;
+	const addrs = getContractAddresses(tenant);
 
-	// Query currencies with marketId
-	const currencies = useLiveQuery(() => db.currencies.toArray(), []);
-	const currenciesWithMarket = useMemo(
-		() => (currencies ?? []).filter((c) => c.marketId),
-		[currencies],
-	);
+	// Local currency records (same source the Currencies page uses)
+	const currencies = useLiveQuery(() => db.currencies.filter(notDeleted).toArray(), []) ?? [];
+
+	// Cached manifest markets (chain-discovered market::Market<T> objects)
+	const manifestMarkets = useLiveQuery(() => db.manifestMarkets.toArray(), []) ?? [];
 
 	// Resolve admin/tribe names from manifest
 	const manifestChars = useLiveQuery(() => db.manifestCharacters.toArray(), []) ?? [];
 	const manifestTribes = useLiveQuery(() => db.manifestTribes.toArray(), []) ?? [];
 
-	// Fetch MarketInfo for each currency's marketId to get creator address
-	const [marketInfoMap, setMarketInfoMap] = useState<Map<string, MarketInfo>>(new Map());
+	// Standings markets from chain (market_standings::Market<T>)
+	const [standingsOptions, setStandingsOptions] = useState<MarketOption[]>([]);
 
+	function symbolFromCoinType(ct: string): string {
+		const parts = ct.split("::");
+		return parts.length >= 3 ? parts[2].replace(/_TOKEN$/, "") : (parts[1] ?? ct);
+	}
+
+	function resolveNames(creatorAddr: string) {
+		const adminChar = creatorAddr
+			? manifestChars.find((mc) => mc.suiAddress === creatorAddr)
+			: undefined;
+		const adminName = adminChar?.name ?? "";
+		const tribeName = adminChar?.tribeId
+			? (manifestTribes.find((t) => t.id === adminChar.tribeId)?.name ?? "")
+			: "";
+		return { adminName, tribeName };
+	}
+
+	// Build options from local currencies that have a marketId
+	const currencyOptions = useMemo<MarketOption[]>(() => {
+		return currencies
+			.filter((c) => c.marketId)
+			.map((c) => ({
+				marketId: c.marketId!,
+				symbol: c.symbol,
+				adminName: "",
+				tribeName: "",
+				creator: "",
+			}));
+	}, [currencies]);
+
+	// Build options from cached manifest markets
+	const manifestOptions = useMemo<MarketOption[]>(() => {
+		return manifestMarkets.map((m) => {
+			const { adminName, tribeName } = resolveNames(m.creator);
+			return {
+				marketId: m.id,
+				symbol: symbolFromCoinType(m.coinType),
+				adminName,
+				tribeName,
+				creator: m.creator,
+			};
+		});
+	}, [manifestMarkets, manifestChars, manifestTribes]);
+
+	// Discover standings markets from chain
 	useEffect(() => {
-		if (currenciesWithMarket.length === 0) return;
+		const standingsPkg = addrs.marketStandings?.packageId;
+		if (!standingsPkg) return;
 		let cancelled = false;
 
-		async function fetchAll() {
-			const newMap = new Map<string, MarketInfo>();
-			for (const c of currenciesWithMarket) {
-				if (!c.marketId) continue;
-				try {
-					const info = await queryMarketDetails(client, c.marketId);
-					if (info && !cancelled) {
-						newMap.set(c.marketId, info);
-					}
-				} catch {
-					// non-fatal
+		async function discover() {
+			try {
+				const markets = await queryAllMarketsStandings(client, standingsPkg!);
+				if (cancelled) return;
+				const results: MarketOption[] = [];
+				for (const m of markets) {
+					const { adminName, tribeName } = resolveNames(m.creator);
+					results.push({
+						marketId: m.objectId,
+						symbol: symbolFromCoinType(m.coinType),
+						adminName,
+						tribeName,
+						creator: m.creator,
+					});
 				}
+				setStandingsOptions(results);
+			} catch {
+				/* non-fatal */
 			}
-			if (!cancelled) setMarketInfoMap(newMap);
 		}
 
-		fetchAll();
+		discover();
 		return () => {
 			cancelled = true;
 		};
-	}, [currenciesWithMarket, client]);
+	}, [client, addrs.marketStandings?.packageId, manifestChars, manifestTribes]);
 
-	// Build options
-	const options: MarketOption[] = useMemo(() => {
-		return currenciesWithMarket.map((c) => {
-			const info = c.marketId ? marketInfoMap.get(c.marketId) : undefined;
-			const creatorAddr = info?.creator ?? "";
+	// Merge all sources, dedup by marketId (manifest > currency > standings for name resolution)
+	const options = useMemo<MarketOption[]>(() => {
+		const seen = new Set<string>();
+		const merged: MarketOption[] = [];
 
-			// Resolve admin name from manifest characters (by suiAddress)
-			const adminChar = creatorAddr
-				? manifestChars.find((mc) => mc.suiAddress === creatorAddr)
-				: undefined;
-			const adminName = adminChar?.name ?? "";
-
-			// Resolve tribe name
-			const tribeName = adminChar?.tribeId
-				? (manifestTribes.find((t) => t.id === adminChar.tribeId)?.name ?? "")
-				: "";
-
-			return {
-				marketId: c.marketId ?? "",
-				symbol: c.symbol,
-				adminName,
-				tribeName,
-				creator: creatorAddr,
-			};
-		});
-	}, [currenciesWithMarket, marketInfoMap, manifestChars, manifestTribes]);
+		// Manifest markets first (they have creator/admin info)
+		for (const opt of manifestOptions) {
+			if (!seen.has(opt.marketId)) {
+				seen.add(opt.marketId);
+				merged.push(opt);
+			}
+		}
+		// Local currency records (user-created currencies)
+		for (const opt of currencyOptions) {
+			if (!seen.has(opt.marketId)) {
+				seen.add(opt.marketId);
+				merged.push(opt);
+			}
+		}
+		// Standings markets from chain
+		for (const opt of standingsOptions) {
+			if (!seen.has(opt.marketId)) {
+				seen.add(opt.marketId);
+				merged.push(opt);
+			}
+		}
+		return merged;
+	}, [manifestOptions, currencyOptions, standingsOptions]);
 
 	const filtered = useMemo(() => {
 		if (!search) return options;

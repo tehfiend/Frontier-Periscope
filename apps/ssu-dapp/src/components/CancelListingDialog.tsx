@@ -3,7 +3,11 @@ import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { decodeErrorMessage } from "@/lib/errors";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { buildCancelAndUnescrow, formatBaseUnits } from "@tehfrontier/chain-shared";
+import {
+	buildCancelAndUnescrow,
+	buildCancelSellListing,
+	formatBaseUnits,
+} from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
 interface CancelListingDialogProps {
@@ -15,6 +19,8 @@ interface CancelListingDialogProps {
 	ssuObjectId: string;
 	/** SSU owner's Character object ID (for escrow TX builders). */
 	ownerCharacterObjectId: string | null;
+	/** typeId -> quantity currently in escrow (open inventory) */
+	escrowQuantities?: Map<number, number>;
 	onClose: () => void;
 }
 
@@ -26,6 +32,7 @@ export function CancelListingDialog({
 	coinSymbol,
 	ssuObjectId,
 	ownerCharacterObjectId,
+	escrowQuantities,
 	onClose,
 }: CancelListingDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -38,28 +45,44 @@ export function CancelListingDialog({
 		dialogRef.current?.showModal();
 	}, []);
 
+	// Check if listed items exist in the escrow inventory
+	const escrowQty = escrowQuantities?.get(listing.typeId) ?? 0;
+	const hasItemsInEscrow = escrowQty >= listing.quantity;
+
 	async function handleCancel() {
 		if (!account?.address || !ssuConfig.marketId) return;
-		if (!ownerCharacterObjectId) {
-			setError("SSU owner character not resolved");
-			return;
-		}
 		setError(null);
 		setSuccess(null);
 
 		try {
-			const tx = buildCancelAndUnescrow({
-				ssuUnifiedPackageId: ssuConfig.packageId,
-				ssuConfigId: ssuConfig.ssuConfigId,
-				ssuObjectId,
-				characterObjectId: ownerCharacterObjectId,
-				coinType,
-				marketId: ssuConfig.marketId,
-				listingId: listing.listingId,
-				senderAddress: account.address,
-			});
-			await signAndExecute(tx);
-			setSuccess("Listing cancelled successfully");
+			if (hasItemsInEscrow && ownerCharacterObjectId) {
+				// Items are in escrow -- cancel listing and return items atomically
+				const tx = buildCancelAndUnescrow({
+					ssuUnifiedPackageId: ssuConfig.packageId,
+					ssuConfigId: ssuConfig.ssuConfigId,
+					ssuObjectId,
+					characterObjectId: ownerCharacterObjectId,
+					coinType,
+					marketId: ssuConfig.marketId,
+					listingId: listing.listingId,
+					senderAddress: account.address,
+				});
+				await signAndExecute(tx);
+				setSuccess("Listing cancelled successfully");
+			} else if (ssuConfig.marketPackageId) {
+				// Items not in escrow -- just cancel the market listing
+				const tx = buildCancelSellListing({
+					packageId: ssuConfig.marketPackageId,
+					marketId: ssuConfig.marketId,
+					coinType,
+					listingId: listing.listingId,
+					senderAddress: account.address,
+				});
+				await signAndExecute(tx);
+				setSuccess("Listing cancelled (items were already removed from escrow)");
+			} else {
+				setError("Market package not resolved");
+			}
 		} catch (err) {
 			setError(decodeErrorMessage(String(err)));
 		}
@@ -103,8 +126,9 @@ export function CancelListingDialog({
 				) : (
 					<div className="space-y-3">
 						<p className="text-[10px] text-zinc-600">
-							Are you sure you want to cancel this listing? Items will be returned to the SSU
-							inventory.
+							{hasItemsInEscrow
+								? "Are you sure you want to cancel this listing? Items will be returned to the SSU inventory."
+								: "Are you sure you want to cancel this listing? Items have already been moved out of escrow."}
 						</p>
 
 						{/* Listing info */}

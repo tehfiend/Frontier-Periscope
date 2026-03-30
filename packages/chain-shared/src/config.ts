@@ -44,6 +44,7 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0xae423b77ed1252a90f3a47ff4d3d343a9414931335a235507e010c8875fb6114",
 			previousOriginalPackageIds: [
 				"0x1e5910d677d83f72f0e73b5815cd02abf6251d429f5ae2e13f27fb931e75e80d",
+				"0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a",
 			],
 		},
 		privateMap: {
@@ -134,6 +135,7 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0xae423b77ed1252a90f3a47ff4d3d343a9414931335a235507e010c8875fb6114",
 			previousOriginalPackageIds: [
 				"0x1e5910d677d83f72f0e73b5815cd02abf6251d429f5ae2e13f27fb931e75e80d",
+				"0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a",
 			],
 		},
 		privateMap: {

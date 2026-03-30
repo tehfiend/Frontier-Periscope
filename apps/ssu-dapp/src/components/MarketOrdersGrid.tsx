@@ -41,6 +41,8 @@ interface MarketOrdersGridProps {
 	marketPackageId?: string | null;
 	/** SSU owner's Character object ID (for escrow TX builders). */
 	ownerCharacterObjectId?: string | null;
+	/** typeId -> quantity currently in escrow (open inventory) */
+	escrowQuantities?: Map<number, number>;
 }
 
 // ── Dialog state ────────────────────────────────────────────────────────────
@@ -65,6 +67,7 @@ export function MarketOrdersGrid({
 	coinSymbol,
 	marketPackageId,
 	ownerCharacterObjectId,
+	escrowQuantities,
 }: MarketOrdersGridProps) {
 	const [dialog, setDialog] = useState<DialogState>(null);
 
@@ -290,6 +293,7 @@ export function MarketOrdersGrid({
 					coinSymbol={coinSymbol}
 					ssuObjectId={ssuObjectId}
 					ownerCharacterObjectId={ownerCharacterObjectId ?? null}
+					escrowQuantities={escrowQuantities}
 					onClose={() => setDialog(null)}
 				/>
 			)}
