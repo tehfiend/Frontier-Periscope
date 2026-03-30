@@ -414,6 +414,17 @@ export function Deployables() {
 				totalCount++;
 			}
 
+			// Soft-delete owned deployables no longer found on chain
+			const discoveredIds = new Set(discovery.assemblies.map((a) => a.objectId));
+			const existingOwned = await db.deployables
+				.filter((d) => d.owner === chainAddress && !d._deleted)
+				.toArray();
+			for (const d of existingOwned) {
+				if (!discoveredIds.has(d.objectId)) {
+					await db.deployables.update(d.id, { _deleted: true, updatedAt: now });
+				}
+			}
+
 			setSyncStatus(`Synced ${totalCount} owned`);
 			// Cross-reference locations with structures
 			await crossReferencePrivateMapLocations();
@@ -541,11 +552,11 @@ export function Deployables() {
 
 	// ── Remove from tracking ─────────────────────────────────────────────────
 	const handleRemove = useCallback(async (row: StructureRow) => {
+		const now = new Date().toISOString();
 		if (row.source === "assemblies") {
-			await db.assemblies.update(row.id, {
-				_deleted: true,
-				updatedAt: new Date().toISOString(),
-			});
+			await db.assemblies.update(row.id, { _deleted: true, updatedAt: now });
+		} else if (row.source === "deployables") {
+			await db.deployables.update(row.id, { _deleted: true, updatedAt: now });
 		}
 	}, []);
 
@@ -744,12 +755,12 @@ export function Deployables() {
 							>
 								<PeriscopeIcon size={14} />
 							</a>
-							{r.source === "assemblies" && (
+							{r.ownership === "mine" && (
 								<button
 									type="button"
 									onClick={() => handleRemove(r)}
 									className="text-zinc-600 hover:text-red-400"
-									title="Remove from tracking"
+									title="Remove from list"
 								>
 									<Trash2 size={14} />
 								</button>
