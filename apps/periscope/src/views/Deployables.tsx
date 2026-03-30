@@ -36,7 +36,6 @@ import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import {
 	AlertTriangle,
 	AppWindow,
-	ExternalLink,
 	Fuel,
 	Link2,
 	Loader2,
@@ -706,15 +705,6 @@ export function Deployables() {
 						else url.searchParams.set("objectId", r.objectId);
 						return url.toString();
 					})();
-					// CCP default dApp link
-					const ccpDapp = TENANTS[tenant]?.ccpDappUrl;
-					const ccpHref = (() => {
-						if (!ccpDapp || !r.itemId) return undefined;
-						const url = new URL(ccpDapp);
-						url.searchParams.set("tenant", tenant);
-						url.searchParams.set("itemId", r.itemId);
-						return url.toString();
-					})();
 					return (
 						<div className="flex items-center gap-1">
 							<a
@@ -726,17 +716,6 @@ export function Deployables() {
 							>
 								<Telescope size={14} />
 							</a>
-							{ccpHref && (
-								<a
-									href={ccpHref}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="text-zinc-600 hover:text-zinc-400"
-									title="Open CCP default dApp"
-								>
-									<ExternalLink size={14} />
-								</a>
-							)}
 							{r.source === "assemblies" && (
 								<button
 									type="button"
