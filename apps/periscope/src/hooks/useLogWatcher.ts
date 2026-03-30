@@ -1,32 +1,33 @@
-import { useEffect, useRef, useCallback } from "react";
 import { db } from "@/db";
-import { useLogStore } from "@/stores/logStore";
+import type { LogEvent } from "@/db/types";
+import { getStoredHandle, verifyPermission } from "@/lib/logFileAccess";
 import {
-	parseHeader,
-	parseEntries,
-	parseLogFilename,
+	decodeChatLog,
 	parseChatEntries,
 	parseChatLogFilename,
-	decodeChatLog,
+	parseEntries,
+	parseHeader,
+	parseLogFilename,
 } from "@/lib/logParser";
-import { getStoredHandle, verifyPermission } from "@/lib/logFileAccess";
-import type { LogEvent } from "@/db/types";
+import { useLogStore } from "@/stores/logStore";
+import { useCallback, useEffect, useRef } from "react";
 
-const POLL_INTERVAL = 5000;
+const POLL_INTERVAL = 1000;
 
 /** Module-level singleton — ensures only one poller runs even if hook is mounted multiple times */
 let activePollerCount = 0;
+
+/** Pending partial-line buffers keyed by fileName (game logs) or "chat:fileName" (chat logs) */
+const pendingLines = new Map<string, string>();
+
+/** Poll counter for periodic diagnostic summaries */
+let pollCount = 0;
 
 export function useLogWatcher() {
 	const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const isPollerRef = useRef(false);
-	const {
-		setHasAccess,
-		setIsWatching,
-		setActiveSessionId,
-		setLiveStats,
-	} = useLogStore();
+	const { setHasAccess, setIsWatching, setActiveSessionId, setLiveStats } = useLogStore();
 
 	const stopWatching = useCallback(() => {
 		if (intervalRef.current) {
@@ -140,13 +141,48 @@ export function useLogWatcher() {
 		const offset = await db.logOffsets.get(fileName);
 		const lastOffset = offset?.byteOffset ?? 0;
 
-		if (file.size <= lastOffset) return null;
+		// Truncation detection -- file was rotated or replaced
+		if (file.size < lastOffset) {
+			console.warn(`[LogWatcher] File truncated: ${fileName} (${lastOffset} -> ${file.size})`);
+			await db.logOffsets.put({ fileName, byteOffset: 0, lastModified: file.lastModified });
+			pendingLines.delete(fileName);
+			return processGameLog(fileName, fileHandle);
+		}
+		if (file.size === lastOffset) return null;
+
+		// Diagnostic: first open
+		if (lastOffset === 0) {
+			console.log(`[LogWatcher] Opened: ${fileName} (${file.size} bytes)`);
+		}
 
 		const blob = file.slice(lastOffset);
 		const text = await blob.text();
 
+		// Partial line buffering: prepend any leftover from previous poll
+		const fullText = (pendingLines.get(fileName) ?? "") + text;
+		const lastNewline = fullText.lastIndexOf("\n");
+
+		if (lastNewline === -1) {
+			// No complete line yet -- buffer everything
+			pendingLines.set(fileName, fullText);
+			return null;
+		}
+
+		const completedText = fullText.substring(0, lastNewline + 1);
+		const remainder = fullText.substring(lastNewline + 1);
+
+		if (remainder.length > 0) {
+			pendingLines.set(fileName, remainder);
+		} else {
+			pendingLines.delete(fileName);
+		}
+
+		// Calculate how many bytes were actually consumed
+		const bytesConsumed = new TextEncoder().encode(completedText).byteLength;
+		const newOffset = lastOffset + bytesConsumed;
+
 		if (lastOffset === 0) {
-			const header = parseHeader(text);
+			const header = parseHeader(completedText);
 			if (header) {
 				const parsed = parseLogFilename(fileName);
 				await db.logSessions.put({
@@ -163,7 +199,7 @@ export function useLogWatcher() {
 			}
 		}
 
-		const events = parseEntries(text);
+		const events = parseEntries(completedText);
 		if (events.length > 0) {
 			const logEvents: LogEvent[] = events.map((e) => ({
 				sessionId,
@@ -187,11 +223,15 @@ export function useLogWatcher() {
 				eventCount: totalCount,
 				fileSize: file.size,
 			});
+
+			console.log(
+				`[LogWatcher] ${fileName}: +${events.length} events (${lastOffset} -> ${newOffset})`,
+			);
 		}
 
 		await db.logOffsets.put({
 			fileName,
-			byteOffset: file.size,
+			byteOffset: newOffset,
 			lastModified: file.lastModified,
 		});
 
@@ -210,13 +250,69 @@ export function useLogWatcher() {
 		const offset = await db.logOffsets.get(offsetKey);
 		const lastOffset = offset?.byteOffset ?? 0;
 
-		if (file.size <= lastOffset) return 0;
+		// Truncation detection
+		if (file.size < lastOffset) {
+			console.warn(`[LogWatcher] Chat truncated: ${fileName}`);
+			await db.logOffsets.put({
+				fileName: offsetKey,
+				byteOffset: 0,
+				lastModified: file.lastModified,
+			});
+			pendingLines.delete(offsetKey);
+			return processChatLog(fileName, fileHandle, gameSessionId, channel);
+		}
+		if (file.size === lastOffset) return 0;
 
-		const blob = file.slice(lastOffset);
+		// Diagnostic: first open
+		if (lastOffset === 0) {
+			console.log(`[LogWatcher] Chat opened: ${fileName} (${file.size} bytes)`);
+		}
+
+		// UTF-16 byte alignment -- ensure even byte count
+		let readEnd = file.size;
+		const bytesToRead = readEnd - lastOffset;
+		if (bytesToRead % 2 !== 0) {
+			readEnd = lastOffset + bytesToRead - 1;
+		}
+		if (readEnd <= lastOffset) return 0;
+
+		const blob = file.slice(lastOffset, readEnd);
 		const buffer = await blob.arrayBuffer();
-		const text = decodeChatLog(buffer);
 
-		const events = parseChatEntries(text, channel);
+		// Scan raw ArrayBuffer for last newline (0x0A 0x00 in UTF-16LE)
+		const bytes = new Uint8Array(buffer);
+		let lastNewlineBytePos = -1;
+		for (let i = bytes.length - 2; i >= 0; i -= 2) {
+			if (bytes[i] === 0x0a && bytes[i + 1] === 0x00) {
+				lastNewlineBytePos = i;
+				break;
+			}
+		}
+
+		if (lastNewlineBytePos === -1) {
+			// No complete line in this chunk -- buffer as text and wait
+			const text = decodeChatLog(buffer);
+			const pending = pendingLines.get(offsetKey) ?? "";
+			pendingLines.set(offsetKey, pending + text);
+			return 0;
+		}
+
+		// Split buffer at the byte position after the last newline (include the \n)
+		const completedBytes = lastNewlineBytePos + 2; // include the 0x0A 0x00
+		const completedBuffer = buffer.slice(0, completedBytes);
+		const remainderBuffer = buffer.slice(completedBytes);
+
+		const completedText = (pendingLines.get(offsetKey) ?? "") + decodeChatLog(completedBuffer);
+
+		if (remainderBuffer.byteLength > 0) {
+			pendingLines.set(offsetKey, decodeChatLog(remainderBuffer));
+		} else {
+			pendingLines.delete(offsetKey);
+		}
+
+		const newOffset = lastOffset + completedBytes;
+
+		const events = parseChatEntries(completedText, channel);
 		if (events.length > 0) {
 			const logEvents: LogEvent[] = events.map((e) => ({
 				sessionId: gameSessionId,
@@ -233,7 +329,7 @@ export function useLogWatcher() {
 
 		await db.logOffsets.put({
 			fileName: offsetKey,
-			byteOffset: file.size,
+			byteOffset: newOffset,
 			lastModified: file.lastModified,
 		});
 
@@ -266,10 +362,7 @@ export function useLogWatcher() {
 				// If offsets exist but no events in DB, reset offset to reprocess
 				const existingOffset = await db.logOffsets.get(gameFile.name);
 				if (existingOffset && existingOffset.byteOffset > 0) {
-					const eventCount = await db.logEvents
-						.where("sessionId")
-						.equals(sessionId)
-						.count();
+					const eventCount = await db.logEvents.where("sessionId").equals(sessionId).count();
 					if (eventCount === 0) {
 						await db.logOffsets.delete(gameFile.name);
 					}
@@ -294,6 +387,7 @@ export function useLogWatcher() {
 			}
 
 			// Poll all chat log files
+			let chatFileCount = 0;
 			if (chatlogs && latestSessionId) {
 				for await (const [name, entry] of chatlogs.entries()) {
 					if (entry.kind !== "file" || !name.endsWith(".txt")) continue;
@@ -301,6 +395,8 @@ export function useLogWatcher() {
 					if (!parsed) continue;
 					// Only process Cycle 5+ chat logs (started 2026-03-11)
 					if (parsed.date < "20260311") continue;
+
+					chatFileCount++;
 
 					// Find the game session for this character's chat
 					const matchingGameFile = gameFiles.find((gf) => {
@@ -311,17 +407,20 @@ export function useLogWatcher() {
 						? matchingGameFile.name.replace(".txt", "")
 						: latestSessionId;
 
-					await processChatLog(
-						name,
-						entry as FileSystemFileHandle,
-						sessionId,
-						parsed.channel,
-					);
+					await processChatLog(name, entry as FileSystemFileHandle, sessionId, parsed.channel);
 				}
 			}
 
 			if (hadNewEvents && latestSessionId) {
 				computeLiveStats(latestSessionId);
+			}
+
+			// Periodic diagnostic summary every 30 polls
+			pollCount++;
+			if (pollCount % 30 === 0) {
+				console.log(
+					`[LogWatcher] Watching ${gameFiles.length} game logs, ${chatFileCount} chat logs`,
+				);
 			}
 		} catch (err) {
 			console.error("[LogWatcher] Poll error:", err);
@@ -371,6 +470,7 @@ export function useLogWatcher() {
 		await db.logEvents.clear();
 		await db.logSessions.clear();
 		await db.logOffsets.clear();
+		pendingLines.clear();
 		setActiveSessionId(null);
 		setLiveStats({ miningRate: 0, miningOre: null, dpsDealt: 0, dpsReceived: 0 });
 		startWatching();

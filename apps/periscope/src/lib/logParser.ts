@@ -16,7 +16,7 @@ export type ParsedEvent = {
 			damage: number;
 			weapon: string;
 			hitQuality: string;
-		}
+	  }
 	| { type: "combat_received"; target: string; damage: number; hitQuality: string }
 	| { type: "miss_dealt"; target: string; weapon: string }
 	| { type: "miss_received"; target: string }
@@ -61,10 +61,11 @@ function stripMarkup(msg: string): string {
 }
 
 export function parseHeader(text: string): ParsedLogHeader | null {
+	const normalized = text.replace(/\r\n/g, "\n");
 	let characterName = "";
 	let sessionStarted = "";
 
-	for (const line of text.split("\n")) {
+	for (const line of normalized.split("\n")) {
 		const listenerMatch = line.match(HEADER_LISTENER_RE);
 		if (listenerMatch) {
 			characterName = listenerMatch[1].trim();
@@ -80,9 +81,10 @@ export function parseHeader(text: string): ParsedLogHeader | null {
 }
 
 export function parseEntries(text: string): ParsedEvent[] {
+	const normalized = text.replace(/\r\n/g, "\n");
 	const events: ParsedEvent[] = [];
 
-	for (const line of text.split("\n")) {
+	for (const line of normalized.split("\n")) {
 		const match = line.match(ENTRY_RE);
 		if (!match) continue;
 
@@ -157,7 +159,13 @@ export function parseEntries(text: string): ParsedEvent[] {
 				const stripped = stripMarkup(message);
 				const departed = stripped.match(STRUCTURE_DEPARTED_RE);
 				if (departed) {
-					events.push({ timestamp, raw, type: "structure_departed", structureName: departed[1], systemName: departed[2] });
+					events.push({
+						timestamp,
+						raw,
+						type: "structure_departed",
+						structureName: departed[1],
+						systemName: departed[2],
+					});
 					break;
 				}
 				const gateOff = stripped.match(GATE_OFFLINE_RE);
@@ -219,10 +227,11 @@ export function decodeChatLog(buffer: ArrayBuffer): string {
 }
 
 export function parseChatEntries(text: string, channel: string): ParsedEvent[] {
+	const normalized = text.replace(/\r\n/g, "\n");
 	const events: ParsedEvent[] = [];
 	let currentSystem: string | undefined;
 
-	for (const line of text.split("\n")) {
+	for (const line of normalized.split("\n")) {
 		const match = line.match(CHAT_ENTRY_RE);
 		if (!match) continue;
 
