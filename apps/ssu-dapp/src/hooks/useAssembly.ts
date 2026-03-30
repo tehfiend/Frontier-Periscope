@@ -70,13 +70,16 @@ function parseMetadata(metadata: unknown): AssemblyMetadata | null {
 	};
 }
 
-/** Parse Option<ID> field — returns the inner ID string or null */
+/** Parse Option<ID> field — returns the inner ID string or null.
+ *  Sui GraphQL JSON may represent this as: a plain string, an array, or { Some/vec: ... }. */
 function parseOptionId(value: unknown): string | null {
-	if (!value || typeof value !== "object") return null;
+	if (!value) return null;
+	if (typeof value === "string") return value;
+	if (Array.isArray(value)) return value.length > 0 ? String(value[0]) : null;
+	if (typeof value !== "object") return null;
 	const v = value as Record<string, unknown>;
 	const inner = v.Some ?? v.some ?? v.vec;
-	if (Array.isArray(inner)) return inner.length > 0 ? String(inner[0]) : null;
-	if (inner) return String(inner);
+	if (inner != null) return parseOptionId(inner);
 	return null;
 }
 
