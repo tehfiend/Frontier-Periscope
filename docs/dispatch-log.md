@@ -140,6 +140,12 @@
 
 ## 2026-03-30 -- log-reader-fixes
 - **Action:** CREATE
-- **File:** docs/plans/pending/14-log-reader-fixes.md
+- **File:** docs/plans/active/14-log-reader-fixes.md
 - **Passes:** 3 (2 with changes, pass 4 NO_CHANGES)
-- **Result:** pending -- 4-phase plan fixing log file reader/tailer bugs. Phase 1: partial line buffering and truncation reset (data loss fixes). Phase 2: \r\n line ending normalization. Phase 3: UTF-16LE byte alignment for chat logs. Phase 4: poll interval reduction (5s -> 1s) and diagnostic logging. 3 open questions remain (poll interval configurability, pending buffer persistence, logging approach). Key findings: offset advances to file.size losing partial lines, truncation check silently skips rotated files, BOM stripping in decodeChatLog breaks naive character-to-byte offset math.
+- **Result:** active -- 4-phase plan fixing log file reader/tailer bugs. Partial line buffering + truncation reset (data loss), \r\n normalization, UTF-16LE byte alignment, poll interval 5s->1s + diagnostics.
+
+## 2026-03-30 -- log-reader-fixes (resolve questions)
+- **Action:** UPDATE
+- **File:** docs/plans/active/14-log-reader-fixes.md
+- **Passes:** 1
+- **Result:** active -- resolved 3 open questions (A: hardcoded 1s interval, A: ephemeral Map for pending buffers, A: plain console with prefix)
