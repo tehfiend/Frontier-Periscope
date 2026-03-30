@@ -34,7 +34,10 @@ function getStructureKind(assemblyType: string): "gate" | "ssu" | "turret" {
 /** Build the Periscope dApp URL for a given tenant + itemId */
 function buildDappUrl(tenant: TenantId, itemId?: string): string {
 	const base = TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
-	return itemId ? `${base}&itemId=${itemId}` : base;
+	if (!itemId) return base;
+	const url = new URL(base);
+	url.searchParams.set("itemId", itemId);
+	return url.toString();
 }
 
 export function DeployExtensionPanel({

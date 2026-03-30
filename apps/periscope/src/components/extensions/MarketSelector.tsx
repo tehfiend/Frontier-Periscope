@@ -106,7 +106,7 @@ export function MarketSelector({ value, onChange }: MarketSelectorProps) {
 		let cancelled = false;
 		queryDecommissionedMarkets(client, decomPkg)
 			.then((set) => { if (!cancelled) setDecommissioned(set); })
-			.catch(() => {});
+			.catch((err) => { console.warn("[MarketSelector] Failed to query decommissioned markets:", err); });
 		return () => { cancelled = true; };
 	}, [client, addrs.decommission?.packageId]);
 
@@ -132,8 +132,8 @@ export function MarketSelector({ value, onChange }: MarketSelectorProps) {
 					});
 				}
 				setStandingsOptions(results);
-			} catch {
-				/* non-fatal */
+			} catch (err) {
+				console.warn("[MarketSelector] Failed to query standings markets:", err);
 			}
 		}
 

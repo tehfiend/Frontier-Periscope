@@ -45,6 +45,8 @@ export function SellDialog({
 
 	useEffect(() => {
 		dialogRef.current?.showModal();
+		setError(null);
+		setSuccess(null);
 	}, []);
 
 	const qty = Number(quantity) || 0;

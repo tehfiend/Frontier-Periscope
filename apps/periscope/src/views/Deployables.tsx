@@ -588,7 +588,11 @@ export function Deployables() {
 			}
 			if (!isValidTenant) return;
 
-			const assemblyModule = row.assemblyModule ?? "storage_unit";
+			if (!row.assemblyModule) {
+				setSyncStatus("Cannot toggle power: assembly module unknown -- try re-syncing first");
+				return;
+			}
+			const assemblyModule = row.assemblyModule;
 			const moduleEntry = ASSEMBLY_MODULE_MAP[assemblyModule as keyof typeof ASSEMBLY_MODULE_MAP];
 			if (!moduleEntry) {
 				setSyncStatus(`Unsupported assembly type for power toggle: ${assemblyModule}`);
@@ -690,18 +694,27 @@ export function Deployables() {
 					const tenantDapp =
 						TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
 					// Periscope dApp link: custom URL or default Periscope with itemId
-					const periscopeHref = r.dappUrl
-						? r.dappUrl.startsWith("http")
-							? r.dappUrl
-							: `https://${r.dappUrl}`
-						: r.itemId
-							? `${tenantDapp}&itemId=${r.itemId}`
-							: `${tenantDapp}&objectId=${r.objectId}`;
+					const periscopeHref = (() => {
+						if (r.dappUrl) {
+							try {
+								const parsed = new URL(r.dappUrl.startsWith("http") ? r.dappUrl : `https://${r.dappUrl}`);
+								if (parsed.protocol === "https:" || parsed.protocol === "http:") return parsed.toString();
+							} catch { /* invalid URL, fall through */ }
+						}
+						const url = new URL(tenantDapp);
+						if (r.itemId) url.searchParams.set("itemId", r.itemId);
+						else url.searchParams.set("objectId", r.objectId);
+						return url.toString();
+					})();
 					// CCP default dApp link
 					const ccpDapp = TENANTS[tenant]?.ccpDappUrl;
-					const ccpHref = r.itemId
-						? `${ccpDapp}/?tenant=${tenant}&itemId=${r.itemId}`
-						: undefined;
+					const ccpHref = (() => {
+						if (!ccpDapp || !r.itemId) return undefined;
+						const url = new URL(ccpDapp);
+						url.searchParams.set("tenant", tenant);
+						url.searchParams.set("itemId", r.itemId);
+						return url.toString();
+					})();
 					return (
 						<div className="flex items-center gap-1">
 							<a
