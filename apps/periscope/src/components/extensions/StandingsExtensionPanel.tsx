@@ -1,4 +1,4 @@
-import type { TenantId } from "@/chain/config";
+import { TENANTS, type TenantId, getWorldTarget } from "@/chain/config";
 import { buildConfigureGateStandings, buildConfigureSsuStandings } from "@/chain/transactions";
 import { ContactPicker } from "@/components/ContactPicker";
 import { db } from "@/db";
@@ -6,6 +6,7 @@ import type { StructureExtensionConfig } from "@/db/types";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
 import {
+	ASSEMBLY_MODULE_MAP,
 	REGISTRY_STANDING_LABELS,
 	discoverSsuUnifiedConfig,
 	getContractAddresses,
@@ -27,13 +28,17 @@ interface StandingsExtensionPanelProps {
 	/** "gate" | "storage_unit" | "turret" -- the structure category for config sections */
 	structureKind: "gate" | "ssu" | "turret";
 	tenant: TenantId;
-	/** Character Sui object ID (needed for turret publish flow) */
+	/** Character Sui object ID (needed for turret publish flow and metadata updates) */
 	characterId?: string;
-	/** OwnerCap object ID (needed for turret publish flow) */
+	/** OwnerCap object ID (needed for turret publish flow and metadata updates) */
 	ownerCapId?: string;
 	/** Existing config (if reconfiguring) */
 	existingConfig?: StructureExtensionConfig;
 	onConfigured?: () => void;
+	/** Update structure name during config apply */
+	newName?: string;
+	/** Update dApp URL during config apply */
+	newUrl?: string;
 }
 
 type ConfigStatus = "idle" | "building" | "signing" | "confirming" | "done" | "error";
@@ -331,6 +336,8 @@ export function StandingsExtensionPanel({
 	ownerCapId,
 	existingConfig,
 	onConfigured,
+	newName,
+	newUrl,
 }: StandingsExtensionPanelProps) {
 	// Early return for turrets -- delegate to TurretPublishFlow
 	if (structureKind === "turret") {
@@ -353,8 +360,12 @@ export function StandingsExtensionPanel({
 			assemblyType={assemblyType}
 			structureKind={structureKind}
 			tenant={tenant}
+			characterId={characterId}
+			ownerCapId={ownerCapId}
 			existingConfig={existingConfig}
 			onConfigured={onConfigured}
+			newName={newName}
+			newUrl={newUrl}
 		/>
 	);
 }
@@ -365,9 +376,13 @@ function StandingsExtensionPanelInner({
 	assemblyType,
 	structureKind,
 	tenant,
+	characterId,
+	ownerCapId,
 	existingConfig,
 	onConfigured,
-}: Omit<StandingsExtensionPanelProps, "characterId" | "ownerCapId">) {
+	newName,
+	newUrl,
+}: Omit<StandingsExtensionPanelProps, never>) {
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute, connectWallet } = useDAppKit();
 	const wallets = useWallets();
@@ -408,6 +423,84 @@ function StandingsExtensionPanelInner({
 
 	const isConfiguring = status === "building" || status === "signing" || status === "confirming";
 
+	/** Record extension in db.extensions + update deployable extensionType so the datagrid detects it. */
+	async function recordExtension(owner: string) {
+		const templateId = structureKind === "gate" ? "gate_standings" : "ssu_unified";
+		const templateName = structureKind === "gate" ? "Periscope Gate" : "Periscope SSU";
+		const addrs = getContractAddresses(tenant);
+		const contractKey = structureKind === "gate" ? addrs.gateStandings : addrs.ssuUnified;
+		const pkgId = contractKey?.packageId ?? "";
+		const witnessType = structureKind === "gate"
+			? "gate_standings::GateStandingsAuth"
+			: "ssu_unified::SsuUnifiedAuth";
+		const extensionType = pkgId ? `${pkgId}::${witnessType}` : undefined;
+
+		const now = new Date().toISOString();
+		await db.extensions.put({
+			id: `${assemblyId}-${templateId}`,
+			assemblyId,
+			assemblyType: assemblyType as "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot",
+			templateId,
+			templateName,
+			status: "authorized",
+			txDigest: "",
+			authorizedAt: now,
+			owner,
+			createdAt: now,
+			updatedAt: now,
+		});
+
+		// Also update the deployable record's extensionType directly
+		if (extensionType) {
+			const existing = await db.deployables.where("objectId").equals(assemblyId).first();
+			if (existing) {
+				await db.deployables.update(existing.id, { extensionType, updatedAt: now });
+			} else {
+				const existingAsm = await db.assemblies.where("objectId").equals(assemblyId).first();
+				if (existingAsm) {
+					await db.assemblies.update(existingAsm.id, { extensionType, updatedAt: now });
+				}
+			}
+		}
+	}
+
+	/** Append OwnerCap borrow -> metadata update -> return to an existing TX. */
+	function appendMetadataUpdates(tx: import("@mysten/sui/transactions").Transaction) {
+		if ((!newName && !newUrl) || !characterId || !ownerCapId) return;
+
+		const worldPkg = TENANTS[tenant].worldPackageId;
+		const worldTarget = getWorldTarget(tenant);
+		const entry = ASSEMBLY_MODULE_MAP[assemblyType as keyof typeof ASSEMBLY_MODULE_MAP];
+		if (!entry) return;
+
+		const fullType = `${worldPkg}::${entry.module}::${entry.type}`;
+
+		const [borrowedCap, receipt] = tx.moveCall({
+			target: `${worldTarget}::character::borrow_owner_cap`,
+			typeArguments: [fullType],
+			arguments: [tx.object(characterId), tx.object(ownerCapId)],
+		});
+
+		if (newName) {
+			tx.moveCall({
+				target: `${worldTarget}::${entry.module}::update_metadata_name`,
+				arguments: [tx.object(assemblyId), borrowedCap, tx.pure.string(newName)],
+			});
+		}
+		if (newUrl) {
+			tx.moveCall({
+				target: `${worldTarget}::${entry.module}::update_metadata_url`,
+				arguments: [tx.object(assemblyId), borrowedCap, tx.pure.string(newUrl)],
+			});
+		}
+
+		tx.moveCall({
+			target: `${worldTarget}::character::return_owner_cap`,
+			typeArguments: [fullType],
+			arguments: [tx.object(characterId), borrowedCap, receipt],
+		});
+	}
+
 	async function handleApply() {
 		// Gates require a registry; SSUs can work with just a market
 		if (structureKind === "gate" && !registryId) return;
@@ -446,6 +539,7 @@ function StandingsExtensionPanelInner({
 					senderAddress,
 					tollCoinType: gateConfig.tollCoinType,
 				});
+				appendMetadataUpdates(tx);
 			} else if (registryId) {
 				tx = buildConfigureSsuStandings({
 					tenant,
@@ -457,6 +551,7 @@ function StandingsExtensionPanelInner({
 					ssuConfigId: existingConfig?.ssuConfigId,
 					marketId: ssuConfig.marketId || undefined,
 				});
+				appendMetadataUpdates(tx);
 
 				// If reconfiguring, the old config may be from a previous (incompatible)
 				// package version. Try signing; on TypeMismatch, retry with create-new.
@@ -479,6 +574,7 @@ function StandingsExtensionPanelInner({
 								ssuConfigId: undefined,
 								marketId: ssuConfig.marketId || undefined,
 							});
+							appendMetadataUpdates(tx);
 							isNewSsuConfig = true;
 							setStatus("signing");
 							await signAndExecute({ transaction: tx });
@@ -490,6 +586,7 @@ function StandingsExtensionPanelInner({
 			} else {
 				// SSU market-only -- no on-chain standings TX, just save locally
 				await saveConfigToDb();
+				await recordExtension(senderAddress);
 				setStatus("done");
 				onConfigured?.();
 				return;
@@ -520,6 +617,7 @@ function StandingsExtensionPanelInner({
 			}
 
 			await saveConfigToDb(resolvedConfigId);
+			await recordExtension(senderAddress);
 
 			setStatus("done");
 			onConfigured?.();

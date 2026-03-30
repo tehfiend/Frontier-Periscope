@@ -9,7 +9,10 @@ export interface TenantConfig {
 	worldPublishedAt?: string;
 	evePackageId: string;
 	datahubUrl: string;
+	/** Periscope dApp base URL */
 	dappUrl: string;
+	/** CCP default smart deployable dApp base URL */
+	ccpDappUrl: string;
 }
 
 export const TENANTS = {
@@ -19,6 +22,7 @@ export const TENANTS = {
 		evePackageId: "0x2a66a89b5a735738ffa4423ac024d23571326163f324f9051557617319e59d60",
 		datahubUrl: "world-api-stillness.live.tech.evefrontier.com",
 		dappUrl: "https://dapp.frontierperiscope.com/?tenant=stillness",
+		ccpDappUrl: "https://dapps.evefrontier.com",
 	},
 	utopia: {
 		name: "Utopia",
@@ -27,6 +31,7 @@ export const TENANTS = {
 		evePackageId: "0xf0446b93345c1118f21239d7ac58fb82d005219b2016e100f074e4d17162a465",
 		datahubUrl: "world-api-utopia.uat.pub.evefrontier.com",
 		dappUrl: "https://dapp.frontierperiscope.com/?tenant=utopia",
+		ccpDappUrl: "https://dapps.evefrontier.com",
 	},
 } as const satisfies Record<string, TenantConfig>;
 
@@ -297,12 +302,43 @@ export interface ExtensionInfo {
 	template?: ExtensionTemplate;
 }
 
+/** Map template IDs to their contract address key in getContractAddresses(). */
+const TEMPLATE_CONTRACT_KEY: Record<string, string> = {
+	gate_standings: "gateStandings",
+	ssu_unified: "ssuUnified",
+	turret_standings: "turretPriority",
+};
+
+/** Collect all known package IDs (current, original, previous) for a template on a tenant. */
+function getAllPackageIds(template: ExtensionTemplate, tenant: TenantId): Set<string> {
+	const ids = new Set<string>();
+	const staticId = template.packageIds[tenant];
+	if (staticId) ids.add(staticId);
+
+	const contractKey = TEMPLATE_CONTRACT_KEY[template.id];
+	if (contractKey) {
+		const addrs = getContractAddresses(tenant);
+		const entry = addrs[contractKey as keyof typeof addrs] as
+			| { packageId?: string; originalPackageId?: string; previousOriginalPackageIds?: string[] }
+			| undefined;
+		if (entry) {
+			if (entry.packageId) ids.add(entry.packageId);
+			if (entry.originalPackageId) ids.add(entry.originalPackageId);
+			for (const prev of entry.previousOriginalPackageIds ?? []) {
+				ids.add(prev);
+			}
+		}
+	}
+	return ids;
+}
+
 /**
  * Classify an on-chain extension TypeName against known Periscope templates.
  *
  * The on-chain value looks like "0xabc123::gate_standings::GateStandingsAuth".
  * We match the module::Type suffix against each template's witnessType, then
- * check whether the package ID prefix matches the current deployment for this tenant.
+ * check whether the package ID prefix matches any known deployment for this tenant
+ * (current, original, or previous original package IDs).
  */
 export function classifyExtension(
 	extensionType: string | undefined | null,
@@ -315,13 +351,16 @@ export function classifyExtension(
 		// Check if the witness type path matches (e.g. "gate_standings::GateStandingsAuth")
 		if (!extensionType.includes(`::${template.witnessType}`)) continue;
 
-		const currentPkgId = template.packageIds[tenant];
-		if (currentPkgId && extensionType.startsWith(currentPkgId)) {
-			return { status: "periscope", template };
+		// Check all known package IDs for this template on this tenant
+		const allIds = getAllPackageIds(template, tenant);
+		for (const pkgId of allIds) {
+			if (extensionType.startsWith(pkgId)) {
+				return { status: "periscope", template };
+			}
 		}
 		// For templates with no canonical packageId (e.g. turrets -- per-user published),
 		// check the caller-supplied knownPackageId from the extension config
-		if (!currentPkgId && knownPackageId && extensionType.startsWith(knownPackageId)) {
+		if (allIds.size === 0 && knownPackageId && extensionType.startsWith(knownPackageId)) {
 			return { status: "periscope", template };
 		}
 		// Witness matches but package ID differs -- outdated deployment

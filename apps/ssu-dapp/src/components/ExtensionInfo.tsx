@@ -1,3 +1,4 @@
+import type { AssemblyMetadata } from "@/hooks/useAssembly";
 import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
@@ -18,6 +19,10 @@ interface ExtensionInfoProps {
 	ssuObjectId?: string;
 	/** Existing config from legacy ssu_standings (for pre-filling deploy form). */
 	ssuConfig?: SsuConfigResult;
+	/** Current on-chain metadata for pre-filling name/URL during deploy. */
+	metadata?: AssemblyMetadata | null;
+	/** In-game item ID for constructing the dApp URL. */
+	itemId?: string | null;
 }
 
 /**
@@ -31,6 +36,8 @@ export function ExtensionInfo({
 	ownerCap,
 	ssuObjectId,
 	ssuConfig,
+	metadata,
+	itemId,
 }: ExtensionInfoProps) {
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
@@ -44,6 +51,8 @@ export function ExtensionInfo({
 	const [marketId, setMarketId] = useState(ssuConfig?.marketId ?? "");
 	const [minDeposit, setMinDeposit] = useState(ssuConfig?.minDeposit ?? 3);
 	const [minWithdraw, setMinWithdraw] = useState(ssuConfig?.minWithdraw ?? 3);
+	const [ssuName, setSsuName] = useState(metadata?.name ?? "");
+	const [setDappUrl, setSetDappUrl] = useState(!!metadata?.url);
 
 	const canRevoke = extensionType && isOwner && characterObjectId && ownerCap && ssuObjectId;
 	const canDeploy = !extensionType && isOwner && characterObjectId && ownerCap && ssuObjectId && account;
@@ -138,14 +147,34 @@ export function ExtensionInfo({
 				arguments: [tx.object(ssuObjectId), borrowedCap],
 			});
 
-			// Step 3: Return OwnerCap
+			// Step 3: Update metadata name + dApp URL (while OwnerCap is borrowed)
+			if (ssuName && ssuName !== (metadata?.name ?? "")) {
+				tx.moveCall({
+					target: `${worldPkg}::storage_unit::update_metadata_name`,
+					arguments: [tx.object(ssuObjectId), borrowedCap, tx.pure.string(ssuName)],
+				});
+			}
+			if (setDappUrl) {
+				const tenant = getTenant();
+				const generatedUrl = itemId
+					? `https://dapp.frontierperiscope.com/?tenant=${tenant}&itemId=${itemId}`
+					: `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
+				if (generatedUrl !== (metadata?.url ?? "")) {
+					tx.moveCall({
+						target: `${worldPkg}::storage_unit::update_metadata_url`,
+						arguments: [tx.object(ssuObjectId), borrowedCap, tx.pure.string(generatedUrl)],
+					});
+				}
+			}
+
+			// Step 4: Return OwnerCap
 			tx.moveCall({
 				target: `${worldPkg}::character::return_owner_cap`,
 				typeArguments: [`${worldType}::storage_unit::StorageUnit`],
 				arguments: [tx.object(characterObjectId), borrowedCap, receipt],
 			});
 
-			// Step 4: Create SsuUnifiedConfig (with or without market)
+			// Step 5: Create SsuUnifiedConfig (with or without market)
 			const configArgs = [
 				tx.pure.id(ssuObjectId),
 				tx.pure.id(registryId),
@@ -231,6 +260,28 @@ export function ExtensionInfo({
 
 					{showDeploy && canDeploy && (
 						<div className="space-y-3 rounded-lg border border-zinc-700 bg-zinc-800/50 p-3">
+							<div>
+								<label htmlFor="deploy-name" className="mb-1 block text-xs text-zinc-500">
+									Structure Name
+								</label>
+								<input
+									id="deploy-name"
+									type="text"
+									value={ssuName}
+									onChange={(e) => setSsuName(e.target.value)}
+									placeholder="Storage unit name"
+									className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+								/>
+							</div>
+							<label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+								<input
+									type="checkbox"
+									checked={setDappUrl}
+									onChange={(e) => setSetDappUrl(e.target.checked)}
+									className="rounded border-zinc-600 accent-cyan-500"
+								/>
+								Set Periscope dApp URL
+							</label>
 							<div>
 								<label className="mb-1 block text-xs text-zinc-500">
 									Standings Registry *

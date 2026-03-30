@@ -27,6 +27,7 @@ export function useSignAndExecute(): {
 				queryClient.invalidateQueries({ queryKey: ["itemNames"] });
 				queryClient.invalidateQueries({ queryKey: ["ownerCap"] });
 				queryClient.invalidateQueries({ queryKey: ["ssu-inventories"] });
+				queryClient.invalidateQueries({ queryKey: ["ssu-config"] });
 				queryClient.invalidateQueries({ queryKey: ["marketListings"] });
 				queryClient.invalidateQueries({ queryKey: ["marketBuyOrders"] });
 				queryClient.invalidateQueries({ queryKey: ["ownedCoins"] });

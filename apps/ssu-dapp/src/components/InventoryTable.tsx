@@ -143,7 +143,7 @@ function ItemRow({
 	onTransfer?: (item: InventoryItem) => void;
 	onSell?: (item: InventoryItem) => void;
 }) {
-	const totalVolume = (item.volume * item.quantity) / 1000;
+	const totalVolume = Math.round((item.volume * item.quantity) / 1000);
 	const hasActions = !!onTransfer || !!onSell;
 
 	return (

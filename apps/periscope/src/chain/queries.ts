@@ -9,6 +9,7 @@ export interface OwnedAssembly {
 	type: "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot";
 	typeId: number;
 	itemId?: string;
+	name?: string;
 	status: string;
 	extensionType?: string;
 	dappUrl?: string;
@@ -62,6 +63,31 @@ function parseAssemblyType(typeStr: string): "turret" | "gate" | "storage_unit" 
 	if (typeStr.includes("::storage_unit::StorageUnit")) return "storage_unit";
 	if (typeStr.includes("::network_node::NetworkNode")) return "network_node";
 	return null;
+}
+
+/** Parse the extension field (Option<TypeName>) from GraphQL JSON.
+ *  Sui represents Option<TypeName> in various ways depending on version:
+ *  - Plain string: "pkg::module::Type"
+ *  - TypeName object: { name: "pkg::module::Type" }
+ *  - Array (Option as vec): [{ name: "..." }] or ["..."]
+ *  - Option wrapper: { Some: { name: "..." } } or { vec: [...] }
+ */
+function parseExtension(value: unknown): string | undefined {
+	if (!value) return undefined;
+	if (typeof value === "string") return value;
+	// Array (Option<T> serialized as vec<T>)
+	if (Array.isArray(value)) {
+		if (value.length === 0) return undefined;
+		return parseExtension(value[0]);
+	}
+	if (typeof value !== "object") return undefined;
+	const v = value as Record<string, unknown>;
+	// Direct TypeName: { name: "pkg::module::Type" }
+	if (typeof v.name === "string") return v.name;
+	// Option wrapper: { Some: ... } or { vec: [...] }
+	const inner = v.Some ?? v.some ?? v.vec;
+	if (inner != null) return parseExtension(inner);
+	return undefined;
 }
 
 // ── Discovery Queries ───────────────────────────────────────────────────────
@@ -177,10 +203,9 @@ export async function discoverCharacterAndAssemblies(
 						type: at.kind,
 						typeId: Number(assemblyFields.type_id) || 0,
 						itemId: keyObj?.item_id ? String(keyObj.item_id) : undefined,
+						name: metaObj?.name ? String(metaObj.name) : undefined,
 						status: extractStatus(assemblyFields.status),
-						extensionType: assemblyFields.extension
-							? String(assemblyFields.extension)
-							: undefined,
+						extensionType: parseExtension(assemblyFields.extension),
 						dappUrl: metaObj?.url ? String(metaObj.url) : undefined,
 						ownerCapId: cap.objectId,
 						energySourceId: assemblyFields.energy_source_id
@@ -239,10 +264,9 @@ export async function discoverCharacterAndAssemblies(
 							type: assemblyKind,
 							typeId: Number(assemblyFields.type_id) || 0,
 							itemId: keyObj2?.item_id ? String(keyObj2.item_id) : undefined,
+							name: metaObj2?.name ? String(metaObj2.name) : undefined,
 							status: extractStatus(assemblyFields.status),
-							extensionType: assemblyFields.extension
-								? String(assemblyFields.extension)
-								: undefined,
+							extensionType: parseExtension(assemblyFields.extension),
 							dappUrl: metaObj2?.url ? String(metaObj2.url) : undefined,
 							ownerCapId: obj.objectId,
 							energySourceId: assemblyFields.energy_source_id

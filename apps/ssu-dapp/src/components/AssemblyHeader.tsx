@@ -67,6 +67,7 @@ export function AssemblyHeader({
 						address={assembly.objectId}
 						sliceStart={10}
 						sliceEnd={6}
+						explorerUrl={`https://suiscan.xyz/testnet/object/${assembly.objectId}`}
 						className="text-xs text-zinc-600"
 					/>
 				</div>

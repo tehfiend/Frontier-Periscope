@@ -36,6 +36,11 @@ const dAppKit = createDAppKit({
  * Priority: itemId+tenant derivation > VITE_OBJECT_ID
  */
 function resolveObjectId(): string | null {
+	// Direct object ID from URL param takes priority
+	const params = new URLSearchParams(window.location.search);
+	const directId = params.get("objectId");
+	if (directId) return directId;
+
 	const itemId = getItemId();
 	const tenant = getTenant();
 
@@ -71,11 +76,8 @@ export function App() {
 								<div className="text-center">
 									<p className="text-sm text-zinc-400">No storage unit specified</p>
 									<p className="mt-2 text-xs text-zinc-600">
-										Add <code className="text-zinc-400">?itemId=</code> and{" "}
-										<code className="text-zinc-400">&tenant=</code> to the URL,
-										<br />
-										or set <code className="text-zinc-400">VITE_OBJECT_ID</code> environment
-										variable.
+										Add <code className="text-zinc-400">?objectId=</code> or{" "}
+										<code className="text-zinc-400">?itemId=&tenant=</code> to the URL.
 									</p>
 								</div>
 							</div>

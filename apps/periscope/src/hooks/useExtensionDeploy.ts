@@ -27,6 +27,10 @@ export function useExtensionDeploy() {
 		tenant: TenantId;
 		/** Standings config for new-style extensions */
 		standingsConfig?: Partial<StructureExtensionConfig>;
+		/** Update structure name during authorization */
+		newName?: string;
+		/** Update dApp URL during authorization */
+		newUrl?: string;
 	}) {
 		if (!account) return;
 
@@ -43,6 +47,8 @@ export function useExtensionDeploy() {
 				characterId: params.characterId,
 				ownerCapId: params.ownerCapId,
 				senderAddress: account.address,
+				newName: params.newName,
+				newUrl: params.newUrl,
 			});
 
 			setStatus("signing");

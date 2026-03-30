@@ -7,13 +7,19 @@ import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { buildEscrowAndList, formatBaseUnits, parseDisplayPrice } from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
+export interface PlayerSellInfo {
+	characterObjectId: string;
+}
+
 interface SellDialogProps {
 	item: InventoryItem;
 	ssuObjectId: string;
 	ssuConfig: SsuConfigResult;
 	coinType: string;
-	/** SSU owner's Character object ID (for escrow TX builders). */
+	/** SSU owner's Character object ID (for owner sell). */
 	ownerCharacterObjectId: string | null;
+	/** When set, sell from the player's inventory using their character. */
+	playerSell?: PlayerSellInfo;
 	onClose: () => void;
 }
 
@@ -23,6 +29,7 @@ export function SellDialog({
 	ssuConfig,
 	coinType,
 	ownerCharacterObjectId,
+	playerSell,
 	onClose,
 }: SellDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -45,10 +52,13 @@ export function SellDialog({
 	const totalValue = priceBase * BigInt(qty);
 	const maxQty = item.quantity;
 
+	// escrow_and_list uses the passed character to determine which inventory to withdraw from
+	const characterObjectId = playerSell?.characterObjectId ?? ownerCharacterObjectId;
+
 	async function handleSell() {
 		if (!account?.address || !ssuConfig.marketId || !coinType) return;
-		if (!ownerCharacterObjectId) {
-			setError("SSU owner character not resolved");
+		if (!characterObjectId) {
+			setError("Character not resolved");
 			return;
 		}
 		if (qty <= 0 || qty > maxQty) {
@@ -68,7 +78,7 @@ export function SellDialog({
 				ssuUnifiedPackageId: ssuConfig.packageId,
 				ssuConfigId: ssuConfig.ssuConfigId,
 				ssuObjectId,
-				characterObjectId: ownerCharacterObjectId,
+				characterObjectId,
 				coinType,
 				marketId: ssuConfig.marketId,
 				typeId: item.typeId,
