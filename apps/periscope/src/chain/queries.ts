@@ -6,7 +6,7 @@ import { type TenantId, moveType } from "./config";
 
 export interface OwnedAssembly {
 	objectId: string;
-	type: "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot";
+	type: "turret" | "gate" | "storage_unit" | "smart_storage_unit" | "network_node" | "protocol_depot" | "assembly";
 	typeId: number;
 	itemId?: string;
 	name?: string;
@@ -57,11 +57,12 @@ function extractStatus(statusObj: unknown): string {
 	return "unknown";
 }
 
-function parseAssemblyType(typeStr: string): "turret" | "gate" | "storage_unit" | "network_node" | null {
+function parseAssemblyType(typeStr: string): "turret" | "gate" | "storage_unit" | "network_node" | "assembly" | null {
 	if (typeStr.includes("::turret::Turret")) return "turret";
 	if (typeStr.includes("::gate::Gate")) return "gate";
 	if (typeStr.includes("::storage_unit::StorageUnit")) return "storage_unit";
 	if (typeStr.includes("::network_node::NetworkNode")) return "network_node";
+	if (typeStr.includes("::assembly::Assembly")) return "assembly";
 	return null;
 }
 
@@ -179,6 +180,7 @@ export async function discoverCharacterAndAssemblies(
 		{ kind: "gate" as const, module: "gate", type: "Gate" },
 		{ kind: "storage_unit" as const, module: "storage_unit", type: "StorageUnit" },
 		{ kind: "network_node" as const, module: "network_node", type: "NetworkNode" },
+		{ kind: "assembly" as const, module: "assembly", type: "Assembly" },
 	];
 
 	for (const at of assemblyTypes) {

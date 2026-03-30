@@ -127,21 +127,6 @@ export function getExtensionEventTypes(tenant: TenantId) {
 	const addrs = getContractAddresses(tenant);
 	const events: Record<string, string> = {};
 
-	// ── SSU Market (use originalPackageId for event queries) ────────────
-	const ssuMarketPkg = addrs.ssuMarket?.originalPackageId;
-	if (ssuMarketPkg) {
-		events.SsuMarketBuyOrderFilled = `${ssuMarketPkg}::ssu_market::BuyOrderFilledEvent`;
-		events.SsuMarketTransfer = `${ssuMarketPkg}::ssu_market::TransferEvent`;
-		events.SsuMarketSellListingCancelled = `${ssuMarketPkg}::ssu_market::SellListingCancelledEvent`;
-	}
-
-	// ── Bounty Board ───────────────────────────────────────────────────
-	const bountyPkg = addrs.bountyBoard?.packageId;
-	if (bountyPkg) {
-		events.BountyPosted = `${bountyPkg}::bounty_board::BountyPostedEvent`;
-		events.BountyClaimed = `${bountyPkg}::bounty_board::BountyClaimedEvent`;
-		events.BountyCancelled = `${bountyPkg}::bounty_board::BountyCancelledEvent`;
-	}
 
 	// ── Gate Unified (toll + access) ───────────────────────────────────
 	const gateUnifiedPkg = addrs.gateUnified?.packageId;
@@ -156,13 +141,6 @@ export function getExtensionEventTypes(tenant: TenantId) {
 		events.TollCollected = `${gateTollPkg}::gate_toll::TollCollectedEvent`;
 	}
 
-	// ── Lease ──────────────────────────────────────────────────────────
-	const leasePkg = addrs.lease?.packageId;
-	if (leasePkg) {
-		events.LeaseCreated = `${leasePkg}::lease::LeaseCreatedEvent`;
-		events.RentCollected = `${leasePkg}::lease::RentCollectedEvent`;
-		events.LeaseCancelled = `${leasePkg}::lease::LeaseCancelledEvent`;
-	}
 
 	// ── Exchange ───────────────────────────────────────────────────────
 	const exchangePkg = addrs.exchange?.packageId;
@@ -221,7 +199,8 @@ export type AssemblyKind =
 	| "storage_unit"
 	| "smart_storage_unit"
 	| "network_node"
-	| "protocol_depot";
+	| "protocol_depot"
+	| "assembly";
 
 export interface ExtensionTemplate {
 	id: string;
