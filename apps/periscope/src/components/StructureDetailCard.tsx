@@ -82,15 +82,20 @@ export function StructureDetailCard({
 
 	const tenantDapp =
 		TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
-	const dappHref = row.dappUrl
-		? row.dappUrl.startsWith("http")
-			? row.dappUrl
-			: `https://${row.dappUrl}`
-		: row.itemId
-			? `${tenantDapp}&itemId=${row.itemId}`
-			: row.ownership === "mine"
-				? tenantDapp
-				: null;
+	const dappHref = (() => {
+		if (row.dappUrl) {
+			try {
+				const parsed = new URL(row.dappUrl.startsWith("http") ? row.dappUrl : `https://${row.dappUrl}`);
+				if (parsed.protocol === "https:" || parsed.protocol === "http:") return parsed.toString();
+			} catch { /* invalid URL, fall through */ }
+		}
+		if (row.itemId) {
+			const url = new URL(tenantDapp);
+			url.searchParams.set("itemId", row.itemId);
+			return url.toString();
+		}
+		return row.ownership === "mine" ? tenantDapp : null;
+	})();
 
 	return (
 		<div className="mt-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4">

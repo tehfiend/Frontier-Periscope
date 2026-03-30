@@ -23,6 +23,10 @@ const pendingLines = new Map<string, string>();
 /** Poll counter for periodic diagnostic summaries */
 let pollCount = 0;
 
+/** Consecutive poll error counter -- stop polling after too many failures */
+let consecutiveErrors = 0;
+const MAX_CONSECUTIVE_ERRORS = 5;
+
 export function useLogWatcher() {
 	const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -34,6 +38,7 @@ export function useLogWatcher() {
 			clearInterval(intervalRef.current);
 			intervalRef.current = null;
 		}
+		pendingLines.clear();
 		setIsWatching(false);
 	}, [setIsWatching]);
 
@@ -411,6 +416,9 @@ export function useLogWatcher() {
 				}
 			}
 
+			// Reset error counter on successful poll
+			consecutiveErrors = 0;
+
 			if (hadNewEvents && latestSessionId) {
 				computeLiveStats(latestSessionId);
 			}
@@ -423,9 +431,14 @@ export function useLogWatcher() {
 				);
 			}
 		} catch (err) {
-			console.error("[LogWatcher] Poll error:", err);
+			consecutiveErrors++;
+			console.error(`[LogWatcher] Poll error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, err);
+			if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+				console.error("[LogWatcher] Too many consecutive errors, stopping poller");
+				stopWatching();
+			}
 		}
-	}, [setActiveSessionId, computeLiveStats]);
+	}, [setActiveSessionId, computeLiveStats, stopWatching]);
 
 	const startWatching = useCallback(() => {
 		if (intervalRef.current) return;

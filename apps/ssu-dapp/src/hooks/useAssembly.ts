@@ -95,7 +95,9 @@ function parseExtension(value: unknown): string | null {
 	if (Array.isArray(inner)) return inner.length > 0 ? String(inner[0]) : null;
 	if (inner && typeof inner === "object") {
 		const t = inner as Record<string, unknown>;
-		return String(t.name ?? t.module_name ?? inner);
+		if (typeof t.name === "string") return t.name;
+		if (typeof t.module_name === "string") return t.module_name;
+		return null;
 	}
 	if (inner) return String(inner);
 	return null;

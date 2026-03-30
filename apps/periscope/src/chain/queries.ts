@@ -159,7 +159,8 @@ export async function discoverCharacterAndAssemblies(
 					characterItemId: keyFields.item_id ? String(keyFields.item_id) : undefined,
 					tribeId: charFields.tribe_id != null ? Number(charFields.tribe_id) : undefined,
 				};
-			} catch {
+			} catch (err) {
+				console.warn(`[queries] Failed to fetch Character ${characterId}:`, err);
 				character = {
 					characterObjectId: characterId,
 					playerProfileId: profiles[0].objectId,
@@ -212,7 +213,8 @@ export async function discoverCharacterAndAssemblies(
 							? String(assemblyFields.energy_source_id)
 							: undefined,
 					});
-				} catch {
+				} catch (err) {
+					console.warn(`[queries] Failed to fetch assembly ${assemblyId}:`, err);
 					assemblies.push({
 						objectId: assemblyId,
 						type: at.kind,
@@ -273,7 +275,8 @@ export async function discoverCharacterAndAssemblies(
 								? String(assemblyFields.energy_source_id)
 								: undefined,
 						});
-					} catch {
+					} catch (err) {
+						console.warn(`[queries] Failed to fetch assembly ${assemblyId}:`, err);
 						assemblies.push({
 							objectId: assemblyId,
 							type: assemblyKind,

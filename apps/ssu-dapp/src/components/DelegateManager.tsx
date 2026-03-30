@@ -121,8 +121,8 @@ export function DelegateManager({ ssuConfig }: DelegateManagerProps) {
 		} else {
 			// Manual address entry
 			const addr = manualAddress.trim();
-			if (!addr.startsWith("0x") || addr.length < 10) {
-				setError("Enter a valid Sui address");
+			if (!/^0x[0-9a-fA-F]{64}$/.test(addr)) {
+				setError("Enter a valid Sui address (0x + 64 hex characters)");
 				return;
 			}
 			delegateAddress = addr;
