@@ -36,7 +36,7 @@ The log tailing system lives in three files:
 
 3. **5s poll interval (line 15):** `POLL_INTERVAL = 5000` creates noticeable lag for real-time combat DPS and mining rate displays. Best practice for game telemetry is 250-750ms.
 
-4. **UTF-16 byte-split hazard (line 214-216 in logParser.ts, line 215 in processChatLog):** Chat logs are UTF-16LE (2 bytes per code unit). `file.slice(lastOffset)` could yield an odd byte count if the file was written mid-character, producing garbled text from `TextDecoder("utf-16le")`.
+4. **UTF-16 byte-split hazard (logParser.ts lines 215-218 `decodeChatLog`, useLogWatcher.ts lines 215-217 slice/decode):** Chat logs are UTF-16LE (2 bytes per code unit). `file.slice(lastOffset)` could yield an odd byte count if the file was written mid-character, producing garbled text from `TextDecoder("utf-16le")`.
 
 5. **No diagnostic logging:** No visibility into file opens, truncation resets, encoding issues, or error states. The only logging is `console.error("[LogWatcher] Poll error:", err)` at line 327.
 
@@ -67,7 +67,7 @@ After this plan is implemented:
 | UTF-16 byte alignment | Round down to even byte count before slicing | Simple, zero-cost guard. The excluded odd byte will be read on next poll when the game client finishes writing the character. |
 | Poll interval default | 1000ms | Balances responsiveness (combat/mining updates) with CPU/IO cost. 250ms is aggressive for a browser tab; 1s is a good compromise. |
 | `\r\n` normalization | In parser functions, not in the hook | Keep parsing logic self-contained. The hook passes raw text; parsers normalize before splitting. |
-| Diagnostic log format | `[LogWatcher]` and `[LogParser]` prefixed console.log/warn | Consistent with existing `[LogWatcher]` error pattern at line 327. No external logging dependency needed. |
+| Diagnostic log format | `[LogWatcher]` prefixed console.log/warn | Consistent with existing `[LogWatcher]` error pattern at line 327. No external logging dependency needed. All diagnostics are in the hook, not the parser. |
 | Pending buffer for chat logs | Same Map, keyed by `chat:${fileName}` | Chat logs need the same partial-line protection. Key prefix matches existing offset key pattern (line 209). |
 
 ## Implementation Phases
@@ -95,22 +95,31 @@ This phase fixes the two data-loss bugs (partial lines and truncation).
    - Change `if (file.size <= lastOffset) return null;` to:
      ```ts
      if (file.size < lastOffset) {
-       // File was truncated or rotated -- reset
+       // File was truncated or rotated -- reset and re-read from start
        console.warn(`[LogWatcher] File truncated: ${fileName} (${lastOffset} -> ${file.size})`);
        await db.logOffsets.put({ fileName, byteOffset: 0, lastModified: file.lastModified });
        pendingLines.delete(fileName);
-       return processGameLog(fileName, fileHandle); // re-enter with offset 0
+       // Don't recurse -- just reset offset. Next poll will read from 0.
+       // If file.size > 0, we can process it now by falling through with lastOffset = 0.
+       // Re-fetch offset so the rest of the function uses 0.
+       return processGameLog(fileName, fileHandle);
      }
      if (file.size === lastOffset) return null;
      ```
+   - Note: The recursive call is safe because `lastOffset` will be 0 on re-entry (just written to DB), and `file.size >= 0` always, so the `file.size < lastOffset` branch cannot trigger again. However, if the added complexity is a concern, an alternative is to simply reset and return null, letting the next poll pick up the data.
 
 4. Apply the same partial-line buffering pattern to `processChatLog()`:
-   - Use key `chat:${fileName}` for `pendingLines` (matches offset key pattern)
+   - Use key `chat:${fileName}` for `pendingLines` (matches offset key pattern at line 209)
    - Same logic: prepend pending, split at last newline, store remainder
-   - For byte offset calculation, use `remainder.length * 2` subtracted from file.size (UTF-16LE = 2 bytes per code unit), but see Phase 3 for the proper UTF-16 alignment
+   - **Important:** BOM stripping in `decodeChatLog()` removes `\ufeff` characters after decoding, so decoded text length does not directly correspond to byte count. For UTF-16LE byte calculation, work with the raw buffer: find the last `\n` (0x0A 0x00 in UTF-16LE) byte position in the ArrayBuffer, then calculate offset from that. Alternatively, re-encode completed text to get byte length (see Phase 3).
 
 5. In `processChatLog()`, fix truncation handling:
    - Same pattern as game logs: reset offset to 0 when `file.size < lastOffset`
+
+6. In `clearAndReimport()` (line 369), clear the `pendingLines` Map alongside `db.logOffsets.clear()`:
+   ```ts
+   pendingLines.clear();
+   ```
 
 ### Phase 2: Line ending normalization
 
@@ -136,11 +145,20 @@ This phase fixes the two data-loss bugs (partial lines and truncation).
    const blob = file.slice(lastOffset, readEnd);
    ```
 
-2. Update the offset storage to use `readEnd` (the actual bytes read) rather than `file.size`
+2. Update the offset storage to use the actual bytes consumed (not `file.size` or `readEnd`), calculated from the pending buffer logic.
 
-3. Adjust the pending buffer byte calculation to account for UTF-16LE encoding:
-   - When calculating bytes consumed from completed text, multiply character count by 2
-   - Final offset = `lastOffset + (completedText.length * 2)`
+3. For UTF-16LE byte offset calculation, use `TextEncoder("utf-16le")` re-encoding of completed text to get exact byte count. However, `TextEncoder` only supports UTF-8 in browsers. Instead, use a simpler approach:
+   - Scan the raw `ArrayBuffer` for the last newline (byte sequence `0x0A, 0x00` in UTF-16LE)
+   - The byte offset of the character after the last `\n` is the dividing line between completed and pending text
+   - Decode only the completed portion, store the remainder byte count for the next poll
+   - This avoids BOM-stripping interference entirely because we track byte positions, not character positions
+
+   Alternative (simpler but slightly less precise):
+   - After BOM stripping and line splitting, count `\ufeff` occurrences in the raw decoded text (before stripping) to compute the BOM byte overhead: `bomCount * 2`
+   - Then: `bytesConsumed = completedText.length * 2 + bomCount * 2`
+   - This works because each BOM is one UTF-16LE code unit (2 bytes) that was removed from the decoded string
+
+   **Recommendation:** Use the raw ArrayBuffer scan approach. It's more robust and avoids coupling to BOM-stripping internals.
 
 ### Phase 4: Poll interval and diagnostics
 
