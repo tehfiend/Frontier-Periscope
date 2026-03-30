@@ -21,6 +21,7 @@ export const ASSEMBLY_MODULE_MAP: Record<string, { module: string; type: string 
 	smart_storage_unit: { module: "storage_unit", type: "StorageUnit" },
 	network_node: { module: "network_node", type: "NetworkNode" },
 	protocol_depot: { module: "storage_unit", type: "StorageUnit" },
+	assembly: { module: "assembly", type: "Assembly" },
 };
 
 // ── Params ──────────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ASSEMBLY_TYPE_IDS, TENANTS, type TenantId, classifyExtension, getWorldTarget } from "@/chain/config";
-import { ASSEMBLY_MODULE_MAP } from "@tehfrontier/chain-shared";
+import { ASSEMBLY_MODULE_MAP, getObjectJson } from "@tehfrontier/chain-shared";
 import { Transaction } from "@mysten/sui/transactions";
 import {
 	crossReferenceManifestLocations,
@@ -622,7 +622,15 @@ export function Deployables() {
 			try {
 				const worldPkg = TENANTS[tenant as TenantId].worldPackageId;
 				const worldTarget = getWorldTarget(tenant as TenantId);
-				const fullType = `${worldPkg}::${moduleEntry.module}::${moduleEntry.type}`;
+
+				// Resolve actual on-chain type -- some assemblies use assembly::Assembly
+				// instead of the specific module type (e.g. turret::Turret)
+				const objResult = await getObjectJson(client, row.objectId);
+				const onChainType = objResult.type ?? "";
+				const resolvedModule = onChainType.includes("::assembly::Assembly")
+					? { module: "assembly", type: "Assembly" }
+					: moduleEntry;
+				const fullType = `${worldPkg}::${resolvedModule.module}::${resolvedModule.type}`;
 
 				// Discover EnergyConfig singleton
 				const ecResult: {
@@ -647,8 +655,8 @@ export function Deployables() {
 				});
 
 				const target = row.status === "online"
-					? `${worldTarget}::${moduleEntry.module}::offline`
-					: `${worldTarget}::${moduleEntry.module}::online`;
+					? `${worldTarget}::${resolvedModule.module}::offline`
+					: `${worldTarget}::${resolvedModule.module}::online`;
 
 				tx.moveCall({
 					target,
@@ -1365,6 +1373,7 @@ function structureRowToAssembly(row: StructureRow): OwnedAssembly {
 		gate: "gate",
 		storage_unit: "storage_unit",
 		network_node: "network_node",
+		assembly: "assembly",
 	};
 	const kind = row.assemblyModule
 		? (moduleToKind[row.assemblyModule] ?? "storage_unit")

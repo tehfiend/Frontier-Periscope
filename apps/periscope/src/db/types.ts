@@ -223,7 +223,8 @@ export interface ExtensionRecord extends SyncMeta {
 		| "storage_unit"
 		| "smart_storage_unit"
 		| "network_node"
-		| "protocol_depot";
+		| "protocol_depot"
+		| "assembly";
 	templateId: string;
 	templateName: string;
 	status: ExtensionStatus;
@@ -341,7 +342,8 @@ export interface AssemblyPolicy extends SyncMeta {
 		| "storage_unit"
 		| "smart_storage_unit"
 		| "network_node"
-		| "protocol_depot";
+		| "protocol_depot"
+		| "assembly";
 	mode: PolicyMode;
 	groupIds: string[];
 	permitDurationMs?: number;
@@ -889,10 +891,6 @@ export type SonarEventType =
 	| "market_buy_filled"
 	| "market_buy_cancelled"
 	| "market_sell_cancelled"
-	// ── SSU Market ──────────────────────────────────────────────────────────
-	| "ssu_market_buy_filled"
-	| "ssu_market_transfer"
-	| "ssu_market_sell_cancelled"
 	// ── Extension authorization ─────────────────────────────────────────────
 	| "extension_authorized"
 	| "extension_removed"
@@ -900,10 +898,6 @@ export type SonarEventType =
 	// ── Gate extensions ─────────────────────────────────────────────────────
 	| "toll_collected"
 	| "access_granted"
-	// ── Lease ───────────────────────────────────────────────────────────────
-	| "lease_created"
-	| "rent_collected"
-	| "lease_cancelled"
 	// ── Exchange ────────────────────────────────────────────────────────────
 	| "exchange_order_placed"
 	| "exchange_order_cancelled";
