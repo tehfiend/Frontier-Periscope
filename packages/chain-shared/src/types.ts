@@ -326,7 +326,7 @@ export interface ContractAddresses {
 	lease?: { packageId: string; registryObjectId: string };
 	tokenTemplate?: { packageId: string };
 	governance?: { packageId: string; claimsRegistryObjectId: string };
-	market?: { packageId: string };
+	market?: { packageId: string; previousOriginalPackageIds?: string[] };
 	privateMap?: { packageId: string };
 	standings?: { packageId: string };
 	standingsRegistry?: { packageId: string };
@@ -346,6 +346,6 @@ export interface ContractAddresses {
 		previousOriginalPackageIds?: string[];
 	};
 	treasury?: { packageId: string };
-	gateTollCustom?: { packageId: string; configObjectId: string };
+	gateTollCustom?: { packageId: string; configObjectId: string; previousOriginalPackageIds?: string[] };
 	decommission?: { packageId: string; registryObjectId: string };
 }

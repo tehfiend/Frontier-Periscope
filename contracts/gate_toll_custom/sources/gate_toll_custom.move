@@ -10,7 +10,7 @@
 ///
 /// Free-access path (request_free_access<T>) skips toll for high-standing characters.
 module gate_toll_custom::gate_toll_custom {
-    use sui::coin::Coin;
+    use sui::coin::{Self, Coin};
     use sui::dynamic_field as df;
     use sui::event;
     use treasury::treasury::Treasury;
@@ -182,7 +182,8 @@ module gate_toll_custom::gate_toll_custom {
     // ── Toll-paying access (transfer to address) ───────────────────────
 
     /// Pay toll in Coin<T> and transfer to tollRecipient address.
-    /// The caller is responsible for ensuring the coin has sufficient value.
+    /// DEPRECATED: transfers the entire coin, any overpayment is lost.
+    /// Use request_access_v2 instead, which splits exact toll and returns change.
     public fun request_access<T>(
         config: &GateTollCustomConfig,
         gate_id: ID,
@@ -208,9 +209,43 @@ module gate_toll_custom::gate_toll_custom {
         transfer::public_transfer(coin, recipient);
     }
 
+    /// Pay toll in Coin<T>, split exact amount, return change to sender.
+    /// Preferred over request_access which transfers the entire coin.
+    public fun request_access_v2<T>(
+        config: &GateTollCustomConfig,
+        gate_id: ID,
+        mut coin: Coin<T>,
+        ctx: &mut TxContext,
+    ) {
+        let key = GateKey<T> { gate_id };
+        assert!(df::exists_(&config.id, key), ENoConfig);
+
+        let gate_config: &GateConfig = df::borrow(&config.id, key);
+        let toll_amount = gate_config.toll_amount;
+        assert!(coin.value() >= toll_amount, EInsufficientToll);
+
+        let recipient = gate_config.toll_recipient;
+
+        // Split exact toll amount, return change to sender
+        let toll_coin = coin::split(&mut coin, toll_amount, ctx);
+
+        event::emit(TollCollectedEvent {
+            config_id: object::id(config),
+            gate_id,
+            payer: ctx.sender(),
+            amount: toll_amount,
+            recipient,
+        });
+
+        transfer::public_transfer(toll_coin, recipient);
+        transfer::public_transfer(coin, ctx.sender());
+    }
+
     // ── Toll-paying access (deposit to treasury) ───────────────────────
 
     /// Pay toll in Coin<T> and deposit into a Treasury shared object.
+    /// DEPRECATED: deposits the entire coin, any overpayment is lost.
+    /// Use request_access_to_treasury_v2 instead.
     public fun request_access_to_treasury<T>(
         config: &GateTollCustomConfig,
         gate_id: ID,
@@ -233,6 +268,37 @@ module gate_toll_custom::gate_toll_custom {
         });
 
         treasury::treasury::deposit(treasury, coin, ctx);
+    }
+
+    /// Pay toll in Coin<T>, split exact amount, deposit to treasury, return change.
+    /// Preferred over request_access_to_treasury which deposits the entire coin.
+    public fun request_access_to_treasury_v2<T>(
+        config: &GateTollCustomConfig,
+        gate_id: ID,
+        mut coin: Coin<T>,
+        treasury: &mut Treasury,
+        ctx: &mut TxContext,
+    ) {
+        let key = GateKey<T> { gate_id };
+        assert!(df::exists_(&config.id, key), ENoConfig);
+
+        let gate_config: &GateConfig = df::borrow(&config.id, key);
+        let toll_amount = gate_config.toll_amount;
+        assert!(coin.value() >= toll_amount, EInsufficientToll);
+
+        // Split exact toll amount, return change to sender
+        let toll_coin = coin::split(&mut coin, toll_amount, ctx);
+
+        event::emit(TollDepositedToTreasuryEvent {
+            config_id: object::id(config),
+            gate_id,
+            payer: ctx.sender(),
+            amount: toll_amount,
+            treasury_id: object::id(treasury),
+        });
+
+        treasury::treasury::deposit(treasury, toll_coin, ctx);
+        transfer::public_transfer(coin, ctx.sender());
     }
 
     // ── Free access (high standing) ────────────────────────────────────

@@ -17,6 +17,7 @@ module market::market {
     const EInsufficientPayment: u64 = 4;
     const EAlreadyAuthorized: u64 = 5;
     const ENotInAuthorized: u64 = 6;
+    const EOverflow: u64 = 7;
 
     // ── Core types ───────────────────────────────────────────────────
 
@@ -137,6 +138,12 @@ module market::market {
         buyer: address,
         type_id: u64,
         refund_amount: u64,
+    }
+
+    public struct FeeCollectedEvent has copy, drop {
+        market_id: ID,
+        fee_amount: u64,
+        fee_recipient: address,
     }
 
     public struct AuthorizedAddedEvent has copy, drop {
@@ -362,17 +369,21 @@ module market::market {
         });
     }
 
-    /// Cancel a sell listing. Seller only.
+    /// Cancel a sell listing. Seller or authorized caller only.
     public fun cancel_sell_listing<T>(
         market: &mut Market<T>,
         listing_id: u64,
         ctx: &TxContext,
     ) {
-        let listing: SellListing = df::remove(
-            &mut market.id,
-            SellKey { listing_id },
+        // Check authorization BEFORE removal to prevent state corruption on assert failure
+        let listing_ref: &SellListing = df::borrow(&market.id, SellKey { listing_id });
+        assert!(
+            listing_ref.seller == ctx.sender() || is_authorized(market, ctx.sender()),
+            ENotAuthorized,
         );
-        assert!(listing.seller == ctx.sender(), ENotSeller);
+
+        // Now safe to remove
+        let _listing: SellListing = df::remove(&mut market.id, SellKey { listing_id });
 
         event::emit(SellListingCancelledEvent {
             market_id: object::id(market),
@@ -394,6 +405,11 @@ module market::market {
     ) {
         assert!(is_authorized(market, ctx.sender()), ENotAuthorized);
 
+        // Overflow check: price_per_unit * quantity must fit in u64
+        assert!(
+            quantity == 0 || price_per_unit <= 0xFFFFFFFFFFFFFFFF / quantity,
+            EOverflow,
+        );
         let required = price_per_unit * quantity;
         assert!(coin.value() >= required, EInsufficientPayment);
 
@@ -463,6 +479,11 @@ module market::market {
         assert!(order.type_id == type_id, ENotAuthorized);
         assert!(quantity <= order.quantity, EInsufficientPayment);
 
+        // Overflow check: price_per_unit * quantity must fit in u64
+        assert!(
+            quantity == 0 || order.price_per_unit <= 0xFFFFFFFFFFFFFFFF / quantity,
+            EOverflow,
+        );
         let total_cost = order.price_per_unit * (quantity as u64);
         let buyer = order.buyer;
         let price_per_unit = order.price_per_unit;
@@ -477,6 +498,11 @@ module market::market {
         if (fee_amount > 0 && payment.value() >= fee_amount) {
             let fee_coin = payment.split(fee_amount, ctx);
             transfer::public_transfer(fee_coin, market.fee_recipient);
+            event::emit(FeeCollectedEvent {
+                market_id: object::id(market),
+                fee_amount,
+                fee_recipient: market.fee_recipient,
+            });
         };
 
         event::emit(BuyOrderFilledEvent {
@@ -520,6 +546,11 @@ module market::market {
         let listing: &mut SellListing = df::borrow_mut(&mut market.id, SellKey { listing_id });
         assert!(quantity <= listing.quantity, EInsufficientPayment);
 
+        // Overflow check: price_per_unit * quantity must fit in u64
+        assert!(
+            quantity == 0 || listing.price_per_unit <= 0xFFFFFFFFFFFFFFFF / quantity,
+            EOverflow,
+        );
         let total_cost = listing.price_per_unit * (quantity as u64);
         assert!(payment.value() >= total_cost, EInsufficientPayment);
 
@@ -534,6 +565,11 @@ module market::market {
         if (fee_amount > 0 && proceeds.value() >= fee_amount) {
             let fee_coin = proceeds.split(fee_amount, ctx);
             transfer::public_transfer(fee_coin, market.fee_recipient);
+            event::emit(FeeCollectedEvent {
+                market_id: object::id(market),
+                fee_amount,
+                fee_recipient: market.fee_recipient,
+            });
         };
 
         // Pay seller

@@ -12,6 +12,8 @@ module ssu_unified::ssu_unified {
     const EDelegateNotFound: u64 = 2;
     const ENotAuthorized: u64 = 3;
     const EQuantityOverflow: u64 = 4;
+    const ENoMarketLinked: u64 = 5;
+    const EMarketMismatch: u64 = 6;
 
     // ── Types ──────────────────────────────────────────────────────────
 
@@ -74,7 +76,7 @@ module ssu_unified::ssu_unified {
         is_public: bool,
     }
 
-    // ── Authorization Helper ─────────��──────────────────────────────────
+    // ── Authorization Helper ──────────────────────────────────────────────
 
     /// Check that the sender is the config owner or a delegate.
     fun assert_authorized(config: &SsuUnifiedConfig, ctx: &TxContext) {
@@ -82,6 +84,12 @@ module ssu_unified::ssu_unified {
         if (config.owner == sender) return;
         let (found, _) = config.delegates.index_of(&sender);
         assert!(found, ENotAuthorized);
+    }
+
+    /// Assert that a market object matches the config's linked market_id.
+    fun assert_market_matches<T>(config: &SsuUnifiedConfig, market: &market::market::Market<T>) {
+        assert!(option::is_some(&config.market_id), ENoMarketLinked);
+        assert!(*option::borrow(&config.market_id) == object::id(market), EMarketMismatch);
     }
 
     // ─��� Create Config ───────────────────��──────────────────────────────
@@ -412,6 +420,7 @@ module ssu_unified::ssu_unified {
         ctx: &mut TxContext,
     ) {
         assert_authorized(config, ctx);
+        assert_market_matches(config, market);
         assert!(quantity <= 0xFFFFFFFF, EQuantityOverflow);
         // Move items from owner inventory to escrow
         let item = storage_unit::withdraw_item(
@@ -427,7 +436,7 @@ module ssu_unified::ssu_unified {
     /// Buyer: atomically purchase items and receive them into owned inventory.
     /// No admin check -- payment IS the authorization.
     public fun buy_and_receive<T>(
-        _config: &SsuUnifiedConfig,
+        config: &SsuUnifiedConfig,
         market: &mut market::market::Market<T>,
         storage_unit: &mut StorageUnit,
         character: &Character,
@@ -438,6 +447,7 @@ module ssu_unified::ssu_unified {
         clock: &Clock,
         ctx: &mut TxContext,
     ): Coin<T> {
+        assert_market_matches(config, market);
         assert!(quantity <= 0xFFFFFFFF, EQuantityOverflow);
         // Read type_id from listing in a scope block so the immutable borrow drops
         let type_id = {
@@ -466,6 +476,7 @@ module ssu_unified::ssu_unified {
         ctx: &mut TxContext,
     ) {
         assert_authorized(config, ctx);
+        assert_market_matches(config, market);
         // Read listing data in a scope block so the immutable borrow drops before cancel
         let (type_id, quantity) = {
             let listing = market::market::borrow_sell_listing(market, listing_id);
@@ -496,6 +507,7 @@ module ssu_unified::ssu_unified {
         ctx: &mut TxContext,
     ) {
         assert_authorized(config, ctx);
+        assert_market_matches(config, market);
         assert!(quantity <= 0xFFFFFFFF, EQuantityOverflow);
         // Fill buy order -- pays seller from escrowed coins
         market::market::fill_buy_order(market, order_id, type_id, quantity, ctx);

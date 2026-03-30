@@ -4,24 +4,24 @@
 
 [published.testnet]
 chain-id = "4c78adac"
-published-at = "0x1e5910d677d83f72f0e73b5815cd02abf6251d429f5ae2e13f27fb931e75e80d"
+published-at = "0xae423b77ed1252a90f3a47ff4d3d343a9414931335a235507e010c8875fb6114"
 original-id = "0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a"
-version = 5
+version = 6
 toolchain-version = "1.68.1"
 build-config = { flavor = "sui", edition = "2024" }
 
 [published.testnet_stillness]
 chain-id = "4c78adac"
-published-at = "0x1e5910d677d83f72f0e73b5815cd02abf6251d429f5ae2e13f27fb931e75e80d"
+published-at = "0xae423b77ed1252a90f3a47ff4d3d343a9414931335a235507e010c8875fb6114"
 original-id = "0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a"
-version = 5
+version = 6
 toolchain-version = "1.68.1"
 build-config = { flavor = "sui", edition = "2024" }
 
 [published.testnet_utopia]
 chain-id = "4c78adac"
-published-at = "0x1e5910d677d83f72f0e73b5815cd02abf6251d429f5ae2e13f27fb931e75e80d"
+published-at = "0xae423b77ed1252a90f3a47ff4d3d343a9414931335a235507e010c8875fb6114"
 original-id = "0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a"
-version = 5
+version = 6
 toolchain-version = "1.68.1"
 build-config = { flavor = "sui", edition = "2024" }

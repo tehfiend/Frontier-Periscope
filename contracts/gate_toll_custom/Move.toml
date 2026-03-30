@@ -6,5 +6,5 @@ edition = "2024.beta"
 treasury = { local = "../treasury" }
 
 [addresses]
-gate_toll_custom = "0x0"
+gate_toll_custom = "0x200200b3b2e381497a005c29f9abecc7a46bbd2b4d016bbb7f32bcf6d9e57c6a"
 treasury = "0xe0ca570a3a5da2d72254b3f6db62b46b8595e1e6ed4b8d455af343d208c357eb"
