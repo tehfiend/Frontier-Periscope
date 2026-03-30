@@ -880,21 +880,25 @@ export function Deployables() {
 								))}
 							{info.status === "periscope" && (
 								<>
-									<PeriscopeIcon size={14} className="text-cyan-500" />
-									{r.ownership === "mine" && (
-										<button
-											type="button"
-											onClick={() => setDeployTarget(r)}
-											className="rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-900/30"
-										>
-											Configure
-										</button>
-									)}
-									{extConfig?.registryName && (
-										<span className="ml-auto rounded bg-cyan-500/10 px-1 py-0.5 text-[10px] font-medium text-cyan-400">
-											{extConfig.registryName}
-										</span>
-									)}
+									<div className="flex flex-col">
+										<div className="flex items-center gap-1.5">
+											<PeriscopeIcon size={14} className="text-cyan-500" />
+											{r.ownership === "mine" && (
+												<button
+													type="button"
+													onClick={() => setDeployTarget(r)}
+													className="rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-900/30"
+												>
+													Configure
+												</button>
+											)}
+										</div>
+										{extConfig?.registryName && (
+											<span className="rounded bg-cyan-500/10 px-1 py-0.5 text-[10px] font-medium text-cyan-400">
+												{extConfig.registryName}
+											</span>
+										)}
+									</div>
 								</>
 							)}
 							{info.status === "periscope-outdated" && (
