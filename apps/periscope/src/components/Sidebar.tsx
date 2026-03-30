@@ -54,19 +54,19 @@ const navGroups: NavGroup[] = [
 		],
 	},
 	{
-		title: "Navigation",
-		items: [
-			{ to: "/map", icon: MapIcon, label: "Star Map" },
-			{ to: "/jump-planner", icon: Route, label: "Jump Planner" },
-		],
-	},
-	{
 		title: "Assets",
 		items: [
 			{ to: "/structures", icon: Package, label: "Structures" },
 			{ to: "/assets", icon: Boxes, label: "Inventory" },
 			{ to: "/wallet", icon: Wallet, label: "Wallet" },
 			{ to: "/currencies", icon: Coins, label: "Currencies" },
+		],
+	},
+	{
+		title: "Navigation",
+		items: [
+			{ to: "/map", icon: MapIcon, label: "Star Map" },
+			{ to: "/jump-planner", icon: Route, label: "Jump Planner" },
 		],
 	},
 	{

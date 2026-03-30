@@ -20,6 +20,8 @@ interface MarketContentProps {
 	ssuObjectId: string;
 	/** SSU owner's Character object ID (for escrow TX builders). */
 	ownerCharacterObjectId?: string | null;
+	/** typeId -> quantity currently in escrow (open inventory) */
+	escrowQuantities?: Map<number, number>;
 }
 
 export function MarketContent({
@@ -33,6 +35,7 @@ export function MarketContent({
 	walletAddress,
 	ssuObjectId,
 	ownerCharacterObjectId,
+	escrowQuantities,
 }: MarketContentProps) {
 	const [showBuyOrderDialog, setShowBuyOrderDialog] = useState(false);
 	const marketPkg = getMarketPackageId();
@@ -126,6 +129,7 @@ export function MarketContent({
 					coinSymbol={symbol}
 					marketPackageId={marketPkg}
 					ownerCharacterObjectId={ownerCharacterObjectId}
+					escrowQuantities={escrowQuantities}
 				/>
 			)}
 

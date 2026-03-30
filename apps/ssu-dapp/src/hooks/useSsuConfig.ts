@@ -65,11 +65,15 @@ export function useSsuConfig(
 			// ── Try new SsuUnifiedConfig first ──────────────────────────
 			const ssuUnified = addrs.ssuUnified;
 			if (ssuUnified?.packageId) {
+				// Use originalPackageId for type-based discovery -- objects retain their
+				// original type permanently. Searching with the upgraded packageId won't
+				// match. Only search the current lineage's original to avoid finding
+				// incompatible configs from previous fresh publishes.
+				const discoveryPkgId = ssuUnified.originalPackageId ?? ssuUnified.packageId;
 				const configId = await discoverSsuUnifiedConfig(
 					client,
-					ssuUnified.packageId,
+					discoveryPkgId,
 					ssuObjectId,
-					ssuUnified.previousOriginalPackageIds,
 				);
 
 				if (configId) {

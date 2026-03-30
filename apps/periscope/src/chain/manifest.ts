@@ -1567,32 +1567,40 @@ export async function discoverMarkets(
 	ctx?: TaskContext,
 ): Promise<number> {
 	const addresses = getContractAddresses("stillness");
-	const marketPkg = addresses.market?.packageId;
-	if (!marketPkg) return 0;
+	const marketCfg = addresses.market;
+	if (!marketCfg?.packageId) return 0;
 
+	// Search current package + previous original packages (objects retain original type)
+	const pkgIds = [marketCfg.packageId, ...(marketCfg.previousOriginalPackageIds ?? [])];
+	const seen = new Set<string>();
 	let count = 0;
 	const now = new Date().toISOString();
 
 	try {
 		ctx?.setProgress("Discovering markets...");
-		const markets = await queryMarkets(client, marketPkg);
 
-		for (const market of markets) {
-			const entry: ManifestMarket = {
-				id: market.objectId,
-				packageId: market.packageId,
-				creator: market.creator,
-				authorized: market.authorized,
-				feeBps: market.feeBps,
-				feeRecipient: market.feeRecipient,
-				nextSellId: market.nextSellId,
-				nextBuyId: market.nextBuyId,
-				coinType: market.coinType,
-				totalSupply: market.totalSupply,
-				cachedAt: now,
-			};
-			await db.manifestMarkets.put(entry);
-			count++;
+		for (const pkgId of pkgIds) {
+			const markets = await queryMarkets(client, pkgId);
+			for (const market of markets) {
+				if (seen.has(market.objectId)) continue;
+				seen.add(market.objectId);
+
+				const entry: ManifestMarket = {
+					id: market.objectId,
+					packageId: market.packageId,
+					creator: market.creator,
+					authorized: market.authorized,
+					feeBps: market.feeBps,
+					feeRecipient: market.feeRecipient,
+					nextSellId: market.nextSellId,
+					nextBuyId: market.nextBuyId,
+					coinType: market.coinType,
+					totalSupply: market.totalSupply,
+					cachedAt: now,
+				};
+				await db.manifestMarkets.put(entry);
+				count++;
+			}
 		}
 
 		ctx?.setProgress(`Done: ${count} markets cached`);

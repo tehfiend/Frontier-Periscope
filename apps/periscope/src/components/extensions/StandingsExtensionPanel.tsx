@@ -431,6 +431,7 @@ function StandingsExtensionPanelInner({
 
 		try {
 			let tx: import("@mysten/sui/transactions").Transaction;
+			let isNewSsuConfig = !existingConfig?.ssuConfigId;
 
 			if (structureKind === "gate") {
 				tx = buildConfigureGateStandings({
@@ -456,6 +457,36 @@ function StandingsExtensionPanelInner({
 					ssuConfigId: existingConfig?.ssuConfigId,
 					marketId: ssuConfig.marketId || undefined,
 				});
+
+				// If reconfiguring, the old config may be from a previous (incompatible)
+				// package version. Try signing; on TypeMismatch, retry with create-new.
+				if (existingConfig?.ssuConfigId) {
+					try {
+						setStatus("signing");
+						await signAndExecute({ transaction: tx });
+					} catch (txErr) {
+						const msg = txErr instanceof Error ? txErr.message : String(txErr);
+						if (msg.includes("TypeMismatch")) {
+							// Old config is from an incompatible package -- create new
+							setStatus("building");
+							tx = buildConfigureSsuStandings({
+								tenant,
+								ssuId: assemblyId,
+								registryId,
+								minDeposit: ssuConfig.minDeposit,
+								minWithdraw: ssuConfig.minWithdraw,
+								senderAddress,
+								ssuConfigId: undefined,
+								marketId: ssuConfig.marketId || undefined,
+							});
+							isNewSsuConfig = true;
+							setStatus("signing");
+							await signAndExecute({ transaction: tx });
+						} else {
+							throw txErr;
+						}
+					}
+				}
 			} else {
 				// SSU market-only -- no on-chain standings TX, just save locally
 				await saveConfigToDb();
@@ -464,22 +495,31 @@ function StandingsExtensionPanelInner({
 				return;
 			}
 
-			setStatus("signing");
-			await signAndExecute({ transaction: tx });
-
-			// For new SSU configs, discover the created SsuUnifiedConfig object ID
-			let createdConfigId: string | undefined;
-			if (structureKind === "ssu" && !existingConfig?.ssuConfigId) {
-				setStatus("confirming");
-				const addrs = getContractAddresses(tenant);
-				const pkgId = addrs.ssuUnified?.packageId;
-				if (pkgId) {
-					createdConfigId =
-						(await discoverSsuUnifiedConfig(suiClient, pkgId, assemblyId)) ?? undefined;
-				}
+			// For non-reconfigure paths that haven't signed yet, sign now
+			if (structureKind !== "ssu" || !existingConfig?.ssuConfigId) {
+				setStatus("signing");
+				await signAndExecute({ transaction: tx });
 			}
 
-			await saveConfigToDb(createdConfigId);
+			// Discover the SsuUnifiedConfig object ID after creation
+			let resolvedConfigId: string | undefined;
+			if (structureKind === "ssu" && isNewSsuConfig) {
+				setStatus("confirming");
+				const addrs = getContractAddresses(tenant);
+				const ssuUnified = addrs.ssuUnified;
+				// Use originalPackageId for type-based discovery (objects retain original type)
+				const discoveryPkgId = ssuUnified?.originalPackageId ?? ssuUnified?.packageId;
+				if (discoveryPkgId) {
+					resolvedConfigId =
+						(await discoverSsuUnifiedConfig(suiClient, discoveryPkgId, assemblyId)) ??
+						undefined;
+				}
+			} else if (structureKind === "ssu" && !isNewSsuConfig) {
+				// Keep the existing (compatible) config ID
+				resolvedConfigId = existingConfig?.ssuConfigId;
+			}
+
+			await saveConfigToDb(resolvedConfigId);
 
 			setStatus("done");
 			onConfigured?.();
@@ -522,7 +562,7 @@ function StandingsExtensionPanelInner({
 				minDeposit: ssuConfig.minDeposit,
 				minWithdraw: ssuConfig.minWithdraw,
 				marketId: ssuConfig.marketId || undefined,
-				ssuConfigId: ssuConfigId || existingConfig?.ssuConfigId,
+				ssuConfigId: ssuConfigId,
 			}),
 		};
 

@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TenantId } from "@/chain/config";
 import { syncCurrenciesFromManifest } from "@/chain/currency-sync";
 import { discoverExchangePairs, fetchExchangeOrders } from "@/chain/exchange-queries";
+import { ContactPicker } from "@/components/ContactPicker";
 import { CopyAddress } from "@/components/CopyAddress";
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { ConnectWalletButton } from "@/components/WalletConnect";
@@ -792,7 +793,7 @@ export function Currencies() {
 								className="flex shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-zinc-700 px-5 py-2 text-sm text-zinc-500 transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
 							>
 								<Plus size={14} />
-								Create
+								Create Currency
 							</button>
 						)}
 
@@ -1599,7 +1600,13 @@ function CurrencyDetail({
 
 		onStatusChange("building");
 		try {
-			const markets = await queryMarkets(suiClient, marketPkg, row.coinType);
+			// Search current + previous original package IDs (objects retain original type)
+			const prevPkgs = addresses.market?.previousOriginalPackageIds ?? [];
+			let markets: Awaited<ReturnType<typeof queryMarkets>> = [];
+			for (const pkg of [marketPkg, ...prevPkgs]) {
+				markets = await queryMarkets(suiClient, pkg, row.coinType);
+				if (markets.length > 0) break;
+			}
 
 			if (markets.length === 0) {
 				const treasuryCapId = await queryTreasuryCap(suiClient, row.coinType, suiAddress);
@@ -1959,14 +1966,26 @@ function CurrencyDetail({
 					{showAuth && isCreator && (
 						<AdminPanel title="Add Authorized Minter">
 							<div className="space-y-3">
-								<FormField label="Sui Address">
-									<input
-										type="text"
-										value={authAddress}
-										onChange={(e) => setAuthAddress(e.target.value)}
-										placeholder="0x..."
-										className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
+								<FormField label="Search Character or Paste Address">
+									<ContactPicker
+										placeholder="Search characters or paste 0x address..."
+										onSelect={(char) => setAuthAddress(char.suiAddress)}
+										excludeAddresses={marketInfo?.authorized}
 									/>
+									{authAddress && (
+										<div className="mt-1.5 flex items-center justify-between rounded border border-zinc-700 bg-zinc-800/50 px-3 py-1.5">
+											<span className="font-mono text-xs text-zinc-300">
+												{authAddress.slice(0, 16)}...{authAddress.slice(-8)}
+											</span>
+											<button
+												type="button"
+												onClick={() => setAuthAddress("")}
+												className="text-xs text-zinc-500 hover:text-zinc-300"
+											>
+												clear
+											</button>
+										</div>
+									)}
 								</FormField>
 								<button
 									type="button"
