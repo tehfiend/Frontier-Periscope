@@ -5,6 +5,7 @@ import {
 	type TenantId,
 	getContractAddresses,
 	queryAllMarketsStandings,
+	queryDecommissionedMarkets,
 } from "@tehfrontier/chain-shared";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ChevronDown, Search, X } from "lucide-react";
@@ -48,6 +49,9 @@ export function MarketSelector({ value, onChange }: MarketSelectorProps) {
 	// Resolve admin/tribe names from manifest
 	const manifestChars = useLiveQuery(() => db.manifestCharacters.toArray(), []) ?? [];
 	const manifestTribes = useLiveQuery(() => db.manifestTribes.toArray(), []) ?? [];
+
+	// Decommissioned market IDs (filtered out of all sources)
+	const [decommissioned, setDecommissioned] = useState<Set<string>>(new Set());
 
 	// Standings markets from chain (market_standings::Market<T>)
 	const [standingsOptions, setStandingsOptions] = useState<MarketOption[]>([]);
@@ -95,6 +99,17 @@ export function MarketSelector({ value, onChange }: MarketSelectorProps) {
 		});
 	}, [manifestMarkets, manifestChars, manifestTribes]);
 
+	// Discover decommissioned markets
+	useEffect(() => {
+		const decomPkg = addrs.decommission?.packageId;
+		if (!decomPkg) return;
+		let cancelled = false;
+		queryDecommissionedMarkets(client, decomPkg)
+			.then((set) => { if (!cancelled) setDecommissioned(set); })
+			.catch(() => {});
+		return () => { cancelled = true; };
+	}, [client, addrs.decommission?.packageId]);
+
 	// Discover standings markets from chain
 	useEffect(() => {
 		const standingsPkg = addrs.marketStandings?.packageId;
@@ -128,34 +143,34 @@ export function MarketSelector({ value, onChange }: MarketSelectorProps) {
 		};
 	}, [client, addrs.marketStandings?.packageId, manifestChars, manifestTribes]);
 
-	// Merge all sources, dedup by marketId (manifest > currency > standings for name resolution)
+	// Merge all sources, dedup by marketId, exclude decommissioned
 	const options = useMemo<MarketOption[]>(() => {
 		const seen = new Set<string>();
 		const merged: MarketOption[] = [];
 
 		// Manifest markets first (they have creator/admin info)
 		for (const opt of manifestOptions) {
-			if (!seen.has(opt.marketId)) {
+			if (!seen.has(opt.marketId) && !decommissioned.has(opt.marketId)) {
 				seen.add(opt.marketId);
 				merged.push(opt);
 			}
 		}
 		// Local currency records (user-created currencies)
 		for (const opt of currencyOptions) {
-			if (!seen.has(opt.marketId)) {
+			if (!seen.has(opt.marketId) && !decommissioned.has(opt.marketId)) {
 				seen.add(opt.marketId);
 				merged.push(opt);
 			}
 		}
 		// Standings markets from chain
 		for (const opt of standingsOptions) {
-			if (!seen.has(opt.marketId)) {
+			if (!seen.has(opt.marketId) && !decommissioned.has(opt.marketId)) {
 				seen.add(opt.marketId);
 				merged.push(opt);
 			}
 		}
 		return merged;
-	}, [manifestOptions, currencyOptions, standingsOptions]);
+	}, [manifestOptions, currencyOptions, standingsOptions, decommissioned]);
 
 	const filtered = useMemo(() => {
 		if (!search) return options;

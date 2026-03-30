@@ -2,10 +2,8 @@ import { AssemblyActions } from "@/components/AssemblyActions";
 import { ContentTabs } from "@/components/ContentTabs";
 import { ExtensionInfo } from "@/components/ExtensionInfo";
 import { PublishToMapDialog } from "@/components/PublishToMapDialog";
-import { SsuConfigInfo } from "@/components/SsuConfigInfo";
 import { SsuInfoCard } from "@/components/SsuInfoCard";
 import type { CapRef, TransferContext } from "@/components/TransferDialog";
-import { VisibilitySettings } from "@/components/VisibilitySettings";
 import { useAssembly } from "@/hooks/useAssembly";
 import { useBuyOrders } from "@/hooks/useBuyOrders";
 import { useCharacter } from "@/hooks/useCharacter";
@@ -191,13 +189,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 				ssuObjectId={objectId}
 			/>
 
-			{/* Visibility toggle -- SSU config owner only */}
-			{isSsuOwner && ssuConfig && <VisibilitySettings ssuConfig={ssuConfig} />}
-
-			{/* Standings config info */}
-			{ssuConfig && <SsuConfigInfo ssuConfig={ssuConfig} />}
-
-			{/* Card 2: Content Tabs (Inventory + Market) */}
+			{/* Card 2: Content Tabs (Inventory + Market + Settings) */}
 			{inventories && (
 				<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
 					<ContentTabs
@@ -214,6 +206,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 						buyOrdersLoading={buyOrdersLoading}
 						walletAddress={walletAddress}
 						ownerCharacterObjectId={ownerCharacterInfo?.characterObjectId ?? null}
+						isSsuOwner={isSsuOwner}
 					/>
 				</div>
 			)}
@@ -224,6 +217,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 					assembly={assembly}
 					characterObjectId={character.characterObjectId}
 					ownerCap={ownerCapInfo}
+					ssuObjectId={objectId}
 				/>
 			)}
 
@@ -234,6 +228,8 @@ export function SsuView({ objectId }: SsuViewProps) {
 				ownerCap={ownerCapInfo ?? undefined}
 				ssuObjectId={objectId}
 				ssuConfig={ssuConfig ?? undefined}
+				metadata={assembly.metadata}
+				itemId={assembly.itemId}
 			/>
 
 			{/* Publish to Map button (visible when wallet connected and contract deployed) */}

@@ -12,7 +12,9 @@ import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ASSEMBLY_TYPE_IDS, TENANTS, type TenantId, classifyExtension } from "@/chain/config";
+import { ASSEMBLY_TYPE_IDS, TENANTS, type TenantId, classifyExtension, getWorldTarget } from "@/chain/config";
+import { ASSEMBLY_MODULE_MAP } from "@tehfrontier/chain-shared";
+import { Transaction } from "@mysten/sui/transactions";
 import {
 	crossReferenceManifestLocations,
 	crossReferencePrivateMapLocations,
@@ -134,7 +136,7 @@ function statusDotClass(status: string): string {
 
 /** Friendly names for assembly kinds (from OwnedAssembly.type) */
 const ASSEMBLY_KIND_NAMES: Record<string, string> = {
-	storage_unit: "Heavy Storage",
+	storage_unit: "Storage Unit",
 	smart_storage_unit: "Smart Storage Unit",
 	protocol_depot: "Protocol Depot",
 	gate: "Stargate",
@@ -145,6 +147,8 @@ const ASSEMBLY_KIND_NAMES: Record<string, string> = {
 /** Old generic type names that should be overwritten on re-sync */
 const AUTO_TYPE_NAMES = new Set([
 	"Smart Storage Unit",
+	"Storage Unit",
+	"Heavy Storage",
 	"Gate",
 	"Turret",
 	"Assembly",
@@ -348,13 +352,14 @@ export function Deployables() {
 					ASSEMBLY_KIND_NAMES[assembly.type] ??
 					assembly.type.replace("_", " ");
 				const existing = await db.deployables.where("objectId").equals(assembly.objectId).first();
-				// Update label if it was auto-generated (matches a known type or old generic name)
+				// Use on-chain metadata name if available; otherwise fall back to type name
+				const chainName = assembly.name || undefined;
 				const isAutoLabel =
 					!existing?.label ||
 					existing.label === existing.assemblyType ||
 					Object.values(ASSEMBLY_TYPE_IDS).includes(existing.label) ||
 					AUTO_TYPE_NAMES.has(existing.label);
-				const label = isAutoLabel ? typeName : existing.label;
+				const label = chainName ?? (isAutoLabel ? typeName : existing.label);
 
 				let fuelData: { fuelLevel?: number; fuelExpiresAt?: string } = {};
 				try {
@@ -572,6 +577,92 @@ export function Deployables() {
 		[account, tenant, isValidTenant, executeRevoke],
 	);
 
+	// ── Power Toggle ────────────────────────────────────────────────────────
+	const [powerTogglingId, setPowerTogglingId] = useState<string | null>(null);
+
+	const handlePowerToggle = useCallback(
+		async (row: StructureRow) => {
+			if (!account || !row.ownerCapId || !row.characterObjectId || !row.parentId) {
+				setSyncStatus("Missing data for power toggle -- try re-syncing first");
+				return;
+			}
+			if (!isValidTenant) return;
+
+			const assemblyModule = row.assemblyModule ?? "storage_unit";
+			const moduleEntry = ASSEMBLY_MODULE_MAP[assemblyModule as keyof typeof ASSEMBLY_MODULE_MAP];
+			if (!moduleEntry) {
+				setSyncStatus(`Unsupported assembly type for power toggle: ${assemblyModule}`);
+				return;
+			}
+
+			setPowerTogglingId(row.objectId);
+			try {
+				const worldPkg = TENANTS[tenant as TenantId].worldPackageId;
+				const worldTarget = getWorldTarget(tenant as TenantId);
+				const fullType = `${worldPkg}::${moduleEntry.module}::${moduleEntry.type}`;
+
+				// Discover EnergyConfig singleton
+				const ecResult: {
+					data?: { objects?: { nodes: Array<{ address: string }> } } | null;
+				} = await client.query({
+					query: `query($type: String!) { objects(filter: { type: $type }, first: 1) { nodes { address } } }`,
+					variables: { type: `${worldPkg}::energy::EnergyConfig` },
+				});
+				const energyConfigId = ecResult.data?.objects?.nodes?.[0]?.address;
+				if (!energyConfigId) {
+					setSyncStatus("Could not find EnergyConfig on chain");
+					return;
+				}
+
+				const tx = new Transaction();
+				tx.setSender(account.address);
+
+				const [borrowedCap, receipt] = tx.moveCall({
+					target: `${worldTarget}::character::borrow_owner_cap`,
+					typeArguments: [fullType],
+					arguments: [tx.object(row.characterObjectId), tx.object(row.ownerCapId)],
+				});
+
+				const target = row.status === "online"
+					? `${worldTarget}::${moduleEntry.module}::offline`
+					: `${worldTarget}::${moduleEntry.module}::online`;
+
+				tx.moveCall({
+					target,
+					arguments: [
+						tx.object(row.objectId),
+						tx.object(row.parentId),
+						tx.object(energyConfigId),
+						borrowedCap,
+					],
+				});
+
+				tx.moveCall({
+					target: `${worldTarget}::character::return_owner_cap`,
+					typeArguments: [fullType],
+					arguments: [tx.object(row.characterObjectId), borrowedCap, receipt],
+				});
+
+				await signAndExecute({ transaction: tx });
+
+				// Update local status
+				const newStatus = row.status === "online" ? "offline" : "online";
+				const now = new Date().toISOString();
+				if (row.source === "deployables") {
+					await db.deployables.update(row.id, { status: newStatus as AssemblyStatus, updatedAt: now });
+				} else {
+					await db.assemblies.update(row.id, { status: newStatus as AssemblyStatus, updatedAt: now });
+				}
+				setSyncStatus(`Structure ${newStatus === "online" ? "powered on" : "powered off"}`);
+			} catch (e) {
+				setSyncStatus(`Power toggle failed: ${e instanceof Error ? e.message : String(e)}`);
+			} finally {
+				setPowerTogglingId(null);
+			}
+		},
+		[account, tenant, isValidTenant, client, signAndExecute],
+	);
+
 	// ── Stats ────────────────────────────────────────────────────────────────
 	const stats = useMemo(() => {
 		const mine = data.filter((d) => d.ownership === "mine").length;
@@ -598,37 +689,41 @@ export function Deployables() {
 					const r = row.original;
 					const tenantDapp =
 						TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
-					const dappHref = r.dappUrl
+					// Periscope dApp link: custom URL or default Periscope with itemId
+					const periscopeHref = r.dappUrl
 						? r.dappUrl.startsWith("http")
 							? r.dappUrl
 							: `https://${r.dappUrl}`
 						: r.itemId
 							? `${tenantDapp}&itemId=${r.itemId}`
-							: r.ownership === "mine"
-								? tenantDapp
-								: undefined;
+							: `${tenantDapp}&objectId=${r.objectId}`;
+					// CCP default dApp link
+					const ccpDapp = TENANTS[tenant]?.ccpDappUrl;
+					const ccpHref = r.itemId
+						? `${ccpDapp}/?tenant=${tenant}&itemId=${r.itemId}`
+						: undefined;
 					return (
 						<div className="flex items-center gap-1">
-							{dappHref && (
-								<a
-									href={dappHref}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="text-zinc-600 hover:text-cyan-400"
-									title="Open dApp"
-								>
-									<AppWindow size={14} />
-								</a>
-							)}
 							<a
-								href={`https://testnet.suivision.xyz/object/${r.objectId}`}
+								href={periscopeHref}
 								target="_blank"
 								rel="noopener noreferrer"
-								className="text-zinc-600 hover:text-zinc-400"
-								title="View on explorer"
+								className="text-zinc-600 hover:text-cyan-400"
+								title="Open Periscope dApp"
 							>
-								<ExternalLink size={14} />
+								<Telescope size={14} />
 							</a>
+							{ccpHref && (
+								<a
+									href={ccpHref}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-zinc-600 hover:text-zinc-400"
+									title="Open CCP default dApp"
+								>
+									<ExternalLink size={14} />
+								</a>
+							)}
 							{r.source === "assemblies" && (
 								<button
 									type="button"
@@ -1213,6 +1308,11 @@ export function Deployables() {
 				isResetting={
 					revokingId != null && revokingId === data.find((d) => d.id === selectedId)?.objectId
 				}
+				onPowerToggle={handlePowerToggle}
+				isPowerToggling={
+					powerTogglingId != null &&
+					powerTogglingId === data.find((d) => d.id === selectedId)?.objectId
+				}
 			/>
 
 			{typeof lastSync?.value === "string" && (
@@ -1254,9 +1354,12 @@ function structureRowToAssembly(row: StructureRow): OwnedAssembly {
 		objectId: row.objectId,
 		type: kind,
 		typeId: 0,
+		name: row.label,
 		status: row.status,
 		extensionType: row.extensionType,
+		dappUrl: row.dappUrl,
 		ownerCapId: row.ownerCapId,
+		itemId: row.itemId,
 	};
 }
 

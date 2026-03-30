@@ -1,10 +1,9 @@
-import { type ExtensionTemplate, type TenantId, getTemplatesForAssemblyType } from "@/chain/config";
+import { TENANTS, type TenantId, getTemplatesForAssemblyType } from "@/chain/config";
 import type { OwnedAssembly } from "@/chain/queries";
 import { type DeployStatus, useExtensionDeploy } from "@/hooks/useExtensionDeploy";
 import { AlertCircle, CheckCircle2, ExternalLink, Loader2, X } from "lucide-react";
 import { useState } from "react";
 import { StandingsExtensionPanel } from "./StandingsExtensionPanel";
-import { TemplateCard } from "./TemplateCard";
 
 interface DeployExtensionPanelProps {
 	assembly: OwnedAssembly;
@@ -32,40 +31,73 @@ function getStructureKind(assemblyType: string): "gate" | "ssu" | "turret" {
 	return "ssu";
 }
 
+/** Build the Periscope dApp URL for a given tenant + itemId */
+function buildDappUrl(tenant: TenantId, itemId?: string): string {
+	const base = TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
+	return itemId ? `${base}&itemId=${itemId}` : base;
+}
+
 export function DeployExtensionPanel({
 	assembly,
 	characterId,
 	tenant,
 	onClose,
 }: DeployExtensionPanelProps) {
+	// Auto-select the single template for this assembly type
 	const templates = getTemplatesForAssemblyType(assembly.type);
-	const [selected, setSelected] = useState<ExtensionTemplate | null>(
-		templates.length === 1 ? templates[0] : null,
-	);
+	const template = templates[0] ?? null;
 	const { deploy, reset, status, txDigest, error } = useExtensionDeploy();
+	const [structureName, setStructureName] = useState(assembly.name ?? "");
+	const [setDappUrl, setSetDappUrl] = useState(!!assembly.dappUrl);
 
 	const isDeploying = status === "building" || status === "signing" || status === "confirming";
-	const isStandingsTemplate = selected && STANDINGS_TEMPLATE_IDS.has(selected.id);
+	const isStandingsTemplate = template && STANDINGS_TEMPLATE_IDS.has(template.id);
+	const packageAvailable = template?.packageIds[tenant];
+	const generatedDappUrl = buildDappUrl(tenant, assembly.itemId);
+	const resolvedNewUrl = setDappUrl ? generatedDappUrl : undefined;
+	const urlChanged = setDappUrl
+		? generatedDappUrl !== (assembly.dappUrl ?? "")
+		: false;
 
 	function handleDeploy() {
-		if (!selected || !assembly.ownerCapId) return;
+		if (!template || !assembly.ownerCapId) return;
 
 		deploy({
-			template: selected,
+			template,
 			assemblyId: assembly.objectId,
 			assemblyType: assembly.type,
 			characterId,
 			ownerCapId: assembly.ownerCapId,
 			tenant,
+			newName: structureName !== (assembly.name ?? "") ? structureName : undefined,
+			newUrl: urlChanged ? resolvedNewUrl : undefined,
 		});
 	}
 
-	function handleBack() {
-		reset();
-		setSelected(null);
+	if (!template) {
+		return (
+			<div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={onClose}>
+				<div
+					className="h-full w-full max-w-lg overflow-y-auto bg-zinc-950 border-l border-zinc-800 p-6"
+					onClick={(e) => e.stopPropagation()}
+				>
+					<div className="mb-6 flex items-center justify-between">
+						<h2 className="text-lg font-semibold text-zinc-100">Deploy Extension</h2>
+						<button
+							type="button"
+							onClick={onClose}
+							className="rounded-lg p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+						>
+							<X size={20} />
+						</button>
+					</div>
+					<p className="text-sm text-zinc-600">
+						No templates available for this assembly type.
+					</p>
+				</div>
+			</div>
+		);
 	}
-
-	const packageAvailable = selected?.packageIds[tenant];
 
 	return (
 		<div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={onClose}>
@@ -85,11 +117,37 @@ export function DeployExtensionPanel({
 					</button>
 				</div>
 
-				{/* Assembly info */}
-				<div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-					<p className="text-xs text-zinc-500">Target Assembly</p>
-					<p className="text-sm text-zinc-200 capitalize">{assembly.type.replace("_", " ")}</p>
-					<p className="mt-0.5 font-mono text-xs text-zinc-600">{assembly.objectId}</p>
+				{/* Assembly info + metadata */}
+				<div className="mb-6 space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3">
+					<div>
+						<p className="text-xs text-zinc-500">Target Assembly</p>
+						<p className="text-sm text-zinc-200 capitalize">
+							{assembly.type.replace("_", " ")}
+						</p>
+						<p className="mt-0.5 font-mono text-xs text-zinc-600">{assembly.objectId}</p>
+					</div>
+					<div>
+						<label htmlFor="deploy-name" className="mb-1 block text-xs text-zinc-500">
+							Structure Name
+						</label>
+						<input
+							id="deploy-name"
+							type="text"
+							value={structureName}
+							onChange={(e) => setStructureName(e.target.value)}
+							placeholder="Structure name"
+							className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+						/>
+					</div>
+					<label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+						<input
+							type="checkbox"
+							checked={setDappUrl}
+							onChange={(e) => setSetDappUrl(e.target.checked)}
+							className="rounded border-zinc-600 accent-cyan-500"
+						/>
+						Set Periscope dApp URL
+					</label>
 				</div>
 
 				{/* Status feedback */}
@@ -133,97 +191,65 @@ export function DeployExtensionPanel({
 						{(status === "done" || status === "error") && (
 							<button
 								type="button"
-								onClick={handleBack}
+								onClick={() => reset()}
 								className="mt-3 text-xs text-zinc-400 hover:text-zinc-300"
 							>
-								{status === "done" ? "Deploy another" : "Try again"}
+								{status === "done" ? "Done" : "Try again"}
 							</button>
 						)}
 					</div>
 				)}
 
-				{/* Template selection */}
-				{!selected ? (
+				{/* Standings-based config panel */}
+				{isStandingsTemplate && (
 					<div>
-						<h3 className="mb-3 text-sm font-medium text-zinc-400">Available Templates</h3>
-						<div className="space-y-3">
-							{templates.map((template) => (
-								<TemplateCard
-									key={template.id}
-									template={template}
-									tenant={tenant}
-									onClick={() => setSelected(template)}
-								/>
-							))}
-							{templates.length === 0 && (
-								<p className="text-sm text-zinc-600">
-									No templates available for this assembly type
-								</p>
-							)}
-						</div>
+						<h3 className="mb-3 text-sm font-medium text-zinc-400">Configuration</h3>
+						<StandingsExtensionPanel
+							assemblyId={assembly.objectId}
+							assemblyType={assembly.type}
+							structureKind={getStructureKind(assembly.type)}
+							tenant={tenant}
+							characterId={characterId}
+							ownerCapId={assembly.ownerCapId}
+							newName={structureName !== (assembly.name ?? "") ? structureName : undefined}
+							newUrl={urlChanged ? resolvedNewUrl : undefined}
+						/>
 					</div>
-				) : (
-					<div>
-						<button
-							type="button"
-							onClick={handleBack}
-							className="mb-4 text-xs text-zinc-500 hover:text-zinc-300"
-						>
-							&larr; Back to templates
-						</button>
+				)}
 
-						<TemplateCard template={selected} tenant={tenant} />
-
-						{/* Standings-based config panel */}
-						{isStandingsTemplate && (
-							<div className="mt-4">
-								<h3 className="mb-3 text-sm font-medium text-zinc-400">Standings Configuration</h3>
-								<StandingsExtensionPanel
-									assemblyId={assembly.objectId}
-									assemblyType={assembly.type}
-									structureKind={getStructureKind(assembly.type)}
-									tenant={tenant}
-									characterId={characterId}
-									ownerCapId={assembly.ownerCapId}
-								/>
+				{/* Deploy button (only for non-standings templates -- standings handles its own) */}
+				{!isStandingsTemplate && (
+					<div className="mt-6">
+						{!packageAvailable ? (
+							<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
+								<p className="text-xs text-amber-400">
+									This extension has not been published to {tenant} yet. Publish the Move
+									contract first, then update the package ID in config.
+								</p>
 							</div>
-						)}
-
-						{/* Deploy button (only for non-standings templates -- standings handles its own) */}
-						{!isStandingsTemplate && (
-							<div className="mt-6">
-								{!packageAvailable ? (
-									<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
-										<p className="text-xs text-amber-400">
-											This extension has not been published to {tenant} yet. Publish the Move
-											contract first, then update the package ID in config.
-										</p>
-									</div>
-								) : !assembly.ownerCapId ? (
-									<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
-										<p className="text-xs text-amber-400">
-											Could not find OwnerCap for this assembly. It may be stored in your Character
-											keychain.
-										</p>
-									</div>
+						) : !assembly.ownerCapId ? (
+							<div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
+								<p className="text-xs text-amber-400">
+									Could not find OwnerCap for this assembly. It may be stored in your
+									Character keychain.
+								</p>
+							</div>
+						) : (
+							<button
+								type="button"
+								onClick={handleDeploy}
+								disabled={isDeploying}
+								className="w-full rounded-lg bg-cyan-600 py-3 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+							>
+								{isDeploying ? (
+									<span className="flex items-center justify-center gap-2">
+										<Loader2 size={16} className="animate-spin" />
+										{statusMessages[status]}
+									</span>
 								) : (
-									<button
-										type="button"
-										onClick={handleDeploy}
-										disabled={isDeploying}
-										className="w-full rounded-lg bg-cyan-600 py-3 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-									>
-										{isDeploying ? (
-											<span className="flex items-center justify-center gap-2">
-												<Loader2 size={16} className="animate-spin" />
-												{statusMessages[status]}
-											</span>
-										) : (
-											"Authorize & Deploy"
-										)}
-									</button>
+									"Authorize & Deploy"
 								)}
-							</div>
+							</button>
 						)}
 					</div>
 				)}

@@ -90,8 +90,8 @@ export function InventoryTabs({
 
 	// Compute total capacity (same across all slots -- property of the SSU)
 	// Raw values are in milli-m3, divide by 1000 for m3
-	const maxCapacity = (slots.length > 0 ? slots[0].maxCapacity : 0) / 1000;
-	const totalUsed = slots.reduce((sum, s) => sum + s.usedCapacity, 0) / 1000;
+	const maxCapacity = Math.round((slots.length > 0 ? slots[0].maxCapacity : 0) / 1000);
+	const totalUsed = Math.round(slots.reduce((sum, s) => sum + s.usedCapacity, 0) / 1000);
 
 	// Build color assignments: track player index for rotation
 	let playerIdx = 0;
@@ -298,7 +298,7 @@ export function InventoryTabs({
 						</span>
 						{slot.items.length > 0 && (
 							<span className="ml-1 rounded-full bg-zinc-600/50 px-1.5 py-0.5 text-xs">
-								{slot.items.length} · {(slot.usedCapacity / 1000).toLocaleString()} m³
+								{slot.items.length} · {Math.round(slot.usedCapacity / 1000).toLocaleString()} m³
 							</span>
 						)}
 					</button>
@@ -313,13 +313,10 @@ export function InventoryTabs({
 					canTransfer={canTransferFromActive}
 					onTransfer={handleTransfer}
 					canSell={
-						canSell &&
-						(currentSlot.slotType === "owner"
-							? !!onSell
-							: currentSlot.slotType === "player" &&
-									currentSlot.characterObjectId === transferContext?.characterObjectId
-								? !!onPlayerSell
-								: false)
+						(currentSlot.slotType === "owner" && canSell && !!onSell) ||
+						(currentSlot.slotType === "player" &&
+							currentSlot.characterObjectId === transferContext?.characterObjectId &&
+							!!onPlayerSell)
 					}
 					onSell={
 						currentSlot.slotType === "owner"

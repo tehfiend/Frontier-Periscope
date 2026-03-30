@@ -46,6 +46,10 @@ interface AuthorizeExtensionParams {
 	characterId: string;
 	ownerCapId: string;
 	senderAddress: string;
+	/** If set, update the structure's on-chain name during authorization. */
+	newName?: string;
+	/** If set, update the structure's on-chain dApp URL during authorization. */
+	newUrl?: string;
 }
 
 // ── Transaction Builders ────────────────────────────────────────────────────
@@ -94,7 +98,21 @@ export function buildAuthorizeExtension(params: AuthorizeExtensionParams): Trans
 		arguments: [tx.object(assemblyId), ownerCap],
 	});
 
-	// Step 3: Return OwnerCap
+	// Step 3: Update metadata name + dApp URL (while OwnerCap is borrowed)
+	if (params.newName) {
+		tx.moveCall({
+			target: `${worldTarget}::${assemblyModule}::update_metadata_name`,
+			arguments: [tx.object(assemblyId), ownerCap, tx.pure.string(params.newName)],
+		});
+	}
+	if (params.newUrl) {
+		tx.moveCall({
+			target: `${worldTarget}::${assemblyModule}::update_metadata_url`,
+			arguments: [tx.object(assemblyId), ownerCap, tx.pure.string(params.newUrl)],
+		});
+	}
+
+	// Step 4: Return OwnerCap
 	tx.moveCall({
 		target: `${worldTarget}::character::return_owner_cap`,
 		typeArguments: [fullAssemblyType],

@@ -48,6 +48,8 @@ interface StructureDetailCardProps {
 	onAddToMap?: (row: StructureRow) => void;
 	onReset?: (row: StructureRow) => void;
 	isResetting?: boolean;
+	onPowerToggle?: (row: StructureRow) => void;
+	isPowerToggling?: boolean;
 }
 
 export function StructureDetailCard({
@@ -59,6 +61,8 @@ export function StructureDetailCard({
 	onAddToMap,
 	onReset,
 	isResetting,
+	onPowerToggle,
+	isPowerToggling,
 }: StructureDetailCardProps) {
 	const tenant = useActiveTenant();
 	const extConfig = useStructureExtensionConfig(row?.objectId ?? null);
@@ -92,17 +96,37 @@ export function StructureDetailCard({
 		<div className="mt-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
 			<div className="mb-3 flex items-center justify-between">
 				<h3 className="text-sm font-medium text-zinc-200">{row.label}</h3>
-				<span
-					className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-						row.status === "online"
-							? "bg-green-500/15 text-green-400"
-							: row.status === "offline"
-								? "bg-zinc-700/50 text-zinc-400"
-								: "bg-yellow-500/15 text-yellow-400"
-					}`}
-				>
-					{row.status}
-				</span>
+				<div className="flex items-center gap-2">
+					{onPowerToggle && row.ownership === "mine" && row.parentId && (
+						<button
+							type="button"
+							onClick={() => onPowerToggle(row)}
+							disabled={isPowerToggling}
+							className={`rounded px-2 py-0.5 text-[10px] font-medium disabled:opacity-50 ${
+								row.status === "online"
+									? "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+									: "bg-emerald-700 text-white hover:bg-emerald-600"
+							}`}
+						>
+							{isPowerToggling
+								? "..."
+								: row.status === "online"
+									? "Power Off"
+									: "Power On"}
+						</button>
+					)}
+					<span
+						className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+							row.status === "online"
+								? "bg-green-500/15 text-green-400"
+								: row.status === "offline"
+									? "bg-zinc-700/50 text-zinc-400"
+									: "bg-yellow-500/15 text-yellow-400"
+						}`}
+					>
+						{row.status}
+					</span>
+				</div>
 			</div>
 
 			<div className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
