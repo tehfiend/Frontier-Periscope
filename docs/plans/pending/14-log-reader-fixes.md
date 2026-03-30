@@ -1,5 +1,5 @@
 # Plan: Log Reader / Tailer Fixes
-**Status:** Draft
+**Status:** Active
 **Created:** 2026-03-30
 **Module:** periscope
 
@@ -69,6 +69,9 @@ After this plan is implemented:
 | `\r\n` normalization | In parser functions, not in the hook | Keep parsing logic self-contained. The hook passes raw text; parsers normalize before splitting. |
 | Diagnostic log format | `[LogWatcher]` prefixed console.log/warn | Consistent with existing `[LogWatcher]` error pattern at line 327. No external logging dependency needed. All diagnostics are in the hook, not the parser. |
 | Pending buffer for chat logs | Same Map, keyed by `chat:${fileName}` | Chat logs need the same partial-line protection. Key prefix matches existing offset key pattern (line 209). |
+| Poll interval | Hardcoded 1000ms constant | Simple, easy to change later. No UI work needed. If performance complaints arise, add configurability in a future plan. |
+| Pending buffer persistence | Ephemeral module-level Map | Since offset is stored as last-complete-line position (not file.size), a page reload re-reads from that position and recovers the partial line naturally. No data loss either way. No schema migration needed. |
+| Diagnostic logging | Plain console.log/warn with `[LogWatcher]` prefix | Zero dependencies, matches existing codebase pattern. A structured logger can be introduced project-wide later if needed. |
 
 ## Implementation Phases
 
@@ -185,20 +188,7 @@ This phase fixes the two data-loss bugs (partial lines and truncation).
 
 ## Open Questions
 
-1. **Should the poll interval be user-configurable?**
-   - **Option A:** Hardcoded constant (1000ms). Pros: Simple, no UI work. Cons: Can't tune for low-power devices.
-   - **Option B:** Stored in `db.settings` with UI control in the Logs view. Pros: User can tune. Cons: More UI work, edge cases (what if user sets 50ms?).
-   - **Recommendation:** Option A for this plan. The constant is easy to change later. If users report performance issues, add configurability in a future plan.
-
-2. **Should pending buffers persist across page reloads (IndexedDB) or be ephemeral (module-level Map)?**
-   - **Option A:** Module-level Map (ephemeral). Pros: Simple, fast, no DB schema change. Cons: On reload, any pending partial line is lost (but offset will re-read from stored position, so re-processing that chunk recovers it).
-   - **Option B:** Store in `db.logOffsets` as a new `pendingLine` field. Pros: Survives reload. Cons: Schema migration, extra DB write per poll per file, complexity.
-   - **Recommendation:** Option A. Since offset is stored as the last-complete-line position (not file.size), a reload will re-read from that position and recover the partial line naturally. No data loss either way.
-
-3. **Should diagnostic logging use `console.log` or a structured logger?**
-   - **Option A:** Plain `console.log`/`console.warn` with `[LogWatcher]` prefix. Pros: Zero dependencies, matches existing pattern. Cons: No log levels, no filtering.
-   - **Option B:** Create a lightweight `createLogger("LogWatcher")` utility with configurable levels. Pros: Can be silenced in production. Cons: More code, over-engineering for this scope.
-   - **Recommendation:** Option A. The existing codebase uses plain console with prefixes consistently. A structured logger can be introduced project-wide later if needed.
+None -- all resolved. See Design Decisions table.
 
 ## Deferred
 
