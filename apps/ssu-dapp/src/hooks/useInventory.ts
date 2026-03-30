@@ -115,6 +115,7 @@ interface CapOwnerResponse {
 	} | null;
 }
 
+const MAX_CACHE_SIZE = 500;
 const charIdCache = new Map<string, string>();
 const charIdInflight = new Map<string, Promise<string | null>>();
 
@@ -143,6 +144,7 @@ async function resolveCharacterObjectId(
 			const charId = r.data?.object?.owner?.address?.address;
 			if (charId) {
 				charIdCache.set(ownerCapKey, charId);
+				evictIfNeeded(charIdCache);
 				return charId;
 			}
 			return null;
@@ -190,6 +192,17 @@ interface CharQueryResponse {
 const charNameCache = new Map<string, string>();
 const charNameInflight = new Map<string, Promise<string | null>>();
 
+/** Evict oldest entries when a cache exceeds MAX_CACHE_SIZE */
+function evictIfNeeded(cache: Map<string, string>) {
+	if (cache.size <= MAX_CACHE_SIZE) return;
+	const excess = cache.size - MAX_CACHE_SIZE;
+	const iter = cache.keys();
+	for (let i = 0; i < excess; i++) {
+		const key = iter.next().value;
+		if (key) cache.delete(key);
+	}
+}
+
 async function resolveCharacterName(
 	client: SuiGraphQLClient,
 	ownerCapId: string,
@@ -220,6 +233,7 @@ async function resolveCharacterName(
 					const name = String(meta?.name ?? "");
 					if (name && capId) {
 						charNameCache.set(capId, name);
+						evictIfNeeded(charNameCache);
 					}
 					if (capId === ownerCapId && name) {
 						return name;
