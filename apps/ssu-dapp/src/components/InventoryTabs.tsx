@@ -10,9 +10,7 @@ interface InventoryTabsProps {
 	transferContext?: TransferContext | null;
 	/** Callback when user clicks Sell on an owner inventory item */
 	onSell?: (item: InventoryItem) => void;
-	/** Callback when user clicks Sell on a player inventory item */
-	onPlayerSell?: (item: InventoryItem) => void;
-	/** Whether any Sell button should be shown */
+	/** Whether any Sell button should be shown (owner inventory only) */
 	canSell?: boolean;
 }
 
@@ -71,7 +69,6 @@ export function InventoryTabs({
 	isLoading,
 	transferContext,
 	onSell,
-	onPlayerSell,
 	canSell,
 }: InventoryTabsProps) {
 	const [activeIdx, setActiveIdx] = useState(0);
@@ -312,20 +309,8 @@ export function InventoryTabs({
 					isLoading={isLoading}
 					canTransfer={canTransferFromActive}
 					onTransfer={handleTransfer}
-					canSell={
-						(currentSlot.slotType === "owner" && canSell && !!onSell) ||
-						(currentSlot.slotType === "player" &&
-							currentSlot.characterObjectId === transferContext?.characterObjectId &&
-							!!onPlayerSell)
-					}
-					onSell={
-						currentSlot.slotType === "owner"
-							? onSell
-							: currentSlot.slotType === "player" &&
-									currentSlot.characterObjectId === transferContext?.characterObjectId
-								? onPlayerSell
-								: undefined
-					}
+					canSell={currentSlot.slotType === "owner" && canSell && !!onSell}
+					onSell={currentSlot.slotType === "owner" ? onSell : undefined}
 				/>
 			</div>
 

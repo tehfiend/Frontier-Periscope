@@ -6,7 +6,6 @@ import { useMemo, useState } from "react";
 import { InventoryTabs } from "./InventoryTabs";
 import { MarketContent } from "./MarketContent";
 import { DelegateManager } from "./DelegateManager";
-import type { PlayerSellInfo } from "./SellDialog";
 import { SellDialog } from "./SellDialog";
 import { SsuConfigInfo } from "./SsuConfigInfo";
 import type { TransferContext } from "./TransferDialog";
@@ -61,7 +60,6 @@ export function ContentTabs({
 	const [activeTab, setActiveTab] = useState<TabId>("inventory");
 	const [sellDialogItem, setSellDialogItem] = useState<{
 		item: InventoryItem;
-		playerSell?: PlayerSellInfo;
 	} | null>(null);
 
 	const hasMarket = !!ssuConfig?.marketId;
@@ -77,26 +75,16 @@ export function ContentTabs({
 	}, [inventories]);
 
 	// Owner sell: market linked + connected + authorized (owner/delegate)
+	// Note: escrow_and_list always withdraws from the SSU owner's inventory,
+	// so sell buttons only appear on the owner inventory tab.
 	const isSsuAuthorized =
 		!!ssuConfig &&
 		!!walletAddress &&
 		(ssuConfig.owner === walletAddress || ssuConfig.delegates.includes(walletAddress));
 	const canOwnerSell = hasMarket && isConnected && isSsuAuthorized;
 
-	// Player sell: delegates/owner can sell from their own player inventory.
-	// Regular players can't list -- market::post_sell_listing requires authorization.
-	const canPlayerSell = hasMarket && isConnected && isSsuAuthorized;
-
 	function handleOwnerSell(item: InventoryItem) {
 		setSellDialogItem({ item });
-	}
-
-	function handlePlayerSell(item: InventoryItem) {
-		if (!transferContext) return;
-		setSellDialogItem({
-			item,
-			playerSell: { characterObjectId: transferContext.characterObjectId },
-		});
 	}
 
 	return (
@@ -162,7 +150,6 @@ export function ContentTabs({
 					isLoading={inventoryLoading}
 					transferContext={transferContext}
 					onSell={canOwnerSell ? handleOwnerSell : undefined}
-					onPlayerSell={canPlayerSell ? handlePlayerSell : undefined}
 					canSell={canOwnerSell}
 				/>
 			)}
@@ -240,7 +227,6 @@ export function ContentTabs({
 					ssuConfig={ssuConfig}
 					coinType={coinType}
 					ownerCharacterObjectId={ownerCharacterObjectId ?? null}
-					playerSell={sellDialogItem.playerSell}
 					onClose={() => setSellDialogItem(null)}
 				/>
 			)}
