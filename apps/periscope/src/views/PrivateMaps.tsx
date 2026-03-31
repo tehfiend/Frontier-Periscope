@@ -150,6 +150,11 @@ export function PrivateMaps() {
 			// Sync V2 maps
 			await syncPrivateMapsV2ForUser(client, tenant as TenantId, suiAddress);
 
+			// Decrypt any pending V2 map keys (needs wallet keypair)
+			if (keyPair) {
+				await decryptMapKeysV2(keyPair, tenant as TenantId);
+			}
+
 			// Sync V2 location records
 			const cachedV2Maps = await db.manifestPrivateMapsV2.where("tenant").equals(tenant).toArray();
 			for (const m of cachedV2Maps) {
@@ -173,14 +178,18 @@ export function PrivateMaps() {
 		}
 	}, [suiAddress, keyPair, client, tenant]);
 
-	// Auto-sync when suiAddress is available (no wallet needed)
+	// Auto-sync when suiAddress is available; re-run when keyPair arrives to decrypt
 	const syncedRef = useRef<string | null>(null);
+	const hasKeyRef = useRef(false);
 	useEffect(() => {
-		if (suiAddress && syncedRef.current !== suiAddress) {
+		const keyArrived = !!keyPair && !hasKeyRef.current;
+		if (keyPair) hasKeyRef.current = true;
+
+		if (suiAddress && (syncedRef.current !== suiAddress || keyArrived)) {
 			syncedRef.current = suiAddress;
 			handleSync();
 		}
-	}, [suiAddress, handleSync]);
+	}, [suiAddress, keyPair, handleSync]);
 
 	// When key becomes available, decrypt pending V1 map keys + decrypt stored locations
 	useEffect(() => {
