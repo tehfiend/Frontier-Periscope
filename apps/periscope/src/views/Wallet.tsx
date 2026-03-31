@@ -184,36 +184,34 @@ export function Wallet() {
 		}
 	}, [suiAddress, fetchBalances, fetchTransactions]);
 
-	// Build set of valid coin types from manifest (non-decommissioned markets)
-	const [validCoinTypes, setValidCoinTypes] = useState<Set<string> | null>(null);
+	// Resolve decommissioned coin types to filter out
+	const [decomCoinTypes, setDecomCoinTypes] = useState<Set<string>>(new Set());
 	useEffect(() => {
 		let cancelled = false;
 		(async () => {
 			try {
 				const addrs = getContractAddresses(tenant as TenantId);
 				const decomPkg = addrs.decommission?.packageId;
-				const decomMarketIds = decomPkg
-					? await queryDecommissionedMarkets(client, decomPkg)
-					: new Set<string>();
-				const markets = await db.manifestMarkets.toArray();
-				const valid = new Set<string>();
-				for (const m of markets) {
-					if (!decomMarketIds.has(m.id)) {
-						valid.add(m.coinType);
+				if (!decomPkg) return;
+				const decomMarketIds = await queryDecommissionedMarkets(client, decomPkg);
+				const coinTypes = new Set<string>();
+				for (const mId of decomMarketIds) {
+					// Look up each decommissioned market in manifest to get its coinType
+					const market = await db.manifestMarkets.get(mId);
+					if (market) {
+						coinTypes.add(market.coinType);
 					}
 				}
-				if (!cancelled) setValidCoinTypes(valid);
+				if (!cancelled) setDecomCoinTypes(coinTypes);
 			} catch { /* non-fatal */ }
 		})();
 		return () => { cancelled = true; };
 	}, [client, tenant]);
 
-	// Show SUI + coins from active (non-decommissioned) markets only
+	// Show all balances except decommissioned coins
 	const visibleBalances = useMemo(
-		() => validCoinTypes
-			? balances.filter((b) => isSuiCoin(b.coinType) || validCoinTypes.has(b.coinType))
-			: balances,
-		[balances, validCoinTypes],
+		() => balances.filter((b) => !decomCoinTypes.has(b.coinType)),
+		[balances, decomCoinTypes],
 	);
 
 	// ── Flatten transactions ─────────────────────────────────────────────────
@@ -223,7 +221,7 @@ export function Wallet() {
 		const types = new Set<string>();
 		for (const tx of rawTxs) {
 			for (const bc of tx.balanceChanges) {
-				if (validCoinTypes && !isSuiCoin(bc.coinType) && !validCoinTypes.has(bc.coinType)) continue;
+				if (decomCoinTypes.has(bc.coinType)) continue;
 				types.add(bc.coinType);
 				flat.push({
 					digest: tx.digest,
