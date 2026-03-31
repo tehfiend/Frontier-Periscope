@@ -12,9 +12,7 @@ import {
 	type WalletTransaction,
 	getContractAddresses,
 	getObjectJson,
-	queryAllMarketsStandings,
 	queryDecommissionedMarkets,
-	queryMarkets,
 	queryWalletTransactions,
 } from "@tehfrontier/chain-shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -47,8 +45,8 @@ export function WalletTab() {
 	const [fetching, setFetching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	// Valid coin types from active (non-decommissioned) markets
-	const [validCoinTypes, setValidCoinTypes] = useState<Set<string> | null>(null);
+	// Decommissioned coin types to filter out
+	const [decomCoinTypes, setDecomCoinTypes] = useState<Set<string>>(new Set());
 
 	// Transaction state
 	const [rawTxs, setRawTxs] = useState<WalletTransaction[]>([]);
@@ -146,58 +144,24 @@ export function WalletTab() {
 		}
 	}, [walletAddress, fetchBalances, fetchTransactions]);
 
-	// Discover active market coin types (same approach as Periscope Wallet)
+	// Resolve decommissioned coin types on mount
 	useEffect(() => {
 		let cancelled = false;
 		(async () => {
 			try {
 				const addrs = getContractAddresses(getTenant() as TenantId);
-
-				// Discover all markets across current + previous package lineages
-				const marketCfg = addrs.market;
-				const marketPkgs = [
-					marketCfg?.packageId,
-					...(marketCfg?.previousOriginalPackageIds ?? []),
-				].filter(Boolean) as string[];
-
-				const allCoinTypes = new Set<string>();
-				const allMarketIds = new Set<string>();
-
-				// Search market::Market objects
-				for (const pkgId of marketPkgs) {
-					const markets = await queryMarkets(client, pkgId);
-					for (const m of markets) {
-						if (allMarketIds.has(m.objectId)) continue;
-						allMarketIds.add(m.objectId);
-						if (m.coinType) allCoinTypes.add(m.coinType);
-					}
-				}
-
-				// Search market_standings::Market objects
-				const msCfg = addrs.marketStandings;
-				if (msCfg?.packageId) {
-					const msMarkets = await queryAllMarketsStandings(client, msCfg.packageId);
-					for (const m of msMarkets) {
-						if (allMarketIds.has(m.objectId)) continue;
-						allMarketIds.add(m.objectId);
-						if (m.coinType) allCoinTypes.add(m.coinType);
-					}
-				}
-
-				// Remove decommissioned market coin types
 				const decomPkg = addrs.decommission?.packageId;
-				if (decomPkg) {
-					const decomMarketIds = await queryDecommissionedMarkets(client, decomPkg);
-					for (const mId of decomMarketIds) {
-						try {
-							const obj = await getObjectJson(client, mId);
-							const match = obj.type?.match(/::(?:market_standings|market)::Market<(.+)>$/);
-							if (match) allCoinTypes.delete(match[1]);
-						} catch { /* skip */ }
-					}
+				if (!decomPkg) return;
+				const marketIds = await queryDecommissionedMarkets(client, decomPkg);
+				const coinTypes = new Set<string>();
+				for (const mId of marketIds) {
+					try {
+						const obj = await getObjectJson(client, mId);
+						const match = obj.type?.match(/::(?:market_standings|market)::Market<(.+)>$/);
+						if (match) coinTypes.add(match[1]);
+					} catch { /* skip */ }
 				}
-
-				if (!cancelled) setValidCoinTypes(allCoinTypes);
+				if (!cancelled) setDecomCoinTypes(coinTypes);
 			} catch { /* non-fatal */ }
 		})();
 		return () => { cancelled = true; };
@@ -210,7 +174,7 @@ export function WalletTab() {
 		const types = new Set<string>();
 		for (const tx of rawTxs) {
 			for (const bc of tx.balanceChanges) {
-				if (validCoinTypes && !isSuiCoin(bc.coinType) && !validCoinTypes.has(bc.coinType)) continue;
+				if (decomCoinTypes.has(bc.coinType)) continue;
 				types.add(bc.coinType);
 				flat.push({
 					digest: tx.digest,
@@ -221,7 +185,7 @@ export function WalletTab() {
 			}
 		}
 		return { flatTxs: flat, txCoinTypes: Array.from(types).sort() };
-	}, [rawTxs, validCoinTypes]);
+	}, [rawTxs, decomCoinTypes]);
 
 	// ── Filter + sort ───────────────────────────────────────────────────────
 
@@ -292,9 +256,7 @@ export function WalletTab() {
 
 	// ── Derived data ────────────────────────────────────────────────────────
 
-	const activeBalances = validCoinTypes
-		? balances.filter((b) => isSuiCoin(b.coinType) || validCoinTypes.has(b.coinType))
-		: balances;
+	const activeBalances = balances.filter((b) => !decomCoinTypes.has(b.coinType));
 	const suiBalance = activeBalances.find((b) => isSuiCoin(b.coinType));
 	const suiMist = suiBalance?.totalBalance ?? "0";
 	const suiHuman = formatBalance(suiMist, 9);
