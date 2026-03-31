@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import { useManifestAutoSync } from "@/hooks/useManifestAutoSync";
+import { usePrivateMapAutoDecrypt } from "@/hooks/usePrivateMapAutoDecrypt";
 import { fetchAndStoreGameTypes } from "@/lib/worldApi";
 import { useAppStore } from "@/stores/appStore";
 import { Loader2, Telescope } from "lucide-react";
@@ -19,6 +20,9 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 
 	// Auto-sync manifest characters for all tenants (background, non-blocking)
 	useManifestAutoSync();
+
+	// Auto-decrypt private map locations when wallet connects
+	usePrivateMapAutoDecrypt();
 
 	useEffect(() => {
 		initialize();
