@@ -355,8 +355,10 @@ export function PrivateMaps() {
 						locations={locations}
 						isCreator={!!walletAddress && selectedMapV1.creator === walletAddress}
 						walletAddress={walletAddress}
-						decryptedMapKey={selectedMapV1.decryptedMapKey}
-						mapPublicKey={selectedMapV1.publicKey}
+						mapId={selectedMapV1.id}
+						mapVersion="v1"
+						keyPair={keyPair}
+						tenant={tenant}
 						onRemove={
 							walletAddress && packageId
 								? async (locationId) => {
@@ -440,8 +442,10 @@ export function PrivateMaps() {
 						locations={locations}
 						isCreator={!!walletAddress && selectedMapV2.creator === walletAddress}
 						walletAddress={walletAddress}
-						decryptedMapKey={selectedMapV2.decryptedMapKey}
-						mapPublicKey={selectedMapV2.publicKey}
+						mapId={selectedMapV2.id}
+						mapVersion="v2"
+						keyPair={keyPair}
+						tenant={tenant}
 						onRemove={
 							walletAddress && packageIdV2
 								? async (locationId) => {
@@ -822,28 +826,55 @@ function LocationsTable({
 	isCreator,
 	walletAddress,
 	onRemove,
-	decryptedMapKey,
-	mapPublicKey,
+	mapId,
+	mapVersion,
+	keyPair,
+	tenant,
 }: {
 	locations: ManifestMapLocation[];
 	isCreator: boolean;
 	walletAddress?: string;
 	onRemove?: (locationId: number) => void;
-	decryptedMapKey?: string;
-	mapPublicKey?: string;
+	mapId: string;
+	mapVersion: "v1" | "v2";
+	keyPair?: { publicKey: Uint8Array; secretKey: Uint8Array } | null;
+	tenant: string;
 }) {
 	const [decrypting, setDecrypting] = useState(false);
+	const [decryptError, setDecryptError] = useState<string | null>(null);
 
 	async function handleDecrypt() {
-		if (!decryptedMapKey || !mapPublicKey || decrypting) return;
+		if (!keyPair || decrypting) return;
 		setDecrypting(true);
+		setDecryptError(null);
 		try {
-			const mapIds = [...new Set(locations.filter((l) => l.encryptedData).map((l) => l.mapId))];
-			for (const mapId of mapIds) {
-				await decryptStoredLocations(mapId, decryptedMapKey, mapPublicKey);
+			// Step 1: Ensure map key is decrypted
+			if (mapVersion === "v1") {
+				await decryptMapKeys(keyPair, tenant as TenantId);
+			} else {
+				await decryptMapKeysV2(keyPair, tenant as TenantId);
+			}
+
+			// Step 2: Read the (now potentially decrypted) map record
+			const mapRecord = mapVersion === "v1"
+				? await db.manifestPrivateMaps.get(mapId)
+				: await db.manifestPrivateMapsV2.get(mapId);
+
+			if (!mapRecord?.decryptedMapKey || !mapRecord?.publicKey) {
+				setDecryptError("Map key not available -- missing invite or wrong wallet");
+				return;
+			}
+
+			// Step 3: Decrypt stored locations
+			const count = await decryptStoredLocations(
+				mapId, mapRecord.decryptedMapKey, mapRecord.publicKey,
+			);
+			if (count === 0) {
+				setDecryptError("No locations could be decrypted");
 			}
 		} catch (err) {
 			console.error("[LocationsTable] decrypt failed:", err);
+			setDecryptError(String(err));
 		} finally {
 			setDecrypting(false);
 		}
@@ -946,20 +977,25 @@ function LocationsTable({
 						<div key={loc.id} className="flex items-center justify-between px-4 py-3">
 							<div>
 								{loc.encryptedData ? (
-									<div className="flex items-center gap-2">
-										<p className="flex items-center gap-1.5 text-sm text-zinc-500">
-											<Lock size={12} />
-											Encrypted location #{loc.locationId}
-										</p>
-										{decryptedMapKey && mapPublicKey && (
-											<button
-												type="button"
-												onClick={handleDecrypt}
-												disabled={decrypting}
-												className="rounded bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300 disabled:opacity-50"
-											>
-												{decrypting ? "Decrypting..." : "Decrypt"}
-											</button>
+									<div>
+										<div className="flex items-center gap-2">
+											<p className="flex items-center gap-1.5 text-sm text-zinc-500">
+												<Lock size={12} />
+												Encrypted location #{loc.locationId}
+											</p>
+											{keyPair && (
+												<button
+													type="button"
+													onClick={handleDecrypt}
+													disabled={decrypting}
+													className="rounded bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300 disabled:opacity-50"
+												>
+													{decrypting ? "Decrypting..." : "Decrypt"}
+												</button>
+											)}
+										</div>
+										{decryptError && (
+											<p className="mt-0.5 text-[10px] text-red-400">{decryptError}</p>
 										)}
 									</div>
 								) : (
