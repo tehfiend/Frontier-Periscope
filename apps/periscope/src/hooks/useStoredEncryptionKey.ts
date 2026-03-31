@@ -70,9 +70,24 @@ export function useStoredEncryptionKey(): {
 				}
 
 				// Not stored -- derive from wallet signature (one-time)
-				const { signature } = await dAppKit.signPersonalMessage({
-					message: new TextEncoder().encode(ENCRYPTION_KEY_MESSAGE),
-				});
+				// Retry on "Max epoch" errors (SDK needs time to fetch epoch data)
+				let signature: string;
+				for (let attempt = 0; ; attempt++) {
+					try {
+						const result = await dAppKit.signPersonalMessage({
+							message: new TextEncoder().encode(ENCRYPTION_KEY_MESSAGE),
+						});
+						signature = result.signature;
+						break;
+					} catch (err) {
+						if (attempt < 3 && String(err).includes("Max epoch")) {
+							await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+							if (cancelled) return;
+							continue;
+						}
+						throw err;
+					}
+				}
 				if (cancelled) return;
 
 				const derived = deriveMapKeyFromSignature(signature);
