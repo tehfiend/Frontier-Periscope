@@ -1,19 +1,35 @@
 import { useCoinMetadata } from "@/hooks/useCoinMetadata";
 import type { InventoryItem } from "@/hooks/useInventory";
+import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { decodeErrorMessage } from "@/lib/errors";
+import { getTenant, getWorldPublishedAt } from "@/lib/constants";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { buildEscrowAndList, formatBaseUnits, parseDisplayPrice } from "@tehfrontier/chain-shared";
+import {
+	buildEscrowAndList,
+	buildPlayerEscrowAndList,
+	formatBaseUnits,
+	parseDisplayPrice,
+} from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
+
 
 interface SellDialogProps {
 	item: InventoryItem;
 	ssuObjectId: string;
 	ssuConfig: SsuConfigResult;
 	coinType: string;
-	/** SSU owner's Character object ID -- escrow_and_list always uses owner inventory. */
+	/** SSU owner's Character object ID (for owner inventory sell). */
 	ownerCharacterObjectId: string | null;
+	/** When true, sell from the player's inventory using their Character OwnerCap. */
+	isPlayerSell?: boolean;
+	/** Connected player's Character object ID (for player sell). */
+	connectedCharacterObjectId?: string;
+	/** Connected player's Character OwnerCap (for player sell). */
+	charOwnerCap?: OwnerCapInfo;
+	/** Connected player's Character OwnerCap ID (for player sell). */
+	charOwnerCapId?: string;
 	onClose: () => void;
 }
 
@@ -23,6 +39,10 @@ export function SellDialog({
 	ssuConfig,
 	coinType,
 	ownerCharacterObjectId,
+	isPlayerSell,
+	connectedCharacterObjectId,
+	charOwnerCap,
+	charOwnerCapId,
 	onClose,
 }: SellDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -47,23 +67,8 @@ export function SellDialog({
 	const totalValue = priceBase * BigInt(qty);
 	const maxQty = item.quantity;
 
-	// escrow_and_list always withdraws from the SSU owner's inventory
-	const characterObjectId = ownerCharacterObjectId;
-
-	const isSsuAuthorized =
-		!!account?.address &&
-		(ssuConfig.owner === account.address || ssuConfig.delegates.includes(account.address));
-
 	async function handleSell() {
 		if (!account?.address || !ssuConfig.marketId || !coinType) return;
-		if (!characterObjectId) {
-			setError("Character not resolved");
-			return;
-		}
-		if (!isSsuAuthorized) {
-			setError("You are not a delegate on this SSU. Ask the owner to add you via Settings > Delegates.");
-			return;
-		}
 		if (qty <= 0 || qty > maxQty) {
 			setError(`Quantity must be between 1 and ${maxQty}`);
 			return;
@@ -76,19 +81,52 @@ export function SellDialog({
 		setError(null);
 		setSuccess(null);
 
+		const worldPkg = getWorldPublishedAt(getTenant());
+
 		try {
-			const tx = buildEscrowAndList({
-				ssuUnifiedPackageId: ssuConfig.packageId,
-				ssuConfigId: ssuConfig.ssuConfigId,
-				ssuObjectId,
-				characterObjectId,
-				coinType,
-				marketId: ssuConfig.marketId,
-				typeId: item.typeId,
-				pricePerUnit: priceBase,
-				quantity: qty,
-				senderAddress: account.address,
-			});
+			let tx: import("@mysten/sui/transactions").Transaction;
+
+			const usePlayerPath =
+				!!isPlayerSell && !!charOwnerCap && !!charOwnerCapId && !!connectedCharacterObjectId;
+
+			if (usePlayerPath) {
+				// Player sell: withdraw from player's slot via OwnerCap, escrow, then list
+				tx = buildPlayerEscrowAndList({
+					ssuUnifiedPackageId: ssuConfig.packageId,
+					ssuConfigId: ssuConfig.ssuConfigId,
+					ssuObjectId,
+					characterObjectId: connectedCharacterObjectId!,
+					ownerCapId: charOwnerCapId!,
+					ownerCapVersion: String(charOwnerCap!.version),
+					ownerCapDigest: charOwnerCap!.digest,
+					worldPackageId: worldPkg,
+					marketPackageId: ssuConfig.marketPackageId ?? ssuConfig.packageId,
+					coinType,
+					marketId: ssuConfig.marketId,
+					typeId: item.typeId,
+					pricePerUnit: priceBase,
+					quantity: qty,
+					senderAddress: account.address,
+				});
+			} else {
+				// Owner sell: sell from SSU owner inventory
+				if (!ownerCharacterObjectId) {
+					setError("SSU owner character not resolved");
+					return;
+				}
+				tx = buildEscrowAndList({
+					ssuUnifiedPackageId: ssuConfig.packageId,
+					ssuConfigId: ssuConfig.ssuConfigId,
+					ssuObjectId,
+					characterObjectId: ownerCharacterObjectId,
+					coinType,
+					marketId: ssuConfig.marketId,
+					typeId: item.typeId,
+					pricePerUnit: priceBase,
+					quantity: qty,
+					senderAddress: account.address,
+				});
+			}
 
 			await signAndExecute(tx);
 			setSuccess(
@@ -107,7 +145,9 @@ export function SellDialog({
 		>
 			<div className="p-4">
 				<div className="mb-4 flex items-center justify-between">
-					<h3 className="text-sm font-medium text-zinc-200">Sell Item</h3>
+					<h3 className="text-sm font-medium text-zinc-200">
+						{isPlayerSell ? "Sell from Storage" : "Sell Item"}
+					</h3>
 					<button
 						type="button"
 						onClick={() => {
@@ -137,7 +177,9 @@ export function SellDialog({
 				) : (
 					<div className="space-y-3">
 						<p className="text-[10px] text-zinc-600">
-							Items will be listed as a virtual sell listing.
+							{isPlayerSell
+								? "Items will be escrowed until sold or canceled."
+								: "Items will be listed as a virtual sell listing."}
 						</p>
 
 						{/* Item info */}

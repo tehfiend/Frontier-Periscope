@@ -1,11 +1,14 @@
+import type { AssemblyMetadata } from "@/hooks/useAssembly";
 import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
 import type { InventoryItem, SsuInventories } from "@/hooks/useInventory";
 import type { SellListingWithName } from "@/hooks/useMarketListings";
+import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { useMemo, useState } from "react";
+import { DelegateManager } from "./DelegateManager";
 import { InventoryTabs } from "./InventoryTabs";
 import { MarketContent } from "./MarketContent";
-import { DelegateManager } from "./DelegateManager";
+import { MetadataEditor } from "./MetadataEditor";
 import { SellDialog } from "./SellDialog";
 import { SsuConfigInfo } from "./SsuConfigInfo";
 import type { TransferContext } from "./TransferDialog";
@@ -35,6 +38,18 @@ interface ContentTabsProps {
 	connectedCharacterName?: string | null;
 	extensionType?: string | null;
 	dappUrl?: string | null;
+	/** Owner's Character object ID (for metadata editing) */
+	ownerCharacterForMetadata?: string | null;
+	/** SSU OwnerCap (for metadata editing) */
+	ownerCap?: OwnerCapInfo | null;
+	/** Current on-chain metadata */
+	metadata?: AssemblyMetadata | null;
+	/** Connected player's Character object ID (for player sell) */
+	connectedCharacterObjectId?: string | null;
+	/** Connected player's Character OwnerCap (for player sell) */
+	charOwnerCap?: OwnerCapInfo | null;
+	/** Connected player's Character OwnerCap ID (for player sell) */
+	charOwnerCapId?: string | null;
 }
 
 export function ContentTabs({
@@ -56,10 +71,17 @@ export function ContentTabs({
 	connectedCharacterName,
 	extensionType,
 	dappUrl,
+	ownerCharacterForMetadata,
+	ownerCap,
+	metadata,
+	connectedCharacterObjectId,
+	charOwnerCap,
+	charOwnerCapId,
 }: ContentTabsProps) {
 	const [activeTab, setActiveTab] = useState<TabId>("inventory");
 	const [sellDialogItem, setSellDialogItem] = useState<{
 		item: InventoryItem;
+		isPlayerSell: boolean;
 	} | null>(null);
 
 	const hasMarket = !!ssuConfig?.marketId;
@@ -74,17 +96,13 @@ export function ContentTabs({
 		return map;
 	}, [inventories]);
 
-	// Owner sell: market linked + connected + authorized (owner/delegate)
-	// Note: escrow_and_list always withdraws from the SSU owner's inventory,
-	// so sell buttons only appear on the owner inventory tab.
-	const isSsuAuthorized =
-		!!ssuConfig &&
-		!!walletAddress &&
-		(ssuConfig.owner === walletAddress || ssuConfig.delegates.includes(walletAddress));
-	const canOwnerSell = hasMarket && isConnected && isSsuAuthorized;
+	// Only the SSU owner can sell from the owner inventory (escrow_and_list uses owner slot)
+	const canOwnerSell = hasMarket && isConnected && isSsuOwner;
+	// Any connected user can sell from their own player slot (requires resolved OwnerCap)
+	const canPlayerSell = hasMarket && isConnected && !!charOwnerCap;
 
-	function handleOwnerSell(item: InventoryItem) {
-		setSellDialogItem({ item });
+	function handleSell(item: InventoryItem, isPlayerSell: boolean) {
+		setSellDialogItem({ item, isPlayerSell });
 	}
 
 	return (
@@ -149,8 +167,9 @@ export function ContentTabs({
 					inventories={inventories}
 					isLoading={inventoryLoading}
 					transferContext={transferContext}
-					onSell={canOwnerSell ? handleOwnerSell : undefined}
-					canSell={canOwnerSell}
+					onSell={canOwnerSell ? (item) => handleSell(item, false) : undefined}
+					onPlayerSell={canPlayerSell ? (item) => handleSell(item, true) : undefined}
+					canSell={canOwnerSell || canPlayerSell}
 				/>
 			)}
 
@@ -167,6 +186,9 @@ export function ContentTabs({
 					ssuObjectId={ssuObjectId}
 					ownerCharacterObjectId={ownerCharacterObjectId}
 					escrowQuantities={escrowQuantities}
+					connectedCharacterObjectId={connectedCharacterObjectId}
+					charOwnerCap={charOwnerCap}
+					charOwnerCapId={charOwnerCapId}
 				/>
 			)}
 
@@ -213,6 +235,14 @@ export function ContentTabs({
 							)}
 						</div>
 					</div>
+					{isSsuOwner && ownerCharacterForMetadata && ownerCap && (
+						<MetadataEditor
+							ssuObjectId={ssuObjectId}
+							characterObjectId={ownerCharacterForMetadata}
+							ownerCap={ownerCap}
+							metadata={metadata ?? null}
+						/>
+					)}
 					{isSsuOwner && <VisibilitySettings ssuConfig={ssuConfig} />}
 					<SsuConfigInfo ssuConfig={ssuConfig} />
 					{isSsuOwner && <DelegateManager ssuConfig={ssuConfig} />}
@@ -227,6 +257,10 @@ export function ContentTabs({
 					ssuConfig={ssuConfig}
 					coinType={coinType}
 					ownerCharacterObjectId={ownerCharacterObjectId ?? null}
+					isPlayerSell={sellDialogItem.isPlayerSell}
+					connectedCharacterObjectId={connectedCharacterObjectId ?? undefined}
+					charOwnerCap={charOwnerCap ?? undefined}
+					charOwnerCapId={charOwnerCapId ?? undefined}
 					onClose={() => setSellDialogItem(null)}
 				/>
 			)}
