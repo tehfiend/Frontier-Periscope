@@ -1,5 +1,5 @@
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { db } from "@/db";
 import {
@@ -22,6 +22,7 @@ import {
 export function useStoredEncryptionKey(): {
 	keyPair: { publicKey: Uint8Array; secretKey: Uint8Array } | null;
 	isLoading: boolean;
+	retry: () => void;
 } {
 	const dAppKit = useDAppKit();
 	const account = useCurrentAccount();
@@ -33,6 +34,12 @@ export function useStoredEncryptionKey(): {
 	} | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const attemptedRef = useRef<string | null>(null);
+	const [retryCount, setRetryCount] = useState(0);
+
+	const retry = useCallback(() => {
+		attemptedRef.current = null;
+		setRetryCount((c) => c + 1);
+	}, []);
 
 	useEffect(() => {
 		if (!walletAddress) {
@@ -104,8 +111,17 @@ export function useStoredEncryptionKey(): {
 				if (!cancelled) {
 					setKeyPair(derived);
 				}
-			} catch {
-				// User rejected signing or other error
+			} catch (err) {
+				// Reset so user can retry (via disconnect/reconnect or retry button)
+				if (!cancelled) attemptedRef.current = null;
+
+				if (String(err).includes("Max epoch")) {
+					alert(
+						"Eve Vault error: Max epoch is not set.\n\n" +
+							"Try logging out of the Eve Vault extension and logging back in, " +
+							"then reconnect your wallet.",
+					);
+				}
 			} finally {
 				if (!cancelled) setIsLoading(false);
 			}
@@ -115,7 +131,7 @@ export function useStoredEncryptionKey(): {
 		return () => {
 			cancelled = true;
 		};
-	}, [walletAddress, dAppKit]);
+	}, [walletAddress, dAppKit, retryCount]);
 
-	return { keyPair, isLoading };
+	return { keyPair, isLoading, retry };
 }

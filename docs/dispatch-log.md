@@ -149,3 +149,21 @@
 - **File:** docs/plans/active/14-log-reader-fixes.md
 - **Passes:** 1
 - **Result:** active -- resolved 3 open questions (A: hardcoded 1s interval, A: ephemeral Map for pending buffers, A: plain console with prefix)
+
+## 2026-03-30 -- exchange-ui
+- **Action:** CREATE
+- **File:** docs/plans/active/15-exchange-ui.md
+- **Passes:** 4
+- **Result:** active -- 6-phase plan adding Exchange tab to ssu-dapp with order book browser, place/cancel order dialogs, create pair dialog. Refactors chain-shared TX builders for merge+split PTB pattern. 3 open questions resolved (B: standalone/global tab, A: pre-split coin deposit, C: hybrid coin type picker).
+
+## 2026-03-30 -- exchange-ui (update)
+- **Action:** UPDATE
+- **File:** plans/active/15-exchange-ui.md
+- **Passes:** 4 (3 with changes, pass 4 NO_CHANGES)
+- **Result:** active -- execution-ready. Added exact import paths, line references, merge+split code snippet, PairRow sub-component pattern, tab visibility conditions, error code handling approach.
+
+## 2026-03-30 -- wallet-connect-audit
+- **Action:** CREATE
+- **File:** docs/plans/pending/16-wallet-connect-audit.md
+- **Passes:** 3 (2 with changes, pass 3 NO_CHANGES)
+- **Result:** pending -- 4-phase plan auditing and fixing wallet connection patterns across 12 files in apps/periscope. Converts all ConnectWalletButton ternaries, !account gates, and silent-fail guards to inline auto-connect pattern (prefer Eve Vault, connect-and-execute in one click). Removes ConnectWalletButton export. 12 violations identified across views (Currencies, Deployables, PrivateMaps, Standings, Wallet), components (AddCharacterDialog, AddToMapDialog, TurretPublishFlow, TransferDialog), and hooks (useExtensionRevoke, useExtensionDeploy). 3 open questions remain (CurrencyDetail sender address source, PrivateMaps keyPair timing, TransferDialog prop strategy).

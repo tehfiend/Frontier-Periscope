@@ -27,6 +27,7 @@ import { StandingBadge } from "@/components/StandingBadge";
 import { db } from "@/db";
 import type { Contact, RegistryStanding } from "@/db/types";
 import type { ManifestRegistry } from "@/db/types";
+import { walletErrorMessage } from "@/lib/format";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import {
 	useAddContact,
@@ -1586,7 +1587,7 @@ function CreateRegistryDialog({
 			onCreated();
 			onClose();
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		} finally {
 			setIsPending(false);
 		}
@@ -1769,7 +1770,7 @@ function SetRegistryStandingDialog({
 			onSet();
 			onClose();
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		} finally {
 			setIsPending(false);
 		}
@@ -1959,7 +1960,7 @@ function AddAdminDialog({
 			onAdded();
 			onClose();
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		} finally {
 			setIsPending(false);
 		}

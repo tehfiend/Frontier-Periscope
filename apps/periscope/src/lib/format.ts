@@ -25,6 +25,15 @@ export function formatLocation(systemName?: string, lPoint?: string): string {
 	return "";
 }
 
+/** Extract a user-friendly error message, enriching known wallet errors. */
+export function walletErrorMessage(err: unknown): string {
+	const msg = err instanceof Error ? err.message : String(err);
+	if (msg.includes("Max epoch")) {
+		return "Eve Vault error: Max epoch is not set. Try logging out of the Eve Vault extension and logging back in, then reconnect your wallet.";
+	}
+	return msg;
+}
+
 /** Format a millisecond duration as "Xm Ys" or "Ys". */
 export function formatDuration(ms: number): string {
 	const totalSec = Math.round(ms / 1000);

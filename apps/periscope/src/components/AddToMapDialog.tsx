@@ -5,6 +5,7 @@ import type { ManifestPrivateMap, ManifestPrivateMapV2 } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { walletErrorMessage } from "@/lib/format";
 import { buildAddLocationTx } from "@/lib/mapLocation";
 import { useAppStore } from "@/stores/appStore";
 import type { StructureRow } from "@/views/Deployables";
@@ -218,7 +219,7 @@ export function AddToMapDialog({ structureRow, onClose, onAdded }: AddToMapDialo
 			onAdded?.();
 			onClose();
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		} finally {
 			setIsPending(false);
 		}

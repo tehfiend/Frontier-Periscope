@@ -8,6 +8,7 @@ import { discoverCharacterAndAssemblies } from "@/chain/queries";
 import { fetchCharacterByAddress, searchCachedCharacters } from "@/chain/manifest";
 import { parseLogFilename, parseHeader, decodeChatLog } from "@/lib/logParser";
 import { lookupCharacterByItemId } from "@/chain/client";
+import { walletErrorMessage } from "@/lib/format";
 import { getStoredHandle, requestDirectoryAccess, verifyPermission } from "@/lib/logFileAccess";
 import { useAppStore } from "@/stores/appStore";
 import {
@@ -247,7 +248,7 @@ function WalletMethod({ onClose, tenant }: { onClose: () => void; tenant: Tenant
 				alreadyAdded,
 			});
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		} finally {
 			setLoading(false);
 		}

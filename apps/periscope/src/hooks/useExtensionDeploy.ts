@@ -2,6 +2,7 @@ import type { AssemblyKind, ExtensionTemplate, TenantId } from "@/chain/config";
 import { buildAuthorizeExtension } from "@/chain/transactions";
 import { db } from "@/db";
 import type { StructureExtensionConfig } from "@/db/types";
+import { walletErrorMessage } from "@/lib/format";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useState } from "react";
 
@@ -87,7 +88,7 @@ export function useExtensionDeploy() {
 			}
 		} catch (err) {
 			setStatus("error");
-			setResult({ error: err instanceof Error ? err.message : String(err) });
+			setResult({ error: walletErrorMessage(err) });
 		}
 	}
 

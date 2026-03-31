@@ -2,6 +2,7 @@ import { CopyAddress } from "@/components/CopyAddress";
 import { TransferDialog } from "@/components/TransferDialog";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { walletErrorMessage } from "@/lib/format";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { type WalletTransaction, queryWalletTransactions } from "@tehfrontier/chain-shared";
 import {
@@ -118,7 +119,7 @@ export function Wallet() {
 			}
 			setCoinMeta(metaMap);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		} finally {
 			setFetching(false);
 			setLoading(false);
@@ -156,7 +157,7 @@ export function Wallet() {
 				setCoinMeta((prev) => ({ ...prev, ...newMeta }));
 			}
 		} catch (err) {
-			setTxError(err instanceof Error ? err.message : String(err));
+			setTxError(walletErrorMessage(err));
 		} finally {
 			setTxLoading(false);
 		}

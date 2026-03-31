@@ -1,5 +1,6 @@
 import type { ManifestCharacter } from "@/db/types";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { walletErrorMessage } from "@/lib/format";
 import { useDAppKit } from "@mysten/dapp-kit-react";
 import { Transaction } from "@mysten/sui/transactions";
 import { queryOwnedCoins } from "@tehfrontier/chain-shared";
@@ -153,7 +154,7 @@ export function TransferDialog({
 				"";
 			setTxDigest(digest);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		} finally {
 			setIsPending(false);
 		}

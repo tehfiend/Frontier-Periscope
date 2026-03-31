@@ -4,6 +4,7 @@ import { ContactPicker } from "@/components/ContactPicker";
 import { db } from "@/db";
 import type { StructureExtensionConfig } from "@/db/types";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { walletErrorMessage } from "@/lib/format";
 import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
 import {
 	ASSEMBLY_MODULE_MAP,
@@ -623,7 +624,7 @@ function StandingsExtensionPanelInner({
 			onConfigured?.();
 		} catch (err) {
 			setStatus("error");
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		}
 	}
 

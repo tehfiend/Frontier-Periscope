@@ -1,6 +1,7 @@
 import type { AssemblyKind, TenantId } from "@/chain/config";
 import { ASSEMBLY_MODULE_MAP, buildRemoveExtension } from "@/chain/transactions";
 import { db } from "@/db";
+import { walletErrorMessage } from "@/lib/format";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useState } from "react";
 
@@ -82,7 +83,7 @@ export function useExtensionRevoke() {
 			}
 		} catch (err) {
 			setStatus("error");
-			setResult({ error: err instanceof Error ? err.message : String(err) });
+			setResult({ error: walletErrorMessage(err) });
 		}
 	}
 
