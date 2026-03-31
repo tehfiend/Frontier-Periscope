@@ -1010,14 +1010,47 @@ export async function decryptMapKeys(
 }
 
 /**
+ * Decrypt map keys for all cached V2 mode=0 maps that don't have a decryptedMapKey yet.
+ * Requires the wallet's X25519 keypair.
+ */
+export async function decryptMapKeysV2(
+	walletKeyPair: { publicKey: Uint8Array; secretKey: Uint8Array },
+	tenant: TenantId,
+): Promise<number> {
+	let count = 0;
+	const maps = await db.manifestPrivateMapsV2.where("tenant").equals(tenant).toArray();
+
+	for (const map of maps) {
+		if (map.mode !== 0 || map.decryptedMapKey || !map.encryptedMapKey) continue;
+
+		try {
+			const encryptedKeyBytes = hexToBytes(map.encryptedMapKey);
+			const decryptedKey = unsealWithKey(
+				encryptedKeyBytes,
+				walletKeyPair.publicKey,
+				walletKeyPair.secretKey,
+			);
+
+			await db.manifestPrivateMapsV2.update(map.id, {
+				decryptedMapKey: bytesToHex(decryptedKey),
+			});
+			count++;
+		} catch (err) {
+			console.error("[decryptMapKeysV2] failed for", map.name, err);
+		}
+	}
+
+	return count;
+}
+
+/**
  * Sync all locations for a specific private map.
- * Fetches MapLocation dynamic fields, decrypts each with the map key,
- * and caches in manifestMapLocations.
+ * Fetches MapLocation dynamic fields -- stores encrypted if no key available.
  */
 export async function syncMapLocations(
 	client: SuiGraphQLClient,
 	mapId: string,
-	decryptedMapKey: string,
+	decryptedMapKey: string | undefined,
 	tenant: TenantId,
 	ctx?: TaskContext,
 ): Promise<number> {
@@ -1030,19 +1063,7 @@ export async function syncMapLocations(
 		const mapInfo = await queryPrivateMap(client, mapId);
 		if (!mapInfo) return 0;
 
-		const mapPublicKey = hexToBytes(mapInfo.publicKey);
-		const mapSecretKey = hexToBytes(decryptedMapKey);
-		console.log(
-			"[syncMapLocations] mapId:",
-			mapId,
-			"pubKeyLen:",
-			mapPublicKey.length,
-			"secKeyLen:",
-			mapSecretKey.length,
-		);
-
 		const rawLocations = await queryMapLocations(client, mapId);
-		console.log("[syncMapLocations] found", rawLocations.length, "raw locations");
 
 		for (const loc of rawLocations) {
 			if (ctx?.isCancelled()) break;
@@ -1053,43 +1074,46 @@ export async function syncMapLocations(
 			const existing = await db.manifestMapLocations.get(compositeId);
 			if (existing) continue;
 
-			try {
-				const encryptedBytes = hexToBytes(loc.encryptedData);
-				console.log(
-					"[syncMapLocations] decrypting loc",
-					loc.locationId,
-					"encryptedLen:",
-					encryptedBytes.length,
-					"encryptedData:",
-					loc.encryptedData.slice(0, 40),
-				);
-				const plaintext = unsealWithKey(encryptedBytes, mapPublicKey, mapSecretKey);
-				const data = decodeLocationData(plaintext);
-				console.log("[syncMapLocations] decrypted:", data);
+			let data: {
+				solarSystemId: number;
+				planet: number;
+				lPoint: number;
+				description?: string;
+			} | null = null;
 
-				const entry: ManifestMapLocation = {
-					id: compositeId,
-					mapId,
-					locationId: loc.locationId,
-					structureId: loc.structureId,
-					solarSystemId: data.solarSystemId,
-					planet: data.planet,
-					lPoint: data.lPoint,
-					description: data.description ?? "",
-					addedBy: loc.addedBy,
-					addedAtMs: loc.addedAtMs,
-					tenant,
-					cachedAt: new Date().toISOString(),
-				};
-
-				await db.manifestMapLocations.put(entry);
-				newCount++;
-			} catch (err) {
-				console.error("[syncMapLocations] decrypt failed for loc", loc.locationId, err);
+			if (decryptedMapKey) {
+				try {
+					const mapPublicKey = hexToBytes(mapInfo.publicKey);
+					const mapSecretKey = hexToBytes(decryptedMapKey);
+					const encryptedBytes = hexToBytes(loc.encryptedData);
+					const plaintext = unsealWithKey(encryptedBytes, mapPublicKey, mapSecretKey);
+					data = decodeLocationData(plaintext);
+				} catch (err) {
+					console.error("[syncMapLocations] decrypt failed for loc", loc.locationId, err);
+				}
 			}
+
+			const entry: ManifestMapLocation = {
+				id: compositeId,
+				mapId,
+				locationId: loc.locationId,
+				structureId: loc.structureId,
+				solarSystemId: data?.solarSystemId ?? 0,
+				planet: data?.planet ?? 0,
+				lPoint: data?.lPoint ?? 0,
+				description: data?.description ?? "",
+				encryptedData: !data ? loc.encryptedData : undefined,
+				addedBy: loc.addedBy,
+				addedAtMs: loc.addedAtMs,
+				tenant,
+				cachedAt: new Date().toISOString(),
+			};
+
+			await db.manifestMapLocations.put(entry);
+			newCount++;
 		}
 
-		ctx?.setProgress(`Decrypted ${newCount} locations`);
+		ctx?.setProgress(`Synced ${newCount} locations`);
 
 		// Cross-reference any newly decrypted locations with structures
 		if (newCount > 0) {
@@ -1101,6 +1125,47 @@ export async function syncMapLocations(
 	}
 
 	return newCount;
+}
+
+/**
+ * Decrypt stored location records in-place for a map (V1 or V2 mode=0).
+ * Updates existing records that have encryptedData with decrypted coordinates.
+ */
+export async function decryptStoredLocations(
+	mapId: string,
+	decryptedMapKey: string,
+	mapPublicKeyHex: string,
+): Promise<number> {
+	const locations = await db.manifestMapLocations
+		.where("mapId")
+		.equals(mapId)
+		.filter((l) => !!l.encryptedData)
+		.toArray();
+
+	let count = 0;
+	const mapPublicKey = hexToBytes(mapPublicKeyHex);
+	const mapSecretKey = hexToBytes(decryptedMapKey);
+
+	for (const loc of locations) {
+		try {
+			const encryptedBytes = hexToBytes(loc.encryptedData!);
+			const plaintext = unsealWithKey(encryptedBytes, mapPublicKey, mapSecretKey);
+			const data = decodeLocationData(plaintext);
+
+			await db.manifestMapLocations.update(loc.id, {
+				solarSystemId: data.solarSystemId,
+				planet: data.planet,
+				lPoint: data.lPoint,
+				description: data.description ?? "",
+				encryptedData: undefined,
+			});
+			count++;
+		} catch (err) {
+			console.error("[decryptStoredLocations] failed for loc", loc.locationId, err);
+		}
+	}
+
+	return count;
 }
 
 /**
@@ -1470,32 +1535,37 @@ export async function syncMapLocationsV2(
 					planet: number;
 					lPoint: number;
 					description?: string;
-				};
+				} | null = null;
 
-				if (mode === 0) {
-					// Encrypted mode -- decrypt with map key
-					if (!decryptedMapKey || !mapPublicKeyHex) continue;
-					const mapPublicKey = hexToBytes(mapPublicKeyHex);
-					const mapSecretKey = hexToBytes(decryptedMapKey);
-					const encryptedBytes = hexToBytes(loc.data);
-					const plaintext = unsealWithKey(encryptedBytes, mapPublicKey, mapSecretKey);
-					data = decodeLocationData(plaintext);
-				} else {
+				if (mode === 0 && decryptedMapKey && mapPublicKeyHex) {
+					// Encrypted mode with key available -- decrypt
+					try {
+						const mapPublicKey = hexToBytes(mapPublicKeyHex);
+						const mapSecretKey = hexToBytes(decryptedMapKey);
+						const encryptedBytes = hexToBytes(loc.data);
+						const plaintext = unsealWithKey(encryptedBytes, mapPublicKey, mapSecretKey);
+						data = decodeLocationData(plaintext);
+					} catch (err) {
+						console.error("[syncMapLocationsV2] decrypt failed for loc", loc.locationId, err);
+					}
+				} else if (mode !== 0) {
 					// Cleartext standings mode -- parse JSON directly
 					const dataBytes = hexToBytes(loc.data);
 					const jsonStr = new TextDecoder().decode(dataBytes);
 					data = JSON.parse(jsonStr);
 				}
+				// mode=0 without key: data stays null -- store record as encrypted
 
 				const entry: ManifestMapLocation = {
 					id: compositeId,
 					mapId,
 					locationId: loc.locationId,
 					structureId: loc.structureId,
-					solarSystemId: data.solarSystemId,
-					planet: data.planet,
-					lPoint: data.lPoint,
-					description: data.description ?? "",
+					solarSystemId: data?.solarSystemId ?? 0,
+					planet: data?.planet ?? 0,
+					lPoint: data?.lPoint ?? 0,
+					description: data?.description ?? "",
+					encryptedData: mode === 0 && !data ? loc.data : undefined,
 					addedBy: loc.addedBy,
 					addedAtMs: loc.addedAtMs,
 					tenant,

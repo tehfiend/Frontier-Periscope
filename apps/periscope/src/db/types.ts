@@ -594,6 +594,8 @@ export interface ManifestMapLocation {
 	lPoint: number;
 	/** Decrypted description (empty if none) */
 	description: string;
+	/** Raw encrypted hex data -- present when location hasn't been decrypted yet */
+	encryptedData?: string;
 	/** Address that added this location */
 	addedBy: string;
 	/** Timestamp ms */
