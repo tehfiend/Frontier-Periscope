@@ -20,6 +20,7 @@ type TabId = "inventory" | "market" | "wallet" | "settings";
 interface ContentTabsProps {
 	inventories: SsuInventories;
 	inventoryLoading?: boolean;
+	onRefreshInventory?: () => void;
 	transferContext: TransferContext | null;
 	ssuConfig: SsuConfigResult | null;
 	ssuObjectId: string;
@@ -55,6 +56,7 @@ interface ContentTabsProps {
 export function ContentTabs({
 	inventories,
 	inventoryLoading,
+	onRefreshInventory,
 	transferContext,
 	ssuConfig,
 	ssuObjectId,
@@ -163,14 +165,28 @@ export function ContentTabs({
 
 			{/* Active tab content */}
 			{activeTab === "inventory" && (
-				<InventoryTabs
-					inventories={inventories}
-					isLoading={inventoryLoading}
-					transferContext={transferContext}
-					onSell={canOwnerSell ? (item) => handleSell(item, false) : undefined}
-					onPlayerSell={canPlayerSell ? (item) => handleSell(item, true) : undefined}
-					canSell={canOwnerSell || canPlayerSell}
-				/>
+				<div>
+					{onRefreshInventory && (
+						<div className="mb-2 flex justify-end">
+							<button
+								type="button"
+								onClick={() => onRefreshInventory()}
+								disabled={inventoryLoading}
+								className="rounded bg-zinc-800 px-2.5 py-1 text-[10px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300 disabled:opacity-50"
+							>
+								{inventoryLoading ? "Refreshing..." : "Refresh"}
+							</button>
+						</div>
+					)}
+					<InventoryTabs
+						inventories={inventories}
+						isLoading={inventoryLoading}
+						transferContext={transferContext}
+						onSell={canOwnerSell ? (item) => handleSell(item, false) : undefined}
+						onPlayerSell={canPlayerSell ? (item) => handleSell(item, true) : undefined}
+						canSell={canOwnerSell || canPlayerSell}
+					/>
+				</div>
 			)}
 
 			{activeTab === "market" && hasMarket && ssuConfig && (
