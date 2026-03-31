@@ -92,41 +92,30 @@ export function useManifestAutoSync() {
 						console.warn(`[manifest-sync] ${tenantId} map index:`, err);
 					}
 
-					// Sync locations for maps that don't require user interaction:
-					// - V2 mode=1 (cleartext standings, no keys needed)
-					// - V1/V2 mode=0 with cached decrypted keys (from prior session)
+					// Sync location records for all indexed maps
+					// Records are stored even without decryption keys (encrypted data preserved)
 					try {
 						const indexedMaps = await db.manifestPrivateMapIndex
 							.where("tenant")
 							.equals(tenantId)
 							.toArray();
 						for (const map of indexedMaps) {
-							if (map.version === 2 && map.mode === 1) {
+							if (map.version === 2) {
+								const cached = await db.manifestPrivateMapsV2.get(map.id);
 								const locCount = await syncMapLocationsV2(
-									client, map.id, 1, undefined, undefined, tenantId,
+									client, map.id, map.mode,
+									cached?.decryptedMapKey, cached?.publicKey, tenantId,
 								);
 								if (locCount > 0) {
 									console.log(`[manifest-sync] ${tenantId}: ${locCount} locs from ${map.name}`);
 								}
-							} else if (map.version === 2 && map.mode === 0) {
-								const cached = await db.manifestPrivateMapsV2.get(map.id);
-								if (cached?.decryptedMapKey) {
-									const locCount = await syncMapLocationsV2(
-										client, map.id, 0, cached.decryptedMapKey, cached.publicKey, tenantId,
-									);
-									if (locCount > 0) {
-										console.log(`[manifest-sync] ${tenantId}: ${locCount} locs from ${map.name}`);
-									}
-								}
 							} else if (map.version === 1) {
 								const cached = await db.manifestPrivateMaps.get(map.id);
-								if (cached?.decryptedMapKey) {
-									const locCount = await syncMapLocations(
-										client, map.id, cached.decryptedMapKey, tenantId,
-									);
-									if (locCount > 0) {
-										console.log(`[manifest-sync] ${tenantId}: ${locCount} locs from ${map.name}`);
-									}
+								const locCount = await syncMapLocations(
+									client, map.id, cached?.decryptedMapKey, tenantId,
+								);
+								if (locCount > 0) {
+									console.log(`[manifest-sync] ${tenantId}: ${locCount} locs from ${map.name}`);
 								}
 							}
 						}

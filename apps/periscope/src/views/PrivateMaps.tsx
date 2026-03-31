@@ -20,6 +20,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	addMapV2ById,
 	decryptMapKeys,
+	decryptMapKeysV2,
+	decryptStoredLocations,
 	syncMapLocations,
 	syncMapLocationsV2,
 	syncPrivateMapsForUser,
@@ -121,7 +123,7 @@ export function PrivateMaps() {
 		if (archived && selectedMapId === id) setSelectedMapId(null);
 	};
 
-	// Discover maps from chain -- uses stored suiAddress, no wallet needed
+	// Discover maps + fetch location records from chain (no wallet needed for discovery)
 	const handleSync = useCallback(async () => {
 		if (!suiAddress) return;
 		setIsSyncing(true);
@@ -134,33 +136,33 @@ export function PrivateMaps() {
 				await decryptMapKeys(keyPair, tenant as TenantId);
 			}
 
-			// Sync V1 locations for all maps that have a decryptedMapKey
+			// Sync V1 location records (stores encrypted if no key yet)
 			const cachedMaps = await db.manifestPrivateMaps.where("tenant").equals(tenant).toArray();
 			for (const m of cachedMaps) {
+				await syncMapLocations(client, m.id, m.decryptedMapKey, tenant as TenantId);
+				// If we just got the key, decrypt any stored encrypted locations
 				if (m.decryptedMapKey) {
-					await syncMapLocations(client, m.id, m.decryptedMapKey, tenant as TenantId);
+					await decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
 				}
 			}
 
 			// Sync V2 maps
 			await syncPrivateMapsV2ForUser(client, tenant as TenantId, suiAddress);
 
-			// Sync V2 locations
+			// Sync V2 location records
 			const cachedV2Maps = await db.manifestPrivateMapsV2.where("tenant").equals(tenant).toArray();
 			for (const m of cachedV2Maps) {
 				if (m.mode === 1) {
-					// Cleartext standings -- no key needed
 					await syncMapLocationsV2(client, m.id, 1, undefined, undefined, tenant as TenantId);
-				} else if (m.decryptedMapKey && m.publicKey) {
-					// Encrypted -- needs map key
+				} else {
+					// Fetch records (decrypts inline if key available, stores encrypted otherwise)
 					await syncMapLocationsV2(
-						client,
-						m.id,
-						0,
-						m.decryptedMapKey,
-						m.publicKey,
-						tenant as TenantId,
+						client, m.id, 0, m.decryptedMapKey, m.publicKey, tenant as TenantId,
 					);
+					// Decrypt any previously stored encrypted locations
+					if (m.decryptedMapKey && m.publicKey) {
+						await decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
+					}
 				}
 			}
 		} catch {
@@ -179,7 +181,7 @@ export function PrivateMaps() {
 		}
 	}, [suiAddress, handleSync]);
 
-	// When key becomes available, decrypt any pending V1 map keys + sync locations
+	// When key becomes available, decrypt pending V1 map keys + decrypt stored locations
 	useEffect(() => {
 		const pending = allMapsV1.filter((m) => !m.decryptedMapKey && m.encryptedMapKey);
 		if (keyPair && pending.length > 0) {
@@ -191,44 +193,58 @@ export function PrivateMaps() {
 					.then((cachedMaps) => {
 						for (const m of cachedMaps) {
 							if (m.decryptedMapKey) {
-								syncMapLocations(client, m.id, m.decryptedMapKey, tenant as TenantId);
+								decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
 							}
 						}
 					});
 			});
 		}
-	}, [keyPair, allMapsV1, client, tenant]);
+	}, [keyPair, allMapsV1, tenant]);
 
-	// Sync V1 locations when a V1 map is selected
+	// When key becomes available, decrypt pending V2 mode=0 map keys + decrypt stored locations
 	useEffect(() => {
-		if (!selectedMapV1?.decryptedMapKey) return;
+		const pending = allMapsV2.filter((m) => m.mode === 0 && !m.decryptedMapKey && m.encryptedMapKey);
+		if (keyPair && pending.length > 0) {
+			decryptMapKeysV2(keyPair, tenant as TenantId).then(() => {
+				db.manifestPrivateMapsV2
+					.where("tenant")
+					.equals(tenant)
+					.toArray()
+					.then((cachedMaps) => {
+						for (const m of cachedMaps) {
+							if (m.mode === 0 && m.decryptedMapKey && m.publicKey) {
+								decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
+							}
+						}
+					});
+			});
+		}
+	}, [keyPair, allMapsV2, tenant]);
+
+	// Sync V1 locations when a V1 map is selected (fetch records, decrypt if possible)
+	useEffect(() => {
+		if (!selectedMapV1) return;
 		syncMapLocations(client, selectedMapV1.id, selectedMapV1.decryptedMapKey, tenant as TenantId);
 	}, [selectedMapV1?.id, selectedMapV1?.decryptedMapKey, client, tenant]);
 
-	// Sync V2 locations when a V2 map is selected
+	// Sync V2 locations when a V2 map is selected (fetch records, decrypt if possible)
 	useEffect(() => {
 		if (!selectedMapV2) return;
 		if (selectedMapV2.mode === 1) {
 			syncMapLocationsV2(client, selectedMapV2.id, 1, undefined, undefined, tenant as TenantId);
-		} else if (selectedMapV2.decryptedMapKey && selectedMapV2.publicKey) {
+		} else {
 			syncMapLocationsV2(
-				client,
-				selectedMapV2.id,
-				0,
-				selectedMapV2.decryptedMapKey,
-				selectedMapV2.publicKey,
-				tenant as TenantId,
+				client, selectedMapV2.id, 0,
+				selectedMapV2.decryptedMapKey, selectedMapV2.publicKey, tenant as TenantId,
 			);
 		}
 	}, [selectedMapV2?.id, selectedMapV2?.mode, selectedMapV2?.decryptedMapKey, client, tenant]);
 
-	// Also sync locations for all decrypted V1 maps on first load
+	// Sync location records for all V1 maps on first load (stores encrypted if no key)
 	useEffect(() => {
 		if (allMapsV1.length === 0) return;
 		for (const m of allMapsV1) {
-			if (m.decryptedMapKey) {
-				syncMapLocations(client, m.id, m.decryptedMapKey, tenant as TenantId);
-			}
+			syncMapLocations(client, m.id, m.decryptedMapKey, tenant as TenantId);
 		}
 	}, [allMapsV1.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -881,14 +897,23 @@ function LocationsTable({
 					return (
 						<div key={loc.id} className="flex items-center justify-between px-4 py-3">
 							<div>
-								<p className="text-sm text-zinc-300">
-									{systemName ?? `System ${loc.solarSystemId}`}
-									<span className="text-zinc-500">
-										{" "}
-										-- P{loc.planet}-L{loc.lPoint}
-									</span>
-								</p>
-								{loc.description && <p className="text-xs text-zinc-500">{loc.description}</p>}
+								{loc.encryptedData ? (
+									<p className="flex items-center gap-1.5 text-sm text-zinc-500">
+										<Lock size={12} />
+										Encrypted location #{loc.locationId}
+									</p>
+								) : (
+									<>
+										<p className="text-sm text-zinc-300">
+											{systemName ?? `System ${loc.solarSystemId}`}
+											<span className="text-zinc-500">
+												{" "}
+												-- P{loc.planet}-L{loc.lPoint}
+											</span>
+										</p>
+										{loc.description && <p className="text-xs text-zinc-500">{loc.description}</p>}
+									</>
+								)}
 								{loc.structureId && (
 									<p className="text-xs text-zinc-500">
 										{structure ? (

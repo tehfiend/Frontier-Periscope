@@ -201,9 +201,15 @@ export function ContentTabs({
 								</p>
 							)}
 							{extensionType && (
-								<p className="text-xs text-zinc-500">
-									Extension: <span className="font-mono text-zinc-400">{formatExtensionType(extensionType)}</span>
-								</p>
+								<>
+									<p className="text-xs text-zinc-500">
+										Extension: <span className="font-mono text-zinc-400">{formatExtensionType(extensionType)}</span>
+									</p>
+									<p className="text-xs text-zinc-500">
+										Registered Extension
+									</p>
+									<p className="break-all font-mono text-xs text-zinc-400">{extensionType}</p>
+								</>
 							)}
 							{dappUrl && (
 								<p className="text-xs text-zinc-500">
