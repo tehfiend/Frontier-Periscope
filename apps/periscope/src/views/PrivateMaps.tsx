@@ -63,7 +63,7 @@ export function PrivateMaps() {
 	const tenant = useActiveTenant();
 	const client = useSuiClient();
 	const dAppKit = useDAppKit();
-	const { keyPair, isLoading: isLoadingKey, retry: retryKey } = useStoredEncryptionKey();
+	const { keyPair, isLoading: isLoadingKey, retry: retryKey, reset: resetKey } = useStoredEncryptionKey();
 
 	// Use stored suiAddress for reads (no wallet needed), wallet address for writes
 	const suiAddress = activeCharacter?.suiAddress;
@@ -361,6 +361,7 @@ export function PrivateMaps() {
 						keyPair={keyPair}
 						tenant={tenant}
 						onRetryKey={retryKey}
+						onResetKey={resetKey}
 						onRemove={
 							walletAddress && packageId
 								? async (locationId) => {
@@ -449,6 +450,7 @@ export function PrivateMaps() {
 						keyPair={keyPair}
 						tenant={tenant}
 						onRetryKey={retryKey}
+						onResetKey={resetKey}
 						onRemove={
 							walletAddress && packageIdV2
 								? async (locationId) => {
@@ -830,6 +832,7 @@ function LocationsTable({
 	walletAddress,
 	onRemove,
 	onRetryKey,
+	onResetKey,
 	mapId,
 	mapVersion,
 	keyPair,
@@ -844,6 +847,7 @@ function LocationsTable({
 	keyPair?: { publicKey: Uint8Array; secretKey: Uint8Array } | null;
 	tenant: string;
 	onRetryKey?: () => void;
+	onResetKey?: () => Promise<void>;
 }) {
 	const [decrypting, setDecrypting] = useState(false);
 	const [decryptError, setDecryptError] = useState<string | null>(null);
@@ -1043,7 +1047,21 @@ function LocationsTable({
 											)}
 										</div>
 										{decryptError && (
-											<p className="mt-0.5 text-[10px] text-red-400">{decryptError}</p>
+											<div className="mt-0.5 flex items-center gap-2">
+												<p className="text-[10px] text-red-400">{decryptError}</p>
+												{onResetKey && decryptError.includes("Unseal failed") && (
+													<button
+														type="button"
+														onClick={async () => {
+															await onResetKey();
+															setDecryptError("Key reset -- sign the wallet prompt, then click Decrypt again");
+														}}
+														className="rounded bg-amber-800/50 px-1.5 py-0.5 text-[10px] text-amber-300 hover:bg-amber-700/50"
+													>
+														Reset Key
+													</button>
+												)}
+											</div>
 										)}
 									</div>
 								) : (

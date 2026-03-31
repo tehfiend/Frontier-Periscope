@@ -23,6 +23,7 @@ export function useStoredEncryptionKey(): {
 	keyPair: { publicKey: Uint8Array; secretKey: Uint8Array } | null;
 	isLoading: boolean;
 	retry: () => void;
+	reset: () => Promise<void>;
 } {
 	const dAppKit = useDAppKit();
 	const account = useCurrentAccount();
@@ -40,6 +41,15 @@ export function useStoredEncryptionKey(): {
 		attemptedRef.current = null;
 		setRetryCount((c) => c + 1);
 	}, []);
+
+	/** Delete stored key and force re-derivation from a fresh wallet signature. */
+	const reset = useCallback(async () => {
+		if (!walletAddress) return;
+		await db.settings.delete(`mapKey:${walletAddress}`);
+		setKeyPair(null);
+		attemptedRef.current = null;
+		setRetryCount((c) => c + 1);
+	}, [walletAddress]);
 
 	useEffect(() => {
 		if (!walletAddress) {
@@ -133,5 +143,5 @@ export function useStoredEncryptionKey(): {
 		};
 	}, [walletAddress, dAppKit, retryCount]);
 
-	return { keyPair, isLoading, retry };
+	return { keyPair, isLoading, retry, reset };
 }
