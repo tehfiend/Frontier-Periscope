@@ -1,7 +1,7 @@
 // Version and changelog -- pure module (no browser APIs, no app imports).
 // Imported by vite.config.ts at build time in a Node context.
 
-export const APP_VERSION = "1.26.03.26";
+export const APP_VERSION = "1.26.03.30";
 
 export interface ChangelogEntry {
 	version: string;
@@ -15,8 +15,8 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
-		version: "1.26.03.26",
-		date: "2026-03-26",
+		version: "1.26.03.30",
+		date: "2026-03-30",
 		highlights: "First public release",
 		changes: [
 			{
