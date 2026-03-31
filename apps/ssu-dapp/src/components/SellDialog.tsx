@@ -7,19 +7,13 @@ import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { buildEscrowAndList, formatBaseUnits, parseDisplayPrice } from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
-export interface PlayerSellInfo {
-	characterObjectId: string;
-}
-
 interface SellDialogProps {
 	item: InventoryItem;
 	ssuObjectId: string;
 	ssuConfig: SsuConfigResult;
 	coinType: string;
-	/** SSU owner's Character object ID (for owner sell). */
+	/** SSU owner's Character object ID -- escrow_and_list always uses owner inventory. */
 	ownerCharacterObjectId: string | null;
-	/** When set, sell from the player's inventory using their character. */
-	playerSell?: PlayerSellInfo;
 	onClose: () => void;
 }
 
@@ -29,7 +23,6 @@ export function SellDialog({
 	ssuConfig,
 	coinType,
 	ownerCharacterObjectId,
-	playerSell,
 	onClose,
 }: SellDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -54,13 +47,21 @@ export function SellDialog({
 	const totalValue = priceBase * BigInt(qty);
 	const maxQty = item.quantity;
 
-	// escrow_and_list uses the passed character to determine which inventory to withdraw from
-	const characterObjectId = playerSell?.characterObjectId ?? ownerCharacterObjectId;
+	// escrow_and_list always withdraws from the SSU owner's inventory
+	const characterObjectId = ownerCharacterObjectId;
+
+	const isSsuAuthorized =
+		!!account?.address &&
+		(ssuConfig.owner === account.address || ssuConfig.delegates.includes(account.address));
 
 	async function handleSell() {
 		if (!account?.address || !ssuConfig.marketId || !coinType) return;
 		if (!characterObjectId) {
 			setError("Character not resolved");
+			return;
+		}
+		if (!isSsuAuthorized) {
+			setError("You are not a delegate on this SSU. Ask the owner to add you via Settings > Delegates.");
 			return;
 		}
 		if (qty <= 0 || qty > maxQty) {

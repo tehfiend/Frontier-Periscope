@@ -44,6 +44,10 @@ export function FillBuyOrderDialog({
 	const maxQty = order.quantity;
 	const totalPayment = order.pricePerUnit * BigInt(qty);
 
+	const isSsuAuthorized =
+		!!account?.address &&
+		(ssuConfig.owner === account.address || ssuConfig.delegates.includes(account.address));
+
 	async function handleFill() {
 		if (!account?.address || !ssuConfig.marketId) return;
 		if (!ownerCharacterObjectId) {
@@ -52,6 +56,10 @@ export function FillBuyOrderDialog({
 		}
 		if (!buyerCharacter?.characterObjectId) {
 			setError("Buyer character not resolved");
+			return;
+		}
+		if (!isSsuAuthorized) {
+			setError("You are not a delegate on this SSU. Ask the owner to add you via Settings > Delegates.");
 			return;
 		}
 		if (qty <= 0 || qty > maxQty) {
