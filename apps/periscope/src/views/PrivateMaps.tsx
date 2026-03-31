@@ -359,6 +359,7 @@ export function PrivateMaps() {
 						mapVersion="v1"
 						keyPair={keyPair}
 						tenant={tenant}
+						onRetryKey={retryKey}
 						onRemove={
 							walletAddress && packageId
 								? async (locationId) => {
@@ -446,6 +447,7 @@ export function PrivateMaps() {
 						mapVersion="v2"
 						keyPair={keyPair}
 						tenant={tenant}
+						onRetryKey={retryKey}
 						onRemove={
 							walletAddress && packageIdV2
 								? async (locationId) => {
@@ -826,6 +828,7 @@ function LocationsTable({
 	isCreator,
 	walletAddress,
 	onRemove,
+	onRetryKey,
 	mapId,
 	mapVersion,
 	keyPair,
@@ -839,12 +842,21 @@ function LocationsTable({
 	mapVersion: "v1" | "v2";
 	keyPair?: { publicKey: Uint8Array; secretKey: Uint8Array } | null;
 	tenant: string;
+	onRetryKey?: () => void;
 }) {
 	const [decrypting, setDecrypting] = useState(false);
 	const [decryptError, setDecryptError] = useState<string | null>(null);
+	const hasEncrypted = locations.some((l) => !!l.encryptedData);
 
 	async function handleDecrypt() {
-		if (!keyPair || decrypting) return;
+		if (decrypting) return;
+
+		if (!keyPair) {
+			setDecryptError("Encryption key not derived -- retrying key derivation...");
+			onRetryKey?.();
+			return;
+		}
+
 		setDecrypting(true);
 		setDecryptError(null);
 		try {
@@ -983,7 +995,7 @@ function LocationsTable({
 												<Lock size={12} />
 												Encrypted location #{loc.locationId}
 											</p>
-											{keyPair && (
+											{walletAddress && (
 												<button
 													type="button"
 													onClick={handleDecrypt}
