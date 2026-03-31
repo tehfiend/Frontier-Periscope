@@ -446,6 +446,7 @@ export function useLogWatcher() {
 		if (activePollerCount > 0 && !isPollerRef.current) return;
 		activePollerCount++;
 		isPollerRef.current = true;
+		consecutiveErrors = 0;
 		setIsWatching(true);
 		pollLogs();
 		intervalRef.current = setInterval(pollLogs, POLL_INTERVAL);

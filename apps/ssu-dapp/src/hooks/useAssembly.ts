@@ -92,7 +92,17 @@ function parseExtension(value: unknown): string | null {
 	if (typeof v.name === "string") return v.name;
 	// Option wrapper: { Some: ... } or { vec: [...] }
 	const inner = v.Some ?? v.some ?? v.vec;
-	if (Array.isArray(inner)) return inner.length > 0 ? String(inner[0]) : null;
+	if (Array.isArray(inner)) {
+		if (inner.length === 0) return null;
+		const first = inner[0];
+		if (typeof first === "string") return first;
+		if (first && typeof first === "object") {
+			const t = first as Record<string, unknown>;
+			if (typeof t.name === "string") return t.name;
+			if (typeof t.module_name === "string") return t.module_name;
+		}
+		return null;
+	}
 	if (inner && typeof inner === "object") {
 		const t = inner as Record<string, unknown>;
 		if (typeof t.name === "string") return t.name;

@@ -35,7 +35,6 @@ import { formatLocation } from "@/lib/format";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import {
 	AlertTriangle,
-	AppWindow,
 	Fuel,
 	Link2,
 	Loader2,
@@ -43,7 +42,6 @@ import {
 	Package,
 	Puzzle,
 	RefreshCw,
-	Trash2,
 	User,
 } from "lucide-react";
 
@@ -148,6 +146,8 @@ function statusDotClass(status: string): string {
 			return "bg-orange-400";
 		case "destroyed":
 			return "bg-red-500";
+		case "removed":
+			return "bg-zinc-500 ring-1 ring-zinc-400";
 		default:
 			return "bg-zinc-700";
 	}
@@ -241,7 +241,8 @@ async function fetchFuelData(
 		}
 
 		return {};
-	} catch {
+	} catch (err) {
+		console.warn(`[Deployables] fetchFuelData failed for ${assemblyId}:`, err);
 		return {};
 	}
 }
@@ -255,8 +256,6 @@ export function Deployables() {
 	const { activeCharacter, activeSuiAddresses } = useActiveCharacter();
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
-	const executeSponsored = null;
-	const sponsorAvailable = false;
 
 	const chainAddress = activeCharacter?.suiAddress ?? activeSuiAddresses[0] ?? null;
 	const hasAddress = !!chainAddress;
@@ -306,9 +305,10 @@ export function Deployables() {
 	const currencyByMarketId = useMemo(() => {
 		const map = new Map<string, string>();
 		for (const m of manifestMarkets) {
-			// Extract ticker from coinType (e.g. "0xabc::token::TOKEN" -> "TOKEN")
+			// Extract ticker from coinType (e.g. "0xabc::isk_token::ISK_TOKEN" -> "ISK")
 			const parts = m.coinType.split("::");
-			const ticker = parts.length >= 3 ? parts[parts.length - 1] : m.coinType;
+			const raw = parts.length >= 3 ? parts[parts.length - 1] : m.coinType;
+			const ticker = raw.replace(/_TOKEN$/, "");
 			map.set(m.id, ticker);
 		}
 		return map;
@@ -380,19 +380,18 @@ export function Deployables() {
 					AUTO_TYPE_NAMES.has(existing.label);
 				const label = chainName ?? (isAutoLabel ? typeName : existing.label);
 
-				let fuelData: { fuelLevel?: number; fuelExpiresAt?: string } = {};
-				try {
-					fuelData = await fetchFuelData(client, assembly.objectId);
-				} catch (err) {
-					console.warn(`[Deployables] Failed to fetch fuel for ${assembly.objectId}:`, err);
-				}
+				const fuelData = await fetchFuelData(client, assembly.objectId);
+
+				// Owned structures with unparseable status are effectively removed
+				const status: DeployableIntel["status"] =
+					assembly.status === "unknown" ? "removed" : (assembly.status as DeployableIntel["status"]);
 
 				await db.deployables.put({
 					id: existing?.id ?? crypto.randomUUID(),
 					objectId: assembly.objectId,
 					assemblyType: typeName,
 					owner: chainAddress,
-					status: assembly.status as DeployableIntel["status"],
+					status,
 					label,
 					systemId: existing?.systemId,
 					lPoint: existing?.lPoint,
@@ -442,16 +441,6 @@ export function Deployables() {
 			setSyncing(false);
 		}
 	}, [chainAddress, syncing, client, tenant]);
-
-	// ── Parent Label Lookup ──────────────────────────────────────────────────
-	const parentLabels = useMemo(() => {
-		const map = new Map<string, string>();
-		for (const row of data) {
-			map.set(row.id, row.label);
-			map.set(row.objectId, row.label);
-		}
-		return map;
-	}, [data]);
 
 	// ── Save Parent ──────────────────────────────────────────────────────────
 	const handleSaveParent = useCallback(async (row: StructureRow, parentId: string | undefined) => {
@@ -547,18 +536,8 @@ export function Deployables() {
 				setRenamingId(null);
 			}
 		},
-		[account, tenant, sponsorAvailable, executeSponsored, signAndExecute],
+		[account, tenant, signAndExecute],
 	);
-
-	// ── Remove from tracking ─────────────────────────────────────────────────
-	const handleRemove = useCallback(async (row: StructureRow) => {
-		const now = new Date().toISOString();
-		if (row.source === "assemblies") {
-			await db.assemblies.update(row.id, { _deleted: true, updatedAt: now });
-		} else if (row.source === "deployables") {
-			await db.deployables.update(row.id, { _deleted: true, updatedAt: now });
-		}
-	}, []);
 
 	// ── Revoke Extension ─────────────────────────────────────────
 	const handleRevoke = useCallback(
@@ -722,52 +701,16 @@ export function Deployables() {
 	const columns: ColumnDef<StructureRow, unknown>[] = useMemo(
 		() => [
 			{
-				id: "actions",
-				header: "Actions",
-				size: 80,
-				enableColumnFilter: false,
-				enableSorting: false,
-				cell: ({ row }) => {
-					const r = row.original;
-					const tenantDapp =
-						TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
-					// Periscope dApp link: custom URL or default Periscope with itemId
-					const periscopeHref = (() => {
-						if (r.dappUrl) {
-							try {
-								const parsed = new URL(r.dappUrl.startsWith("http") ? r.dappUrl : `https://${r.dappUrl}`);
-								if (parsed.protocol === "https:" || parsed.protocol === "http:") return parsed.toString();
-							} catch { /* invalid URL, fall through */ }
-						}
-						const url = new URL(tenantDapp);
-						if (r.itemId) url.searchParams.set("itemId", r.itemId);
-						else url.searchParams.set("objectId", r.objectId);
-						return url.toString();
-					})();
-					return (
-						<div className="flex items-center gap-1">
-							<a
-								href={periscopeHref}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="text-zinc-600 hover:text-cyan-400"
-								title="Open Periscope dApp"
-							>
-								<PeriscopeIcon size={14} />
-							</a>
-							{r.ownership === "mine" && (
-								<button
-									type="button"
-									onClick={() => handleRemove(r)}
-									className="text-zinc-600 hover:text-red-400"
-									title="Remove from list"
-								>
-									<Trash2 size={14} />
-								</button>
-							)}
-						</div>
-					);
-				},
+				id: "itemId",
+				accessorKey: "itemId",
+				header: "Structure ID",
+				size: 120,
+				filterFn: excelFilterFn,
+				cell: ({ row }) => (
+					<span className="font-mono text-xs text-zinc-500">
+						{row.original.itemId ?? "\u2014"}
+					</span>
+				),
 			},
 			{
 				id: "status",
@@ -841,14 +784,14 @@ export function Deployables() {
 				id: "type",
 				accessorFn: (d) => d.assemblyType,
 				header: "Type",
-				size: 150,
+				size: 130,
 				filterFn: excelFilterFn,
 			},
 			{
 				id: "category",
 				accessorFn: (d) => resolveCategory(d.assemblyType, assemblyCategoryMap),
 				header: "Category",
-				size: 110,
+				size: 90,
 				filterFn: excelFilterFn,
 			},
 			{
@@ -872,7 +815,7 @@ export function Deployables() {
 					return label;
 				},
 				header: "Extension",
-				size: 200,
+				size: 140,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
@@ -882,6 +825,21 @@ export function Deployables() {
 						tenant as TenantId,
 						extConfig?.publishedPackageId,
 					);
+
+					const tenantDapp =
+						TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
+					const dappHref = (() => {
+						if (r.dappUrl) {
+							try {
+								const parsed = new URL(r.dappUrl.startsWith("http") ? r.dappUrl : `https://${r.dappUrl}`);
+								if (parsed.protocol === "https:" || parsed.protocol === "http:") return parsed.toString();
+							} catch { /* invalid URL, fall through */ }
+						}
+						const url = new URL(tenantDapp);
+						if (r.itemId) url.searchParams.set("itemId", r.itemId);
+						else url.searchParams.set("objectId", r.objectId);
+						return url.toString();
+					})();
 
 					return (
 						<div className="flex items-center gap-1.5">
@@ -898,31 +856,45 @@ export function Deployables() {
 									<span className="text-xs text-zinc-600">--</span>
 								))}
 							{info.status === "periscope" && (
-								<>
-									<div className="flex flex-col">
-										<div className="flex items-center gap-1.5">
-											<PeriscopeIcon size={14} className="text-cyan-500" />
-											{r.ownership === "mine" && (
-												<button
-													type="button"
-													onClick={() => setDeployTarget(r)}
-													className="rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-900/30"
-												>
-													Configure
-												</button>
-											)}
-										</div>
+								<div className="flex items-stretch gap-2">
+									<a
+										href={dappHref}
+										target="_blank"
+										rel="noopener noreferrer"
+										className="flex items-center rounded px-1 text-cyan-500 hover:bg-cyan-900/20 hover:text-cyan-400"
+										title="Open Periscope dApp"
+									>
+										<PeriscopeIcon size={24} />
+									</a>
+									<div className="flex flex-col justify-center gap-0.5">
+										{r.ownership === "mine" && (
+											<button
+												type="button"
+												onClick={() => setDeployTarget(r)}
+												className="rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-900/30"
+											>
+												Configure
+											</button>
+										)}
 										{extConfig?.registryName && (
 											<span className="rounded bg-cyan-500/10 px-1 py-0.5 text-[10px] font-medium text-cyan-400">
 												{extConfig.registryName}
 											</span>
 										)}
 									</div>
-								</>
+								</div>
 							)}
 							{info.status === "periscope-outdated" && (
 								<>
-									<PeriscopeIcon size={14} className="text-amber-500" />
+									<a
+										href={dappHref}
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-amber-500 hover:text-amber-400"
+										title="Open Periscope dApp"
+									>
+										<PeriscopeIcon size={14} />
+									</a>
 									<AlertTriangle size={10} className="text-amber-400" />
 									{r.ownership === "mine" && (
 										<button
@@ -952,7 +924,7 @@ export function Deployables() {
 					return extConfig?.marketId ? (currencyByMarketId.get(extConfig.marketId) ?? "") : "";
 				},
 				header: "Currency",
-				size: 100,
+				size: 80,
 				filterFn: excelFilterFn,
 			},
 			{
@@ -962,7 +934,7 @@ export function Deployables() {
 					return formatLocation(sysName || undefined, d.lPoint);
 				},
 				header: "Location",
-				size: 200,
+				size: 160,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
@@ -981,22 +953,28 @@ export function Deployables() {
 				id: "parent",
 				accessorFn: (d) => {
 					if (d.parentId) {
-						return `${parentLabels.get(d.parentId) ?? ""} ${d.parentId}`;
+						const parent = data.find((r) => r.id === d.parentId || r.objectId === d.parentId);
+						return `${parent?.label ?? ""} ${parent?.itemId ?? ""}`;
 					}
-					// Network nodes with no parent show themselves (include both IDs for filtering)
 					if (d.assemblyType.toLowerCase().includes("node")) {
-						return `${d.label} ${d.id} ${d.objectId}`;
+						return `${d.label} ${d.itemId ?? ""}`;
 					}
 					return "";
 				},
 				header: "Parent",
-				size: 160,
+				size: 130,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
-					// Network nodes with no explicit parent show their own label as static text
 					if (!r.parentId && r.assemblyType.toLowerCase().includes("node")) {
-						return <span className="text-xs text-zinc-400">{r.label}</span>;
+						return (
+							<span className="text-xs">
+								<span className="block text-zinc-400">{r.label}</span>
+								{r.itemId && (
+									<span className="block font-mono text-[10px] text-zinc-600">{r.itemId}</span>
+								)}
+							</span>
+						);
 					}
 					return (
 						<ParentSelect
@@ -1014,7 +992,7 @@ export function Deployables() {
 					return standingByName.get(d.ownerName ?? "") ?? 0;
 				},
 				header: "Standing",
-				size: 100,
+				size: 85,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
@@ -1070,7 +1048,7 @@ export function Deployables() {
 				id: "owner",
 				accessorFn: (d) => d.ownerName ?? d.owner,
 				header: "Owner",
-				size: 150,
+				size: 120,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
@@ -1094,7 +1072,7 @@ export function Deployables() {
 					return h !== null ? Math.round(h * 10) / 10 : null;
 				},
 				header: "Runtime",
-				size: 120,
+				size: 90,
 				enableColumnFilter: false,
 				cell: ({ row }) => {
 					const hours = fuelHoursRemaining(row.original);
@@ -1126,7 +1104,7 @@ export function Deployables() {
 				id: "updated",
 				accessorKey: "updatedAt",
 				header: "Updated",
-				size: 130,
+				size: 90,
 				enableColumnFilter: false,
 				cell: ({ row }) => (
 					<span className="text-xs text-zinc-600">
@@ -1143,11 +1121,9 @@ export function Deployables() {
 			handleSaveNotes,
 			handleSaveLocation,
 			handleSaveParent,
-			handleRemove,
 			extensionConfigMap,
 			currencyByMarketId,
 			data,
-			parentLabels,
 			systems,
 			systemNames,
 			standingByName,
@@ -1264,7 +1240,11 @@ export function Deployables() {
 						},
 						{
 							header: "Parent",
-							accessor: (r) => (r.parentId ? (parentLabels.get(r.parentId) ?? "") : ""),
+							accessor: (r) => {
+								if (!r.parentId) return "";
+								const parent = data.find((d) => d.id === r.parentId || d.objectId === r.parentId);
+								return parent ? `${parent.label} ${parent.itemId ?? ""}`.trim() : "";
+							},
 						},
 						{
 							header: "Standing",
@@ -1664,18 +1644,32 @@ function ParentSelect({
 		);
 	}, [options, search]);
 
-	const selectedLabel = value
-		? (options.find((o) => o.id === value || o.objectId === value)?.label ?? "Unknown")
+	const selectedRow = value
+		? (options.find((o) => o.id === value || o.objectId === value) ?? null)
 		: null;
 
 	if (!open) {
+		if (!selectedRow) {
+			return (
+				<button
+					type="button"
+					onClick={() => setOpen(true)}
+					className="w-full text-left text-xs text-zinc-400 hover:text-zinc-200"
+				>
+					{"\u2014"}
+				</button>
+			);
+		}
 		return (
 			<button
 				type="button"
 				onClick={() => setOpen(true)}
 				className="w-full text-left text-xs text-zinc-400 hover:text-zinc-200"
 			>
-				{selectedLabel ?? "\u2014"}
+				<span className="block text-zinc-200">{selectedRow.label}</span>
+				{selectedRow.itemId && (
+					<span className="block font-mono text-[10px] text-zinc-600">{selectedRow.itemId}</span>
+				)}
 			</button>
 		);
 	}
@@ -1720,7 +1714,7 @@ function ParentSelect({
 						}`}
 					>
 						<span className="font-medium">{o.label}</span>
-						<span className="ml-2 text-zinc-600">{o.assemblyType}</span>
+						{o.itemId && <span className="ml-2 font-mono text-zinc-600">{o.itemId}</span>}
 					</button>
 				))}
 				{filtered.length === 0 && <div className="px-3 py-2 text-xs text-zinc-600">No matches</div>}

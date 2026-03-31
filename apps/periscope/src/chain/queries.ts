@@ -54,6 +54,7 @@ function extractStatus(statusObj: unknown): string {
 	if (fields.variant) return String(fields.variant).toLowerCase();
 	// Old format: { current: "online" }
 	if (fields.current) return String(fields.current);
+	console.warn("[queries] Unparseable assembly status:", JSON.stringify(statusObj));
 	return "unknown";
 }
 
@@ -201,13 +202,17 @@ export async function discoverCharacterAndAssemblies(
 					const assemblyFields = assemblyResult.json ?? {};
 					const keyObj = assemblyFields.key as Record<string, unknown> | undefined;
 					const metaObj = assemblyFields.metadata as Record<string, unknown> | undefined;
+					const status = extractStatus(assemblyFields.status);
+					if (status === "unknown") {
+						console.warn(`[queries] Assembly ${assemblyId} unknown status, json keys:`, Object.keys(assemblyFields), "type:", assemblyResult.type);
+					}
 					assemblies.push({
 						objectId: assemblyId,
 						type: at.kind,
-						typeId: Number(assemblyFields.type_id) ?? 0,
+						typeId: Number(assemblyFields.type_id ?? 0),
 						itemId: keyObj?.item_id ? String(keyObj.item_id) : undefined,
 						name: metaObj?.name ? String(metaObj.name) : undefined,
-						status: extractStatus(assemblyFields.status),
+						status,
 						extensionType: parseExtension(assemblyFields.extension),
 						dappUrl: metaObj?.url ? String(metaObj.url) : undefined,
 						ownerCapId: cap.objectId,
@@ -221,7 +226,7 @@ export async function discoverCharacterAndAssemblies(
 						objectId: assemblyId,
 						type: at.kind,
 						typeId: 0,
-						status: "unknown",
+						status: "removed",
 						ownerCapId: cap.objectId,
 						energySourceId: undefined,
 					});
@@ -266,7 +271,7 @@ export async function discoverCharacterAndAssemblies(
 						assemblies.push({
 							objectId: assemblyId,
 							type: assemblyKind,
-							typeId: Number(assemblyFields.type_id) ?? 0,
+							typeId: Number(assemblyFields.type_id ?? 0),
 							itemId: keyObj2?.item_id ? String(keyObj2.item_id) : undefined,
 							name: metaObj2?.name ? String(metaObj2.name) : undefined,
 							status: extractStatus(assemblyFields.status),
@@ -283,7 +288,7 @@ export async function discoverCharacterAndAssemblies(
 							objectId: assemblyId,
 							type: assemblyKind,
 							typeId: 0,
-							status: "unknown",
+							status: "removed",
 							ownerCapId: obj.objectId,
 							energySourceId: undefined,
 						});

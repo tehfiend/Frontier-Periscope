@@ -6,23 +6,16 @@ import { CopyAddress } from "./CopyAddress";
 interface AssemblyHeaderProps {
 	assembly: AssemblyData;
 	itemId?: string | null;
-	ownerCharacterName?: string | null;
-	connectedWalletAddress?: string | null;
-	connectedCharacterName?: string | null;
 	onEdit?: () => void;
 }
 
 export function AssemblyHeader({
 	assembly,
 	itemId,
-	ownerCharacterName,
-	connectedWalletAddress,
-	connectedCharacterName,
 	onEdit,
 }: AssemblyHeaderProps) {
 	const name = assembly.metadata?.name || "Unnamed Storage Unit";
 	const description = assembly.metadata?.description || null;
-	const dappUrl = assembly.metadata?.url || null;
 
 	const { data: typeName } = useQuery({
 		queryKey: ["typeName", assembly.typeId],
@@ -73,64 +66,6 @@ export function AssemblyHeader({
 				</div>
 			</div>
 
-			{/* Owner + connected character info */}
-			<div className="mt-3 space-y-1 border-t border-zinc-800 pt-2">
-				<p className="text-xs text-zinc-500">
-					Owner:{" "}
-					{ownerCharacterName ? (
-						<span className="font-medium text-zinc-300">{ownerCharacterName}</span>
-					) : (
-						<CopyAddress
-							address={assembly.ownerCapId}
-							sliceStart={10}
-							sliceEnd={4}
-							className="text-zinc-600"
-						/>
-					)}
-				</p>
-				{connectedWalletAddress && (
-					<p className="text-xs text-zinc-500">
-						Connected as:{" "}
-						{connectedCharacterName ? (
-							<span className="font-medium text-cyan-400">{connectedCharacterName}</span>
-						) : (
-							<CopyAddress
-								address={connectedWalletAddress}
-								sliceStart={10}
-								sliceEnd={4}
-								className="text-zinc-600"
-							/>
-						)}
-					</p>
-				)}
-			</div>
-
-			{assembly.extensionType && (
-				<div className="mt-3 border-t border-zinc-800 pt-2">
-					<p className="text-xs text-zinc-500">
-						Extension:{" "}
-						<span className="font-mono text-zinc-400">
-							{formatExtensionType(assembly.extensionType)}
-						</span>
-					</p>
-				</div>
-			)}
-
-			{dappUrl && (
-				<div className="mt-2">
-					<p className="text-xs text-zinc-500">
-						dApp URL:{" "}
-						<a
-							href={dappUrl}
-							target="_blank"
-							rel="noopener noreferrer"
-							className="text-cyan-500 hover:text-cyan-400"
-						>
-							{dappUrl}
-						</a>
-					</p>
-				</div>
-			)}
 		</div>
 	);
 }
@@ -148,10 +83,3 @@ function StatusBadge({ status, isOnline }: { status: string; isOnline: boolean }
 	);
 }
 
-function formatExtensionType(ext: string): string {
-	const parts = ext.split("::");
-	if (parts.length >= 3) {
-		return `${parts[parts.length - 2]}::${parts[parts.length - 1]}`;
-	}
-	return ext;
-}
