@@ -139,8 +139,9 @@ export function useAssembly(objectId: string | null) {
 				}
 			}
 
-			// Extract item_id from TenantItemId if present
-			const itemId = json.item_id ? String(json.item_id) : null;
+			// Extract item_id from key.item_id (TenantItemId struct)
+			const keyObj = json.key as Record<string, unknown> | undefined;
+			const itemId = keyObj?.item_id ? String(keyObj.item_id) : null;
 
 			return {
 				objectId,

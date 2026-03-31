@@ -4,7 +4,15 @@ import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { walletErrorMessage } from "@/lib/format";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { type WalletTransaction, queryWalletTransactions } from "@tehfrontier/chain-shared";
+import {
+	type TenantId,
+	type WalletTransaction,
+	getContractAddresses,
+	queryDecommissionedMarkets,
+	queryWalletTransactions,
+} from "@tehfrontier/chain-shared";
+import { db } from "@/db";
+import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import {
 	ArrowDownLeft,
 	ArrowUpRight,
@@ -68,6 +76,7 @@ export function Wallet() {
 	const { activeCharacter } = useActiveCharacter();
 	const client = useSuiClient();
 	const account = useCurrentAccount();
+	const tenant = useActiveTenant();
 
 	const suiAddress = activeCharacter?.suiAddress;
 	const [showTransfer, setShowTransfer] = useState(false);
@@ -175,6 +184,38 @@ export function Wallet() {
 		}
 	}, [suiAddress, fetchBalances, fetchTransactions]);
 
+	// Build set of valid coin types from manifest (non-decommissioned markets)
+	const [validCoinTypes, setValidCoinTypes] = useState<Set<string> | null>(null);
+	useEffect(() => {
+		let cancelled = false;
+		(async () => {
+			try {
+				const addrs = getContractAddresses(tenant as TenantId);
+				const decomPkg = addrs.decommission?.packageId;
+				const decomMarketIds = decomPkg
+					? await queryDecommissionedMarkets(client, decomPkg)
+					: new Set<string>();
+				const markets = await db.manifestMarkets.toArray();
+				const valid = new Set<string>();
+				for (const m of markets) {
+					if (!decomMarketIds.has(m.id)) {
+						valid.add(m.coinType);
+					}
+				}
+				if (!cancelled) setValidCoinTypes(valid);
+			} catch { /* non-fatal */ }
+		})();
+		return () => { cancelled = true; };
+	}, [client, tenant]);
+
+	// Show SUI + coins from active (non-decommissioned) markets only
+	const visibleBalances = useMemo(
+		() => validCoinTypes
+			? balances.filter((b) => isSuiCoin(b.coinType) || validCoinTypes.has(b.coinType))
+			: balances,
+		[balances, validCoinTypes],
+	);
+
 	// ── Flatten transactions ─────────────────────────────────────────────────
 
 	const { flatTxs, txCoinTypes } = useMemo(() => {
@@ -182,6 +223,7 @@ export function Wallet() {
 		const types = new Set<string>();
 		for (const tx of rawTxs) {
 			for (const bc of tx.balanceChanges) {
+				if (validCoinTypes && !isSuiCoin(bc.coinType) && !validCoinTypes.has(bc.coinType)) continue;
 				types.add(bc.coinType);
 				flat.push({
 					digest: tx.digest,
@@ -269,10 +311,10 @@ export function Wallet() {
 
 	// ── Derived data ────────────────────────────────────────────────────────
 
-	const suiBalance = balances.find((b) => isSuiCoin(b.coinType));
+	const suiBalance = visibleBalances.find((b) => isSuiCoin(b.coinType));
 	const suiMist = suiBalance?.totalBalance ?? "0";
 	const suiHuman = formatBalance(suiMist, 9);
-	const tokenCount = balances.length;
+	const tokenCount = visibleBalances.length;
 
 	return (
 		<div className="mx-auto max-w-3xl p-6">
@@ -375,7 +417,7 @@ export function Wallet() {
 						<div className="border-b border-zinc-800 px-4 py-3">
 							<h2 className="text-sm font-medium text-zinc-400">Token Balances</h2>
 						</div>
-						{balances.length === 0 ? (
+						{visibleBalances.length === 0 ? (
 							<div className="px-4 py-8 text-center text-sm text-zinc-600">
 								No coins found in this wallet.
 							</div>
@@ -388,7 +430,7 @@ export function Wallet() {
 									</tr>
 								</thead>
 								<tbody>
-									{balances.map((b) => {
+									{visibleBalances.map((b) => {
 										const meta = coinMeta[b.coinType];
 										const name = meta?.symbol || extractTokenName(b.coinType);
 										const decimals = meta?.decimals ?? 9;
@@ -562,7 +604,7 @@ export function Wallet() {
 
 			{showTransfer && suiAddress && (
 				<TransferDialog
-					balances={balances}
+					balances={visibleBalances}
 					coinMeta={coinMeta}
 					senderAddress={suiAddress}
 					onClose={() => {
