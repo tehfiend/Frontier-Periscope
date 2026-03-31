@@ -204,6 +204,12 @@ export function SsuView({ objectId }: SsuViewProps) {
 						connectedCharacterName={character?.characterName ?? null}
 						extensionType={assembly.extensionType}
 						dappUrl={assembly.metadata?.url ?? null}
+						ownerCharacterForMetadata={character?.characterObjectId ?? null}
+						ownerCap={ownerCapInfo ?? null}
+						metadata={assembly.metadata}
+						connectedCharacterObjectId={character?.characterObjectId ?? null}
+						charOwnerCap={charOwnerCapInfo ?? null}
+						charOwnerCapId={character?.characterOwnerCapId ?? null}
 					/>
 				</div>
 			)}

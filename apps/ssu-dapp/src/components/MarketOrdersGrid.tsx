@@ -43,6 +43,12 @@ interface MarketOrdersGridProps {
 	ownerCharacterObjectId?: string | null;
 	/** typeId -> quantity currently in escrow (open inventory) */
 	escrowQuantities?: Map<number, number>;
+	/** Connected player's Character object ID (for player fill buy order). */
+	connectedCharacterObjectId?: string | null;
+	/** Connected player's Character OwnerCap (for player fill buy order). */
+	charOwnerCap?: import("@/hooks/useOwnerCap").OwnerCapInfo | null;
+	/** Connected player's Character OwnerCap ID (for player fill buy order). */
+	charOwnerCapId?: string | null;
 }
 
 // ── Dialog state ────────────────────────────────────────────────────────────
@@ -68,6 +74,9 @@ export function MarketOrdersGrid({
 	marketPackageId,
 	ownerCharacterObjectId,
 	escrowQuantities,
+	connectedCharacterObjectId,
+	charOwnerCap,
+	charOwnerCapId,
 }: MarketOrdersGridProps) {
 	const [dialog, setDialog] = useState<DialogState>(null);
 
@@ -306,6 +315,9 @@ export function MarketOrdersGrid({
 					coinType={coinType}
 					ssuObjectId={ssuObjectId}
 					ownerCharacterObjectId={ownerCharacterObjectId ?? null}
+					connectedCharacterObjectId={connectedCharacterObjectId ?? undefined}
+					charOwnerCap={charOwnerCap ?? undefined}
+					charOwnerCapId={charOwnerCapId ?? undefined}
 					onClose={() => setDialog(null)}
 				/>
 			)}

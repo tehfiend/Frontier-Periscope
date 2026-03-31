@@ -230,6 +230,102 @@ export function buildEscrowAndList(params: EscrowAndListParams): Transaction {
 }
 
 
+export interface PlayerEscrowAndListParams {
+	ssuUnifiedPackageId: string;
+	ssuConfigId: string;
+	ssuObjectId: string;
+	/** Player's Character object ID */
+	characterObjectId: string;
+	/** Player's Character OwnerCap (receiving ref) */
+	ownerCapId: string;
+	ownerCapVersion: string;
+	ownerCapDigest: string;
+	/** World package ID for borrow_owner_cap / withdraw_by_owner / return_owner_cap */
+	worldPackageId: string;
+	/** Market package ID for post_sell_listing */
+	marketPackageId: string;
+	coinType: string;
+	marketId: string;
+	typeId: number | bigint;
+	pricePerUnit: bigint;
+	quantity: number | bigint;
+	senderAddress: string;
+}
+
+/**
+ * Build a PTB for a player/delegate to sell items from their own SSU
+ * inventory slot. Multi-step: borrow OwnerCap -> withdraw_by_owner ->
+ * return OwnerCap -> player_to_escrow -> market::post_sell_listing.
+ */
+export function buildPlayerEscrowAndList(params: PlayerEscrowAndListParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	const charType = `${params.worldPackageId}::character::Character`;
+
+	// Step 1: Borrow OwnerCap<Character> from Character
+	const [ownerCap, receipt] = tx.moveCall({
+		target: `${params.worldPackageId}::character::borrow_owner_cap`,
+		typeArguments: [charType],
+		arguments: [
+			tx.object(params.characterObjectId),
+			tx.receivingRef({
+				objectId: params.ownerCapId,
+				version: params.ownerCapVersion,
+				digest: params.ownerCapDigest,
+			}),
+		],
+	});
+
+	// Step 2: Withdraw items from player's inventory slot
+	const [item] = tx.moveCall({
+		target: `${params.worldPackageId}::storage_unit::withdraw_by_owner`,
+		typeArguments: [charType],
+		arguments: [
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			ownerCap,
+			tx.pure.u64(params.typeId),
+			tx.pure.u32(Number(params.quantity)),
+		],
+	});
+
+	// Step 3: Return OwnerCap
+	tx.moveCall({
+		target: `${params.worldPackageId}::character::return_owner_cap`,
+		typeArguments: [charType],
+		arguments: [tx.object(params.characterObjectId), ownerCap, receipt],
+	});
+
+	// Step 4: Deposit to escrow via player_to_escrow
+	tx.moveCall({
+		target: `${params.ssuUnifiedPackageId}::ssu_unified::player_to_escrow`,
+		arguments: [
+			tx.object(params.ssuConfigId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			item,
+		],
+	});
+
+	// Step 5: Create the sell listing on the market
+	tx.moveCall({
+		target: `${params.marketPackageId}::market::post_sell_listing`,
+		typeArguments: [params.coinType],
+		arguments: [
+			tx.object(params.marketId),
+			tx.pure.id(params.ssuObjectId),
+			tx.pure.u64(params.typeId),
+			tx.pure.u64(params.pricePerUnit),
+			tx.pure.u64(params.quantity),
+			tx.object("0x6"),
+		],
+	});
+
+	return tx;
+}
+
+
 export interface BuyAndReceiveParams {
 	ssuUnifiedPackageId: string;
 	ssuConfigId: string;
@@ -338,35 +434,180 @@ export interface FillAndDeliverParams {
 	buyerCharacterObjectId: string;
 	coinType: string;
 	marketId: string;
+	/** Market package ID for direct fill_buy_order calls */
+	marketPackageId: string;
 	orderId: number | bigint;
 	typeId: number | bigint;
 	quantity: number | bigint;
 	senderAddress: string;
+	/** When true, buyer is the SSU owner -- items stay in owner inventory */
+	buyerIsSsuOwner?: boolean;
 }
 
 /**
  * Build a TX to fill a buy order and deliver items from SSU inventory.
- * Calls ssu_unified::fill_and_deliver which atomically handles the
- * order fulfillment and inventory transfer.
+ *
+ * When buyerIsSsuOwner is false: uses fill_and_deliver (withdraw from owner
+ * inventory, deliver to buyer's character inventory).
+ *
+ * When buyerIsSsuOwner is true: just calls fill_buy_order directly -- items
+ * are already in the owner inventory and should stay there.
  */
 export function buildFillAndDeliver(params: FillAndDeliverParams): Transaction {
 	const tx = new Transaction();
 	tx.setSender(params.senderAddress);
 
-	tx.moveCall({
-		target: `${params.ssuUnifiedPackageId}::ssu_unified::fill_and_deliver`,
-		typeArguments: [params.coinType],
+	if (params.buyerIsSsuOwner) {
+		// Buyer is SSU owner -- items are already in owner inventory, just fill the market order
+		tx.moveCall({
+			target: `${params.marketPackageId}::market::fill_buy_order`,
+			typeArguments: [params.coinType],
+			arguments: [
+				tx.object(params.marketId),
+				tx.pure.u64(params.orderId),
+				tx.pure.u64(params.typeId),
+				tx.pure.u64(params.quantity),
+			],
+		});
+	} else {
+		// Buyer is third party -- withdraw from owner inventory and deliver to buyer
+		tx.moveCall({
+			target: `${params.ssuUnifiedPackageId}::ssu_unified::fill_and_deliver`,
+			typeArguments: [params.coinType],
+			arguments: [
+				tx.object(params.ssuConfigId),
+				tx.object(params.marketId),
+				tx.object(params.ssuObjectId),
+				tx.object(params.characterObjectId),
+				tx.object(params.buyerCharacterObjectId),
+				tx.pure.u64(params.orderId),
+				tx.pure.u64(params.typeId),
+				tx.pure.u64(params.quantity),
+			],
+		});
+	}
+
+	return tx;
+}
+
+
+export interface PlayerFillAndDeliverParams {
+	ssuUnifiedPackageId: string;
+	ssuConfigId: string;
+	ssuObjectId: string;
+	/** The SSU owner's Character (passed to fill_and_deliver for the owner inventory) */
+	ownerCharacterObjectId: string;
+	/** Player's Character object ID */
+	characterObjectId: string;
+	/** Player's Character OwnerCap (receiving ref) */
+	ownerCapId: string;
+	ownerCapVersion: string;
+	ownerCapDigest: string;
+	/** World package ID for borrow_owner_cap / withdraw_by_owner / return_owner_cap */
+	worldPackageId: string;
+	buyerCharacterObjectId: string;
+	coinType: string;
+	marketId: string;
+	/** Market package ID for direct fill_buy_order calls */
+	marketPackageId: string;
+	orderId: number | bigint;
+	typeId: number | bigint;
+	quantity: number | bigint;
+	senderAddress: string;
+	/** When true, buyer is the SSU owner -- items stay in owner inventory */
+	buyerIsSsuOwner?: boolean;
+}
+
+/**
+ * Build a PTB for a player/delegate to fill a buy order with items from their
+ * own player inventory slot.
+ *
+ * When buyerIsSsuOwner is false: borrow OwnerCap -> withdraw_by_owner ->
+ * return OwnerCap -> player_to_owner -> fill_and_deliver (delivers to buyer).
+ *
+ * When buyerIsSsuOwner is true: borrow OwnerCap -> withdraw_by_owner ->
+ * return OwnerCap -> player_to_owner -> fill_buy_order (items stay in owner inventory).
+ */
+export function buildPlayerFillAndDeliver(params: PlayerFillAndDeliverParams): Transaction {
+	const tx = new Transaction();
+	tx.setSender(params.senderAddress);
+
+	const charType = `${params.worldPackageId}::character::Character`;
+
+	// Step 1: Borrow OwnerCap<Character> from player's Character
+	const [ownerCap, receipt] = tx.moveCall({
+		target: `${params.worldPackageId}::character::borrow_owner_cap`,
+		typeArguments: [charType],
 		arguments: [
-			tx.object(params.ssuConfigId),
-			tx.object(params.marketId),
-			tx.object(params.ssuObjectId),
 			tx.object(params.characterObjectId),
-			tx.object(params.buyerCharacterObjectId),
-			tx.pure.u64(params.orderId),
-			tx.pure.u64(params.typeId),
-			tx.pure.u64(params.quantity),
+			tx.receivingRef({
+				objectId: params.ownerCapId,
+				version: params.ownerCapVersion,
+				digest: params.ownerCapDigest,
+			}),
 		],
 	});
+
+	// Step 2: Withdraw items from player's inventory slot
+	const [item] = tx.moveCall({
+		target: `${params.worldPackageId}::storage_unit::withdraw_by_owner`,
+		typeArguments: [charType],
+		arguments: [
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			ownerCap,
+			tx.pure.u64(params.typeId),
+			tx.pure.u32(Number(params.quantity)),
+		],
+	});
+
+	// Step 3: Return OwnerCap
+	tx.moveCall({
+		target: `${params.worldPackageId}::character::return_owner_cap`,
+		typeArguments: [charType],
+		arguments: [tx.object(params.characterObjectId), ownerCap, receipt],
+	});
+
+	// Step 4: Deposit to owner inventory via player_to_owner
+	tx.moveCall({
+		target: `${params.ssuUnifiedPackageId}::ssu_unified::player_to_owner`,
+		arguments: [
+			tx.object(params.ssuConfigId),
+			tx.object(params.ssuObjectId),
+			tx.object(params.characterObjectId),
+			item,
+		],
+	});
+
+	if (params.buyerIsSsuOwner) {
+		// Step 5a: Buyer is SSU owner -- items already in owner inventory, just fill the order
+		tx.moveCall({
+			target: `${params.marketPackageId}::market::fill_buy_order`,
+			typeArguments: [params.coinType],
+			arguments: [
+				tx.object(params.marketId),
+				tx.pure.u64(params.orderId),
+				tx.pure.u64(params.typeId),
+				tx.pure.u64(params.quantity),
+			],
+		});
+	} else {
+		// Step 5b: Third-party buyer -- withdraw from owner and deliver to buyer
+		tx.moveCall({
+			target: `${params.ssuUnifiedPackageId}::ssu_unified::fill_and_deliver`,
+			typeArguments: [params.coinType],
+			arguments: [
+				tx.object(params.ssuConfigId),
+				tx.object(params.marketId),
+				tx.object(params.ssuObjectId),
+				tx.object(params.ownerCharacterObjectId),
+				tx.object(params.buyerCharacterObjectId),
+				tx.pure.u64(params.orderId),
+				tx.pure.u64(params.typeId),
+				tx.pure.u64(params.quantity),
+			],
+		});
+	}
 
 	return tx;
 }

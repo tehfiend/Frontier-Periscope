@@ -1,11 +1,17 @@
 import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
 import { useCharacter } from "@/hooks/useCharacter";
 import { useCoinMetadata } from "@/hooks/useCoinMetadata";
+import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { decodeErrorMessage } from "@/lib/errors";
+import { getTenant, getWorldPublishedAt } from "@/lib/constants";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { buildFillAndDeliver, formatBaseUnits } from "@tehfrontier/chain-shared";
+import {
+	buildFillAndDeliver,
+	buildPlayerFillAndDeliver,
+	formatBaseUnits,
+} from "@tehfrontier/chain-shared";
 import { useEffect, useRef, useState } from "react";
 
 interface FillBuyOrderDialogProps {
@@ -15,6 +21,12 @@ interface FillBuyOrderDialogProps {
 	ssuObjectId: string;
 	/** SSU owner's Character object ID (for escrow TX builders). */
 	ownerCharacterObjectId: string | null;
+	/** Connected player's Character object ID (for player fill). */
+	connectedCharacterObjectId?: string;
+	/** Connected player's Character OwnerCap (for player fill). */
+	charOwnerCap?: OwnerCapInfo;
+	/** Connected player's Character OwnerCap ID (for player fill). */
+	charOwnerCapId?: string;
 	onClose: () => void;
 }
 
@@ -24,6 +36,9 @@ export function FillBuyOrderDialog({
 	coinType,
 	ssuObjectId,
 	ownerCharacterObjectId,
+	connectedCharacterObjectId,
+	charOwnerCap,
+	charOwnerCapId,
 	onClose,
 }: FillBuyOrderDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
@@ -48,6 +63,11 @@ export function FillBuyOrderDialog({
 		!!account?.address &&
 		(ssuConfig.owner === account.address || ssuConfig.delegates.includes(account.address));
 
+	// Determine if this is the SSU owner (items in owner inventory) or a delegate (items in player slot)
+	const isSsuOwner = !!account?.address && ssuConfig.owner === account.address;
+	const usePlayerPath =
+		!isSsuOwner && !!charOwnerCap && !!charOwnerCapId && !!connectedCharacterObjectId;
+
 	async function handleFill() {
 		if (!account?.address || !ssuConfig.marketId) return;
 		if (!ownerCharacterObjectId) {
@@ -59,7 +79,9 @@ export function FillBuyOrderDialog({
 			return;
 		}
 		if (!isSsuAuthorized) {
-			setError("You are not a delegate on this SSU. Ask the owner to add you via Settings > Delegates.");
+			setError(
+				"You are not a delegate on this SSU. Ask the owner to add you via Settings > Delegates.",
+			);
 			return;
 		}
 		if (qty <= 0 || qty > maxQty) {
@@ -71,19 +93,53 @@ export function FillBuyOrderDialog({
 		setSuccess(null);
 
 		try {
-			const tx = buildFillAndDeliver({
-				ssuUnifiedPackageId: ssuConfig.packageId,
-				ssuConfigId: ssuConfig.ssuConfigId,
-				ssuObjectId,
-				characterObjectId: ownerCharacterObjectId,
-				buyerCharacterObjectId: buyerCharacter.characterObjectId,
-				coinType,
-				marketId: ssuConfig.marketId,
-				orderId: order.orderId,
-				typeId: order.typeId,
-				quantity: qty,
-				senderAddress: account.address,
-			});
+			let tx: import("@mysten/sui/transactions").Transaction;
+
+			// Determine if buyer is the SSU owner -- items should stay in owner inventory
+			const buyerIsSsuOwner = order.buyer === ssuConfig.owner;
+			const marketPkg = ssuConfig.marketPackageId ?? ssuConfig.packageId;
+
+			if (usePlayerPath) {
+				// Delegate: withdraw from player slot → deposit to owner inventory → fill
+				const worldPkg = getWorldPublishedAt(getTenant());
+				tx = buildPlayerFillAndDeliver({
+					ssuUnifiedPackageId: ssuConfig.packageId,
+					ssuConfigId: ssuConfig.ssuConfigId,
+					ssuObjectId,
+					ownerCharacterObjectId,
+					characterObjectId: connectedCharacterObjectId!,
+					ownerCapId: charOwnerCapId!,
+					ownerCapVersion: String(charOwnerCap!.version),
+					ownerCapDigest: charOwnerCap!.digest,
+					worldPackageId: worldPkg,
+					buyerCharacterObjectId: buyerCharacter.characterObjectId,
+					coinType,
+					marketId: ssuConfig.marketId,
+					marketPackageId: marketPkg,
+					orderId: order.orderId,
+					typeId: order.typeId,
+					quantity: qty,
+					senderAddress: account.address,
+					buyerIsSsuOwner,
+				});
+			} else {
+				// Owner: fill directly from owner inventory
+				tx = buildFillAndDeliver({
+					ssuUnifiedPackageId: ssuConfig.packageId,
+					ssuConfigId: ssuConfig.ssuConfigId,
+					ssuObjectId,
+					characterObjectId: ownerCharacterObjectId,
+					buyerCharacterObjectId: buyerCharacter.characterObjectId,
+					coinType,
+					marketId: ssuConfig.marketId,
+					marketPackageId: marketPkg,
+					orderId: order.orderId,
+					typeId: order.typeId,
+					quantity: qty,
+					senderAddress: account.address,
+					buyerIsSsuOwner,
+				});
+			}
 
 			await signAndExecute(tx);
 			setSuccess(

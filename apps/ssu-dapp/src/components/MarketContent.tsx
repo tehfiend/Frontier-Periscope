@@ -22,6 +22,12 @@ interface MarketContentProps {
 	ownerCharacterObjectId?: string | null;
 	/** typeId -> quantity currently in escrow (open inventory) */
 	escrowQuantities?: Map<number, number>;
+	/** Connected player's Character object ID (for player fill buy order). */
+	connectedCharacterObjectId?: string | null;
+	/** Connected player's Character OwnerCap (for player fill buy order). */
+	charOwnerCap?: import("@/hooks/useOwnerCap").OwnerCapInfo | null;
+	/** Connected player's Character OwnerCap ID (for player fill buy order). */
+	charOwnerCapId?: string | null;
 }
 
 export function MarketContent({
@@ -36,6 +42,9 @@ export function MarketContent({
 	ssuObjectId,
 	ownerCharacterObjectId,
 	escrowQuantities,
+	connectedCharacterObjectId,
+	charOwnerCap,
+	charOwnerCapId,
 }: MarketContentProps) {
 	const [showBuyOrderDialog, setShowBuyOrderDialog] = useState(false);
 	const marketPkg = getMarketPackageId();
@@ -130,6 +139,9 @@ export function MarketContent({
 					marketPackageId={marketPkg}
 					ownerCharacterObjectId={ownerCharacterObjectId}
 					escrowQuantities={escrowQuantities}
+					connectedCharacterObjectId={connectedCharacterObjectId}
+					charOwnerCap={charOwnerCap}
+					charOwnerCapId={charOwnerCapId}
 				/>
 			)}
 
