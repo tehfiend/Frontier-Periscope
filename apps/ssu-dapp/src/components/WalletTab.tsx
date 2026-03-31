@@ -12,6 +12,7 @@ import {
 	type WalletTransaction,
 	getContractAddresses,
 	getObjectJson,
+	queryAllMarketsStandings,
 	queryDecommissionedMarkets,
 	queryMarkets,
 	queryWalletTransactions,
@@ -154,16 +155,29 @@ export function WalletTab() {
 
 				// Discover all markets across current + previous package lineages
 				const marketCfg = addrs.market;
-				const pkgIds = [
+				const marketPkgs = [
 					marketCfg?.packageId,
 					...(marketCfg?.previousOriginalPackageIds ?? []),
 				].filter(Boolean) as string[];
 
 				const allCoinTypes = new Set<string>();
 				const allMarketIds = new Set<string>();
-				for (const pkgId of pkgIds) {
+
+				// Search market::Market objects
+				for (const pkgId of marketPkgs) {
 					const markets = await queryMarkets(client, pkgId);
 					for (const m of markets) {
+						if (allMarketIds.has(m.objectId)) continue;
+						allMarketIds.add(m.objectId);
+						if (m.coinType) allCoinTypes.add(m.coinType);
+					}
+				}
+
+				// Search market_standings::Market objects
+				const msCfg = addrs.marketStandings;
+				if (msCfg?.packageId) {
+					const msMarkets = await queryAllMarketsStandings(client, msCfg.packageId);
+					for (const m of msMarkets) {
 						if (allMarketIds.has(m.objectId)) continue;
 						allMarketIds.add(m.objectId);
 						if (m.coinType) allCoinTypes.add(m.coinType);
