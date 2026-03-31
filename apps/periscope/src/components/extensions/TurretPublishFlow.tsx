@@ -3,6 +3,7 @@ import { buildAuthorizeExtension } from "@/chain/transactions";
 import { db } from "@/db";
 import type { StructureExtensionConfig } from "@/db/types";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { walletErrorMessage } from "@/lib/format";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import {
 	DEFAULT_TURRET_PRIORITY_CONFIG,
@@ -276,7 +277,7 @@ export function TurretPublishFlow({
 			onConfigured?.();
 		} catch (err) {
 			setStep("error");
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		}
 	}
 

@@ -25,6 +25,7 @@ import { CopyAddress } from "@/components/CopyAddress";
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { ConnectWalletButton } from "@/components/WalletConnect";
 import { db, notDeleted } from "@/db";
+import { walletErrorMessage } from "@/lib/format";
 import type { CurrencyRecord, ManifestExchangePair, ManifestMarket } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
@@ -488,7 +489,7 @@ export function Currencies() {
 			setBuildStatus("done");
 		} catch (err) {
 			setBuildStatus("error");
-			setBuildError(err instanceof Error ? err.message : String(err));
+			setBuildError(walletErrorMessage(err));
 		}
 	};
 
@@ -610,7 +611,7 @@ export function Currencies() {
 			setBuildStatus("done");
 		} catch (err) {
 			setBuildStatus("error");
-			setBuildError(err instanceof Error ? err.message : String(err));
+			setBuildError(walletErrorMessage(err));
 		}
 	}
 
@@ -1411,7 +1412,7 @@ function CurrencyDetail({
 				onStatusChange("done");
 			}
 		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
+			onStatusChange("error", walletErrorMessage(err));
 		}
 	}
 
@@ -1442,7 +1443,7 @@ function CurrencyDetail({
 			onStatusChange("done");
 			setTimeout(() => loadTreasuryData(), 1500);
 		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
+			onStatusChange("error", walletErrorMessage(err));
 		}
 	}
 
@@ -1467,7 +1468,7 @@ function CurrencyDetail({
 			onStatusChange("done");
 			setTimeout(() => loadTreasuryData(), 1500);
 		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
+			onStatusChange("error", walletErrorMessage(err));
 		}
 	}
 
@@ -1519,7 +1520,7 @@ function CurrencyDetail({
 				loadTreasuryData();
 			}, 1500);
 		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
+			onStatusChange("error", walletErrorMessage(err));
 		}
 	}
 
@@ -1542,7 +1543,7 @@ function CurrencyDetail({
 			onStatusChange("done");
 			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
+			onStatusChange("error", walletErrorMessage(err));
 		}
 	}
 
@@ -1564,7 +1565,7 @@ function CurrencyDetail({
 			onStatusChange("done");
 			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
+			onStatusChange("error", walletErrorMessage(err));
 		}
 	}
 
@@ -1585,7 +1586,7 @@ function CurrencyDetail({
 			onStatusChange("done");
 			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
+			onStatusChange("error", walletErrorMessage(err));
 		}
 	}
 
@@ -1608,7 +1609,7 @@ function CurrencyDetail({
 			onStatusChange("done");
 			setTimeout(() => loadMarketInfo(), 1500);
 		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
+			onStatusChange("error", walletErrorMessage(err));
 		}
 	}
 
@@ -1687,7 +1688,7 @@ function CurrencyDetail({
 			onStatusChange("done");
 			onSync();
 		} catch (err) {
-			onStatusChange("error", err instanceof Error ? err.message : String(err));
+			onStatusChange("error", walletErrorMessage(err));
 		}
 	}
 

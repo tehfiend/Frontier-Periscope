@@ -29,6 +29,7 @@ import {
 } from "@/chain/manifest";
 import { CopyAddress } from "@/components/CopyAddress";
 import { db } from "@/db";
+import { walletErrorMessage } from "@/lib/format";
 import type { ManifestMapLocation, ManifestPrivateMap, ManifestPrivateMapV2 } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
@@ -61,7 +62,7 @@ export function PrivateMaps() {
 	const tenant = useActiveTenant();
 	const client = useSuiClient();
 	const dAppKit = useDAppKit();
-	const { keyPair, isLoading: isLoadingKey } = useStoredEncryptionKey();
+	const { keyPair, isLoading: isLoadingKey, retry: retryKey } = useStoredEncryptionKey();
 
 	// Use stored suiAddress for reads (no wallet needed), wallet address for writes
 	const suiAddress = activeCharacter?.suiAddress;
@@ -272,6 +273,7 @@ export function PrivateMaps() {
 				isSyncing={isSyncing || isLoadingKey}
 				onCreate={walletAddress && keyPair ? () => setShowCreateDialog(true) : undefined}
 				onAddById={walletAddress ? () => setShowAddMapByIdDialog(true) : undefined}
+				onDecrypt={walletAddress && !keyPair && !isLoadingKey ? retryKey : undefined}
 				hasPackageId={!!packageId || !!packageIdV2}
 				showArchived={showArchived}
 				onToggleArchived={() => setShowArchived(!showArchived)}
@@ -508,6 +510,7 @@ function Header({
 	isSyncing,
 	onCreate,
 	onAddById,
+	onDecrypt,
 	hasPackageId,
 	showArchived,
 	onToggleArchived,
@@ -516,6 +519,7 @@ function Header({
 	isSyncing?: boolean;
 	onCreate?: () => void;
 	onAddById?: () => void;
+	onDecrypt?: () => void;
 	hasPackageId?: boolean;
 	showArchived?: boolean;
 	onToggleArchived?: () => void;
@@ -542,6 +546,16 @@ function Header({
 						}`}
 					>
 						<Archive size={14} />
+					</button>
+				)}
+				{onDecrypt && (
+					<button
+						type="button"
+						onClick={onDecrypt}
+						className="flex items-center gap-1.5 rounded-lg bg-amber-600/80 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500"
+					>
+						<Lock size={14} />
+						Decrypt
 					</button>
 				)}
 				{onSync && (
@@ -1167,7 +1181,7 @@ function CreateMapDialog({
 
 			onClose();
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		} finally {
 			setIsPending(false);
 		}
@@ -1347,7 +1361,7 @@ function InviteMemberDialog({
 			await dAppKit.signAndExecuteTransaction({ transaction: tx });
 			onClose();
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		} finally {
 			setIsPending(false);
 		}
@@ -1457,7 +1471,7 @@ function AddLocationDialog({
 			onAdded();
 			onClose();
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		} finally {
 			setIsPending(false);
 		}
@@ -1583,7 +1597,7 @@ function AddMapByIdDialog({
 			onAdded();
 			onClose();
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(walletErrorMessage(err));
 		} finally {
 			setIsPending(false);
 		}
