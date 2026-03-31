@@ -52,6 +52,7 @@ import {
 	getPublicKeyForAddress,
 	hexToBytes,
 	sealForRecipient,
+	unsealWithKey,
 } from "@tehfrontier/chain-shared";
 
 // ── Main Component ──────────────────────────────────────────────────────────
@@ -860,40 +861,64 @@ function LocationsTable({
 		setDecrypting(true);
 		setDecryptError(null);
 		try {
-			// Step 1: Ensure map key is decrypted
-			if (mapVersion === "v1") {
-				await decryptMapKeys(keyPair, tenant as TenantId);
-			} else {
-				await decryptMapKeysV2(keyPair, tenant as TenantId);
-			}
-
-			// Step 2: Read the (now potentially decrypted) map record
 			const mapRecord = mapVersion === "v1"
 				? await db.manifestPrivateMaps.get(mapId)
 				: await db.manifestPrivateMapsV2.get(mapId);
 
 			if (!mapRecord) {
-				setDecryptError(`Map record not found in DB (${mapVersion}, ${mapId.slice(0, 12)}...)`);
-				return;
-			}
-			if (!mapRecord.decryptedMapKey || !mapRecord.publicKey) {
-				const diag = [
-					`ver=${mapVersion}`,
-					`pubKey=${mapRecord.publicKey ? "yes" : "NO"}`,
-					`encKey=${"encryptedMapKey" in mapRecord && mapRecord.encryptedMapKey ? "yes" : "NO"}`,
-					`decKey=${mapRecord.decryptedMapKey ? "yes" : "NO"}`,
-					"mode" in mapRecord ? `mode=${(mapRecord as { mode: number }).mode}` : "",
-				].filter(Boolean).join(", ");
-				setDecryptError(`Cannot decrypt -- ${diag}`);
+				setDecryptError(`Map record not found in DB (${mapVersion})`);
 				return;
 			}
 
-			// Step 3: Decrypt stored locations
-			const count = await decryptStoredLocations(
-				mapId, mapRecord.decryptedMapKey, mapRecord.publicKey,
-			);
+			let mapKey = mapRecord.decryptedMapKey;
+
+			// Try to unseal the map key if not already decrypted
+			if (!mapKey && mapRecord.publicKey) {
+				const encKey = "encryptedMapKey" in mapRecord
+					? (mapRecord as { encryptedMapKey?: string }).encryptedMapKey
+					: undefined;
+
+				if (encKey) {
+					try {
+						const encBytes = hexToBytes(encKey);
+						const decrypted = unsealWithKey(encBytes, keyPair.publicKey, keyPair.secretKey);
+						mapKey = bytesToHex(decrypted);
+
+						// Persist the decrypted key
+						if (mapVersion === "v1") {
+							await db.manifestPrivateMaps.update(mapId, { decryptedMapKey: mapKey });
+						} else {
+							await db.manifestPrivateMapsV2.update(mapId, { decryptedMapKey: mapKey });
+						}
+					} catch (unsealErr) {
+						// Check stored keypair vs what was used to seal
+						const storedKey = await db.settings.get(`mapKey:${walletAddress}`);
+						const storedPubHex = storedKey?.value
+							? (storedKey.value as { publicHex?: string }).publicHex ?? "none"
+							: "none";
+
+						setDecryptError(
+							`Unseal failed: ${String(unsealErr).slice(0, 80)} ` +
+							`| walletPub=${storedPubHex.slice(0, 12)}... ` +
+							`| encKeyLen=${hexToBytes(encKey).length}`,
+						);
+						return;
+					}
+				} else {
+					setDecryptError("No encryptedMapKey on map record");
+					return;
+				}
+			}
+
+			if (!mapKey || !mapRecord.publicKey) {
+				setDecryptError("Map key still unavailable after unseal attempt");
+				return;
+			}
+
+			// Decrypt stored locations
+			const count = await decryptStoredLocations(mapId, mapKey, mapRecord.publicKey);
 			if (count === 0) {
-				setDecryptError("No locations could be decrypted");
+				setDecryptError("Unseal succeeded but 0 locations decrypted");
 			}
 		} catch (err) {
 			console.error("[LocationsTable] decrypt failed:", err);
