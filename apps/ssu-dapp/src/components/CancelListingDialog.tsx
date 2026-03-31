@@ -54,9 +54,11 @@ export function CancelListingDialog({
 		setError(null);
 		setSuccess(null);
 
+		const isOwner = account.address === ssuConfig.owner;
+
 		try {
-			if (hasItemsInEscrow && ownerCharacterObjectId) {
-				// Items are in escrow -- cancel listing and return items atomically
+			if (hasItemsInEscrow && ownerCharacterObjectId && isOwner) {
+				// Owner: cancel listing and return items from escrow atomically
 				const tx = buildCancelAndUnescrow({
 					ssuUnifiedPackageId: ssuConfig.packageId,
 					ssuConfigId: ssuConfig.ssuConfigId,
@@ -70,7 +72,7 @@ export function CancelListingDialog({
 				await signAndExecute(tx);
 				setSuccess("Listing cancelled successfully");
 			} else if (ssuConfig.marketPackageId) {
-				// Items not in escrow -- just cancel the market listing
+				// Delegate or no escrow: cancel via market (items stay in escrow for owner to reclaim)
 				const tx = buildCancelSellListing({
 					packageId: ssuConfig.marketPackageId,
 					marketId: ssuConfig.marketId,
@@ -79,7 +81,11 @@ export function CancelListingDialog({
 					senderAddress: account.address,
 				});
 				await signAndExecute(tx);
-				setSuccess("Listing cancelled (items were already removed from escrow)");
+				setSuccess(
+					hasItemsInEscrow
+						? "Listing cancelled (owner can reclaim items from escrow)"
+						: "Listing cancelled",
+				);
 			} else {
 				setError("Market package not resolved");
 			}

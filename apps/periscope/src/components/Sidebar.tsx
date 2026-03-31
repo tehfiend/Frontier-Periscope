@@ -56,10 +56,10 @@ const navGroups: NavGroup[] = [
 	{
 		title: "Assets",
 		items: [
+			{ to: "/currencies", icon: Coins, label: "Currencies" },
+			{ to: "/wallet", icon: Wallet, label: "Wallet" },
 			{ to: "/structures", icon: Package, label: "Structures" },
 			{ to: "/assets", icon: Boxes, label: "Inventory" },
-			{ to: "/wallet", icon: Wallet, label: "Wallet" },
-			{ to: "/currencies", icon: Coins, label: "Currencies" },
 		],
 	},
 	{

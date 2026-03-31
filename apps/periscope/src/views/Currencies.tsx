@@ -871,8 +871,24 @@ function CurrencyDetail({
 	onDecommission: (decommission: boolean) => void;
 }) {
 	const account = useCurrentAccount();
-	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
+	const { signAndExecuteTransaction: signAndExecute, connectWallet } = useDAppKit();
+	const wallets = useWallets();
 	const suiClient = useSuiClient();
+
+	async function ensureWallet(): Promise<boolean> {
+		if (account) return true;
+		const eveVault = wallets.find(
+			(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
+		);
+		const wallet = eveVault || wallets[0];
+		if (!wallet) return false;
+		try {
+			await connectWallet({ wallet });
+			return true;
+		} catch {
+			return false;
+		}
+	}
 
 	const [marketInfo, setMarketInfo] = useState<MarketInfo | null>(null);
 	const [loadingMarket, setLoadingMarket] = useState(false);
@@ -1418,6 +1434,7 @@ function CurrencyDetail({
 
 	async function handleDeposit() {
 		if (!depositAmount || !treasuryId || !row.coinType || !treasuryPkg || !suiAddress) return;
+		if (!(await ensureWallet())) return;
 
 		onStatusChange("building");
 		try {
@@ -1449,6 +1466,7 @@ function CurrencyDetail({
 
 	async function handleWithdraw() {
 		if (!withdrawAmount || !treasuryId || !row.coinType || !treasuryPkg || !suiAddress) return;
+		if (!(await ensureWallet())) return;
 
 		onStatusChange("building");
 		try {
@@ -1476,6 +1494,7 @@ function CurrencyDetail({
 
 	async function handleMint() {
 		if (!mintAmount || !row.marketId || !row.coinType || !marketPkg || !suiAddress) return;
+		if (!(await ensureWallet())) return;
 
 		onStatusChange("minting");
 		try {
@@ -1526,6 +1545,7 @@ function CurrencyDetail({
 
 	async function handleBurn() {
 		if (!burnCoinId || !row.marketId || !row.coinType || !marketPkg || !suiAddress) return;
+		if (!(await ensureWallet())) return;
 
 		onStatusChange("burning");
 		try {
@@ -1549,6 +1569,7 @@ function CurrencyDetail({
 
 	async function handleAddAuthorized() {
 		if (!authAddress.trim() || !row.marketId || !row.coinType || !marketPkg || !suiAddress) return;
+		if (!(await ensureWallet())) return;
 
 		onStatusChange("building");
 		try {
@@ -1571,6 +1592,7 @@ function CurrencyDetail({
 
 	async function handleRemoveAuthorized(addr: string) {
 		if (!row.marketId || !row.coinType || !marketPkg || !suiAddress) return;
+		if (!(await ensureWallet())) return;
 
 		onStatusChange("building");
 		try {
@@ -1592,6 +1614,7 @@ function CurrencyDetail({
 
 	async function handleUpdateFee() {
 		if (!row.marketId || !row.coinType || !marketPkg || !suiAddress) return;
+		if (!(await ensureWallet())) return;
 
 		onStatusChange("building");
 		try {
@@ -1615,6 +1638,7 @@ function CurrencyDetail({
 
 	async function handleDiscoverMarket() {
 		if (!row.coinType || !marketPkg || !suiAddress) return;
+		if (!(await ensureWallet())) return;
 
 		onStatusChange("building");
 		try {
@@ -2023,9 +2047,9 @@ function CurrencyDetail({
 									</p>
 									<div className="space-y-1">
 										{marketInfo.authorized.map((addr) => (
-											<div key={addr} className="flex items-center justify-between">
-												<span className="font-mono text-xs text-zinc-400">
-													{addr.slice(0, 12)}...{addr.slice(-6)}
+											<div key={addr} className="flex items-center gap-2">
+												<span className="text-xs text-zinc-400">
+													{charNameMap.get(addr) ?? `${addr.slice(0, 12)}...${addr.slice(-6)}`}
 													{addr === suiAddress && <span className="ml-1 text-cyan-400">(you)</span>}
 												</span>
 												<button
