@@ -541,5 +541,6 @@ export function useInventory(
 	return {
 		data: inventories,
 		isLoading: inventoryQuery.isLoading || (namesQuery.isLoading && allTypeIds.length > 0),
+		refetch: inventoryQuery.refetch,
 	};
 }

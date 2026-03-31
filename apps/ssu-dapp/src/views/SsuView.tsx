@@ -34,10 +34,11 @@ export function SsuView({ objectId }: SsuViewProps) {
 		error: assemblyError,
 	} = useAssembly(objectId);
 
-	const { data: inventories, isLoading: inventoryLoading } = useInventory(
-		assembly ? objectId : null,
-		assembly?.rawJson ?? null,
-	);
+	const {
+		data: inventories,
+		isLoading: inventoryLoading,
+		refetch: refetchInventory,
+	} = useInventory(assembly ? objectId : null, assembly?.rawJson ?? null);
 
 	// Phase 2: Owner context (only when wallet is connected)
 	const { data: character } = useCharacter(walletAddress);
@@ -188,6 +189,7 @@ export function SsuView({ objectId }: SsuViewProps) {
 					<ContentTabs
 						inventories={inventories}
 						inventoryLoading={inventoryLoading}
+						onRefreshInventory={refetchInventory}
 						transferContext={transferContext}
 						ssuConfig={ssuConfig ?? null}
 						ssuObjectId={objectId}
