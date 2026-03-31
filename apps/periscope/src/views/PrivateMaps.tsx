@@ -872,8 +872,19 @@ function LocationsTable({
 				? await db.manifestPrivateMaps.get(mapId)
 				: await db.manifestPrivateMapsV2.get(mapId);
 
-			if (!mapRecord?.decryptedMapKey || !mapRecord?.publicKey) {
-				setDecryptError("Map key not available -- missing invite or wrong wallet");
+			if (!mapRecord) {
+				setDecryptError(`Map record not found in DB (${mapVersion}, ${mapId.slice(0, 12)}...)`);
+				return;
+			}
+			if (!mapRecord.decryptedMapKey || !mapRecord.publicKey) {
+				const diag = [
+					`ver=${mapVersion}`,
+					`pubKey=${mapRecord.publicKey ? "yes" : "NO"}`,
+					`encKey=${"encryptedMapKey" in mapRecord && mapRecord.encryptedMapKey ? "yes" : "NO"}`,
+					`decKey=${mapRecord.decryptedMapKey ? "yes" : "NO"}`,
+					"mode" in mapRecord ? `mode=${(mapRecord as { mode: number }).mode}` : "",
+				].filter(Boolean).join(", ");
+				setDecryptError(`Cannot decrypt -- ${diag}`);
 				return;
 			}
 
