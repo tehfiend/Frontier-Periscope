@@ -403,18 +403,39 @@ function RegistriesTab({
 		[allRegistries, archivedSubIds, showArchived],
 	);
 
-	// Refresh registries from chain into manifest cache
+	// Refresh registries from chain into manifest cache, auto-subscribe owned
 	const handleBrowse = useCallback(async () => {
 		if (!packageId) return;
 		setIsLoading(true);
 		try {
 			await discoverRegistries(client);
+
+			// Auto-subscribe registries owned by the current wallet
+			if (walletAddress) {
+				const all = await db.manifestRegistries.toArray();
+				const existing = new Set(
+					(await db.subscribedRegistries.toArray()).map((s) => s.id),
+				);
+				for (const reg of all) {
+					if (reg.owner === walletAddress && !existing.has(reg.id)) {
+						await db.subscribedRegistries.put({
+							id: reg.id,
+							name: reg.name,
+							ticker: reg.ticker,
+							creator: reg.owner,
+							defaultStanding: reg.defaultStanding,
+							subscribedAt: new Date().toISOString(),
+							tenant,
+						});
+					}
+				}
+			}
 		} catch {
 			// Fetch error
 		} finally {
 			setIsLoading(false);
 		}
-	}, [client, packageId]);
+	}, [client, packageId, walletAddress, tenant]);
 
 	const subscribedIds = useMemo(() => new Set(subscribed.map((s) => s.id)), [subscribed]);
 
@@ -864,6 +885,7 @@ function MyRegistriesTab({
 					packageId={packageId}
 					senderAddress={walletAddress ?? ""}
 					creatorCharacterId={creatorCharacterId}
+					tenant={tenant}
 					onClose={() => setShowCreateDialog(false)}
 					onCreated={handleRefresh}
 				/>
@@ -1497,6 +1519,7 @@ function CreateRegistryDialog({
 	packageId,
 	senderAddress,
 	creatorCharacterId,
+	tenant,
 	onClose,
 	onCreated,
 }: {
@@ -1504,6 +1527,7 @@ function CreateRegistryDialog({
 	senderAddress: string;
 	/** On-chain character item ID of the creator -- auto-added with +3 standing. */
 	creatorCharacterId?: number;
+	tenant: string;
 	onClose: () => void;
 	onCreated: () => void;
 }) {
@@ -1549,37 +1573,49 @@ function CreateRegistryDialog({
 
 			const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
 
-			// Auto-add creator with +3 standing
-			if (creatorCharacterId) {
-				const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
-				if (digest) {
-					const fullResult = await client.waitForTransaction({
-						digest,
-						include: { effects: true, objectTypes: true },
+			// Extract new registry ID from transaction result
+			const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
+			let newRegistryId: string | undefined;
+			if (digest) {
+				const fullResult = await client.waitForTransaction({
+					digest,
+					include: { effects: true, objectTypes: true },
+				});
+				const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
+				const changedObjects = fullTx?.effects?.changedObjects ?? [];
+				const objectTypesMap = fullTx?.objectTypes ?? {};
+
+				for (const change of changedObjects) {
+					const objType = objectTypesMap[change.objectId] ?? "";
+					if (objType.includes("::standings_registry::StandingsRegistry")) {
+						newRegistryId = change.objectId;
+						break;
+					}
+				}
+			}
+
+			if (newRegistryId) {
+				// Auto-subscribe so it appears in extension panel registry selector
+				await db.subscribedRegistries.put({
+					id: newRegistryId,
+					name: name.trim(),
+					ticker: ticker.trim(),
+					creator: sender,
+					defaultStanding: displayToStanding(defaultStanding),
+					subscribedAt: new Date().toISOString(),
+					tenant,
+				});
+
+				// Auto-add creator with +3 standing
+				if (creatorCharacterId) {
+					const standingTx = buildSetCharacterStanding({
+						packageId,
+						registryId: newRegistryId,
+						characterId: creatorCharacterId,
+						standing: displayToStanding(3), // +3 = best standing
+						senderAddress: sender,
 					});
-					const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
-					const changedObjects = fullTx?.effects?.changedObjects ?? [];
-					const objectTypesMap = fullTx?.objectTypes ?? {};
-
-					let newRegistryId: string | undefined;
-					for (const change of changedObjects) {
-						const objType = objectTypesMap[change.objectId] ?? "";
-						if (objType.includes("::standings_registry::StandingsRegistry")) {
-							newRegistryId = change.objectId;
-							break;
-						}
-					}
-
-					if (newRegistryId) {
-						const standingTx = buildSetCharacterStanding({
-							packageId,
-							registryId: newRegistryId,
-							characterId: creatorCharacterId,
-							standing: displayToStanding(3), // +3 = best standing
-							senderAddress: sender,
-						});
-						await dAppKit.signAndExecuteTransaction({ transaction: standingTx });
-					}
+					await dAppKit.signAndExecuteTransaction({ transaction: standingTx });
 				}
 			}
 
