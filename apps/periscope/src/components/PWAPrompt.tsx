@@ -10,15 +10,18 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 export function PWAPrompt() {
-	const {
-		needRefresh: [needRefresh, setNeedRefresh],
-		updateServiceWorker,
-	} = useRegisterSW({
+	const [showReload, setShowReload] = useState(false);
+
+	useRegisterSW({
 		onRegisteredSW(_swUrl, r) {
-			// Check for updates every 30 minutes
+			// Check for updates every 5 minutes
 			if (r) {
-				setInterval(() => r.update(), 30 * 60 * 1000);
+				setInterval(() => r.update(), 5 * 60 * 1000);
 			}
+		},
+		onNeedRefresh() {
+			// Auto-update mode still fires this when a new SW is waiting
+			setShowReload(true);
 		},
 	});
 
@@ -76,21 +79,21 @@ export function PWAPrompt() {
 				</div>
 			)}
 
-			{/* Update prompt */}
-			{needRefresh && (
+			{/* Update available -- reload to activate */}
+			{showReload && (
 				<div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-cyan-800 bg-zinc-900 px-4 py-3 shadow-lg">
 					<RefreshCw size={16} className="shrink-0 text-cyan-400" />
 					<p className="text-sm text-zinc-200">New version available</p>
 					<button
 						type="button"
-						onClick={() => updateServiceWorker(true)}
+						onClick={() => window.location.reload()}
 						className="rounded bg-cyan-600 px-3 py-1 text-xs font-medium text-white hover:bg-cyan-500"
 					>
-						Update
+						Reload
 					</button>
 					<button
 						type="button"
-						onClick={() => setNeedRefresh(false)}
+						onClick={() => setShowReload(false)}
 						className="text-zinc-500 hover:text-zinc-300"
 					>
 						<X size={14} />

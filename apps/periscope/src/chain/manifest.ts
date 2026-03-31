@@ -1733,6 +1733,23 @@ export async function syncPrivateMapIndex(
 						cachedAt: now,
 					};
 					await db.manifestPrivateMapIndex.put(entry);
+
+					// Also cache in V2 maps table so location sync can find it
+					const existingV2 = await db.manifestPrivateMapsV2.get(mapId);
+					if (!existingV2) {
+						await db.manifestPrivateMapsV2.put({
+							id: mapId,
+							name: mapInfo.name,
+							creator: mapInfo.creator,
+							editors: mapInfo.editors,
+							mode: 1,
+							registryId: mapInfo.registryId,
+							minReadStanding: mapInfo.minReadStanding,
+							minWriteStanding: mapInfo.minWriteStanding,
+							tenant,
+							cachedAt: now,
+						});
+					}
 					count++;
 				}
 			} catch {
