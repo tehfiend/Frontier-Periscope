@@ -355,6 +355,8 @@ export function PrivateMaps() {
 						locations={locations}
 						isCreator={!!walletAddress && selectedMapV1.creator === walletAddress}
 						walletAddress={walletAddress}
+						decryptedMapKey={selectedMapV1.decryptedMapKey}
+						mapPublicKey={selectedMapV1.publicKey}
 						onRemove={
 							walletAddress && packageId
 								? async (locationId) => {
@@ -438,6 +440,8 @@ export function PrivateMaps() {
 						locations={locations}
 						isCreator={!!walletAddress && selectedMapV2.creator === walletAddress}
 						walletAddress={walletAddress}
+						decryptedMapKey={selectedMapV2.decryptedMapKey}
+						mapPublicKey={selectedMapV2.publicKey}
 						onRemove={
 							walletAddress && packageIdV2
 								? async (locationId) => {
@@ -818,12 +822,33 @@ function LocationsTable({
 	isCreator,
 	walletAddress,
 	onRemove,
+	decryptedMapKey,
+	mapPublicKey,
 }: {
 	locations: ManifestMapLocation[];
 	isCreator: boolean;
 	walletAddress?: string;
 	onRemove?: (locationId: number) => void;
+	decryptedMapKey?: string;
+	mapPublicKey?: string;
 }) {
+	const [decrypting, setDecrypting] = useState(false);
+
+	async function handleDecrypt() {
+		if (!decryptedMapKey || !mapPublicKey || decrypting) return;
+		setDecrypting(true);
+		try {
+			const mapIds = [...new Set(locations.filter((l) => l.encryptedData).map((l) => l.mapId))];
+			for (const mapId of mapIds) {
+				await decryptStoredLocations(mapId, decryptedMapKey, mapPublicKey);
+			}
+		} catch (err) {
+			console.error("[LocationsTable] decrypt failed:", err);
+		} finally {
+			setDecrypting(false);
+		}
+	}
+
 	const sorted = [...locations].sort((a, b) => a.addedAtMs - b.addedAtMs);
 
 	// Resolve system names from cached solar systems
@@ -921,10 +946,22 @@ function LocationsTable({
 						<div key={loc.id} className="flex items-center justify-between px-4 py-3">
 							<div>
 								{loc.encryptedData ? (
-									<p className="flex items-center gap-1.5 text-sm text-zinc-500">
-										<Lock size={12} />
-										Encrypted location #{loc.locationId}
-									</p>
+									<div className="flex items-center gap-2">
+										<p className="flex items-center gap-1.5 text-sm text-zinc-500">
+											<Lock size={12} />
+											Encrypted location #{loc.locationId}
+										</p>
+										{decryptedMapKey && mapPublicKey && (
+											<button
+												type="button"
+												onClick={handleDecrypt}
+												disabled={decrypting}
+												className="rounded bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300 disabled:opacity-50"
+											>
+												{decrypting ? "Decrypting..." : "Decrypt"}
+											</button>
+										)}
+									</div>
 								) : (
 									<>
 										<p className="text-sm text-zinc-300">
