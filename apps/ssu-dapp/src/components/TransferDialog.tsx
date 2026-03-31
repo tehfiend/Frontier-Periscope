@@ -1,8 +1,9 @@
 import type { CharacterSearchResult } from "@/hooks/useCharacterSearch";
 import { useCharacterSearch } from "@/hooks/useCharacterSearch";
 import type { InventoryItem, LabeledInventory } from "@/hooks/useInventory";
-import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
+import { type OwnerCapInfo, fetchOwnerCapRef } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { getTenant, getWorldPublishedAt } from "@/lib/constants";
 import { decodeErrorMessage } from "@/lib/errors";
 import { Transaction } from "@mysten/sui/transactions";
@@ -284,6 +285,7 @@ export function TransferDialog({
 	onClose,
 }: TransferDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
+	const client = useSuiClient();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
 	const [selectedDestIdx, setSelectedDestIdx] = useState(0);
 	const [quantity, setQuantity] = useState("1");
@@ -390,6 +392,8 @@ export function TransferDialog({
 						setError("Missing withdraw capability");
 						return;
 					}
+					// Fetch fresh OwnerCap ref to avoid stale version/digest
+					const freshInfo = await fetchOwnerCapRef(client, withdrawCap.info.objectId);
 					buildPlayerMarketPtb(
 						tx,
 						worldPkg,
@@ -400,7 +404,7 @@ export function TransferDialog({
 						characterObjectId,
 						item,
 						qty,
-						withdrawCap,
+						{ ...withdrawCap, info: freshInfo },
 						fnName as "player_to_escrow" | "player_to_owner",
 					);
 				} else {
@@ -427,6 +431,11 @@ export function TransferDialog({
 					setError("Missing transfer capabilities");
 					return;
 				}
+				// Fetch fresh OwnerCap refs to avoid stale version/digest
+				const freshWithdraw = await fetchOwnerCapRef(client, withdrawCap.info.objectId);
+				const freshDeposit = withdrawCap.info.objectId === dest.depositCap.info.objectId
+					? freshWithdraw
+					: await fetchOwnerCapRef(client, dest.depositCap.info.objectId);
 				buildOwnerCapTransferPtb(
 					tx,
 					worldPkg,
@@ -434,8 +443,8 @@ export function TransferDialog({
 					characterObjectId,
 					item,
 					qty,
-					withdrawCap,
-					dest.depositCap,
+					{ ...withdrawCap, info: freshWithdraw },
+					{ ...dest.depositCap, info: freshDeposit },
 				);
 			}
 

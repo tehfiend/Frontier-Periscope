@@ -1,8 +1,9 @@
 import type { BuyOrderWithName } from "@/hooks/useBuyOrders";
 import { useCharacter } from "@/hooks/useCharacter";
 import { useCoinMetadata } from "@/hooks/useCoinMetadata";
-import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
+import { type OwnerCapInfo, fetchOwnerCapRef } from "@/hooks/useOwnerCap";
 import { useSignAndExecute } from "@/hooks/useSignAndExecute";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { decodeErrorMessage } from "@/lib/errors";
 import { getTenant, getWorldPublishedAt } from "@/lib/constants";
@@ -42,6 +43,7 @@ export function FillBuyOrderDialog({
 	onClose,
 }: FillBuyOrderDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
+	const client = useSuiClient();
 	const account = useCurrentAccount();
 	const { mutateAsync: signAndExecute, isPending } = useSignAndExecute();
 	const { data: coinMeta } = useCoinMetadata(coinType);
@@ -101,6 +103,8 @@ export function FillBuyOrderDialog({
 
 			if (usePlayerPath) {
 				// Delegate: withdraw from player slot → deposit to owner inventory → fill
+				// Fetch fresh OwnerCap ref to avoid stale version/digest after prior TX
+				const freshCap = await fetchOwnerCapRef(client, charOwnerCapId!);
 				const worldPkg = getWorldPublishedAt(getTenant());
 				tx = buildPlayerFillAndDeliver({
 					ssuUnifiedPackageId: ssuConfig.packageId,
@@ -109,8 +113,8 @@ export function FillBuyOrderDialog({
 					ownerCharacterObjectId,
 					characterObjectId: connectedCharacterObjectId!,
 					ownerCapId: charOwnerCapId!,
-					ownerCapVersion: String(charOwnerCap!.version),
-					ownerCapDigest: charOwnerCap!.digest,
+					ownerCapVersion: String(freshCap.version),
+					ownerCapDigest: freshCap.digest,
 					worldPackageId: worldPkg,
 					buyerCharacterObjectId: buyerCharacter.characterObjectId,
 					coinType,
