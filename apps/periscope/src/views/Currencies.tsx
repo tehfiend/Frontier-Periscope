@@ -278,6 +278,7 @@ export function Currencies() {
 	// ── State ────────────────────────────────────────────────────────────────
 	const [showDecommissioned, setShowDecommissioned] = useState(false);
 	const [decommissionedSet, setDecommissionedSet] = useState<Set<string>>(new Set());
+	const [decommissionedLoaded, setDecommissionedLoaded] = useState(false);
 	const [selectedCurrencyId, setSelectedCurrencyId] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
 	const [symbol, setSymbol] = useState("");
@@ -385,9 +386,15 @@ export function Currencies() {
 	}, [manifestMarkets, currencies, treasuries, decommissionedSet, suiAddress, walletAddress, charNameMap]);
 
 	// ── Filtered rows (decommission toggle) ─────────────────────────────────
+	// Hide all rows with a marketId until decommissioned set is loaded to prevent flash
 	const filteredRows = useMemo(
-		() => unifiedRows.filter((r) => !r.decommissioned || showDecommissioned),
-		[unifiedRows, showDecommissioned],
+		() =>
+			unifiedRows.filter((r) => {
+				if (r.decommissioned && !showDecommissioned) return false;
+				if (!decommissionedLoaded && r.marketId) return false;
+				return true;
+			}),
+		[unifiedRows, showDecommissioned, decommissionedLoaded],
 	);
 
 	// ── Sync ─────────────────────────────────────────────────────────────────
@@ -406,6 +413,7 @@ export function Currencies() {
 				const set = await queryDecommissionedMarkets(suiClient, decomPkgId);
 				setDecommissionedSet(set);
 			}
+			setDecommissionedLoaded(true);
 		} catch {
 			// Silent
 		} finally {
@@ -487,6 +495,16 @@ export function Currencies() {
 	// ── Create currency ──────────────────────────────────────────────────────
 	async function handleCreateCurrency() {
 		if (!symbol.trim() || !tokenName.trim()) return;
+
+		// Connect wallet if needed
+		if (!account?.address) {
+			const eveVault = wallets.find(
+				(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
+			);
+			const wallet = eveVault || wallets[0];
+			if (!wallet) return;
+			await connectWallet({ wallet });
+		}
 
 		setBuildStatus("building");
 		setBuildError("");
@@ -742,7 +760,6 @@ export function Currencies() {
 					description={description}
 					decimals={decimals}
 					isProcessing={isProcessing}
-					hasAccount={!!account}
 					onSymbolChange={setSymbol}
 					onNameChange={setTokenName}
 					onDescChange={setDescription}
@@ -2368,7 +2385,6 @@ function CreateCurrencyForm({
 	description,
 	decimals,
 	isProcessing,
-	hasAccount,
 	onSymbolChange,
 	onNameChange,
 	onDescChange,
@@ -2381,7 +2397,6 @@ function CreateCurrencyForm({
 	description: string;
 	decimals: number;
 	isProcessing: boolean;
-	hasAccount: boolean;
 	onSymbolChange: (v: string) => void;
 	onNameChange: (v: string) => void;
 	onDescChange: (v: string) => void;
@@ -2434,24 +2449,20 @@ function CreateCurrencyForm({
 					/>
 				</FormField>
 				<div className="flex gap-2">
-					{hasAccount ? (
-						<button
-							type="button"
-							onClick={onCreate}
-							disabled={!symbol.trim() || !tokenName.trim() || isProcessing}
-							className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-						>
-							{isProcessing ? (
-								<span className="flex items-center gap-2">
-									<Loader2 size={14} className="animate-spin" /> Publishing...
-								</span>
-							) : (
-								"Create Currency"
-							)}
-						</button>
-					) : (
-						<ConnectWalletButton />
-					)}
+					<button
+						type="button"
+						onClick={onCreate}
+						disabled={!symbol.trim() || !tokenName.trim() || isProcessing}
+						className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						{isProcessing ? (
+							<span className="flex items-center gap-2">
+								<Loader2 size={14} className="animate-spin" /> Publishing...
+							</span>
+						) : (
+							"Create Currency"
+						)}
+					</button>
 					<button
 						type="button"
 						onClick={onCancel}

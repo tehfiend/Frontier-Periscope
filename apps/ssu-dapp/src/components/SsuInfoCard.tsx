@@ -7,9 +7,6 @@ import { MetadataEditor } from "./MetadataEditor";
 interface SsuInfoCardProps {
 	assembly: AssemblyData;
 	itemId?: string | null;
-	ownerCharacterName?: string | null;
-	connectedWalletAddress?: string | null;
-	connectedCharacterName?: string | null;
 	isOwner: boolean;
 	characterObjectId?: string;
 	ownerCap?: OwnerCapInfo;
@@ -19,9 +16,6 @@ interface SsuInfoCardProps {
 export function SsuInfoCard({
 	assembly,
 	itemId,
-	ownerCharacterName,
-	connectedWalletAddress,
-	connectedCharacterName,
 	isOwner,
 	characterObjectId,
 	ownerCap,
@@ -34,9 +28,6 @@ export function SsuInfoCard({
 			<AssemblyHeader
 				assembly={assembly}
 				itemId={itemId}
-				ownerCharacterName={ownerCharacterName}
-				connectedWalletAddress={connectedWalletAddress}
-				connectedCharacterName={connectedCharacterName}
 				onEdit={isOwner ? () => setIsEditing((prev) => !prev) : undefined}
 			/>
 

@@ -977,7 +977,7 @@ export function AddCharacterDialog({ open, onClose }: Props) {
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-			<div className="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+			<div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
 				{/* Header */}
 				<div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
 					<div className="flex items-center gap-3">
@@ -1017,7 +1017,7 @@ export function AddCharacterDialog({ open, onClose }: Props) {
 				</div>
 
 				{/* Content */}
-				<div className="p-5">
+				<div className="min-h-0 flex-1 overflow-y-auto p-5">
 					{method === "wallet" && <WalletMethod onClose={onClose} tenant={tenant} />}
 					{method === "logs" && <LogsMethod onClose={onClose} tenant={tenant} />}
 					{method === "search" && <SearchMethod onClose={onClose} tenant={tenant} />}

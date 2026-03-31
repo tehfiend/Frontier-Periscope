@@ -4,9 +4,17 @@ import {
 	CoinTransferDialog,
 } from "@/components/CoinTransferDialog";
 import { CopyAddress } from "@/components/CopyAddress";
+import { getTenant } from "@/lib/constants";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
-import { type WalletTransaction, queryWalletTransactions } from "@tehfrontier/chain-shared";
+import {
+	type TenantId,
+	type WalletTransaction,
+	getContractAddresses,
+	getObjectJson,
+	queryDecommissionedMarkets,
+	queryWalletTransactions,
+} from "@tehfrontier/chain-shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -36,6 +44,9 @@ export function WalletTab() {
 	const [loading, setLoading] = useState(false);
 	const [fetching, setFetching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+
+	// Decommissioned coin types to filter out
+	const [decomCoinTypes, setDecomCoinTypes] = useState<Set<string>>(new Set());
 
 	// Transaction state
 	const [rawTxs, setRawTxs] = useState<WalletTransaction[]>([]);
@@ -133,6 +144,29 @@ export function WalletTab() {
 		}
 	}, [walletAddress, fetchBalances, fetchTransactions]);
 
+	// Resolve decommissioned coin types on mount
+	useEffect(() => {
+		let cancelled = false;
+		(async () => {
+			try {
+				const addrs = getContractAddresses(getTenant() as TenantId);
+				const decomPkg = addrs.decommission?.packageId;
+				if (!decomPkg) return;
+				const marketIds = await queryDecommissionedMarkets(client, decomPkg);
+				const coinTypes = new Set<string>();
+				for (const mId of marketIds) {
+					try {
+						const obj = await getObjectJson(client, mId);
+						const match = obj.type?.match(/::(?:market_standings|market)::Market<(.+)>$/);
+						if (match) coinTypes.add(match[1]);
+					} catch { /* skip */ }
+				}
+				if (!cancelled) setDecomCoinTypes(coinTypes);
+			} catch { /* non-fatal */ }
+		})();
+		return () => { cancelled = true; };
+	}, [client]);
+
 	// ── Flatten transactions ────────────────────────────────────────────────
 
 	const { flatTxs, txCoinTypes } = useMemo(() => {
@@ -140,6 +174,7 @@ export function WalletTab() {
 		const types = new Set<string>();
 		for (const tx of rawTxs) {
 			for (const bc of tx.balanceChanges) {
+				if (decomCoinTypes.has(bc.coinType)) continue;
 				types.add(bc.coinType);
 				flat.push({
 					digest: tx.digest,
@@ -150,7 +185,7 @@ export function WalletTab() {
 			}
 		}
 		return { flatTxs: flat, txCoinTypes: Array.from(types).sort() };
-	}, [rawTxs]);
+	}, [rawTxs, decomCoinTypes]);
 
 	// ── Filter + sort ───────────────────────────────────────────────────────
 
@@ -221,10 +256,11 @@ export function WalletTab() {
 
 	// ── Derived data ────────────────────────────────────────────────────────
 
-	const suiBalance = balances.find((b) => isSuiCoin(b.coinType));
+	const activeBalances = balances.filter((b) => !decomCoinTypes.has(b.coinType));
+	const suiBalance = activeBalances.find((b) => isSuiCoin(b.coinType));
 	const suiMist = suiBalance?.totalBalance ?? "0";
 	const suiHuman = formatBalance(suiMist, 9);
-	const tokenCount = balances.length;
+	const tokenCount = activeBalances.length;
 
 	return (
 		<div className="space-y-4">
@@ -295,7 +331,7 @@ export function WalletTab() {
 						<div className="border-b border-zinc-800 px-3 py-2">
 							<h3 className="text-xs font-medium text-zinc-400">Token Balances</h3>
 						</div>
-						{balances.length === 0 ? (
+						{activeBalances.length === 0 ? (
 							<div className="px-3 py-6 text-center text-xs text-zinc-600">
 								No coins found in this wallet.
 							</div>
@@ -308,7 +344,7 @@ export function WalletTab() {
 									</tr>
 								</thead>
 								<tbody>
-									{balances.map((b) => {
+									{activeBalances.map((b) => {
 										const meta = coinMeta[b.coinType];
 										const name = meta?.symbol || extractTokenName(b.coinType);
 										const dec = meta?.decimals ?? 9;

@@ -190,11 +190,12 @@ export function useStructureRows({
 			});
 		}
 
-		// When showAll, return everything
+		// When showAll, return everything (including removed)
 		if (showAll) return rows;
 
-		// Filter: owned OR sonar-targeted OR registry-matched
+		// Filter: owned OR sonar-targeted OR registry-matched; exclude removed
 		return rows.filter((row) => {
+			if (row.status === "removed") return false;
 			// Owned
 			if (addressSet.has(row.owner)) return true;
 			// Sonar-targeted

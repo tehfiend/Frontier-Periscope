@@ -32,6 +32,10 @@ interface ContentTabsProps {
 	ownerCharacterObjectId?: string | null;
 	/** Whether the connected wallet is the SsuConfig owner */
 	isSsuOwner?: boolean;
+	ownerCharacterName?: string | null;
+	connectedCharacterName?: string | null;
+	extensionType?: string | null;
+	dappUrl?: string | null;
 }
 
 export function ContentTabs({
@@ -49,6 +53,10 @@ export function ContentTabs({
 	walletAddress,
 	ownerCharacterObjectId,
 	isSsuOwner,
+	ownerCharacterName,
+	connectedCharacterName,
+	extensionType,
+	dappUrl,
 }: ContentTabsProps) {
 	const [activeTab, setActiveTab] = useState<TabId>("inventory");
 	const [sellDialogItem, setSellDialogItem] = useState<{
@@ -179,6 +187,39 @@ export function ContentTabs({
 
 			{activeTab === "settings" && ssuConfig && (
 				<div className="space-y-3">
+					<div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+						<h3 className="mb-3 text-sm font-medium text-zinc-300">Info</h3>
+						<div className="space-y-1.5">
+							{ownerCharacterName && (
+								<p className="text-xs text-zinc-500">
+									Owner: <span className="font-medium text-zinc-300">{ownerCharacterName}</span>
+								</p>
+							)}
+							{connectedCharacterName && (
+								<p className="text-xs text-zinc-500">
+									Connected as: <span className="font-medium text-cyan-400">{connectedCharacterName}</span>
+								</p>
+							)}
+							{extensionType && (
+								<p className="text-xs text-zinc-500">
+									Extension: <span className="font-mono text-zinc-400">{formatExtensionType(extensionType)}</span>
+								</p>
+							)}
+							{dappUrl && (
+								<p className="text-xs text-zinc-500">
+									dApp URL:{" "}
+									<a
+										href={dappUrl}
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-cyan-500 hover:text-cyan-400"
+									>
+										{dappUrl}
+									</a>
+								</p>
+							)}
+						</div>
+					</div>
 					{isSsuOwner && <VisibilitySettings ssuConfig={ssuConfig} />}
 					<SsuConfigInfo ssuConfig={ssuConfig} />
 					{isSsuOwner && <DelegateManager ssuConfig={ssuConfig} />}
@@ -199,4 +240,12 @@ export function ContentTabs({
 			)}
 		</div>
 	);
+}
+
+function formatExtensionType(ext: string): string {
+	const parts = ext.split("::");
+	if (parts.length >= 3) {
+		return `${parts[parts.length - 2]}::${parts[parts.length - 1]}`;
+	}
+	return ext;
 }

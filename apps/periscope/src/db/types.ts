@@ -80,6 +80,7 @@ export type AssemblyStatus =
 	| "anchoring"
 	| "unanchoring"
 	| "destroyed"
+	| "removed"
 	| "unknown";
 
 export interface IntelBase extends SyncMeta {

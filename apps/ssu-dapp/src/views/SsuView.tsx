@@ -176,9 +176,6 @@ export function SsuView({ objectId }: SsuViewProps) {
 			<SsuInfoCard
 				assembly={assembly}
 				itemId={getItemId()}
-				ownerCharacterName={ownerCharacterInfo?.characterName ?? null}
-				connectedWalletAddress={walletAddress}
-				connectedCharacterName={character?.characterName}
 				isOwner={isOwner}
 				characterObjectId={character?.characterObjectId}
 				ownerCap={ownerCapInfo ?? undefined}
@@ -203,6 +200,10 @@ export function SsuView({ objectId }: SsuViewProps) {
 						walletAddress={walletAddress}
 						ownerCharacterObjectId={ownerCharacterInfo?.characterObjectId ?? null}
 						isSsuOwner={isSsuOwner}
+						ownerCharacterName={ownerCharacterInfo?.characterName ?? null}
+						connectedCharacterName={character?.characterName ?? null}
+						extensionType={assembly.extensionType}
+						dappUrl={assembly.metadata?.url ?? null}
 					/>
 				</div>
 			)}
