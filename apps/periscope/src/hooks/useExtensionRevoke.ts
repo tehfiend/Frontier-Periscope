@@ -71,8 +71,13 @@ export function useExtensionRevoke() {
 			setStatus("signing");
 			const txResult = await signAndExecute({ transaction: tx });
 
+			const txDigest = txResult.Transaction?.digest ?? "";
+			if (!txDigest) {
+				setStatus("error");
+				setResult({ error: "Transaction failed on-chain" });
+				return;
+			}
 			setStatus("done");
-			const txDigest = txResult.Transaction?.digest ?? txResult.FailedTransaction?.digest ?? "";
 			setResult({ txDigest });
 
 			// Soft-delete local extension record for this assembly

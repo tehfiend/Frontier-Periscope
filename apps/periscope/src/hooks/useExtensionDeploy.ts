@@ -55,8 +55,13 @@ export function useExtensionDeploy() {
 			setStatus("signing");
 			const authResult = await signAndExecute({ transaction: tx });
 
+			const txDigest = authResult.Transaction?.digest ?? "";
+			if (!txDigest) {
+				setStatus("error");
+				setResult({ error: "Transaction failed on-chain" });
+				return;
+			}
 			setStatus("done");
-			const txDigest = authResult.Transaction?.digest ?? authResult.FailedTransaction?.digest ?? "";
 			setResult({ txDigest });
 
 			// Record in IndexedDB

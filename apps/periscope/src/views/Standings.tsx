@@ -613,10 +613,7 @@ function RegistriesTab({
 
 								{/* Expanded: show standings */}
 								{isSelected && isSubscribed && (
-									<RegistryStandingsView
-										standings={selectedStandings}
-										defaultStanding={registry.defaultStanding}
-									/>
+									<RegistryStandingsView standings={selectedStandings} />
 								)}
 							</div>
 						);
@@ -921,7 +918,6 @@ function RegistryStandingsView({
 	standings,
 }: {
 	standings: RegistryStanding[];
-	defaultStanding: number;
 }) {
 	// Resolve names
 	const tribeIds = useMemo(
@@ -1608,14 +1604,18 @@ function CreateRegistryDialog({
 
 				// Auto-add creator with +3 standing
 				if (creatorCharacterId) {
-					const standingTx = buildSetCharacterStanding({
-						packageId,
-						registryId: newRegistryId,
-						characterId: creatorCharacterId,
-						standing: displayToStanding(3), // +3 = best standing
-						senderAddress: sender,
-					});
-					await dAppKit.signAndExecuteTransaction({ transaction: standingTx });
+					try {
+						const standingTx = buildSetCharacterStanding({
+							packageId,
+							registryId: newRegistryId,
+							characterId: creatorCharacterId,
+							standing: displayToStanding(3), // +3 = best standing
+							senderAddress: sender,
+						});
+						await dAppKit.signAndExecuteTransaction({ transaction: standingTx });
+					} catch {
+						// Registry was created successfully but auto-standing failed -- non-critical
+					}
 				}
 			}
 

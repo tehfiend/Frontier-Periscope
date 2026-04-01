@@ -6,6 +6,7 @@ import type { StructureExtensionConfig } from "@/db/types";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { walletErrorMessage } from "@/lib/format";
 import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
+import { Transaction } from "@mysten/sui/transactions";
 import {
 	ASSEMBLY_MODULE_MAP,
 	REGISTRY_STANDING_LABELS,
@@ -466,7 +467,7 @@ function StandingsExtensionPanelInner({
 	}
 
 	/** Append OwnerCap borrow -> metadata update -> return to an existing TX. */
-	function appendMetadataUpdates(tx: import("@mysten/sui/transactions").Transaction) {
+	function appendMetadataUpdates(tx: Transaction) {
 		if ((!newName && !newUrl) || !characterId || !ownerCapId) return;
 
 		const worldPkg = TENANTS[tenant].worldPackageId;
@@ -524,7 +525,7 @@ function StandingsExtensionPanelInner({
 		setError(null);
 
 		try {
-			let tx: import("@mysten/sui/transactions").Transaction;
+			let tx: Transaction;
 			let isNewSsuConfig = !existingConfig?.ssuConfigId;
 
 			if (structureKind === "gate") {
@@ -585,7 +586,14 @@ function StandingsExtensionPanelInner({
 					}
 				}
 			} else {
-				// SSU market-only -- no on-chain standings TX, just save locally
+				// SSU market-only -- no standings TX needed
+				// But if there are metadata updates (name/url), we still need an on-chain TX
+				if (newName || newUrl) {
+					const metaTx = new Transaction();
+					appendMetadataUpdates(metaTx);
+					setStatus("signing");
+					await signAndExecute({ transaction: metaTx });
+				}
 				await saveConfigToDb();
 				await recordExtension(senderAddress);
 				setStatus("done");
