@@ -112,7 +112,7 @@ export function PrivateMaps() {
 
 	const selectedMapV1 = mapsV1.find((m) => m.id === selectedMapId) ?? null;
 	const selectedMapV2 = mapsV2.find((m) => m.id === selectedMapId) ?? null;
-	const selectedMap = selectedMapVersion === "v1" ? selectedMapV1 : null;
+	const selectedMap = selectedMapVersion === "v1" ? selectedMapV1 : selectedMapV2;
 	const totalMaps = mapsV1.length + mapsV2.length;
 
 	// Archive/unarchive handlers
@@ -193,44 +193,48 @@ export function PrivateMaps() {
 	}, [suiAddress, keyPair, handleSync]);
 
 	// When key becomes available, decrypt pending V1 map keys + decrypt stored locations
+	const pendingV1Count = useMemo(
+		() => allMapsV1.filter((m) => !m.decryptedMapKey && m.encryptedMapKey).length,
+		[allMapsV1],
+	);
 	useEffect(() => {
-		const pending = allMapsV1.filter((m) => !m.decryptedMapKey && m.encryptedMapKey);
-		if (keyPair && pending.length > 0) {
-			decryptMapKeys(keyPair, tenant as TenantId).then(() => {
-				db.manifestPrivateMaps
-					.where("tenant")
-					.equals(tenant)
-					.toArray()
-					.then((cachedMaps) => {
-						for (const m of cachedMaps) {
-							if (m.decryptedMapKey) {
-								decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
-							}
+		if (!keyPair || pendingV1Count === 0) return;
+		decryptMapKeys(keyPair, tenant as TenantId).then(() => {
+			db.manifestPrivateMaps
+				.where("tenant")
+				.equals(tenant)
+				.toArray()
+				.then((cachedMaps) => {
+					for (const m of cachedMaps) {
+						if (m.decryptedMapKey) {
+							decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
 						}
-					});
-			});
-		}
-	}, [keyPair, allMapsV1, tenant]);
+					}
+				});
+		});
+	}, [keyPair, pendingV1Count, tenant]);
 
 	// When key becomes available, decrypt pending V2 mode=0 map keys + decrypt stored locations
+	const pendingV2Count = useMemo(
+		() => allMapsV2.filter((m) => m.mode === 0 && !m.decryptedMapKey && m.encryptedMapKey).length,
+		[allMapsV2],
+	);
 	useEffect(() => {
-		const pending = allMapsV2.filter((m) => m.mode === 0 && !m.decryptedMapKey && m.encryptedMapKey);
-		if (keyPair && pending.length > 0) {
-			decryptMapKeysV2(keyPair, tenant as TenantId).then(() => {
-				db.manifestPrivateMapsV2
-					.where("tenant")
-					.equals(tenant)
-					.toArray()
-					.then((cachedMaps) => {
-						for (const m of cachedMaps) {
-							if (m.mode === 0 && m.decryptedMapKey && m.publicKey) {
-								decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
-							}
+		if (!keyPair || pendingV2Count === 0) return;
+		decryptMapKeysV2(keyPair, tenant as TenantId).then(() => {
+			db.manifestPrivateMapsV2
+				.where("tenant")
+				.equals(tenant)
+				.toArray()
+				.then((cachedMaps) => {
+					for (const m of cachedMaps) {
+						if (m.mode === 0 && m.decryptedMapKey && m.publicKey) {
+							decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
 						}
-					});
-			});
-		}
-	}, [keyPair, allMapsV2, tenant]);
+					}
+				});
+		});
+	}, [keyPair, pendingV2Count, tenant]);
 
 	// Sync V1 locations when a V1 map is selected (fetch records, decrypt if possible)
 	useEffect(() => {
@@ -272,9 +276,6 @@ export function PrivateMaps() {
 			setSelectedMapVersion(version);
 		}
 	};
-
-	// Determine the currently selected map's creator for permission checks
-	const selectedCreator = selectedMapV1?.creator ?? selectedMapV2?.creator;
 
 	return (
 		<div className="mx-auto max-w-3xl p-6">
@@ -486,18 +487,18 @@ export function PrivateMaps() {
 				/>
 			)}
 
-			{showInviteDialog && selectedMap && packageId && walletAddress && (
+			{showInviteDialog && selectedMap && (packageId || packageIdV2) && walletAddress && (
 				<InviteMemberDialog
-					packageId={packageId}
+					packageId={(selectedMapVersion === "v2" ? packageIdV2 : packageId) ?? ""}
 					map={selectedMap}
 					senderAddress={walletAddress}
 					onClose={() => setShowInviteDialog(false)}
 				/>
 			)}
 
-			{showAddLocationDialog && selectedMap && packageId && walletAddress && (
+			{showAddLocationDialog && selectedMap && (packageId || packageIdV2) && walletAddress && (
 				<AddLocationDialog
-					packageId={packageId}
+					packageId={(selectedMapVersion === "v2" ? packageIdV2 : packageId) ?? ""}
 					map={selectedMap}
 					senderAddress={walletAddress}
 					onClose={() => setShowAddLocationDialog(false)}
@@ -1473,7 +1474,7 @@ function InviteMemberDialog({
 	onClose,
 }: {
 	packageId: string;
-	map: ManifestPrivateMap;
+	map: ManifestPrivateMap | ManifestPrivateMapV2;
 	senderAddress: string;
 	onClose: () => void;
 }) {
@@ -1576,7 +1577,7 @@ function AddLocationDialog({
 	onAdded,
 }: {
 	packageId: string;
-	map: ManifestPrivateMap;
+	map: ManifestPrivateMap | ManifestPrivateMapV2;
 	senderAddress: string;
 	onClose: () => void;
 	onAdded: () => void;
