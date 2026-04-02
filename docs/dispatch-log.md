@@ -167,3 +167,32 @@
 - **File:** docs/plans/pending/16-wallet-connect-audit.md
 - **Passes:** 3 (2 with changes, pass 3 NO_CHANGES)
 - **Result:** pending -- 4-phase plan auditing and fixing wallet connection patterns across 12 files in apps/periscope. Converts all ConnectWalletButton ternaries, !account gates, and silent-fail guards to inline auto-connect pattern (prefer Eve Vault, connect-and-execute in one click). Removes ConnectWalletButton export. 12 violations identified across views (Currencies, Deployables, PrivateMaps, Standings, Wallet), components (AddCharacterDialog, AddToMapDialog, TurretPublishFlow, TransferDialog), and hooks (useExtensionRevoke, useExtensionDeploy). 3 open questions remain (CurrencyDetail sender address source, PrivateMaps keyPair timing, TransferDialog prop strategy).
+
+## 2026-04-02 -- sonar-audit
+- **Action:** CREATE
+- **File:** docs/plans/pending/17-sonar-audit.md
+- **Passes:** 3 (2 with changes, pass 3 NO_CHANGES)
+- **Result:** pending -- Deep audit of the full Sonar system (13 files, ~5000 LOC). Found 8 bugs (3 critical, 5 high), 5 performance issues, and 9 low-priority issues. Critical: chain event cursor init race causing duplicate events (BUG-01/02), local sonar full-table scan every 5s (BUG-03). High: alert HWM race, truncation recursion, sonarStore DB persistence race, watchlist dependency churn, ping settings never restored on load. Performance: 5000-event reactive query, unindexed source filter, N+1 watchlist queries, context rebuild every 15s. Also found dead bounty event types and missing reimport cleanup. 4-phase implementation plan organized by priority. 3 open questions remain (dedup strategy, HWM migration approach, event limit reduction).
+
+## 2026-04-02 -- bulk plan review
+- **Action:** UPDATE (5 plans)
+- **Plans reviewed:** 12, 13, 15, 16, 17
+- **Passes:** 1 per plan (5 total agents)
+- **Results:**
+  - **12-ssu-market-linking** -> `archive/` -- all 5 phases complete. Contract uses shared objects + atomic composite trades (improvements over original design).
+  - **13-ssu-escrow-transfers** -> `archive/` -- all 5 phases complete. 6 enhancements beyond original plan (market ID validation, player-side TX builders, delegate cancel fallback, buyer-is-SSU-owner optimization, escrow quantity tracking, connected character threading).
+  - **15-exchange-ui** -- stays `active/`, not started. Phase status markers added, TabId line reference corrected.
+  - **16-wallet-connect-audit** -- stays `pending/`, in progress. Line numbers corrected, OQ#1 resolved (CurrencyDetail uses ensureWallet), OQ#4 added (useExtensionDeploy approach). 3 open questions remain.
+  - **17-sonar-audit** -- stays `active/`, not started. Line references and file inventory line counts corrected, PERF-02 description refined (compound index exists but Dexie .where() doesn't leverage it).
+
+## 2026-04-02 -- stillness-support
+- **Action:** CREATE
+- **File:** docs/plans/pending/18-stillness-support.md
+- **Passes:** 2 (1 draft + 1 refinement)
+- **Result:** pending -- Stillness upgraded from v0.0.18 to v0.0.23 on April 1. Both tenants now at contract code parity. Primary fix: add `worldPublishedAt` to Stillness config (periscope + ssu-dapp). Also: remove `access_control` fallback in queries.ts, update stale v0.0.18 comments in transactions.ts, update reference docs. Active bug found: `buildRemoveExtension()` silently failing on Stillness because `revoke_extension_authorization` doesn't exist at the v0.0.18 original address. 3 open questions remain (access_control fallback safety, gate/storage_unit rename enablement, standings packageId for Stillness).
+
+## 2026-04-02 -- stillness-support (review)
+- **Action:** UPDATE
+- **File:** docs/plans/active/18-stillness-support.md
+- **Passes:** 3 (OQ resolution + 2 refinement passes)
+- **Result:** active -- All 3 open questions resolved: (1) remove access_control fallback (module has always been `world::access`), (2) enable gate/storage_unit rename in-scope (2-line change, UI already dynamic), (3) leave standings packageId as-is (ecosystem works, bookkeeping gap only). Code snippets updated to match actual files, line references verified, Phase 2 expanded with gate/storage_unit rename steps. Execution-ready.
