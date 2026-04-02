@@ -29,22 +29,48 @@ export interface PlaceOrderParams {
 	coinTypeA: string;
 	coinTypeB: string;
 	bookObjectId: string;
-	coinObjectId: string;
-	price: number;
+	coinObjectIds: string[];
+	totalAmount: bigint;
+	price: bigint;
 	amount: number;
 	senderAddress: string;
 }
 
+/**
+ * Build a TX to place a bid order on an exchange OrderBook.
+ * Bids deposit coinTypeB (totalAmount = price * amount).
+ * Uses merge+split pattern for multiple coin objects.
+ */
 export function buildPlaceBid(params: PlaceOrderParams): Transaction {
 	const tx = new Transaction();
 	tx.setSender(params.senderAddress);
+
+	if (params.coinObjectIds.length === 0) {
+		throw new Error("No coin objects provided for bid payment");
+	}
+
+	let paymentCoin: ReturnType<typeof tx.splitCoins>[0];
+	if (params.coinObjectIds.length === 1) {
+		[paymentCoin] = tx.splitCoins(tx.object(params.coinObjectIds[0]), [
+			tx.pure.u64(params.totalAmount),
+		]);
+	} else {
+		const [baseCoin, ...rest] = params.coinObjectIds;
+		tx.mergeCoins(
+			tx.object(baseCoin),
+			rest.map((id) => tx.object(id)),
+		);
+		[paymentCoin] = tx.splitCoins(tx.object(baseCoin), [
+			tx.pure.u64(params.totalAmount),
+		]);
+	}
 
 	tx.moveCall({
 		target: `${params.packageId}::exchange::place_bid`,
 		typeArguments: [params.coinTypeA, params.coinTypeB],
 		arguments: [
 			tx.object(params.bookObjectId),
-			tx.object(params.coinObjectId),
+			paymentCoin,
 			tx.pure.u64(params.price),
 			tx.pure.u64(params.amount),
 		],
@@ -53,16 +79,41 @@ export function buildPlaceBid(params: PlaceOrderParams): Transaction {
 	return tx;
 }
 
+/**
+ * Build a TX to place an ask order on an exchange OrderBook.
+ * Asks deposit coinTypeA (totalAmount = amount).
+ * Uses merge+split pattern for multiple coin objects.
+ */
 export function buildPlaceAsk(params: PlaceOrderParams): Transaction {
 	const tx = new Transaction();
 	tx.setSender(params.senderAddress);
+
+	if (params.coinObjectIds.length === 0) {
+		throw new Error("No coin objects provided for ask deposit");
+	}
+
+	let paymentCoin: ReturnType<typeof tx.splitCoins>[0];
+	if (params.coinObjectIds.length === 1) {
+		[paymentCoin] = tx.splitCoins(tx.object(params.coinObjectIds[0]), [
+			tx.pure.u64(params.totalAmount),
+		]);
+	} else {
+		const [baseCoin, ...rest] = params.coinObjectIds;
+		tx.mergeCoins(
+			tx.object(baseCoin),
+			rest.map((id) => tx.object(id)),
+		);
+		[paymentCoin] = tx.splitCoins(tx.object(baseCoin), [
+			tx.pure.u64(params.totalAmount),
+		]);
+	}
 
 	tx.moveCall({
 		target: `${params.packageId}::exchange::place_ask`,
 		typeArguments: [params.coinTypeA, params.coinTypeB],
 		arguments: [
 			tx.object(params.bookObjectId),
-			tx.object(params.coinObjectId),
+			paymentCoin,
 			tx.pure.u64(params.price),
 			tx.pure.u64(params.amount),
 		],

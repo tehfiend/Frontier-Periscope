@@ -6,6 +6,7 @@ import type { OwnerCapInfo } from "@/hooks/useOwnerCap";
 import type { SsuConfigResult } from "@/hooks/useSsuConfig";
 import { useMemo, useState } from "react";
 import { DelegateManager } from "./DelegateManager";
+import { ExchangeContent } from "./ExchangeContent";
 import { InventoryTabs } from "./InventoryTabs";
 import { MarketContent } from "./MarketContent";
 import { MetadataEditor } from "./MetadataEditor";
@@ -15,7 +16,7 @@ import type { TransferContext } from "./TransferDialog";
 import { VisibilitySettings } from "./VisibilitySettings";
 import { WalletTab } from "./WalletTab";
 
-type TabId = "inventory" | "market" | "wallet" | "settings";
+type TabId = "inventory" | "market" | "exchange" | "wallet" | "settings";
 
 interface ContentTabsProps {
 	inventories: SsuInventories;
@@ -135,6 +136,17 @@ export function ContentTabs({
 						Market
 					</button>
 				)}
+				<button
+					type="button"
+					onClick={() => setActiveTab("exchange")}
+					className={`flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+						activeTab === "exchange"
+							? "bg-zinc-700 text-zinc-100"
+							: "text-zinc-500 hover:text-zinc-300"
+					}`}
+				>
+					Exchange
+				</button>
 				{isConnected && (
 					<button
 						type="button"
@@ -206,6 +218,10 @@ export function ContentTabs({
 					charOwnerCap={charOwnerCap}
 					charOwnerCapId={charOwnerCapId}
 				/>
+			)}
+
+			{activeTab === "exchange" && (
+				<ExchangeContent isConnected={isConnected} walletAddress={walletAddress} />
 			)}
 
 			{activeTab === "wallet" && isConnected && <WalletTab />}
