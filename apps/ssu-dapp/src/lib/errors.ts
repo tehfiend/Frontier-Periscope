@@ -48,6 +48,16 @@ const ACCESS_ERRORS: Record<number, string> = {
 	2: "Return address does not match the expected address",
 };
 
+const EXCHANGE_ERRORS: Record<number, string> = {
+	0: "Invalid fee -- basis points out of range",
+	1: "Order not found",
+	2: "Insufficient coin balance for order",
+	3: "Not the order owner",
+	4: "Invalid price -- must be greater than zero",
+	5: "Invalid amount -- must be greater than zero",
+	6: "Order book is empty",
+};
+
 /**
  * Try to decode a Move abort error message into something human-readable.
  *
@@ -88,12 +98,18 @@ export function decodeErrorMessage(errorStr: string): string {
 		if (msg) return `Access error: ${msg} (code ${numCode})`;
 	}
 
+	if (lowerErr.includes("exchange")) {
+		const msg = EXCHANGE_ERRORS[numCode];
+		if (msg) return `Exchange error: ${msg} (code ${numCode})`;
+	}
+
 	// If we found a code but can't identify the module, try all tables
 	for (const [label, table] of [
 		["Inventory", INVENTORY_ERRORS],
 		["Storage unit", STORAGE_UNIT_ERRORS],
 		["Character", CHARACTER_ERRORS],
 		["Access", ACCESS_ERRORS],
+		["Exchange", EXCHANGE_ERRORS],
 	] as const) {
 		const msg = table[numCode];
 		if (msg) return `${label} error: ${msg} (code ${numCode})`;
