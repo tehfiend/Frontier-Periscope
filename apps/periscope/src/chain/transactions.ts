@@ -29,11 +29,13 @@ interface RenameAssemblyParams {
 	senderAddress: string;
 }
 
-/** Modules that support `update_metadata_name`. Gate and storage_unit do NOT. */
+/** Modules that support `update_metadata_name`. */
 const RENAMABLE_MODULES: Record<string, { module: string; type: string }> = {
 	turret: { module: "turret", type: "Turret" },
 	assembly: { module: "assembly", type: "Assembly" },
 	network_node: { module: "network_node", type: "NetworkNode" },
+	gate: { module: "gate", type: "Gate" },
+	storage_unit: { module: "storage_unit", type: "StorageUnit" },
 };
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -124,10 +126,7 @@ export function buildAuthorizeExtension(params: AuthorizeExtensionParams): Trans
 
 // ── Rename Transaction ──────────────────────────────────────────────────────
 
-/**
- * Check whether a Move module supports `update_metadata_name`.
- * Gate and storage_unit do NOT have this function in world-contracts v0.0.18.
- */
+/** Check whether a Move module supports `update_metadata_name`. */
 export function isRenamableModule(assemblyModule: string): boolean {
 	return assemblyModule in RENAMABLE_MODULES;
 }

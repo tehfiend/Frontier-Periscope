@@ -185,12 +185,8 @@ export async function discoverCharacterAndAssemblies(
 	];
 
 	for (const at of assemblyTypes) {
-		// Try both module names: "access" (Utopia) and "access_control" (Stillness)
-		const capTypeAccess = `${moveType(tenant, "access", "OwnerCap")}<${moveType(tenant, at.module, at.type)}>`;
-		const capTypeAccessControl = `${moveType(tenant, "access_control", "OwnerCap")}<${moveType(tenant, at.module, at.type)}>`;
-		const capsAccess = await getOwnedObjectsByType(client, walletAddress, capTypeAccess);
-		const capsControl = await getOwnedObjectsByType(client, walletAddress, capTypeAccessControl);
-		const caps = [...capsAccess, ...capsControl];
+		const capType = `${moveType(tenant, "access", "OwnerCap")}<${moveType(tenant, at.module, at.type)}>`;
+		const caps = await getOwnedObjectsByType(client, walletAddress, capType);
 
 		for (const cap of caps) {
 			const capFields = cap.json ?? {};
