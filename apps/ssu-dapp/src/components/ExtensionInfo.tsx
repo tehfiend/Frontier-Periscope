@@ -52,9 +52,11 @@ export function ExtensionInfo({
 	const [minDeposit, setMinDeposit] = useState(ssuConfig?.minDeposit ?? 3);
 	const [minWithdraw, setMinWithdraw] = useState(ssuConfig?.minWithdraw ?? 3);
 	const [ssuName, setSsuName] = useState(metadata?.name ?? "");
-	const [setDappUrl, setSetDappUrl] = useState(!!metadata?.url);
+	const [setDappUrl, setSetDappUrl] = useState(true);
 
-	const canRevoke = extensionType && isOwner && characterObjectId && ownerCap && ssuObjectId;
+	const [resetUrl, setResetUrl] = useState(true);
+
+	const canRevoke = extensionType && isOwner && characterObjectId && ownerCap && ssuObjectId && account;
 	const canDeploy = !extensionType && isOwner && characterObjectId && ownerCap && ssuObjectId && account;
 
 	async function handleRevoke() {
@@ -63,7 +65,7 @@ export function ExtensionInfo({
 			return;
 		}
 
-		if (!characterObjectId || !ownerCap || !ssuObjectId) return;
+		if (!characterObjectId || !ownerCap || !ssuObjectId || !account) return;
 
 		setError(null);
 		setSuccess(null);
@@ -73,25 +75,30 @@ export function ExtensionInfo({
 			const worldPkg = getWorldPublishedAt(tenant);
 			const worldType = getWorldPackageId(tenant);
 			const tx = new Transaction();
+			tx.setSender(account.address);
 
+			// Step 1: Borrow OwnerCap
 			const [borrowedCap, receipt] = tx.moveCall({
 				target: `${worldPkg}::character::borrow_owner_cap`,
 				typeArguments: [`${worldType}::storage_unit::StorageUnit`],
-				arguments: [
-					tx.object(characterObjectId),
-					tx.receivingRef({
-						objectId: ownerCap.objectId,
-						version: String(ownerCap.version),
-						digest: ownerCap.digest,
-					}),
-				],
+				arguments: [tx.object(characterObjectId), tx.object(ownerCap.objectId)],
 			});
 
+			// Step 2: Revoke extension
 			tx.moveCall({
 				target: `${worldPkg}::storage_unit::revoke_extension_authorization`,
 				arguments: [tx.object(ssuObjectId), borrowedCap],
 			});
 
+			// Step 3 (optional): Reset dApp URL to blank
+			if (resetUrl) {
+				tx.moveCall({
+					target: `${worldPkg}::storage_unit::update_metadata_url`,
+					arguments: [tx.object(ssuObjectId), borrowedCap, tx.pure.string("")],
+				});
+			}
+
+			// Step 4: Return OwnerCap
 			tx.moveCall({
 				target: `${worldPkg}::character::return_owner_cap`,
 				typeArguments: [`${worldType}::storage_unit::StorageUnit`],
@@ -217,26 +224,45 @@ export function ExtensionInfo({
 					</div>
 
 					{canRevoke && !success && (
-						<div className="space-y-1">
-							<button
-								type="button"
-								onClick={handleRevoke}
-								disabled={isPending}
-								className={
-									confirming
-										? "rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500 disabled:opacity-50"
-										: "rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-600 disabled:opacity-50"
-								}
-							>
-								{isPending ? "Removing..." : confirming ? "Confirm Remove" : "Remove Extension"}
-							</button>
-							{confirming && !isPending && (
+						<div className="space-y-2">
+							{confirming ? (
+								<div className="space-y-2">
+									<label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+										<input
+											type="checkbox"
+											checked={resetUrl}
+											onChange={(e) => setResetUrl(e.target.checked)}
+											className="rounded border-zinc-600 accent-cyan-500"
+										/>
+										Reset dApp URL
+									</label>
+									<div className="flex items-center gap-2">
+										<button
+											type="button"
+											onClick={handleRevoke}
+											disabled={isPending}
+											className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500 disabled:opacity-50"
+										>
+											{isPending ? "Removing..." : "Confirm Remove"}
+										</button>
+										{!isPending && (
+											<button
+												type="button"
+												onClick={() => setConfirming(false)}
+												className="text-xs text-zinc-500 hover:text-zinc-300"
+											>
+												Cancel
+											</button>
+										)}
+									</div>
+								</div>
+							) : (
 								<button
 									type="button"
-									onClick={() => setConfirming(false)}
-									className="ml-2 text-xs text-zinc-500 hover:text-zinc-300"
+									onClick={handleRevoke}
+									className="rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-600"
 								>
-									Cancel
+									Remove Extension
 								</button>
 							)}
 						</div>

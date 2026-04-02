@@ -37,22 +37,21 @@ export function useExtensionRevoke() {
 		characterId: string;
 		ownerCapId: string;
 		tenant: TenantId;
+		resetUrl?: boolean;
+		senderAddress?: string;
 	}) {
-		if (!account) return;
+		const sender = params.senderAddress ?? account?.address;
+		if (!sender) throw new Error("Wallet not connected");
 
-		const { assemblyId, assemblyType, characterId, ownerCapId, tenant } = params;
+		const { assemblyId, assemblyType, characterId, ownerCapId, tenant, resetUrl } = params;
 
 		// Validate assembly type is in the module map and is revocable
 		if (!(assemblyType in ASSEMBLY_MODULE_MAP)) {
-			setStatus("error");
-			setResult({ error: `Assembly type "${assemblyType}" is not supported` });
-			return;
+			throw new Error(`Assembly type "${assemblyType}" is not supported`);
 		}
 
 		if (!canRevokeExtension(assemblyType)) {
-			setStatus("error");
-			setResult({ error: `Extension removal not supported for ${assemblyType}` });
-			return;
+			throw new Error(`Extension removal not supported for ${assemblyType}`);
 		}
 
 		setStatus("building");
@@ -65,7 +64,8 @@ export function useExtensionRevoke() {
 				assemblyId,
 				characterId,
 				ownerCapId,
-				senderAddress: account.address,
+				senderAddress: sender,
+				resetUrl,
 			});
 
 			setStatus("signing");
@@ -75,7 +75,7 @@ export function useExtensionRevoke() {
 			if (!txDigest) {
 				setStatus("error");
 				setResult({ error: "Transaction failed on-chain" });
-				return;
+				throw new Error("Transaction failed on-chain");
 			}
 			setStatus("done");
 			setResult({ txDigest });
@@ -89,6 +89,7 @@ export function useExtensionRevoke() {
 		} catch (err) {
 			setStatus("error");
 			setResult({ error: walletErrorMessage(err) });
+			throw err;
 		}
 	}
 

@@ -29,6 +29,12 @@ export function useStoredEncryptionKey(): {
 	const account = useCurrentAccount();
 	const walletAddress = account?.address;
 
+	// Use a ref for dAppKit to avoid effect re-runs when the context object
+	// changes reference (which cancels in-flight key derivation and leaves
+	// isLoading stuck true).
+	const dAppKitRef = useRef(dAppKit);
+	dAppKitRef.current = dAppKit;
+
 	const [keyPair, setKeyPair] = useState<{
 		publicKey: Uint8Array;
 		secretKey: Uint8Array;
@@ -91,7 +97,7 @@ export function useStoredEncryptionKey(): {
 				let signature: string;
 				for (let attempt = 0; ; attempt++) {
 					try {
-						const result = await dAppKit.signPersonalMessage({
+						const result = await dAppKitRef.current.signPersonalMessage({
 							message: new TextEncoder().encode(ENCRYPTION_KEY_MESSAGE),
 						});
 						signature = result.signature;
@@ -141,7 +147,7 @@ export function useStoredEncryptionKey(): {
 		return () => {
 			cancelled = true;
 		};
-	}, [walletAddress, dAppKit, retryCount]);
+	}, [walletAddress, retryCount]);
 
 	return { keyPair, isLoading, retry, reset };
 }

@@ -1,7 +1,9 @@
 import type { AssemblyKind, ExtensionTemplate, TenantId } from "@/chain/config";
+import { getAssemblyExtension } from "@/chain/queries";
 import { buildAuthorizeExtension } from "@/chain/transactions";
 import { db } from "@/db";
 import type { StructureExtensionConfig } from "@/db/types";
+import { useSuiClient } from "@/hooks/useSuiClient";
 import { walletErrorMessage } from "@/lib/format";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { useState } from "react";
@@ -16,6 +18,7 @@ interface DeployResult {
 export function useExtensionDeploy() {
 	const account = useCurrentAccount();
 	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
+	const suiClient = useSuiClient();
 	const [status, setStatus] = useState<DeployStatus>("idle");
 	const [result, setResult] = useState<DeployResult>({});
 
@@ -61,10 +64,25 @@ export function useExtensionDeploy() {
 				setResult({ error: "Transaction failed on-chain" });
 				return;
 			}
+
+			// Verify the extension was actually set on-chain (retry for indexer lag)
+			setStatus("confirming");
+			let chainExtension: string | null = null;
+			for (let attempt = 0; attempt < 5; attempt++) {
+				chainExtension = await getAssemblyExtension(suiClient, params.assemblyId);
+				if (chainExtension) break;
+				await new Promise((r) => setTimeout(r, 2000));
+			}
+			if (!chainExtension) {
+				setStatus("error");
+				setResult({ error: "Extension not confirmed on-chain" });
+				return;
+			}
+
 			setStatus("done");
 			setResult({ txDigest });
 
-			// Record in IndexedDB
+			// Record chain-confirmed state in IndexedDB
 			const now = new Date().toISOString();
 			await db.extensions.put({
 				id: `${params.assemblyId}-${params.template.id}`,
@@ -79,6 +97,17 @@ export function useExtensionDeploy() {
 				createdAt: now,
 				updatedAt: now,
 			});
+
+			// Update deployable/assembly with chain-confirmed extensionType
+			const existing = await db.deployables.where("objectId").equals(params.assemblyId).first();
+			if (existing) {
+				await db.deployables.update(existing.id, { extensionType: chainExtension, updatedAt: now });
+			} else {
+				const existingAsm = await db.assemblies.where("objectId").equals(params.assemblyId).first();
+				if (existingAsm) {
+					await db.assemblies.update(existingAsm.id, { extensionType: chainExtension, updatedAt: now });
+				}
+			}
 
 			// Write standings config to structureExtensionConfigs if provided
 			if (params.standingsConfig?.registryId) {
