@@ -49,4 +49,5 @@ tmp/
 # Claude Code
 .claude/
 CLAUDE.md
-docs/
+docs/plans/
+docs/dispatch-log.md
