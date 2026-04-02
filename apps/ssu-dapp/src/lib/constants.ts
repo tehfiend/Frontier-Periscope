@@ -8,6 +8,7 @@ export const WORLD_PACKAGE_IDS: Record<string, string> = {
 
 /** World published-at addresses per tenant -- for moveCall targets (only needed when upgraded) */
 const WORLD_PUBLISHED_AT: Record<string, string> = {
+	stillness: "0xd2fd1224f881e7a705dbc211888af11655c315f2ee0f03fe680fc3176e6e4780",
 	utopia: "0x07e6b810c2dff6df56ea7fbad9ff32f4d84cbee53e496267515887b712924bd1",
 };
 

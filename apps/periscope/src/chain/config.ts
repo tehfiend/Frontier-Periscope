@@ -19,6 +19,7 @@ export const TENANTS = {
 	stillness: {
 		name: "Stillness",
 		worldPackageId: "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c",
+		worldPublishedAt: "0xd2fd1224f881e7a705dbc211888af11655c315f2ee0f03fe680fc3176e6e4780",
 		evePackageId: "0x2a66a89b5a735738ffa4423ac024d23571326163f324f9051557617319e59d60",
 		datahubUrl: "world-api-stillness.live.tech.evefrontier.com",
 		dappUrl: "https://dapp.frontierperiscope.com/?tenant=stillness",
