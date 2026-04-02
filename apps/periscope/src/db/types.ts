@@ -866,9 +866,6 @@ export type SonarEventType =
 	| "item_destroyed"
 	// ── Combat / intel ──────────────────────────────────────────────────────
 	| "killmail"
-	| "bounty_posted"
-	| "bounty_claimed"
-	| "bounty_cancelled"
 	// ── Navigation ──────────────────────────────────────────────────────────
 	| "jump"
 	| "gate_linked"

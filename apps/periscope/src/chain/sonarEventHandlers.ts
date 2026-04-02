@@ -64,16 +64,21 @@ function extractId(val: unknown): string | undefined {
 	return undefined;
 }
 
-/** Build a base sonar entry from an event. */
+/** Build a base sonar entry from an event. The optional `discriminator`
+ *  makes txDigest unique when multiple events share the same timestamp+type. */
 function baseEntry(
 	event: { timestampMs: string; sender: string },
 	sonarType: SonarEventType,
+	discriminator?: string,
 ): Omit<SonarEvent, "id"> {
+	const key = discriminator
+		? `chain-${sonarType}-${event.timestampMs}-${discriminator}`
+		: `chain-${sonarType}-${event.timestampMs}-${event.sender}`;
 	return {
 		timestamp: new Date(Number(event.timestampMs)).toISOString(),
 		source: "chain",
 		eventType: sonarType,
-		txDigest: `chain-${event.timestampMs}`,
+		txDigest: key,
 		sender: event.sender,
 	};
 }
@@ -121,7 +126,7 @@ function inventoryHandler(sonarType: SonarEventType): EventHandler {
 
 			return [
 				{
-					...baseEntry(event, sonarType),
+					...baseEntry(event, sonarType, `${assemblyId}-${typeId}-${char.characterId ?? ""}`),
 					...char,
 					assemblyId,
 					assemblyName: resolveAssemblyName(assemblyId, ctx),
@@ -148,7 +153,7 @@ const jumpHandler: EventHandler = {
 
 		return [
 			{
-				...baseEntry(event, "jump"),
+				...baseEntry(event, "jump", `${char.characterId ?? ""}-${sourceGateId ?? ""}`),
 				...char,
 				assemblyId: sourceGateId,
 				assemblyName: srcName,
@@ -174,7 +179,7 @@ const killmailHandler: EventHandler = {
 
 		return [
 			{
-				...baseEntry(event, "killmail"),
+				...baseEntry(event, "killmail", `${killerId ?? ""}-${victimId ?? ""}`),
 				characterName: killerName,
 				characterId: killerId,
 				details,
@@ -230,7 +235,6 @@ const itemDestroyedHandler: EventHandler = {
 		];
 	},
 };
-
 
 // ── Tier 2 Handlers ─────────────────────────────────────────────────────────
 
@@ -593,7 +597,6 @@ function extensionHandler(sonarType: SonarEventType): EventHandler {
 		},
 	};
 }
-
 
 const marketSellListingCancelledHandler: EventHandler = {
 	sonarType: "market_sell_cancelled",

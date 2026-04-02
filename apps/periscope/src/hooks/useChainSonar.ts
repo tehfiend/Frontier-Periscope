@@ -8,10 +8,20 @@ import { useSuiClient } from "@/hooks/useSuiClient";
 import { useSonarStore } from "@/stores/sonarStore";
 import { queryEventsGql } from "@tehfrontier/chain-shared";
 import type React from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const POLL_INTERVAL = 15_000; // 15 seconds
 const CONCURRENCY = 5; // max parallel event queries
+
+/** Module-level cache of recently-inserted txDigest values to prevent duplicates
+ *  across polls without needing an indexed DB query. Capped at 5000 entries. */
+const knownDigests = new Set<string>();
+const KNOWN_DIGESTS_MAX = 5000;
+
+/** Cached handler context to avoid rebuilding on every poll (PERF-04).
+ *  Invalidated when underlying table counts change. */
+let cachedCtx: HandlerContext | null = null;
+let cachedCtxKey = "";
 
 /**
  * Polls for on-chain events every 15s:
@@ -29,7 +39,7 @@ export function useChainSonar() {
 	const pingChain = useSonarStore((s) => s.pingChain);
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const cursorsRef = useRef<Record<string, string | null>>({});
-	const initializedRef = useRef(false);
+	const [cursorsReady, setCursorsReady] = useState(false);
 
 	const poll = useCallback(async () => {
 		try {
@@ -52,82 +62,89 @@ export function useChainSonar() {
 				console.error("[ChainSonar] Error polling CharacterCreated:", err);
 			}
 
-			// ── Build handler context ───────────────────────────────────
-			const characters = await db.characters.toArray();
-			const ownedAddresses = new Set(
-				characters.filter((c) => c.suiAddress && !c._deleted).map((c) => c.suiAddress as string),
-			);
+			// ── Build handler context (PERF-04: cached, invalidated by count) ──
+			const [charCount, deplCount, gtCount, mcCount, curCount] = await Promise.all([
+				db.characters.count(),
+				db.deployables.count(),
+				db.gameTypes.count(),
+				db.manifestCharacters.count(),
+				db.currencies.count(),
+			]);
+			const ctxKey = `${charCount}:${deplCount}:${gtCount}:${mcCount}:${curCount}`;
 
-			// Load ALL deployables owned by registered characters
-			const allDeployables = await db.deployables
-				.filter((d) => d.owner != null && ownedAddresses.has(d.owner as string))
-				.toArray();
+			let handlerCtx: HandlerContext;
+			if (cachedCtx && cachedCtxKey === ctxKey) {
+				handlerCtx = cachedCtx;
+			} else {
+				const characters = await db.characters.toArray();
+				const ownedAddresses = new Set(
+					characters.filter((c) => c.suiAddress && !c._deleted).map((c) => c.suiAddress as string),
+				);
 
-			// SSU object IDs (for inventory-specific filters)
-			const ssuTypes = new Set(["storage_unit", "smart_storage_unit", "protocol_depot"]);
-			const ssuObjectIds = new Set(
-				allDeployables.filter((d) => ssuTypes.has(d.assemblyType)).map((d) => d.objectId),
-			);
+				const allDeployables = await db.deployables
+					.filter((d) => d.owner != null && ownedAddresses.has(d.owner as string))
+					.toArray();
 
-			// All owned assembly IDs (SSUs + gates + turrets + nodes)
-			const ownedAssemblyIds = new Set(allDeployables.map((d) => d.objectId));
+				const ssuTypes = new Set(["storage_unit", "smart_storage_unit", "protocol_depot"]);
+				const ssuObjectIds = new Set(
+					allDeployables.filter((d) => ssuTypes.has(d.assemblyType)).map((d) => d.objectId),
+				);
 
-			// Assembly name lookup
-			const assemblyNameMap = new Map<string, string>();
-			for (const d of allDeployables) {
-				if (d.label) assemblyNameMap.set(d.objectId, d.label);
-			}
+				const ownedAssemblyIds = new Set(allDeployables.map((d) => d.objectId));
 
-			// Pre-load gameTypes for type_id resolution
-			const gameTypes = await db.gameTypes.toArray();
-			const typeNameMap = new Map<number, string>();
-			for (const t of gameTypes) {
-				typeNameMap.set(t.id, t.name);
-			}
-
-			// Build character lookup for character_id resolution
-			const charNameMap = new Map<string, string>();
-			for (const c of characters) {
-				if (c.characterId && c.characterName) {
-					charNameMap.set(c.characterId, c.characterName);
+				const assemblyNameMap = new Map<string, string>();
+				for (const d of allDeployables) {
+					if (d.label) assemblyNameMap.set(d.objectId, d.label);
 				}
-			}
 
-			// Also populate from manifest characters
-			const manifestChars = await db.manifestCharacters.toArray();
-			for (const mc of manifestChars) {
-				if (mc.characterItemId && mc.name) {
-					charNameMap.set(mc.characterItemId, mc.name);
+				const gameTypes = await db.gameTypes.toArray();
+				const typeNameMap = new Map<number, string>();
+				for (const t of gameTypes) {
+					typeNameMap.set(t.id, t.name);
 				}
-			}
 
-			// Build character -> tribe lookup
-			const charTribeMap = new Map<string, number>();
-			for (const mc of manifestChars) {
-				if (mc.characterItemId && mc.tribeId) {
-					charTribeMap.set(mc.characterItemId, mc.tribeId);
+				const charNameMap = new Map<string, string>();
+				for (const c of characters) {
+					if (c.characterId && c.characterName) {
+						charNameMap.set(c.characterId, c.characterName);
+					}
 				}
-			}
 
-			// Build coin type -> currency symbol lookup (for toll display)
-			const currencySymbolMap = new Map<string, string>();
-			const currencies = await db.currencies.toArray();
-			for (const c of currencies) {
-				if (c.coinType && c.symbol) {
-					currencySymbolMap.set(c.coinType, c.symbol);
+				const manifestChars = await db.manifestCharacters.toArray();
+				for (const mc of manifestChars) {
+					if (mc.characterItemId && mc.name) {
+						charNameMap.set(mc.characterItemId, mc.name);
+					}
 				}
-			}
 
-			const handlerCtx: HandlerContext = {
-				ssuObjectIds,
-				ownedAssemblyIds,
-				ownedAddresses,
-				assemblyNameMap,
-				typeNameMap,
-				charNameMap,
-				charTribeMap,
-				currencySymbolMap,
-			};
+				const charTribeMap = new Map<string, number>();
+				for (const mc of manifestChars) {
+					if (mc.characterItemId && mc.tribeId) {
+						charTribeMap.set(mc.characterItemId, mc.tribeId);
+					}
+				}
+
+				const currencySymbolMap = new Map<string, string>();
+				const currencies = await db.currencies.toArray();
+				for (const c of currencies) {
+					if (c.coinType && c.symbol) {
+						currencySymbolMap.set(c.coinType, c.symbol);
+					}
+				}
+
+				handlerCtx = {
+					ssuObjectIds,
+					ownedAssemblyIds,
+					ownedAddresses,
+					assemblyNameMap,
+					typeNameMap,
+					charNameMap,
+					charTribeMap,
+					currencySymbolMap,
+				};
+				cachedCtx = handlerCtx;
+				cachedCtxKey = ctxKey;
+			}
 
 			// ── Build event type map: key -> moveEventType string ────────
 			const worldEvents = getEventTypes(tenant);
@@ -148,9 +165,9 @@ export function useChainSonar() {
 				const handler = EVENT_HANDLER_REGISTRY[key];
 				if (!handler) continue;
 				// Skip owned-* handlers when no entities exist for that filter
-				if (handler.filter === "owned_ssu" && ssuObjectIds.size === 0) continue;
-				if (handler.filter === "owned_assembly" && ownedAssemblyIds.size === 0) continue;
-				if (handler.filter === "owned_address" && ownedAddresses.size === 0) continue;
+				if (handler.filter === "owned_ssu" && handlerCtx.ssuObjectIds.size === 0) continue;
+				if (handler.filter === "owned_assembly" && handlerCtx.ownedAssemblyIds.size === 0) continue;
+				if (handler.filter === "owned_address" && handlerCtx.ownedAddresses.size === 0) continue;
 				pollTasks.push({ key, moveEventType });
 			}
 
@@ -203,9 +220,19 @@ export function useChainSonar() {
 				}
 			}
 
-			// Write all collected events
+			// Deduplicate using in-memory txDigest cache
 			if (sonarEntries.length > 0) {
-				await db.sonarEvents.bulkAdd(sonarEntries);
+				const novel = sonarEntries.filter((e) => !e.txDigest || !knownDigests.has(e.txDigest));
+				if (novel.length > 0) {
+					await db.sonarEvents.bulkAdd(novel);
+					for (const e of novel) {
+						if (e.txDigest) knownDigests.add(e.txDigest);
+					}
+					// Reset cache when it grows too large
+					if (knownDigests.size > KNOWN_DIGESTS_MAX) {
+						knownDigests.clear();
+					}
+				}
 			}
 
 			// Persist cursors to DB
@@ -225,7 +252,7 @@ export function useChainSonar() {
 
 	// Initialize cursors from DB on first enable
 	useEffect(() => {
-		if (!chainEnabled || initializedRef.current) return;
+		if (!chainEnabled || cursorsReady) return;
 
 		(async () => {
 			try {
@@ -237,35 +264,31 @@ export function useChainSonar() {
 				console.error("[ChainSonar] Failed to load persisted cursors:", err);
 				// Continue without persisted cursors -- polling will start fresh
 			} finally {
-				initializedRef.current = true;
+				setCursorsReady(true);
 			}
 		})();
-	}, [chainEnabled]);
+	}, [chainEnabled, cursorsReady]);
 
 	useEffect(() => {
-		if (!chainEnabled) {
+		if (!chainEnabled || !cursorsReady) {
 			if (intervalRef.current) {
 				clearInterval(intervalRef.current);
 				intervalRef.current = null;
 			}
-			setChainStatus("off");
+			if (!chainEnabled) setChainStatus("off");
 			return;
 		}
 
-		// Initial poll (after short delay to allow cursor init)
-		const initTimeout = setTimeout(() => {
-			poll();
-			intervalRef.current = setInterval(poll, POLL_INTERVAL);
-		}, 500);
+		poll();
+		intervalRef.current = setInterval(poll, POLL_INTERVAL);
 
 		return () => {
-			clearTimeout(initTimeout);
 			if (intervalRef.current) {
 				clearInterval(intervalRef.current);
 				intervalRef.current = null;
 			}
 		};
-	}, [chainEnabled, poll, setChainStatus]);
+	}, [chainEnabled, cursorsReady, poll, setChainStatus]);
 }
 
 /** Persist all cursors to sonarState and mark chain as active. */
