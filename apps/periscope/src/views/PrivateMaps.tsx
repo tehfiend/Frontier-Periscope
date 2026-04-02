@@ -500,18 +500,10 @@ export function PrivateMaps() {
 				<AddLocationDialog
 					packageId={(selectedMapVersion === "v2" ? packageIdV2 : packageId) ?? ""}
 					map={selectedMap}
+					mapVersion={selectedMapVersion}
 					senderAddress={walletAddress}
 					onClose={() => setShowAddLocationDialog(false)}
-					onAdded={() => {
-						if (selectedMap.decryptedMapKey) {
-							syncMapLocations(
-								client,
-								selectedMap.id,
-								selectedMap.decryptedMapKey,
-								tenant as TenantId,
-							);
-						}
-					}}
+					onAdded={() => {}}
 				/>
 			)}
 
@@ -1572,17 +1564,22 @@ function InviteMemberDialog({
 function AddLocationDialog({
 	packageId,
 	map,
+	mapVersion,
 	senderAddress,
 	onClose,
 	onAdded,
 }: {
 	packageId: string;
 	map: ManifestPrivateMap | ManifestPrivateMapV2;
+	mapVersion: "v1" | "v2";
 	senderAddress: string;
 	onClose: () => void;
 	onAdded: () => void;
 }) {
 	const dAppKit = useDAppKit();
+	const client = useSuiClient();
+	const tenant = useActiveTenant();
+	const { activeCharacter } = useActiveCharacter();
 	const [solarSystemId, setSolarSystemId] = useState("");
 	const [planet, setPlanet] = useState("");
 	const [lPoint, setLPoint] = useState("");
@@ -1591,15 +1588,43 @@ function AddLocationDialog({
 	const [isPending, setIsPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	const mapMode = mapVersion === "v2" ? (map as ManifestPrivateMapV2).mode : 0;
+
 	const handleAdd = async () => {
 		if (!solarSystemId || !planet || !lPoint) return;
 		setIsPending(true);
 		setError(null);
 
 		try {
+			// Resolve charId and tribeId for V2 standings
+			let charId: number | undefined;
+			let tribeId: number | undefined;
+			let registryId: string | undefined;
+
+			if (mapVersion === "v2" && mapMode === 1) {
+				const v2Map = map as ManifestPrivateMapV2;
+				registryId = v2Map.registryId;
+				if (activeCharacter?.characterId) {
+					charId = Number(activeCharacter.characterId);
+				}
+				tribeId = activeCharacter?.tribeId ?? undefined;
+
+				// Fallback: lookup from manifest characters
+				if ((charId == null || tribeId == null) && senderAddress) {
+					const mc = await db.manifestCharacters
+						.where("suiAddress")
+						.equals(senderAddress)
+						.first();
+					if (mc) {
+						if (charId == null) charId = Number(mc.characterItemId);
+						if (tribeId == null) tribeId = mc.tribeId;
+					}
+				}
+			}
+
 			const tx = buildAddLocationTx({
-				mapVersion: "v1",
-				mapMode: 0,
+				mapVersion,
+				mapMode,
 				packageId,
 				mapId: map.id,
 				inviteId: map.inviteId,
@@ -1612,11 +1637,32 @@ function AddLocationDialog({
 				},
 				senderAddress,
 				mapPublicKey: map.publicKey,
+				registryId,
+				tribeId,
+				charId,
 			});
 
 			await dAppKit.signAndExecuteTransaction({ transaction: tx });
 			// Wait for indexer
 			await new Promise((r) => setTimeout(r, 2000));
+
+			// Sync locations with correct version
+			if (mapVersion === "v2") {
+				const v2Map = map as ManifestPrivateMapV2;
+				if (v2Map.mode === 1) {
+					await syncMapLocationsV2(client, v2Map.id, 1, undefined, undefined, tenant as TenantId);
+				} else if (v2Map.decryptedMapKey && v2Map.publicKey) {
+					await syncMapLocationsV2(
+						client, v2Map.id, 0, v2Map.decryptedMapKey, v2Map.publicKey, tenant as TenantId,
+					);
+				}
+			} else {
+				const v1Map = map as ManifestPrivateMap;
+				if (v1Map.decryptedMapKey) {
+					await syncMapLocations(client, v1Map.id, v1Map.decryptedMapKey, tenant as TenantId);
+				}
+			}
+
 			onAdded();
 			onClose();
 		} catch (err) {

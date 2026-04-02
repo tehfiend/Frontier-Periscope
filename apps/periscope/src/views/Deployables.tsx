@@ -8,7 +8,7 @@ import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useStructureExtensions } from "@/hooks/useStructureExtensions";
 import { useStructureRows } from "@/hooks/useStructureRows";
 import { useSuiClient } from "@/hooks/useSuiClient";
-import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
+import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -255,7 +255,8 @@ export function Deployables() {
 	const isValidTenant = tenant in TENANTS;
 	const { activeCharacter, activeSuiAddresses } = useActiveCharacter();
 	const account = useCurrentAccount();
-	const { signAndExecuteTransaction: signAndExecute } = useDAppKit();
+	const { signAndExecuteTransaction: signAndExecute, connectWallet } = useDAppKit();
+	const wallets = useWallets();
 
 	const chainAddress = activeCharacter?.suiAddress ?? activeSuiAddresses[0] ?? null;
 	const hasAddress = !!chainAddress;
@@ -399,7 +400,7 @@ export function Deployables() {
 					fuelExpiresAt: fuelData.fuelExpiresAt ?? existing?.fuelExpiresAt,
 					notes: existing?.notes,
 					parentId: assembly.energySourceId ?? existing?.parentId,
-					extensionType: assembly.extensionType ?? existing?.extensionType,
+					extensionType: assembly.extensionType,
 					tags: existing?.tags ?? [],
 					source: "chain",
 					createdAt: existing?.createdAt ?? now,
@@ -410,6 +411,19 @@ export function Deployables() {
 					assemblyModule: assemblyKindToModule(assembly.type) ?? existing?.assemblyModule,
 					characterObjectId: discovery.character?.characterObjectId ?? existing?.characterObjectId,
 				});
+
+				// Soft-delete stale db.extensions records if chain shows no extension
+				if (!assembly.extensionType) {
+					const staleExts = await db.extensions
+						.where("assemblyId")
+						.equals(assembly.objectId)
+						.filter((e) => !e._deleted)
+						.toArray();
+					for (const ext of staleExts) {
+						await db.extensions.update(ext.id, { _deleted: true, updatedAt: now });
+					}
+				}
+
 				totalCount++;
 			}
 
@@ -541,22 +555,35 @@ export function Deployables() {
 
 	// ── Revoke Extension ─────────────────────────────────────────
 	const handleRevoke = useCallback(
-		async (row: StructureRow) => {
-			if (!account || !row.ownerCapId || !row.characterObjectId) {
-				setSyncStatus("Missing data for revoke -- try re-syncing first");
-				return;
+		async (row: StructureRow, resetUrl = false): Promise<string | undefined> => {
+			let senderAddress = account?.address;
+			if (!senderAddress) {
+				const eveVault = wallets.find(
+					(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
+				);
+				const wallet = eveVault || wallets[0];
+				if (!wallet) return "No wallet available";
+				try {
+					const result = await connectWallet({ wallet });
+					senderAddress = result.accounts[0]?.address;
+					if (!senderAddress) return "Wallet connection failed";
+				} catch {
+					return "Wallet connection failed";
+				}
+			}
+			if (!row.ownerCapId || !row.characterObjectId) {
+				const missing = [
+					!row.ownerCapId && "ownerCapId",
+					!row.characterObjectId && "characterObjectId",
+				].filter(Boolean).join(", ");
+				return `Missing ${missing} -- try re-syncing`;
 			}
 			if (!isValidTenant) {
-				setSyncStatus(`Unknown tenant "${tenant}" -- cannot revoke`);
-				return;
+				return `Unknown tenant "${tenant}" -- cannot revoke`;
 			}
 
 			if (!row.assemblyModule) {
-				console.warn(
-					`[Deployables] assemblyModule missing for ${row.objectId} -- cannot revoke without it`,
-				);
-				setSyncStatus("Cannot revoke: assembly module unknown -- try re-syncing first");
-				return;
+				return "Cannot revoke: assembly module unknown -- try re-syncing first";
 			}
 
 			setRevokingId(row.objectId);
@@ -567,23 +594,35 @@ export function Deployables() {
 					characterId: row.characterObjectId,
 					ownerCapId: row.ownerCapId,
 					tenant: tenant as TenantId,
+					resetUrl,
+					senderAddress,
 				});
 				setSyncStatus("Extension revoked successfully");
 
-				// Update local extensionType
+				// Update local record
 				const now = new Date().toISOString();
 				if (row.source === "deployables") {
-					await db.deployables.update(row.id, { extensionType: undefined, updatedAt: now });
+					await db.deployables.update(row.id, {
+						extensionType: undefined,
+						updatedAt: now,
+						...(resetUrl && { dappUrl: undefined }),
+					});
 				} else {
-					await db.assemblies.update(row.id, { extensionType: undefined, updatedAt: now });
+					await db.assemblies.update(row.id, {
+						extensionType: undefined,
+						updatedAt: now,
+						...(resetUrl && { dappUrl: undefined }),
+					});
 				}
 			} catch (e) {
-				setSyncStatus(`Revoke failed: ${e instanceof Error ? e.message : String(e)}`);
+				const msg = e instanceof Error ? e.message : String(e);
+				setSyncStatus(`Revoke failed: ${msg}`);
+				return `Revoke failed: ${msg}`;
 			} finally {
 				setRevokingId(null);
 			}
 		},
-		[account, tenant, isValidTenant, executeRevoke],
+		[account, tenant, isValidTenant, executeRevoke, wallets, connectWallet],
 	);
 
 	// ── Power Toggle ────────────────────────────────────────────────────────

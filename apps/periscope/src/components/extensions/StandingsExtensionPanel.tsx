@@ -1,4 +1,5 @@
 import { TENANTS, type TenantId, getWorldTarget } from "@/chain/config";
+import { getAssemblyExtension } from "@/chain/queries";
 import { buildConfigureGateStandings, buildConfigureSsuStandings } from "@/chain/transactions";
 import { ContactPicker } from "@/components/ContactPicker";
 import { db } from "@/db";
@@ -425,17 +426,21 @@ function StandingsExtensionPanelInner({
 
 	const isConfiguring = status === "building" || status === "signing" || status === "confirming";
 
-	/** Record extension in db.extensions + update deployable extensionType so the datagrid detects it. */
+	/** Verify extension on-chain and record in local DB. Throws if chain doesn't confirm. */
 	async function recordExtension(owner: string) {
+		// Verify the extension was actually set on-chain (retry for indexer lag)
+		let chainExtension: string | null = null;
+		for (let attempt = 0; attempt < 5; attempt++) {
+			chainExtension = await getAssemblyExtension(suiClient, assemblyId);
+			if (chainExtension) break;
+			await new Promise((r) => setTimeout(r, 2000));
+		}
+		if (!chainExtension) {
+			throw new Error("Extension not confirmed on-chain -- authorize_extension may have failed");
+		}
+
 		const templateId = structureKind === "gate" ? "gate_standings" : "ssu_unified";
 		const templateName = structureKind === "gate" ? "Periscope Gate" : "Periscope SSU";
-		const addrs = getContractAddresses(tenant);
-		const contractKey = structureKind === "gate" ? addrs.gateStandings : addrs.ssuUnified;
-		const pkgId = contractKey?.packageId ?? "";
-		const witnessType = structureKind === "gate"
-			? "gate_standings::GateStandingsAuth"
-			: "ssu_unified::SsuUnifiedAuth";
-		const extensionType = pkgId ? `${pkgId}::${witnessType}` : undefined;
 
 		const now = new Date().toISOString();
 		await db.extensions.put({
@@ -452,18 +457,67 @@ function StandingsExtensionPanelInner({
 			updatedAt: now,
 		});
 
-		// Also update the deployable record's extensionType directly
-		if (extensionType) {
-			const existing = await db.deployables.where("objectId").equals(assemblyId).first();
-			if (existing) {
-				await db.deployables.update(existing.id, { extensionType, updatedAt: now });
-			} else {
-				const existingAsm = await db.assemblies.where("objectId").equals(assemblyId).first();
-				if (existingAsm) {
-					await db.assemblies.update(existingAsm.id, { extensionType, updatedAt: now });
-				}
+		// Update the deployable/assembly record with the chain-confirmed extensionType
+		const existing = await db.deployables.where("objectId").equals(assemblyId).first();
+		if (existing) {
+			await db.deployables.update(existing.id, { extensionType: chainExtension, updatedAt: now });
+		} else {
+			const existingAsm = await db.assemblies.where("objectId").equals(assemblyId).first();
+			if (existingAsm) {
+				await db.assemblies.update(existingAsm.id, { extensionType: chainExtension, updatedAt: now });
 			}
 		}
+	}
+
+	/** Append authorize_extension + optional metadata updates in one borrow/return block. */
+	function appendAuthorizeExtension(tx: Transaction) {
+		if (!characterId || !ownerCapId) return;
+		const worldPkg = TENANTS[tenant].worldPackageId;
+		const worldTarget = getWorldTarget(tenant);
+		const entry = ASSEMBLY_MODULE_MAP[assemblyType as keyof typeof ASSEMBLY_MODULE_MAP];
+		const addrs = getContractAddresses(tenant);
+
+		// Resolve witness type based on structure kind
+		let witnessPkg: string | undefined;
+		let witnessModule: string;
+		if (structureKind === "gate") {
+			witnessPkg = addrs.gateStandings?.packageId;
+			witnessModule = "gate_standings::GateStandingsAuth";
+		} else {
+			witnessPkg = addrs.ssuUnified?.packageId;
+			witnessModule = "ssu_unified::SsuUnifiedAuth";
+		}
+		if (!entry || !witnessPkg) return;
+
+		const fullType = `${worldPkg}::${entry.module}::${entry.type}`;
+		const witnessType = `${witnessPkg}::${witnessModule}`;
+		const [cap, receipt] = tx.moveCall({
+			target: `${worldTarget}::character::borrow_owner_cap`,
+			typeArguments: [fullType],
+			arguments: [tx.object(characterId), tx.object(ownerCapId)],
+		});
+		tx.moveCall({
+			target: `${worldTarget}::${entry.module}::authorize_extension`,
+			typeArguments: [witnessType],
+			arguments: [tx.object(assemblyId), cap],
+		});
+		if (newName) {
+			tx.moveCall({
+				target: `${worldTarget}::${entry.module}::update_metadata_name`,
+				arguments: [tx.object(assemblyId), cap, tx.pure.string(newName)],
+			});
+		}
+		if (newUrl) {
+			tx.moveCall({
+				target: `${worldTarget}::${entry.module}::update_metadata_url`,
+				arguments: [tx.object(assemblyId), cap, tx.pure.string(newUrl)],
+			});
+		}
+		tx.moveCall({
+			target: `${worldTarget}::character::return_owner_cap`,
+			typeArguments: [fullType],
+			arguments: [tx.object(characterId), cap, receipt],
+		});
 	}
 
 	/** Append OwnerCap borrow -> metadata update -> return to an existing TX. */
@@ -525,6 +579,10 @@ function StandingsExtensionPanelInner({
 		setError(null);
 
 		try {
+			// Check chain for current extension state to decide if authorize is needed
+			const currentExtension = await getAssemblyExtension(suiClient, assemblyId);
+			const needsAuthorize = !currentExtension && characterId && ownerCapId;
+
 			let tx: Transaction;
 			let isNewSsuConfig = !existingConfig?.ssuConfigId;
 
@@ -553,7 +611,12 @@ function StandingsExtensionPanelInner({
 					ssuConfigId: existingConfig?.ssuConfigId,
 					marketId: ssuConfig.marketId || undefined,
 				});
-				appendMetadataUpdates(tx);
+
+				if (needsAuthorize) {
+					appendAuthorizeExtension(tx);
+				} else {
+					appendMetadataUpdates(tx);
+				}
 
 				// If reconfiguring, the old config may be from a previous (incompatible)
 				// package version. Try signing; on TypeMismatch, retry with create-new.
@@ -576,7 +639,11 @@ function StandingsExtensionPanelInner({
 								ssuConfigId: undefined,
 								marketId: ssuConfig.marketId || undefined,
 							});
-							appendMetadataUpdates(tx);
+							if (needsAuthorize) {
+								appendAuthorizeExtension(tx);
+							} else {
+								appendMetadataUpdates(tx);
+							}
 							isNewSsuConfig = true;
 							setStatus("signing");
 							await signAndExecute({ transaction: tx });

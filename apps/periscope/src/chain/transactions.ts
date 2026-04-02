@@ -311,6 +311,8 @@ interface RemoveExtensionParams {
 	characterId: string;
 	ownerCapId: string;
 	senderAddress: string;
+	/** If true, also reset the on-chain dApp URL to blank. */
+	resetUrl?: boolean;
 }
 
 /**
@@ -349,7 +351,15 @@ export function buildRemoveExtension(params: RemoveExtensionParams): Transaction
 		arguments: [tx.object(assemblyId), ownerCap],
 	});
 
-	// Step 3: Return OwnerCap
+	// Step 3 (optional): Reset dApp URL to blank
+	if (params.resetUrl) {
+		tx.moveCall({
+			target: `${worldTarget}::${entry.module}::update_metadata_url`,
+			arguments: [tx.object(assemblyId), ownerCap, tx.pure.string("")],
+		});
+	}
+
+	// Step 4: Return OwnerCap
 	tx.moveCall({
 		target: `${worldTarget}::character::return_owner_cap`,
 		typeArguments: [fullAssemblyType],

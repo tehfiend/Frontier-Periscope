@@ -46,7 +46,7 @@ interface StructureDetailCardProps {
 	onDeploy?: (row: StructureRow) => void;
 	onConfigure?: (row: StructureRow) => void;
 	onAddToMap?: (row: StructureRow) => void;
-	onReset?: (row: StructureRow) => void;
+	onReset?: (row: StructureRow, resetUrl: boolean) => Promise<string | undefined>;
 	isResetting?: boolean;
 	onPowerToggle?: (row: StructureRow) => void;
 	isPowerToggling?: boolean;
@@ -67,6 +67,8 @@ export function StructureDetailCard({
 	const tenant = useActiveTenant();
 	const extConfig = useStructureExtensionConfig(row?.objectId ?? null);
 	const [resetConfirm, setResetConfirm] = useState(false);
+	const [resetUrlChecked, setResetUrlChecked] = useState(true);
+	const [resetError, setResetError] = useState<string | null>(null);
 
 	if (!row) return null;
 
@@ -220,37 +222,64 @@ export function StructureDetailCard({
 							canRevokeExtension(row.assemblyModule ?? "") &&
 							(isResetting ? (
 								<span className="flex items-center gap-1 text-[10px] text-zinc-400">
-									<Loader2 size={10} className="animate-spin" /> Resetting...
+									<Loader2 size={10} className="animate-spin" /> Removing...
 								</span>
 							) : resetConfirm ? (
-								<span className="flex items-center gap-1">
+								<span className="flex flex-col gap-1">
+									<span className="flex items-center gap-1">
+										<button
+											type="button"
+											onClick={async () => {
+												setResetConfirm(false);
+												setResetError(null);
+												const err = await onReset(row, resetUrlChecked);
+												if (err) setResetError(err);
+											}}
+											className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-400 hover:bg-red-900/30"
+										>
+											Confirm
+										</button>
+										<button
+											type="button"
+											onClick={() => {
+												setResetConfirm(false);
+												setResetError(null);
+											}}
+											className="text-[10px] text-zinc-500 hover:text-zinc-300"
+										>
+											Cancel
+										</button>
+									</span>
+									<label className="flex items-center gap-1 text-[10px] text-zinc-400 cursor-pointer">
+										<input
+											type="checkbox"
+											checked={resetUrlChecked}
+											onChange={(e) => setResetUrlChecked(e.target.checked)}
+											className="h-3 w-3 rounded border-zinc-600 bg-zinc-800 accent-cyan-500"
+										/>
+										Reset dApp URL
+									</label>
+									{resetError && (
+										<span className="text-[10px] text-red-400">{resetError}</span>
+									)}
+								</span>
+							) : (
+								<span className="flex flex-col gap-1">
 									<button
 										type="button"
 										onClick={() => {
-											setResetConfirm(false);
-											onReset(row);
+											setResetConfirm(true);
+											setResetError(null);
 										}}
 										className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-400 hover:bg-red-900/30"
+										title="Remove extension (reset to default)"
 									>
-										Confirm
+										Remove Periscope Extension
 									</button>
-									<button
-										type="button"
-										onClick={() => setResetConfirm(false)}
-										className="text-[10px] text-zinc-500 hover:text-zinc-300"
-									>
-										Cancel
-									</button>
+									{resetError && (
+										<span className="text-[10px] text-red-400">{resetError}</span>
+									)}
 								</span>
-							) : (
-								<button
-									type="button"
-									onClick={() => setResetConfirm(true)}
-									className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-400 hover:bg-red-900/30"
-									title="Remove extension (reset to default)"
-								>
-									Reset
-								</button>
 							))}
 					</div>
 				</div>
