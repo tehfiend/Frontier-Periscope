@@ -52,25 +52,25 @@ export const useSonarStore = create<SonarState>((set) => ({
 	setLocalEnabled: (v) => {
 		set({ localEnabled: v });
 		db.sonarState
-			.update("local", { enabled: v })
+			.put({ channel: "local", enabled: v, status: useSonarStore.getState().localStatus })
 			.catch((e) => console.error("[sonarStore] DB persist failed:", e));
 	},
 	setChainEnabled: (v) => {
 		set({ chainEnabled: v });
 		db.sonarState
-			.update("chain", { enabled: v })
+			.put({ channel: "chain", enabled: v, status: useSonarStore.getState().chainStatus })
 			.catch((e) => console.error("[sonarStore] DB persist failed:", e));
 	},
 	setLocalStatus: (s) => {
 		set({ localStatus: s });
 		db.sonarState
-			.update("local", { status: s })
+			.put({ channel: "local", enabled: useSonarStore.getState().localEnabled, status: s })
 			.catch((e) => console.error("[sonarStore] DB persist failed:", e));
 	},
 	setChainStatus: (s) => {
 		set({ chainStatus: s });
 		db.sonarState
-			.update("chain", { status: s })
+			.put({ channel: "chain", enabled: useSonarStore.getState().chainEnabled, status: s })
 			.catch((e) => console.error("[sonarStore] DB persist failed:", e));
 	},
 	pingLocal: () => set((s) => ({ localPingCount: s.localPingCount + 1 })),
@@ -88,8 +88,18 @@ export const useSonarStore = create<SonarState>((set) => ({
 			persistPingSettings(next);
 			return { pingEventTypes: next };
 		}),
-	setPingAudioEnabled: (v) => set({ pingAudioEnabled: v }),
-	setPingNotifyEnabled: (v) => set({ pingNotifyEnabled: v }),
+	setPingAudioEnabled: (v) => {
+		set({ pingAudioEnabled: v });
+		db.settings
+			.put({ key: "sonarPingAudio", value: v })
+			.catch((e) => console.error("[sonarStore] DB persist failed:", e));
+	},
+	setPingNotifyEnabled: (v) => {
+		set({ pingNotifyEnabled: v });
+		db.settings
+			.put({ key: "sonarPingNotify", value: v })
+			.catch((e) => console.error("[sonarStore] DB persist failed:", e));
+	},
 }));
 
 function persistPingSettings(types: Set<SonarEventType>) {
@@ -98,20 +108,44 @@ function persistPingSettings(types: Set<SonarEventType>) {
 		.catch((e) => console.error("[sonarStore] DB persist failed:", e));
 }
 
-// Restore persisted state from DB on load
-db.sonarState
-	.toArray()
-	.then((states) => {
-		const store = useSonarStore.getState();
+// Restore persisted state from DB on load.
+// Uses set() directly to avoid round-trip DB writes from the action methods (ISSUE-03).
+Promise.all([
+	db.sonarState.toArray(),
+	db.settings.bulkGet(["sonarPingTypes", "sonarPingAudio", "sonarPingNotify"]),
+])
+	.then(([states, [pingTypesEntry, pingAudioEntry, pingNotifyEntry]]) => {
+		const patch: Partial<SonarState> = {};
+
 		for (const s of states) {
 			if (s.channel === "local") {
-				store.setLocalEnabled(s.enabled);
-				store.setLocalStatus(s.status);
+				patch.localEnabled = s.enabled;
+				patch.localStatus = s.status;
 			} else if (s.channel === "chain") {
-				store.setChainEnabled(s.enabled);
-				store.setChainStatus(s.status);
+				patch.chainEnabled = s.enabled;
+				patch.chainStatus = s.status;
 			}
 		}
+
+		// Restore ping event types
+		if (pingTypesEntry?.value) {
+			try {
+				const arr = JSON.parse(pingTypesEntry.value as string) as SonarEventType[];
+				patch.pingEventTypes = new Set(arr);
+			} catch {
+				// Corrupted data -- keep defaults
+			}
+		}
+
+		// Restore ping audio/notify booleans
+		if (typeof pingAudioEntry?.value === "boolean") {
+			patch.pingAudioEnabled = pingAudioEntry.value;
+		}
+		if (typeof pingNotifyEntry?.value === "boolean") {
+			patch.pingNotifyEnabled = pingNotifyEntry.value;
+		}
+
+		useSonarStore.setState(patch);
 	})
 	.catch((err) => {
 		console.error("[sonarStore] Failed to restore persisted state:", err);

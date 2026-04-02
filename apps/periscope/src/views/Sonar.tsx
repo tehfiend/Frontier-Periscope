@@ -20,7 +20,6 @@ import type {
 	SonarEventType,
 	SonarWatchItem,
 } from "@/db/types";
-import { useCharacterSessionIds } from "@/hooks/useCharacterSessionIds";
 import {
 	addWatchItem,
 	removeWatchItem,
@@ -30,6 +29,7 @@ import {
 import { requestDirectoryAccess } from "@/lib/logFileAccess";
 import { type LogActiveTab, useLogStore } from "@/stores/logStore";
 import { useSonarStore } from "@/stores/sonarStore";
+import Dexie from "dexie";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Activity,
@@ -64,11 +64,8 @@ import { useCallback, useMemo, useState } from "react";
 /** Color category for event type badges. */
 function getEventBadgeColor(eventType: string): string {
 	switch (eventType) {
-		// Red -- combat / bounty
+		// Red -- combat
 		case "killmail":
-		case "bounty_posted":
-		case "bounty_claimed":
-		case "bounty_cancelled":
 			return "bg-red-500/15 text-red-400";
 		// Blue -- navigation / gate
 		case "jump":
@@ -674,7 +671,7 @@ function PingsTab() {
 	const totalDamageRecv = sessionDamageRecv?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
 
 	const events = useLiveQuery(
-		() => db.sonarEvents.orderBy("id").reverse().limit(5000).toArray(),
+		() => db.sonarEvents.orderBy("id").reverse().limit(500).toArray(),
 		[],
 	);
 
@@ -1163,21 +1160,44 @@ function WatchlistTab() {
 		});
 	}
 
-	// Get last event timestamp for each watched item
+	// Get last event timestamp for each watched item -- batch query instead of N+1
 	const lastEventMap = useLiveQuery(async () => {
 		const map = new Map<string, string>();
+		if (items.length === 0) return map;
+
+		// Collect the characterIds and tribeIds we need to look up
+		const charIds = new Set<string>();
+		const tribeIds = new Set<number>();
 		for (const item of items) {
-			let event: SonarEvent | undefined;
-			if (item.kind === "character" && item.characterId) {
-				event = await db.sonarEvents
-					.where("characterId")
-					.equals(item.characterId)
-					.reverse()
-					.first();
-			} else if (item.kind === "tribe" && item.tribeId) {
-				event = await db.sonarEvents.where("tribeId").equals(item.tribeId).reverse().first();
+			if (item.kind === "character" && item.characterId) charIds.add(item.characterId);
+			if (item.kind === "tribe" && item.tribeId) tribeIds.add(item.tribeId);
+		}
+
+		// Single query: load recent events that have a matching characterId or tribeId.
+		// We load a reasonable window (last 2000 events) and group in memory.
+		const recentEvents = await db.sonarEvents.orderBy("id").reverse().limit(2000).toArray();
+
+		// Build latest-timestamp maps
+		const latestByChar = new Map<string, string>();
+		const latestByTribe = new Map<number, string>();
+		for (const e of recentEvents) {
+			if (e.characterId && charIds.has(e.characterId) && !latestByChar.has(e.characterId)) {
+				latestByChar.set(e.characterId, e.timestamp);
 			}
-			if (event) map.set(item.id, event.timestamp);
+			if (e.tribeId && tribeIds.has(e.tribeId) && !latestByTribe.has(e.tribeId)) {
+				latestByTribe.set(e.tribeId, e.timestamp);
+			}
+		}
+
+		// Map back to watch items
+		for (const item of items) {
+			if (item.kind === "character" && item.characterId) {
+				const ts = latestByChar.get(item.characterId);
+				if (ts) map.set(item.id, ts);
+			} else if (item.kind === "tribe" && item.tribeId) {
+				const ts = latestByTribe.get(item.tribeId);
+				if (ts) map.set(item.id, ts);
+			}
 		}
 		return map;
 	}, [items]);
@@ -1331,7 +1351,13 @@ function WatchlistTab() {
 
 function ChainFeedTab() {
 	const events = useLiveQuery(
-		() => db.sonarEvents.where("source").equals("chain").reverse().limit(1000).toArray(),
+		() =>
+			db.sonarEvents
+				.where("[source+eventType]")
+				.between(["chain", Dexie.minKey], ["chain", Dexie.maxKey])
+				.reverse()
+				.limit(1000)
+				.toArray(),
 		[],
 	);
 	const { matchesWatchlist, isOwnedEvent } = useWatchlistFilter();

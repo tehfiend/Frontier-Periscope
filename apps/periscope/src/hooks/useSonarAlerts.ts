@@ -11,11 +11,27 @@ import { useEffect, useRef } from "react";
  * Uses a high-water-mark (max sonarEvents.id) to avoid alerting on
  * historical events loaded at startup.
  */
+/** Module-level AudioContext reused across all alert beeps (ISSUE-07 fix). */
+let sharedAudioCtx: AudioContext | null = null;
+
+function getAudioContext(): AudioContext | null {
+	try {
+		if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
+			sharedAudioCtx = new AudioContext();
+		}
+		return sharedAudioCtx;
+	} catch {
+		return null;
+	}
+}
+
 export function useSonarAlerts() {
 	const pingEventTypes = useSonarStore((s) => s.pingEventTypes);
 	const pingAudioEnabled = useSonarStore((s) => s.pingAudioEnabled);
 	const pingNotifyEnabled = useSonarStore((s) => s.pingNotifyEnabled);
-	const hwmRef = useRef<number | null>(null);
+	// Initialize HWM to -1 (sentinel) synchronously so we never alert
+	// on events that arrive before the async DB query resolves
+	const hwmRef = useRef<number>(-1);
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 
 	// Initialize high-water-mark from the max existing sonarEvents.id on mount
@@ -26,7 +42,10 @@ export function useSonarAlerts() {
 			.reverse()
 			.first()
 			.then((latest) => {
-				hwmRef.current = latest?.id ?? 0;
+				// Only update if still at sentinel -- don't regress if events arrived
+				if (hwmRef.current === -1) {
+					hwmRef.current = latest?.id ?? 0;
+				}
 			});
 	}, []);
 
@@ -54,7 +73,7 @@ export function useSonarAlerts() {
 
 	useEffect(() => {
 		if (!latestEvents || latestEvents.length === 0) return;
-		if (hwmRef.current === null) return; // Not initialized yet
+		if (hwmRef.current === -1) return; // HWM not initialized from DB yet
 		if (pingEventTypes.size === 0) return;
 		if (!pingAudioEnabled && !pingNotifyEnabled) return;
 
@@ -74,9 +93,10 @@ export function useSonarAlerts() {
 			audioRef.current.currentTime = 0;
 			audioRef.current.play().catch(() => {
 				// Audio play may fail if user hasn't interacted with the page yet.
-				// Use Web Audio API fallback: generate a short beep.
+				// Use shared Web Audio API fallback: generate a short beep.
+				const ctx = getAudioContext();
+				if (!ctx) return;
 				try {
-					const ctx = new AudioContext();
 					const osc = ctx.createOscillator();
 					const gain = ctx.createGain();
 					osc.connect(gain);
@@ -86,11 +106,8 @@ export function useSonarAlerts() {
 					osc.start();
 					gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
 					osc.stop(ctx.currentTime + 0.3);
-					osc.onended = () => {
-						ctx.close().catch(() => {});
-					};
 				} catch {
-					// Web Audio not available either -- silently fail
+					// Web Audio not available -- silently fail
 				}
 			});
 		}

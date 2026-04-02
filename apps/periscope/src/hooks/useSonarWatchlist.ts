@@ -92,19 +92,25 @@ export function useWatchlistFilter() {
 		return map;
 	}, [items]);
 
-	// Load owned data
+	// Load owned data -- serialize address set to stable string for dependency tracking
 	const ownedAddresses = useLiveQuery(async () => {
 		const chars = await db.characters.filter((c) => !c._deleted).toArray();
 		return new Set(chars.filter((c) => c.suiAddress).map((c) => c.suiAddress as string));
 	}, []);
 
+	// Stable serialized key for ownedAddresses to avoid reference-identity re-renders
+	const ownedAddressKey = useMemo(
+		() => (ownedAddresses ? Array.from(ownedAddresses).sort().join(",") : ""),
+		[ownedAddresses],
+	);
+
 	const ownedAssemblyIds = useLiveQuery(async () => {
-		if (!ownedAddresses) return new Set<string>();
+		if (!ownedAddresses || ownedAddresses.size === 0) return new Set<string>();
 		const deployables = await db.deployables
 			.filter((d) => d.owner != null && ownedAddresses.has(d.owner as string))
 			.toArray();
 		return new Set(deployables.map((d) => d.objectId));
-	}, [ownedAddresses]);
+	}, [ownedAddressKey]);
 
 	const ownedCharacterIds = useLiveQuery(async () => {
 		const chars = await db.characters.filter((c) => !c._deleted).toArray();
