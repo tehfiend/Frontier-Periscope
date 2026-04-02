@@ -136,10 +136,12 @@ export function useLogWatcher() {
 		});
 	}
 
-	// Process new bytes from a game log file
+	// Process new bytes from a game log file.
+	// `depth` guards against infinite recursion on repeated truncation.
 	async function processGameLog(
 		fileName: string,
 		fileHandle: FileSystemFileHandle,
+		depth = 0,
 	): Promise<{ sessionId: string; newEvents: number } | null> {
 		const sessionId = fileName.replace(".txt", "");
 		const file = await fileHandle.getFile();
@@ -151,7 +153,8 @@ export function useLogWatcher() {
 			console.warn(`[LogWatcher] File truncated: ${fileName} (${lastOffset} -> ${file.size})`);
 			await db.logOffsets.put({ fileName, byteOffset: 0, lastModified: file.lastModified });
 			pendingLines.delete(fileName);
-			return processGameLog(fileName, fileHandle);
+			if (depth > 0) return null;
+			return processGameLog(fileName, fileHandle, depth + 1);
 		}
 		if (file.size === lastOffset) return null;
 
@@ -243,12 +246,14 @@ export function useLogWatcher() {
 		return { sessionId, newEvents: events.length };
 	}
 
-	// Process new bytes from a chat log file (UTF-16LE)
+	// Process new bytes from a chat log file (UTF-16LE).
+	// `depth` guards against infinite recursion on repeated truncation.
 	async function processChatLog(
 		fileName: string,
 		fileHandle: FileSystemFileHandle,
 		gameSessionId: string,
 		channel: string,
+		depth = 0,
 	): Promise<number> {
 		const file = await fileHandle.getFile();
 		const offsetKey = `chat:${fileName}`;
@@ -264,7 +269,8 @@ export function useLogWatcher() {
 				lastModified: file.lastModified,
 			});
 			pendingLines.delete(offsetKey);
-			return processChatLog(fileName, fileHandle, gameSessionId, channel);
+			if (depth > 0) return 0;
+			return processChatLog(fileName, fileHandle, gameSessionId, channel, depth + 1);
 		}
 		if (file.size === lastOffset) return 0;
 
@@ -432,7 +438,10 @@ export function useLogWatcher() {
 			}
 		} catch (err) {
 			consecutiveErrors++;
-			console.error(`[LogWatcher] Poll error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, err);
+			console.error(
+				`[LogWatcher] Poll error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`,
+				err,
+			);
 			if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
 				console.error("[LogWatcher] Too many consecutive errors, stopping poller");
 				stopWatching();
@@ -484,6 +493,10 @@ export function useLogWatcher() {
 		await db.logEvents.clear();
 		await db.logSessions.clear();
 		await db.logOffsets.clear();
+		// Also clear local sonar events derived from logEvents
+		await db.sonarEvents.where("source").equals("local").delete();
+		// Reset local HWM so useLocalSonar reprocesses from scratch
+		await db.sonarState.update("local", { lastProcessedLogId: 0 });
 		pendingLines.clear();
 		setActiveSessionId(null);
 		setLiveStats({ miningRate: 0, miningOre: null, dpsDealt: 0, dpsReceived: 0 });
