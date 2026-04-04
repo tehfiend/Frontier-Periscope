@@ -1,15 +1,28 @@
-# Plan: Structures Tenant Filtering
-**Status:** Draft
+# Plan: Tenant Filtering -- Structures, Standings, and Private Maps
+**Status:** Ready
 **Created:** 2026-04-04
 **Module:** periscope
 
 ## Overview
 
-The Structures (Deployables) page does not filter by tenant. When a user has structures on both Stillness and Utopia, all structures appear in a single list regardless of which tenant is active. This creates confusion because structures are tenant-specific -- a gate on Stillness cannot interact with Utopia chain operations, and displaying cross-tenant structures alongside valid ones leads to failed transactions when users attempt on-chain actions.
+This plan audits tenant filtering across three pages -- Structures (Deployables), Standings, and Private Maps -- and adds filtering where missing.
+
+**Structures (Deployables)** -- the primary work item. The Structures page does not filter by tenant. When a user has structures on both Stillness and Utopia, all structures appear in a single list regardless of which tenant is active. This creates confusion because structures are tenant-specific -- a gate on Stillness cannot interact with Utopia chain operations, and displaying cross-tenant structures alongside valid ones leads to failed transactions when users attempt on-chain actions.
 
 Unlike currencies (which use shared cross-tenant Market<T> contracts), structures are inherently tenant-bound. Each assembly is created on a specific tenant's chain and its Sui object only exists within that tenant's world package scope. The `owner` address on each structure maps to a character on a specific tenant, providing a reliable resolution path via the manifest character cache: `deployable.owner` -> `ManifestCharacter.suiAddress` -> `ManifestCharacter.tenant`.
 
 This plan adds tenant filtering to the `useStructureRows` hook using an owner-address-to-tenant join through the manifest character cache. The approach mirrors the pattern established in plan 15 (Currency Tenant Filtering) -- an in-memory join with no schema migration, where unresolvable owners are shown to avoid hiding data.
+
+**Standings** -- already correctly handled. Audit findings:
+- **Contacts tab**: Local-only contacts (`Contact` type) have no `tenant` field. They are private standings stored on-device, not tied to any specific tenant. Cross-tenant by design -- no filtering needed.
+- **Subscribed Registries**: `useSubscribedRegistries(tenant)` already filters by tenant via `db.subscribedRegistries.where("tenant").equals(tenant)`. Working correctly.
+- **Registry Browse/Discovery + My Registries**: The `manifestRegistries` cache has no `tenant` field because the `standingsRegistry` package ID is shared across tenants (see comment in `db/types.ts:538`). The `discoverRegistries()` function in `chain/manifest.ts:1688` confirms this: "Global -- standingsRegistry packageId is shared across tenants, so we query once." Registries are genuinely cross-tenant shared objects. No filtering needed or possible.
+
+**Private Maps** -- already correctly handled. Both V1 and V2 maps are queried with tenant filtering:
+- V1: `db.manifestPrivateMaps.where("tenant").equals(tenant)` (PrivateMaps.tsx:83)
+- V2: `db.manifestPrivateMapsV2.where("tenant").equals(tenant)` (PrivateMaps.tsx:89)
+- Both `ManifestPrivateMap` and `ManifestPrivateMapV2` types have a `tenant: string` field.
+- Sync functions also scope by tenant: `syncPrivateMapsForUser(client, tenant, ...)` and `syncPrivateMapsV2ForUser(client, tenant, ...)`.
 
 ## Current State
 
@@ -37,7 +50,7 @@ Structures enter the DB via two paths:
 ### useStructureRows Hook
 
 `apps/periscope/src/hooks/useStructureRows.ts:20-220`:
-- Receives `tenant` as a parameter (line 24) but only uses it for extension lookup (line 75: `tmpl.packageIds[tenant as TenantId]`).
+- Receives `tenant` as a parameter (line 22/26) but only uses it for extension lookup (line 75: `tmpl.packageIds[tenant as TenantId]`).
 - Queries `db.deployables.filter(notDeleted)` and `db.assemblies.filter(notDeleted)` with NO tenant filtering (lines 30-31).
 - The `tenant` parameter is already threaded through from the Deployables view (line 273: `useStructureRows({ activeAddresses, tenant, showAll })`), so the plumbing exists but filtering is not applied.
 
@@ -97,6 +110,8 @@ This ensures:
 | Unresolvable owners | Show in all tenants | Better to show extra structures than hide ones the user expects. They become filterable once the owner character is synced to the manifest. |
 | Shared hook vs. inline | Inline in `useStructureRows` | Unlike currencies (which need filtering in 4 components), structures only use `useStructureRows` as the data source. A separate hook would add indirection without reuse. |
 | "Show All" tenant behavior | Still filter by tenant | Cross-tenant structures are never useful. "Show all" relaxes the ownership filter, not the tenant filter. |
+| Standings registries scope | No changes | `ManifestRegistry` is intentionally cross-tenant (shared package ID). Subscriptions already filter by tenant. Contacts are local-only with no tenant concept. |
+| Private maps scope | No changes | Both V1 and V2 already filter by tenant at the Dexie query level. Sync functions also scope by tenant. |
 
 ## Implementation Phases
 
@@ -123,7 +138,7 @@ This ensures:
    }, [players, manifestChars]);
    ```
 
-2. Define an `isOwnerOnTenant` helper inside the `data` memo (lines 130-217), before the row-building loop. Defining it inside the memo avoids an extra `useCallback` and ensures it captures the current `addressTenantMap` and `tenant` values:
+2. Define an `isOwnerOnTenant` helper at the top of the `data` memo callback (line 130), before the `seenObjectIds`/`rows` declarations at line 131. Defining it inside the memo avoids an extra `useCallback` and ensures it captures the current `addressTenantMap` and `tenant` values:
 
    ```ts
    const isOwnerOnTenant = (owner: string | undefined): boolean => {
@@ -160,14 +175,13 @@ This ensures:
 | File | Action | Description |
 |------|--------|-------------|
 | `apps/periscope/src/hooks/useStructureRows.ts` | Modify | Add address-to-tenant map to existing ownerNames memo; filter structures by active tenant using owner address resolution |
+| `apps/periscope/src/views/Standings.tsx` | None | Audit confirmed: subscriptions filter by tenant; registries are cross-tenant by design; contacts are local-only |
+| `apps/periscope/src/views/PrivateMaps.tsx` | None | Audit confirmed: V1 and V2 maps already filter by tenant at query level |
 
-## Open Questions
+## Resolved Questions
 
 1. **Should the active character's own addresses always bypass the tenant filter?**
-   - **Option A: No bypass -- use the manifest join for all addresses.** -- Pros: Simple, consistent logic. The active character's address should already be in the manifest cache with the correct tenant. Cons: If the manifest hasn't synced yet, the user's own structures could appear on both tenants until the first manifest sync.
-   - **Option B: Always show structures owned by active addresses, regardless of tenant resolution.** -- Pros: User's own structures always visible even before manifest sync. Cons: Defeats the purpose of tenant filtering for the user's own structures -- they'd see their Stillness structures on Utopia too. This is the current behavior we're trying to fix.
-   - **Option C: Show active-address structures only when they match active addresses AND tenant is correct per character record.** -- Pros: Correct filtering from the start since `CharacterRecord.tenant` is set during sync (not dependent on manifest). Cons: Adds complexity -- need to check both `manifestChars` and `characterRecords`.
-   - **Recommendation:** Option A. The manifest character cache is populated early (during initial chain sync) and the active character's address is always resolved correctly. The brief window before first sync is a non-issue in practice since structures also need syncing from the chain. If this proves problematic, Option C can be added as a follow-up.
+   - **Resolution:** No bypass (Option A). Use the manifest join for all addresses. The manifest character cache is populated early (during initial chain sync) and the active character's address is always resolved correctly. The brief window before first sync is a non-issue in practice since structures also need syncing from the chain. If this proves problematic, a CharacterRecord-based fallback can be added later.
 
 ## Deferred
 
