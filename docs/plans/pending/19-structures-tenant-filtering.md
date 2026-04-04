@@ -83,9 +83,9 @@ This ensures:
 
 ### Edge Cases
 
-- **Owner on multiple tenants**: If an owner address has characters on both Stillness and Utopia, the structure shows under both tenants. This is correct -- the user may have structures on both.
+- **Owner on multiple tenants**: If an owner address has characters on both Stillness and Utopia, the structure shows under both tenants. This is acceptable -- the user may have structures on both. For the user's own structures, this is a non-issue because the "mine" ownership filter (`addressSet.has(row.owner)`) already uses `activeSuiAddresses` from `useActiveCharacter`, which is scoped to the active tenant (see `apps/periscope/src/hooks/useActiveCharacter.ts:39-41`). The multi-tenant edge case only affects watched structures from other players who also play on both tenants -- a rare scenario.
 - **Unresolvable owner**: If no `ManifestCharacter` matches the owner address (e.g., character not yet synced), the structure is shown regardless of tenant to avoid hiding data.
-- **Owner is undefined**: Some `DeployableIntel` records have `owner?: string` (optional). Structures with no owner are always shown.
+- **Owner is undefined**: Some `DeployableIntel` records have `owner?: string` (optional). Structures with no owner are always shown. In `StructureRow`, absent owners are defaulted to `activeAddresses[0] ?? ""` (line 146 of useStructureRows.ts), and the empty string passes the `isOwnerOnTenant` check via the `!owner` falsy guard.
 - **"Show All" mode**: When `showAll` is true, the tenant filter should still apply -- "show all" means show non-owned structures, not show all tenants. Structures from the other tenant are irrelevant regardless of the ownership filter.
 
 ## Design Decisions
