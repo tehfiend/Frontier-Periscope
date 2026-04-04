@@ -1,6 +1,6 @@
 # Plan: Currency Trading UI in Periscope
 
-**Status:** Review Pass 4
+**Status:** Pending (has open questions)
 **Created:** 2026-04-04
 **Module:** periscope
 
@@ -106,8 +106,8 @@ For exchange trading specifically, where the PlaceOrderDialog is self-contained 
 | Cancel own orders | Show cancel button only for own address rows | Standard pattern matching SSU dApp |
 | Wallet connect | Auto-connect via Eve Vault on action click (existing `ensureWallet()` pattern) | Matches existing Currencies behavior per CLAUDE.md: "Auto-connect wallet inline on action click" |
 | File organization | Extract trading components into a separate file | Currencies.tsx is ~2700 lines; extracting keeps file sizes manageable |
-| MarketOrderRow extension | Add `listingId`/`orderId` numeric field to MarketOrderRow | The existing `id` is a string like `sell-123`; row-level actions need the raw numeric ID for TX builders |
-| Coin format utilities | Reuse existing `formatTokenAmount`/`formatPrice` from Currencies.tsx | The view already has these; no need to import `formatBaseUnits` from chain-shared for consistency |
+| MarketOrderRow extension | Add `numericId: number` field to MarketOrderRow | The existing `id` is a string like `sell-123`; row-level actions need the raw numeric ID (listingId for sells, orderId for buys) for TX builders |
+| Coin format utilities | Use `formatBaseUnits` from `@tehfrontier/chain-shared` in CurrencyTrading.tsx | The local `formatTokenAmount`/`formatPrice` in Currencies.tsx are not exported; `formatBaseUnits` from chain-shared is functionally equivalent and already available |
 
 ## Implementation Phases
 
@@ -145,7 +145,7 @@ Add inline trading forms and row-level actions to the Market Order Book section 
    c. `BuyFromListingPanel` -- compact inline form for row-level buy action:
       - Props: `listingId: number`, `maxQuantity: number`, `pricePerUnit: bigint`, `itemName: string`, `marketId`, `coinType`, `packageId`, `decimals`, `symbol`, `onSuccess(msg: string)`, `onError(msg: string)`, `onCancel()`
       - Quantity input (max = maxQuantity)
-      - Total cost display: `pricePerUnit * BigInt(quantity)`, formatted with `formatTokenAmount`
+      - Total cost display: `pricePerUnit * BigInt(quantity)`, formatted with `formatBaseUnits` from chain-shared
       - Fetch owned coins for payment on mount
       - Submit: `ensureWallet()` -> `buildBuyFromListing({ packageId, marketId, coinType, listingId, quantity, coinObjectIds, senderAddress })` -> `signAndExecute`
       - Note: `buildBuyFromListing` passes all coin objects and the contract calculates payment. No `totalAmount` param needed.
