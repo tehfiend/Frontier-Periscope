@@ -81,7 +81,62 @@ export function useLogWatcher() {
 			const totalRecv = recentRecv.reduce((sum, e) => sum + (e.damage ?? 0), 0);
 			const dpsReceived = recentRecv.length > 0 ? totalRecv / (combatWindowMs / 1000) : 0;
 
-			setLiveStats({ miningRate, miningOre, dpsDealt, dpsReceived });
+			// Mining run total: last 200 mining events, walk backwards while ore matches
+			const tailMining = await db.logEvents
+				.where("[sessionId+type]")
+				.equals([sessionId, "mining"])
+				.reverse()
+				.limit(200)
+				.toArray();
+			let miningRunTotal = 0;
+			if (tailMining.length > 0) {
+				const oreType = tailMining[0].ore;
+				for (const e of tailMining) {
+					if (e.ore !== oreType) break;
+					miningRunTotal += e.amount ?? 0;
+				}
+			}
+
+			// DPS target breakdowns: top 5 targets by total damage
+			const allDealt = await db.logEvents
+				.where("[sessionId+type]")
+				.equals([sessionId, "combat_dealt"])
+				.reverse()
+				.limit(500)
+				.toArray();
+			const dealtByTarget = new Map<string, number>();
+			for (const e of allDealt) {
+				const name = e.target ?? "Unknown";
+				dealtByTarget.set(name, (dealtByTarget.get(name) ?? 0) + (e.damage ?? 0));
+			}
+			const dealtTargets: [string, number][] = Array.from(dealtByTarget.entries())
+				.sort((a, b) => b[1] - a[1])
+				.slice(0, 5);
+
+			const allRecv = await db.logEvents
+				.where("[sessionId+type]")
+				.equals([sessionId, "combat_received"])
+				.reverse()
+				.limit(500)
+				.toArray();
+			const recvByTarget = new Map<string, number>();
+			for (const e of allRecv) {
+				const name = e.target ?? "Unknown";
+				recvByTarget.set(name, (recvByTarget.get(name) ?? 0) + (e.damage ?? 0));
+			}
+			const recvTargets: [string, number][] = Array.from(recvByTarget.entries())
+				.sort((a, b) => b[1] - a[1])
+				.slice(0, 5);
+
+			setLiveStats({
+				miningRate,
+				miningOre,
+				dpsDealt,
+				dpsReceived,
+				miningRunTotal,
+				dealtTargets,
+				recvTargets,
+			});
 		},
 		[setLiveStats],
 	);

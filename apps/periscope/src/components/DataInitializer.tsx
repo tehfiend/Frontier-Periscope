@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, pruneEventTables } from "@/db";
 import { useManifestAutoSync } from "@/hooks/useManifestAutoSync";
 import { usePrivateMapAutoDecrypt } from "@/hooks/usePrivateMapAutoDecrypt";
 import { fetchAndStoreGameTypes } from "@/lib/worldApi";
@@ -26,6 +26,14 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 
 	useEffect(() => {
 		initialize();
+
+		// Prune event tables on startup and every 10 minutes to prevent OOM
+		pruneEventTables().catch(() => {});
+		const pruneInterval = setInterval(
+			() => pruneEventTables().catch(() => {}),
+			10 * 60 * 1000,
+		);
+		return () => clearInterval(pruneInterval);
 	}, []);
 
 	async function initialize() {

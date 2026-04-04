@@ -208,7 +208,6 @@ export function Standings() {
 					tenant={tenant}
 					chainAddress={chainAddress}
 					walletAddress={walletAddress}
-					creatorCharacterId={activeCharacter?.characterId != null ? Number(activeCharacter.characterId) : undefined}
 				/>
 			)}
 		</div>
@@ -631,12 +630,10 @@ function MyRegistriesTab({
 	tenant,
 	chainAddress,
 	walletAddress,
-	creatorCharacterId,
 }: {
 	tenant: string;
 	chainAddress?: string | null;
 	walletAddress?: string;
-	creatorCharacterId?: number;
 }) {
 	const client = useSuiClient();
 	const dAppKit = useDAppKit();
@@ -882,7 +879,6 @@ function MyRegistriesTab({
 				<CreateRegistryDialog
 					packageId={packageId}
 					senderAddress={walletAddress ?? ""}
-					creatorCharacterId={creatorCharacterId}
 					tenant={tenant}
 					onClose={() => setShowCreateDialog(false)}
 					onCreated={handleRefresh}
@@ -1515,15 +1511,12 @@ function EditContactDialog({
 function CreateRegistryDialog({
 	packageId,
 	senderAddress,
-	creatorCharacterId,
 	tenant,
 	onClose,
 	onCreated,
 }: {
 	packageId: string;
 	senderAddress: string;
-	/** On-chain character item ID of the creator -- auto-added with +3 standing. */
-	creatorCharacterId?: number;
 	tenant: string;
 	onClose: () => void;
 	onCreated: () => void;
@@ -1549,9 +1542,11 @@ function CreateRegistryDialog({
 			const eveVault = wallets.find(
 				(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
 			);
-			const wallet = eveVault || wallets[0];
-			if (!wallet) return;
-			const result = await dAppKit.connectWallet({ wallet });
+			if (!eveVault) {
+				setError("EVE Vault extension not found. Install it from https://github.com/evefrontier/evevault/releases");
+				return;
+			}
+			const result = await dAppKit.connectWallet({ wallet: eveVault });
 			sender = result.accounts[0]?.address;
 			if (!sender) return;
 		}
@@ -1602,22 +1597,6 @@ function CreateRegistryDialog({
 					subscribedAt: new Date().toISOString(),
 					tenant,
 				});
-
-				// Auto-add creator with +3 standing
-				if (creatorCharacterId) {
-					try {
-						const standingTx = buildSetCharacterStanding({
-							packageId,
-							registryId: newRegistryId,
-							characterId: creatorCharacterId,
-							standing: displayToStanding(3), // +3 = best standing
-							senderAddress: sender,
-						});
-						await dAppKit.signAndExecuteTransaction({ transaction: standingTx });
-					} catch {
-						// Registry was created successfully but auto-standing failed -- non-critical
-					}
-				}
 			}
 
 			await new Promise((r) => setTimeout(r, 2000));
@@ -1770,9 +1749,11 @@ function SetRegistryStandingDialog({
 			const eveVault = wallets.find(
 				(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
 			);
-			const wallet = eveVault || wallets[0];
-			if (!wallet) return;
-			const result = await dAppKit.connectWallet({ wallet });
+			if (!eveVault) {
+				setError("EVE Vault extension not found. Install it from https://github.com/evefrontier/evevault/releases");
+				return;
+			}
+			const result = await dAppKit.connectWallet({ wallet: eveVault });
 			sender = result.accounts[0]?.address;
 			if (!sender) return;
 		}

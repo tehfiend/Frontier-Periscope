@@ -658,70 +658,9 @@ function PingsTab() {
 	const miningOre = useLogStore((s) => s.miningOre);
 	const dpsDealt = useLogStore((s) => s.dpsDealt);
 	const dpsReceived = useLogStore((s) => s.dpsReceived);
-	const activeSessionId = useLogStore((s) => s.activeSessionId);
-
-	// Mining run total: contiguous mining events at session tail (same ore type)
-	const sessionMining = useLiveQuery(
-		() =>
-			activeSessionId
-				? db.logEvents.where("[sessionId+type]").equals([activeSessionId, "mining"]).toArray()
-				: [],
-		[activeSessionId],
-	);
-	const miningRunTotal = useMemo(() => {
-		if (!sessionMining || sessionMining.length === 0) return 0;
-		// Walk backwards from the latest mining event; sum while ore matches
-		const latest = sessionMining[sessionMining.length - 1];
-		const oreType = latest.ore;
-		let total = 0;
-		for (let i = sessionMining.length - 1; i >= 0; i--) {
-			if (sessionMining[i].ore !== oreType) break;
-			total += sessionMining[i].amount ?? 0;
-		}
-		return total;
-	}, [sessionMining]);
-
-	// DPS target breakdowns from current session combat events
-	const sessionDamageDealt = useLiveQuery(
-		() =>
-			activeSessionId
-				? db.logEvents.where("[sessionId+type]").equals([activeSessionId, "combat_dealt"]).toArray()
-				: [],
-		[activeSessionId],
-	);
-	const dealtTargets = useMemo(() => {
-		if (!sessionDamageDealt || sessionDamageDealt.length === 0) return [];
-		const byTarget = new Map<string, number>();
-		for (const e of sessionDamageDealt) {
-			const name = e.target ?? "Unknown";
-			byTarget.set(name, (byTarget.get(name) ?? 0) + (e.damage ?? 0));
-		}
-		return Array.from(byTarget.entries())
-			.sort((a, b) => b[1] - a[1])
-			.slice(0, 5);
-	}, [sessionDamageDealt]);
-
-	const sessionDamageRecv = useLiveQuery(
-		() =>
-			activeSessionId
-				? db.logEvents
-						.where("[sessionId+type]")
-						.equals([activeSessionId, "combat_received"])
-						.toArray()
-				: [],
-		[activeSessionId],
-	);
-	const recvTargets = useMemo(() => {
-		if (!sessionDamageRecv || sessionDamageRecv.length === 0) return [];
-		const byTarget = new Map<string, number>();
-		for (const e of sessionDamageRecv) {
-			const name = e.target ?? "Unknown";
-			byTarget.set(name, (byTarget.get(name) ?? 0) + (e.damage ?? 0));
-		}
-		return Array.from(byTarget.entries())
-			.sort((a, b) => b[1] - a[1])
-			.slice(0, 5);
-	}, [sessionDamageRecv]);
+	const miningRunTotal = useLogStore((s) => s.miningRunTotal);
+	const dealtTargets = useLogStore((s) => s.dealtTargets);
+	const recvTargets = useLogStore((s) => s.recvTargets);
 
 	// Query local and chain events separately so neither source drowns out
 	// the other in the fixed-size window (chain event floods from cursor
@@ -1295,7 +1234,7 @@ function WatchlistTab() {
 
 		// Single query: load recent events that have a matching characterId or tribeId.
 		// We load a reasonable window (last 2000 events) and group in memory.
-		const recentEvents = await db.sonarEvents.orderBy("id").reverse().limit(2000).toArray();
+		const recentEvents = await db.sonarEvents.orderBy("id").reverse().limit(500).toArray();
 
 		// Build latest-timestamp maps
 		const latestByChar = new Map<string, string>();
@@ -1476,7 +1415,7 @@ function ChainFeedTab() {
 				.where("[source+eventType]")
 				.between(["chain", Dexie.minKey], ["chain", Dexie.maxKey])
 				.reverse()
-				.limit(1000)
+				.limit(250)
 				.toArray(),
 		[],
 	);
