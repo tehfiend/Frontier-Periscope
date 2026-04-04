@@ -14,7 +14,7 @@ function findEveVault(wallets: ReturnType<typeof useWallets>) {
 
 /**
  * Wallet connection button mimicking the default EVE Frontier dApp pattern.
- * - Disconnected: shows a "Connect Wallet" button
+ * - Disconnected: shows a "Connect EVE Vault" button
  * - No wallet: shows install prompt for EVE Vault
  * - Connected: shows green dot + truncated address; click to disconnect
  */
@@ -43,7 +43,7 @@ export function WalletConnect() {
 					className="flex w-full items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-400 transition-colors hover:border-cyan-600 hover:bg-cyan-900/20 hover:text-cyan-400"
 				>
 					<Wallet size={14} className="shrink-0" />
-					<span>Connect Wallet</span>
+					<span>Connect EVE Vault</span>
 				</button>
 				{showInstallPrompt && (
 					<div className="rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-2 text-xs text-amber-300">
@@ -117,7 +117,7 @@ export function ConnectWalletButton({ className = "" }: { className?: string }) 
 				className={`flex items-center gap-1.5 rounded bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 ${className}`}
 			>
 				<Wallet size={12} />
-				Connect Wallet
+				Connect EVE Vault
 			</button>
 			{showInstall && (
 				<a

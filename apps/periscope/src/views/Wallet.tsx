@@ -208,10 +208,15 @@ export function Wallet() {
 		return () => { cancelled = true; };
 	}, [client, tenant]);
 
-	// Show all balances except decommissioned coins
-	const visibleBalances = useMemo(
-		() => balances.filter((b) => !decomCoinTypes.has(b.coinType)),
+	const [showDecommissioned, setShowDecommissioned] = useState(false);
+	const decomCount = useMemo(
+		() => balances.filter((b) => decomCoinTypes.has(b.coinType)).length,
 		[balances, decomCoinTypes],
+	);
+
+	const visibleBalances = useMemo(
+		() => balances.filter((b) => showDecommissioned || !decomCoinTypes.has(b.coinType)),
+		[balances, decomCoinTypes, showDecommissioned],
 	);
 
 	// ── Flatten transactions ─────────────────────────────────────────────────
@@ -412,8 +417,23 @@ export function Wallet() {
 
 					{/* Token Balances Table */}
 					<div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900/50">
-						<div className="border-b border-zinc-800 px-4 py-3">
+						<div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
 							<h2 className="text-sm font-medium text-zinc-400">Token Balances</h2>
+							{decomCount > 0 && (
+								<button
+									type="button"
+									onClick={() => setShowDecommissioned(!showDecommissioned)}
+									className={`text-xs transition-colors ${
+										showDecommissioned
+											? "text-amber-400 hover:text-amber-300"
+											: "text-zinc-600 hover:text-zinc-400"
+									}`}
+								>
+									{showDecommissioned
+										? `Hide ${decomCount} deprecated`
+										: `Show ${decomCount} deprecated`}
+								</button>
+							)}
 						</div>
 						{visibleBalances.length === 0 ? (
 							<div className="px-4 py-8 text-center text-sm text-zinc-600">
@@ -423,7 +443,7 @@ export function Wallet() {
 							<table className="w-full">
 								<thead>
 									<tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-										<th className="px-4 py-2 font-medium">Coin Type</th>
+										<th className="px-4 py-2 font-medium">Token</th>
 										<th className="px-4 py-2 font-medium">Balance</th>
 									</tr>
 								</thead>
@@ -433,24 +453,45 @@ export function Wallet() {
 										const name = meta?.symbol || extractTokenName(b.coinType);
 										const decimals = meta?.decimals ?? 9;
 										const isSui = isSuiCoin(b.coinType);
+										const isDecom = decomCoinTypes.has(b.coinType);
 										const displayBal = `${formatBalance(b.totalBalance, decimals)} ${isSui ? "SUI" : name}`;
 
 										return (
-											<tr key={b.coinType} className="border-b border-zinc-800/50 last:border-b-0">
+											<tr
+												key={b.coinType}
+												className={`border-b border-zinc-800/50 last:border-b-0 ${isDecom ? "opacity-50" : ""}`}
+											>
 												<td className="px-4 py-3">
-													<span className="font-medium text-zinc-200">{meta?.name || name}</span>
-													{meta?.symbol && meta.symbol !== (meta.name || name) && (
-														<span className="ml-1.5 text-xs text-zinc-500">({meta.symbol})</span>
-													)}
+													<div className="flex items-center gap-2">
+														<span className="font-medium text-zinc-200">{meta?.name || name}</span>
+														{meta?.symbol && meta.symbol !== (meta.name || name) && (
+															<span className="text-xs text-zinc-500">({meta.symbol})</span>
+														)}
+														{isDecom && (
+															<span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+																Deprecated
+															</span>
+														)}
+													</div>
 													{!isSui && (
-														<span
-															className="ml-2 block truncate font-mono text-xs text-zinc-600"
-															title={b.coinType}
-														>
-															{b.coinType.length > 50
-																? `${b.coinType.slice(0, 24)}...${b.coinType.slice(-20)}`
-																: b.coinType}
-														</span>
+														<div className="mt-0.5 flex items-center gap-1.5">
+															<span
+																className="min-w-0 truncate font-mono text-xs text-zinc-600"
+																title={b.coinType}
+															>
+																{b.coinType.length > 50
+																	? `${b.coinType.slice(0, 24)}...${b.coinType.slice(-20)}`
+																	: b.coinType}
+															</span>
+															<button
+																type="button"
+																onClick={() => navigator.clipboard.writeText(b.coinType)}
+																className="shrink-0 rounded bg-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-600 hover:text-zinc-300"
+																title="Copy token identifier for Eve Vault"
+															>
+																Copy
+															</button>
+														</div>
 													)}
 												</td>
 												<td className="px-4 py-3 font-mono text-sm text-zinc-200">{displayBal}</td>

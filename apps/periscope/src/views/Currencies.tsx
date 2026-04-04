@@ -5,9 +5,9 @@ import {
 	Ban,
 	ChevronDown,
 	ChevronUp,
+	Coins,
 	Flame,
 	Loader2,
-	Package,
 	Plus,
 	RefreshCw,
 	Send,
@@ -42,6 +42,8 @@ import {
 	buildPublishToken,
 	buildRecommission,
 	buildRemoveAuthorized,
+	buildAddTreasuryAdmin,
+	buildRemoveTreasuryAdmin,
 	buildTreasuryDeposit,
 	buildTreasuryWithdraw,
 	buildUpdateFee,
@@ -76,7 +78,7 @@ interface UnifiedCurrencyRow {
 	coinType: string;
 	symbol: string;
 	name: string;
-	totalSupply?: number;
+	totalSupply?: string;
 	treasuryBalance?: string;
 	creator: string;
 	creatorName?: string;
@@ -115,13 +117,14 @@ interface ExchangeOrderRow {
 // ── Utilities ────────────────────────────────────────────────────────────────
 
 function formatTokenAmount(raw: bigint, decimals: number): string {
-	if (decimals === 0) return raw.toString();
+	if (decimals === 0) return raw.toLocaleString("en-US");
 	const divisor = 10n ** BigInt(decimals);
 	const whole = raw / divisor;
 	const frac = raw % divisor;
-	if (frac === 0n) return whole.toString();
+	const wholeStr = whole.toLocaleString("en-US");
+	if (frac === 0n) return wholeStr;
 	const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
-	return `${whole}.${fracStr}`;
+	return `${wholeStr}.${fracStr}`;
 }
 
 function formatPrice(raw: bigint, decimals: number): string {
@@ -659,7 +662,7 @@ export function Currencies() {
 					if (!treasuryBalance) return <span className="text-zinc-600">--</span>;
 					return (
 						<span className="font-mono text-xs">
-							{formatTokenAmount(BigInt(treasuryBalance), decimals)} {symbol}
+							{formatTokenAmount(BigInt(treasuryBalance), decimals)}
 						</span>
 					);
 				},
@@ -923,6 +926,8 @@ function CurrencyDetail({
 	const [depositAmount, setDepositAmount] = useState("");
 	const [showWithdraw, setShowWithdraw] = useState(false);
 	const [withdrawAmount, setWithdrawAmount] = useState("");
+	const [showTreasuryAdmins, setShowTreasuryAdmins] = useState(false);
+	const [treasuryAdminAddress, setTreasuryAdminAddress] = useState("");
 
 	// Exchange section
 	const [exchangeOrders, setExchangeOrders] = useState<Map<string, OrderInfo[]>>(new Map());
@@ -1312,6 +1317,20 @@ function CurrencyDetail({
 			setTreasuryInfo(info);
 			setTreasuryBalances(balances);
 			setTreasuryId(tid);
+
+			// Persist balances to IndexedDB so the currency list shows them
+			if (balances.length > 0) {
+				const existing = await db.treasuries.get(tid);
+				if (existing) {
+					await db.treasuries.update(tid, {
+						balances: balances.map((b) => ({
+							coinType: b.coinType,
+							symbol: b.coinType.split("::").pop()?.replace(/_TOKEN$/, "") ?? "?",
+							amount: String(b.amount),
+						})),
+					});
+				}
+			}
 		} catch {
 			setTreasuryInfo(null);
 			setTreasuryBalances([]);
@@ -1486,6 +1505,52 @@ function CurrencyDetail({
 			await signAndExecute({ transaction: tx });
 			setShowWithdraw(false);
 			setWithdrawAmount("");
+			onStatusChange("done");
+			setTimeout(() => loadTreasuryData(), 1500);
+		} catch (err) {
+			onStatusChange("error", walletErrorMessage(err));
+		}
+	}
+
+	const isTreasuryOwner =
+		treasuryInfo != null && !!suiAddress && treasuryInfo.owner === suiAddress;
+
+	async function handleAddTreasuryAdmin() {
+		if (!treasuryAdminAddress.trim() || !treasuryId || !treasuryPkg || !suiAddress) return;
+		if (!(await ensureWallet())) return;
+
+		onStatusChange("building");
+		try {
+			const tx = buildAddTreasuryAdmin({
+				packageId: treasuryPkg,
+				treasuryId,
+				adminAddress: treasuryAdminAddress.trim(),
+				senderAddress: suiAddress,
+			});
+
+			await signAndExecute({ transaction: tx });
+			setTreasuryAdminAddress("");
+			onStatusChange("done");
+			setTimeout(() => loadTreasuryData(), 1500);
+		} catch (err) {
+			onStatusChange("error", walletErrorMessage(err));
+		}
+	}
+
+	async function handleRemoveTreasuryAdmin(addr: string) {
+		if (!treasuryId || !treasuryPkg || !suiAddress) return;
+		if (!(await ensureWallet())) return;
+
+		onStatusChange("building");
+		try {
+			const tx = buildRemoveTreasuryAdmin({
+				packageId: treasuryPkg,
+				treasuryId,
+				adminAddress: addr,
+				senderAddress: suiAddress,
+			});
+
+			await signAndExecute({ transaction: tx });
 			onStatusChange("done");
 			setTimeout(() => loadTreasuryData(), 1500);
 		} catch (err) {
@@ -1726,7 +1791,7 @@ function CurrencyDetail({
 				<div className="mb-4 flex items-center justify-between">
 					<div className="flex items-center gap-3">
 						<div className="rounded-lg bg-zinc-800 p-2.5">
-							<Package size={20} className="text-cyan-500" />
+							<Coins size={20} className="text-cyan-500" />
 						</div>
 						<div>
 							<h2 className="text-lg font-bold text-zinc-100">
@@ -1795,7 +1860,7 @@ function CurrencyDetail({
 								}
 							/>
 							<StatBox label="Fee" value={`${marketInfo.feeBps} bps`} />
-							<StatBox label="Authorized" value={String(marketInfo.authorized.length)} />
+							<StatBox label="Currency Admins" value={String(marketInfo.authorized.length)} />
 						</div>
 
 						<div className="grid grid-cols-2 gap-x-6 gap-y-2 border-t border-zinc-800 pt-3 text-xs">
@@ -1827,8 +1892,21 @@ function CurrencyDetail({
 								</div>
 							</div>
 							<div className="col-span-2">
-								<span className="text-zinc-500">Coin Type</span>
-								<p className="mt-0.5 truncate font-mono text-zinc-400">{row.coinType}</p>
+								<span className="text-zinc-500">Token Identifier</span>
+								<div className="mt-0.5 flex items-center gap-2">
+									<p className="min-w-0 truncate font-mono text-zinc-400">{row.coinType}</p>
+									<button
+										type="button"
+										onClick={() => navigator.clipboard.writeText(row.coinType)}
+										className="shrink-0 rounded bg-zinc-700 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-600"
+										title="Copy to add this token in Eve Vault"
+									>
+										Copy
+									</button>
+								</div>
+								<p className="mt-1 text-[10px] text-zinc-600">
+									Use this identifier to add the token in Eve Vault
+								</p>
 							</div>
 						</div>
 					</>
@@ -1897,7 +1975,7 @@ function CurrencyDetail({
 											setShowFees(false);
 										}}
 										icon={<UserPlus size={12} />}
-										label="Authorize"
+										label="Currency Admins"
 										color="amber"
 									/>
 									<AdminToggle
@@ -2009,7 +2087,7 @@ function CurrencyDetail({
 
 					{/* Authorization Form */}
 					{showAuth && isCreator && (
-						<AdminPanel title="Add Authorized Minter">
+						<AdminPanel title="Manage Currency Admins">
 							<div className="space-y-3">
 								<FormField label="Search Character or Paste Address">
 									<ContactPicker
@@ -2039,14 +2117,14 @@ function CurrencyDetail({
 									className="flex items-center gap-1.5 rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									<UserPlus size={12} />
-									Add Authorized
+									Add Currency Admin
 								</button>
 							</div>
 
 							{marketInfo && marketInfo.authorized.length > 0 && (
 								<div className="mt-3 border-t border-zinc-800 pt-3">
 									<p className="mb-1.5 text-xs text-zinc-500">
-										Currently authorized ({marketInfo.authorized.length})
+										Currency Admins ({marketInfo.authorized.length})
 									</p>
 									<div className="space-y-1">
 										{marketInfo.authorized.map((addr) => (
@@ -2105,38 +2183,6 @@ function CurrencyDetail({
 								</button>
 							</div>
 						</AdminPanel>
-					)}
-				</div>
-			)}
-
-			{/* Market Order Book */}
-			{hasMarket && (
-				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-					<h3 className="mb-3 text-sm font-medium text-zinc-300">Market Order Book</h3>
-					{loadingOrders ? (
-						<div className="flex items-center justify-center gap-2 py-8 text-xs text-zinc-500">
-							<Loader2 size={14} className="animate-spin" />
-							Loading orders...
-						</div>
-					) : (
-						<DataGrid
-							columns={orderColumns}
-							data={orderRows}
-							keyFn={(r) => r.id}
-							searchPlaceholder="Search orders..."
-							emptyMessage="No market orders yet."
-							actions={
-								<button
-									type="button"
-									onClick={loadOrders}
-									disabled={loadingOrders}
-									className="flex shrink-0 items-center gap-1 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-								>
-									<RefreshCw size={12} />
-									Refresh
-								</button>
-							}
-						/>
 					)}
 				</div>
 			)}
@@ -2217,8 +2263,8 @@ function CurrencyDetail({
 								}
 							/>
 							<StatBox
-								label="Admins"
-								value={String(treasuryInfo?.admins.length ?? 0)}
+								label="Treasury Admins"
+								value={String((treasuryInfo?.admins.length ?? 0) + (treasuryInfo ? 1 : 0))}
 							/>
 						</div>
 
@@ -2233,13 +2279,14 @@ function CurrencyDetail({
 							/>
 						</div>
 
-						{/* Deposit / Withdraw actions */}
+						{/* Deposit / Withdraw / Admins actions */}
 						<div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 pt-3">
 							<AdminToggle
 								active={showDeposit}
 								onClick={() => {
 									setShowDeposit(!showDeposit);
 									setShowWithdraw(false);
+									setShowTreasuryAdmins(false);
 								}}
 								icon={<Send size={12} />}
 								label="Deposit"
@@ -2251,10 +2298,24 @@ function CurrencyDetail({
 									onClick={() => {
 										setShowWithdraw(!showWithdraw);
 										setShowDeposit(false);
+										setShowTreasuryAdmins(false);
 									}}
 									icon={<Send size={12} className="rotate-180" />}
 									label="Withdraw"
 									color="amber"
+								/>
+							)}
+							{isTreasuryOwner && (
+								<AdminToggle
+									active={showTreasuryAdmins}
+									onClick={() => {
+										setShowTreasuryAdmins(!showTreasuryAdmins);
+										setShowDeposit(false);
+										setShowWithdraw(false);
+									}}
+									icon={<UserPlus size={12} />}
+									label="Treasury Admins"
+									color="purple"
 								/>
 							)}
 						</div>
@@ -2320,9 +2381,112 @@ function CurrencyDetail({
 								</div>
 							</AdminPanel>
 						)}
+
+						{/* Treasury Admins management */}
+						{showTreasuryAdmins && isTreasuryOwner && (
+							<AdminPanel title="Manage Treasury Admins">
+								<div className="space-y-3">
+									<FormField label="Search Character or Paste Address">
+										<ContactPicker
+											placeholder="Search characters or paste 0x address..."
+											onSelect={(char) => setTreasuryAdminAddress(char.suiAddress)}
+											excludeAddresses={treasuryInfo?.admins}
+										/>
+										{treasuryAdminAddress && (
+											<div className="mt-1.5 flex items-center justify-between rounded border border-zinc-700 bg-zinc-800/50 px-3 py-1.5">
+												<span className="font-mono text-xs text-zinc-300">
+													{treasuryAdminAddress.slice(0, 16)}...{treasuryAdminAddress.slice(-8)}
+												</span>
+												<button
+													type="button"
+													onClick={() => setTreasuryAdminAddress("")}
+													className="text-xs text-zinc-500 hover:text-zinc-300"
+												>
+													clear
+												</button>
+											</div>
+										)}
+									</FormField>
+									<button
+										type="button"
+										onClick={handleAddTreasuryAdmin}
+										disabled={!treasuryAdminAddress.trim()}
+										className="flex items-center gap-1.5 rounded bg-purple-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+									>
+										<UserPlus size={12} />
+										Add Treasury Admin
+									</button>
+								</div>
+
+								{treasuryInfo && (
+									<div className="mt-3 border-t border-zinc-800 pt-3">
+										<p className="mb-1.5 text-xs text-zinc-500">
+											Treasury Admins ({treasuryInfo.admins.length + 1})
+										</p>
+										<div className="space-y-1">
+											<div className="flex items-center gap-2">
+												<span className="text-xs text-zinc-400">
+													{charNameMap.get(treasuryInfo.owner) ?? `${treasuryInfo.owner.slice(0, 12)}...${treasuryInfo.owner.slice(-6)}`}
+													{treasuryInfo.owner === suiAddress && <span className="ml-1 text-cyan-400">(you)</span>}
+													<span className="ml-1 text-zinc-600">(owner)</span>
+												</span>
+											</div>
+											{treasuryInfo.admins.map((addr) => (
+												<div key={addr} className="flex items-center gap-2">
+													<span className="text-xs text-zinc-400">
+														{charNameMap.get(addr) ?? `${addr.slice(0, 12)}...${addr.slice(-6)}`}
+														{addr === suiAddress && <span className="ml-1 text-cyan-400">(you)</span>}
+													</span>
+													<button
+														type="button"
+														onClick={() => handleRemoveTreasuryAdmin(addr)}
+														className="text-zinc-600 transition-colors hover:text-red-400"
+														title="Remove"
+													>
+														<UserMinus size={12} />
+													</button>
+												</div>
+											))}
+										</div>
+									</div>
+								)}
+							</AdminPanel>
+						)}
 					</>
 				)}
 			</div>
+
+			{/* Market Order Book */}
+			{hasMarket && (
+				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+					<h3 className="mb-3 text-sm font-medium text-zinc-300">Market Order Book</h3>
+					{loadingOrders ? (
+						<div className="flex items-center justify-center gap-2 py-8 text-xs text-zinc-500">
+							<Loader2 size={14} className="animate-spin" />
+							Loading orders...
+						</div>
+					) : (
+						<DataGrid
+							columns={orderColumns}
+							data={orderRows}
+							keyFn={(r) => r.id}
+							searchPlaceholder="Search orders..."
+							emptyMessage="No market orders yet."
+							actions={
+								<button
+									type="button"
+									onClick={loadOrders}
+									disabled={loadingOrders}
+									className="flex shrink-0 items-center gap-1 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+								>
+									<RefreshCw size={12} />
+									Refresh
+								</button>
+							}
+						/>
+					)}
+				</div>
+			)}
 
 			{/* Exchange Pairs Section */}
 			<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">

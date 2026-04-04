@@ -11,7 +11,7 @@ import {
 	useReactTable,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Search, X } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { ColumnFilter } from "./ColumnFilter";
 
 // ── Re-exports for consumers ────────────────────────────────────────────────
@@ -36,6 +36,8 @@ interface DataGridProps<T> {
 	onRowClick?: (rowId: string) => void;
 	/** When provided, renders a download button that exports filtered rows. */
 	onExport?: (rows: T[]) => void;
+	/** Initial sorting state (e.g. [{id: "timestamp", desc: true}]). */
+	initialSorting?: SortingState;
 }
 
 export function DataGrid<T>({
@@ -49,8 +51,9 @@ export function DataGrid<T>({
 	selectedRowId,
 	onRowClick,
 	onExport,
+	initialSorting,
 }: DataGridProps<T>) {
-	const [sorting, setSorting] = useState<SortingState>([]);
+	const [sorting, setSorting] = useState<SortingState>(initialSorting ?? []);
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 	const [globalFilter, setGlobalFilter] = useState("");
 
@@ -71,14 +74,8 @@ export function DataGrid<T>({
 
 	const hasFilters = columnFilters.length > 0;
 
-	// Compute total width from column definitions so the table overflows + scrolls
-	const totalWidth = useMemo(
-		() => table.getHeaderGroups()[0]?.headers.reduce((sum, h) => sum + h.getSize(), 0) ?? 0,
-		[table],
-	);
-
 	return (
-		<div className="flex flex-col gap-3">
+		<div className="flex h-full flex-col gap-3">
 			{/* Toolbar */}
 			<div className="flex items-center gap-3">
 				{enableSearch && (
@@ -126,19 +123,17 @@ export function DataGrid<T>({
 			</div>
 
 			{/* Table */}
-			<div className="overflow-x-auto rounded-lg border border-zinc-800">
-				<table className="text-sm" style={{ width: totalWidth, tableLayout: "fixed" }}>
+			<div className="min-h-0 flex-1 overflow-auto rounded-lg border border-zinc-800">
+				<table className="w-full text-sm">
 					<thead>
 						{table.getHeaderGroups().map((headerGroup) => (
 							<tr key={headerGroup.id} className="border-b border-zinc-800 bg-zinc-900/80">
-								{headerGroup.headers.map((header) => (
+								{headerGroup.headers.map((header) => {
+									const hasSize = header.column.columnDef.size != null;
+									return (
 									<th
 										key={header.id}
-										className="whitespace-nowrap px-3 py-2 text-left font-medium text-zinc-400"
-										style={{
-											minWidth: header.getSize(),
-											width: header.getSize(),
-										}}
+										className={`px-1.5 py-1.5 text-left font-medium text-zinc-400 ${hasSize ? "whitespace-nowrap" : "w-full"}`}
 									>
 										{header.isPlaceholder ? null : (
 											<div className="flex items-center gap-1">
@@ -160,7 +155,8 @@ export function DataGrid<T>({
 											</div>
 										)}
 									</th>
-								))}
+									);
+								})}
 							</tr>
 						))}
 					</thead>
@@ -185,11 +181,17 @@ export function DataGrid<T>({
 											onRowClick ? "cursor-pointer" : ""
 										} ${isSelected ? "bg-cyan-900/20 border-l-2 border-l-cyan-500" : ""}`}
 									>
-										{row.getVisibleCells().map((cell) => (
-											<td key={cell.id} className="px-3 py-2 text-zinc-300">
-												{flexRender(cell.column.columnDef.cell, cell.getContext())}
-											</td>
-										))}
+										{row.getVisibleCells().map((cell) => {
+											const hasSize = cell.column.columnDef.size != null;
+											return (
+												<td
+													key={cell.id}
+													className={`px-1.5 py-1.5 text-zinc-300 ${hasSize ? "whitespace-nowrap" : "max-w-0 overflow-hidden"}`}
+												>
+													{flexRender(cell.column.columnDef.cell, cell.getContext())}
+												</td>
+											);
+										})}
 									</tr>
 								);
 							})

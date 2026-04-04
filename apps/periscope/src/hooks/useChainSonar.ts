@@ -297,10 +297,7 @@ async function persistCursors(
 	setChainStatus: (s: "active" | "off" | "error") => void,
 ) {
 	await db.sonarState
-		.put({
-			channel: "chain",
-			enabled: true,
-			status: "active",
+		.update("chain", {
 			cursors: cursorsRef.current as Record<string, string>,
 			lastPollAt: new Date().toISOString(),
 		})
