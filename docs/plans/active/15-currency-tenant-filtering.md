@@ -1,6 +1,7 @@
 # Plan: Currency Tenant Filtering
-**Status:** Draft
+**Status:** Active
 **Created:** 2026-04-04
+**Last Reviewed:** 2026-04-04
 **Module:** periscope
 
 ## Overview
@@ -131,13 +132,14 @@ A new `useMarketTenantMap()` hook will:
 1. Update `apps/periscope/src/components/extensions/CurrencySelector.tsx`:
    - Import and call `useMarketTenantMap()`.
    - No need to load manifest markets separately -- the hook handles the market -> creator -> tenant join internally. CurrencySelector just needs to filter by `currency.marketId`.
-   - In the `options` memo (line 54), add `.filter((c) => isOnTenant(c.marketId, tenant))` before the `.map()` to keep only currencies on the active tenant. The hook's `isOnTenant` accepts `marketId` directly.
+   - In the `options` memo (line 54), chain an additional `.filter((c) => isOnTenant(c.marketId, tenant))` after the existing decommission filter (line 57) and before the `.map()`. The hook's `isOnTenant` accepts `marketId` directly (including `undefined` for currencies without a market).
+   - Add `isOnTenant` and `tenant` to the `options` useMemo dependency array (line 65).
 
 2. Update `apps/periscope/src/components/extensions/MarketSelector.tsx`:
    - Import and call `useMarketTenantMap()`.
    - For `manifestOptions` (built in `useMemo`, line 89): add `.filter((m) => isOnTenant(m.id, tenant))` to the manifest markets before mapping to options.
-   - For `currencyOptions` (built in `useMemo`, line 76): add `.filter((c) => isOnTenant(c.marketId!, tenant))` before mapping.
-   - For `standingsOptions`: these are built in a `useEffect` (line 113), not a `useMemo`, so filter them in the merged `options` memo (line 147). When iterating `standingsOptions`, check `isAddressOnTenant(opt.creator, tenant)` since these markets (type `market_standings::Market`) are NOT in `manifestMarkets` and the `isOnTenant` function (which queries by `marketId`) won't resolve them.
+   - For `currencyOptions` (built in `useMemo`, line 76): chain `.filter((c) => isOnTenant(c.marketId!, tenant))` after the existing `.filter((c) => c.marketId)` (line 78) and before `.map()`.
+   - For `standingsOptions`: these are built in a `useEffect` (line 114), not a `useMemo`, so filter them in the merged `options` memo (line 147). When iterating `standingsOptions`, check `isAddressOnTenant(opt.creator, tenant)` since these markets (type `market_standings::Market`) are NOT in `manifestMarkets` and the `isOnTenant` function (which queries by `marketId`) won't resolve them.
    - Add `isOnTenant`, `isAddressOnTenant`, and `tenant` to the relevant dependency arrays.
 
 ### Phase 3: Manifest View Enhancement
@@ -148,7 +150,7 @@ A new `useMarketTenantMap()` hook will:
    - Convert the static `marketColumns` const (line 368) to a factory function `makeMarketColumns(marketTenantMap: Map<string, Set<string>>)`, following the existing pattern used by `makeCharacterColumns(tribeMap)` and `makeLocationColumns(systemNames)`.
    - Add a "Tenant" column that reads from `marketTenantMap.get(row.original.id)` and displays the resolved tenant(s) (or "unknown" if the set is empty). Use `excelFilterFn` so users can filter by tenant in the DataGrid.
    - Update the comment on line 664 from "Markets (global -- no tenant filter)" to reflect the new tenant column.
-   - Filter the `markets` array by active tenant using `isOnTenant`, following the same `.filter()` pattern used for characters (line 629), tribes (line 634), and locations (line 648). Apply this as the default behavior.
+   - Filter the `markets` array by active tenant using `isOnTenant`, following the same `.filter()` pattern used for characters (line 629), tribes (line 634), and locations (line 648).
    - Memoize the market columns: `const marketCols = useMemo(() => makeMarketColumns(marketTenantMap), [marketTenantMap])`.
 
 ## File Summary
@@ -161,18 +163,10 @@ A new `useMarketTenantMap()` hook will:
 | `apps/periscope/src/components/extensions/MarketSelector.tsx` | Modify | Filter market options by active tenant |
 | `apps/periscope/src/views/Manifest.tsx` | Modify | Add tenant column to markets DataGrid |
 
-## Open Questions
+## Resolved Questions
 
-1. **Should currency-sync also filter by tenant when creating CurrencyRecord entries?**
-   - **Option A: Keep sync global, filter in views only** -- Pros: simpler, no sync logic changes, all data available for inspection. Cons: DB contains currencies from all tenants.
-   - **Option B: Filter during sync** -- Pros: DB only contains relevant currencies. Cons: requires passing tenant to sync, loses data when switching tenants, more complex.
-   - **Recommendation:** Option A. Sync is global, filtering is a view concern. This matches the existing pattern where `discoverMarkets` is documented as "global" and caches everything.
-
-2. **Should the Manifest markets tab filter by tenant or just show a column?**
-   - **Option A: Filter by tenant (like characters, tribes, locations)** -- Pros: consistent with other Manifest tabs. Cons: hides cross-tenant data in a debug tool.
-   - **Option B: Show all with a tenant column** -- Pros: full visibility, useful for debugging. Cons: inconsistent with other tabs.
-   - **Option C: Default to filtered, with "show all" toggle** -- Pros: best of both worlds. Cons: slightly more UI work.
-   - **Recommendation:** Option C. Default to tenant-filtered for consistency, with a small toggle to show all markets.
+1. **Should currency-sync also filter by tenant?** -- No. Sync stays global, filtering is a view concern.
+2. **Should the Manifest markets tab filter by tenant or just show a column?** -- Filter by tenant, consistent with other Manifest tabs (characters, tribes, locations).
 
 ## Deferred
 
