@@ -123,7 +123,18 @@ This ensures:
    }, [players, manifestChars]);
    ```
 
-2. Create a helper function `isOwnerOnTenant` (inside the hook or as a local function) that encapsulates the filtering logic:
+2. Define an `isOwnerOnTenant` helper inside the `data` memo (lines 130-217), before the row-building loop. Defining it inside the memo avoids an extra `useCallback` and ensures it captures the current `addressTenantMap` and `tenant` values:
+
+   ```ts
+   const isOwnerOnTenant = (owner: string | undefined): boolean => {
+       if (!owner) return true; // no owner -> show
+       const tenants = addressTenantMap.get(owner);
+       if (!tenants) return true; // unresolvable -> show
+       return tenants.has(tenant);
+   };
+   ```
+
+   Filtering logic:
    - If `owner` is undefined/null/empty -> true (show structures with no owner).
    - If `owner` is not in `addressTenantMap` -> true (unresolvable, show it).
    - If `addressTenantMap.get(owner)` contains `tenant` -> true.
@@ -140,7 +151,7 @@ This ensures:
      });
      ```
 
-4. Add `addressTenantMap` and `tenant` to the `data` memo dependency array (line 207-217).
+4. Add `addressTenantMap` and `tenant` to the `data` memo dependency array (lines 207-217). Note: `tenant` is not currently in this dependency array even though it's passed to the hook -- it's only used in `extensionByAssembly`. After this change, `tenant` must be added alongside `addressTenantMap`.
 
 5. Update the return value to include `ownerNames` from the restructured memo (line 219). Since `ownerNames` was previously a standalone memo and is now part of a combined memo, ensure the return shape stays the same: `return { data, ownerNames }`.
 
