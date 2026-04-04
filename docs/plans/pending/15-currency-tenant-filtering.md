@@ -68,12 +68,16 @@ A new `useMarketTenantMap()` hook will:
 1. Read all `ManifestMarket` records (reactive via `useLiveQuery`).
 2. Read all `ManifestCharacter` records (reactive via `useLiveQuery`).
 3. Build a `Map<string, Set<string>>` mapping `suiAddress -> Set<tenant>` from characters.
-4. Return a `Map<string, string | null>` mapping `marketId -> tenant` (null if unresolvable).
+4. Return `{ marketTenantMap, addressTenantMap, isOnTenant, isAddressOnTenant }` where:
+   - `marketTenantMap: Map<string, Set<string>>` -- maps `marketId` to the set of tenants the creator belongs to (empty set if unresolvable).
+   - `addressTenantMap: Map<string, Set<string>>` -- maps `suiAddress` to the set of tenants. Exposed so consumers with a `creator` address (but no `marketId` in the manifest) can resolve tenant directly.
+   - `isOnTenant(marketId: string | undefined, tenant: string): boolean` -- returns true if the market belongs to the given tenant OR if the market is unresolvable (no matching character). Also returns true if `marketId` is undefined (currencies without a market).
+   - `isAddressOnTenant(address: string | undefined, tenant: string): boolean` -- returns true if the address has a character on the given tenant, or if unresolvable. Used by MarketSelector for standings markets that aren't in the manifest cache.
 
 ### Filtered Components
 
-- **Currencies view**: Filter `unifiedRows` to only include rows whose market creator maps to the active tenant (or whose tenant is unresolvable, to avoid hiding unknown currencies).
-- **CurrencySelector**: Filter options to active tenant currencies only.
+- **Currencies view**: Add tenant filter to the existing `filteredRows` memo (which already handles decommission filtering). This avoids changing the `unifiedRows` memo and its dependency array.
+- **CurrencySelector**: Filter options by active tenant. CurrencySelector currently reads only `db.currencies` (not manifest markets), but currencies have `marketId` which the hook maps to tenants.
 - **MarketSelector**: Filter options to active tenant markets only.
 - **Manifest view**: Optionally add tenant column to the markets DataGrid, or filter markets by tenant. (The Manifest view is a debug/inspection tool, so showing all with a tenant indicator column is more appropriate than filtering.)
 
@@ -90,7 +94,7 @@ A new `useMarketTenantMap()` hook will:
 | In-memory join vs. DB migration | In-memory join | Avoids schema migration for a cross-tenant entity. The join is cheap (typically <100 markets and <1000 characters). |
 | Hook vs. utility function | Shared hook (`useMarketTenantMap`) | Leverages `useLiveQuery` reactivity so filtering updates automatically when manifest data changes. |
 | Unresolvable creators | Show in all tenants | Better to show extra currencies than hide ones the user expects to see. They become filterable once the creator character is synced. |
-| Manifest view markets | Add tenant column, don't filter | Manifest is a debug tool -- users want to see all data with tenant as metadata. |
+| Manifest view markets | Add tenant column + filter by active tenant | Consistent with other Manifest tabs (characters, tribes, locations all filter by tenant). Tenant column provides visibility into the resolved value. |
 | Currency sync tenant awareness | No change to sync | Sync should continue to cache all markets globally. Filtering is purely a view concern. |
 
 ## Implementation Phases
@@ -101,42 +105,58 @@ A new `useMarketTenantMap()` hook will:
    - Export `useMarketTenantMap()` hook.
    - Uses `useLiveQuery` to read `db.manifestMarkets.toArray()` and `db.manifestCharacters.toArray()`.
    - Builds `addressToTenants: Map<string, Set<string>>` from characters grouped by `suiAddress`.
-   - Returns `marketTenantMap: Map<string, string | null>` mapping each `market.id` to the resolved tenant (or null).
-   - For markets whose creator has characters on exactly one tenant, maps to that tenant.
-   - For markets whose creator has characters on multiple tenants, maps to ALL those tenants (return a `Set<string>` or include the market in all matching tenants).
-   - Export a helper: `isMarketOnTenant(marketTenantMap, marketId, tenant): boolean` -- returns true if market belongs to tenant or is unresolvable (null).
+   - Builds `marketTenantMap: Map<string, Set<string>>` mapping each `market.id` to the set of tenants its creator belongs to (empty set if creator has no matching characters).
+   - Returns `{ marketTenantMap, addressTenantMap, isOnTenant, isAddressOnTenant }`.
+   - `isOnTenant(marketId: string | undefined, tenant: string): boolean` (memoized via `useCallback` with `marketTenantMap` as dependency):
+     - If `marketId` is undefined/null -> true (show currencies without markets).
+     - If market not in map -> true (market not in manifest cache yet, show it).
+     - If market's tenant set is empty -> true (unresolvable creator, show it).
+     - If market's tenant set contains `tenant` -> true.
+     - Otherwise -> false (market belongs to a different tenant).
+   - `isAddressOnTenant(address: string | undefined, tenant: string): boolean` (memoized via `useCallback` with `addressTenantMap` as dependency):
+     - If `address` is undefined/null -> true (show if no address to resolve).
+     - If address not in map -> true (unresolvable, show it).
+     - If address's tenant set is empty -> true (unresolvable).
+     - If address's tenant set contains `tenant` -> true.
+     - Otherwise -> false.
 
 2. Update `apps/periscope/src/views/Currencies.tsx`:
-   - Import `useMarketTenantMap` and `isMarketOnTenant`.
-   - Call `useMarketTenantMap()` at the top of the `Currencies` component.
-   - In the `unifiedRows` memo, filter out rows whose market resolves to a different tenant. Specifically: after building each row, check `isMarketOnTenant(marketTenantMap, row.marketId, tenant)`. Exclude rows that fail this check.
-   - Add `marketTenantMap` and `tenant` to the `unifiedRows` memo dependency array.
+   - Import `useMarketTenantMap`.
+   - Call `const { isOnTenant } = useMarketTenantMap()` at the top of the `Currencies` component.
+   - Modify the existing `filteredRows` memo (lines 394-402) to add a tenant filter: `if (!isOnTenant(r.marketId, tenant)) return false`. This slots in alongside the existing decommission filter.
+   - Add `isOnTenant` and `tenant` to the `filteredRows` dependency array.
 
 ### Phase 2: CurrencySelector + MarketSelector
 
 1. Update `apps/periscope/src/components/extensions/CurrencySelector.tsx`:
    - Import and call `useMarketTenantMap()`.
-   - Load manifest markets (needed to map currency.marketId -> market.creator).
-   - In the `options` memo, filter out currencies whose market resolves to a different tenant.
+   - No need to load manifest markets separately -- the hook handles the market -> creator -> tenant join internally. CurrencySelector just needs to filter by `currency.marketId`.
+   - In the `options` memo (line 54), add `.filter((c) => isOnTenant(c.marketId, tenant))` before the `.map()` to keep only currencies on the active tenant. The hook's `isOnTenant` accepts `marketId` directly.
 
 2. Update `apps/periscope/src/components/extensions/MarketSelector.tsx`:
    - Import and call `useMarketTenantMap()`.
-   - In the merged `options` memo, filter out markets that resolve to a different tenant.
-   - The `manifestOptions` and `standingsOptions` arrays should also respect the tenant filter.
+   - For `manifestOptions` (line 89): filter using `isOnTenant(m.id, tenant)` since these are in the manifest cache.
+   - For `standingsOptions` (from `queryAllMarketsStandings`, line 121): these are NOT in `manifestMarkets` (different contract type -- `market_standings::Market`), so filter using `isAddressOnTenant(m.creator, tenant)` which resolves the creator address directly.
+   - For `currencyOptions` (line 76): filter using `isOnTenant(c.marketId!, tenant)`.
+   - Apply these filters in the individual `useMemo` blocks rather than the merged `options` memo, so deduplication works on already-filtered sets.
 
 ### Phase 3: Manifest View Enhancement
 
 1. Update `apps/periscope/src/views/Manifest.tsx`:
-   - Import `useMarketTenantMap()`.
-   - In the markets DataGrid, add a "Tenant" column that displays the resolved tenant for each market (or "unknown" if unresolvable).
-   - Optionally add a toggle to filter markets by active tenant (default: show all with tenant column visible).
+   - Import `useMarketTenantMap`.
+   - Call `const { marketTenantMap, isOnTenant } = useMarketTenantMap()` in the Manifest component.
+   - Convert the static `marketColumns` const (line 368) to a factory function `makeMarketColumns(marketTenantMap: Map<string, Set<string>>)`, following the existing pattern used by `makeCharacterColumns(tribeMap)` and `makeLocationColumns(systemNames)`.
+   - Add a "Tenant" column that reads from `marketTenantMap.get(row.original.id)` and displays the resolved tenant(s) (or "unknown" if the set is empty). Use `excelFilterFn` so users can filter by tenant in the DataGrid.
+   - Update the comment on line 664 from "Markets (global -- no tenant filter)" to reflect the new tenant column.
+   - Filter the `markets` array by active tenant using `isOnTenant`, following the same `.filter()` pattern used for characters (line 629), tribes (line 634), and locations (line 648). Apply this as the default behavior.
+   - Memoize the market columns: `const marketCols = useMemo(() => makeMarketColumns(marketTenantMap), [marketTenantMap])`.
 
 ## File Summary
 
 | File | Action | Description |
 |------|--------|-------------|
 | `apps/periscope/src/hooks/useMarketTenantMap.ts` | Create | Shared hook resolving market IDs to tenants via character join |
-| `apps/periscope/src/views/Currencies.tsx` | Modify | Filter `unifiedRows` by active tenant using the hook |
+| `apps/periscope/src/views/Currencies.tsx` | Modify | Filter `filteredRows` by active tenant using the hook |
 | `apps/periscope/src/components/extensions/CurrencySelector.tsx` | Modify | Filter currency options by active tenant |
 | `apps/periscope/src/components/extensions/MarketSelector.tsx` | Modify | Filter market options by active tenant |
 | `apps/periscope/src/views/Manifest.tsx` | Modify | Add tenant column to markets DataGrid |
