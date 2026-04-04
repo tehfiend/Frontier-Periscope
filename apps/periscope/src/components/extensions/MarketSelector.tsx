@@ -1,4 +1,5 @@
 import { db, notDeleted } from "@/db";
+import { useMarketTenantMap } from "@/hooks/useMarketTenantMap";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import {
@@ -38,6 +39,7 @@ export function MarketSelector({ value, onChange }: MarketSelectorProps) {
 
 	const client = useSuiClient();
 	const tenant = useActiveTenant() as TenantId;
+	const { isOnTenant, isAddressOnTenant } = useMarketTenantMap();
 	const addrs = getContractAddresses(tenant);
 
 	// Local currency records (same source the Currencies page uses)
@@ -72,10 +74,11 @@ export function MarketSelector({ value, onChange }: MarketSelectorProps) {
 		return { adminName, tribeName };
 	}
 
-	// Build options from local currencies that have a marketId
+	// Build options from local currencies that have a marketId (filtered to active tenant)
 	const currencyOptions = useMemo<MarketOption[]>(() => {
 		return currencies
 			.filter((c) => c.marketId)
+			.filter((c) => isOnTenant(c.marketId!, tenant))
 			.map((c) => ({
 				marketId: c.marketId!,
 				symbol: c.symbol,
@@ -83,21 +86,23 @@ export function MarketSelector({ value, onChange }: MarketSelectorProps) {
 				tribeName: "",
 				creator: "",
 			}));
-	}, [currencies]);
+	}, [currencies, isOnTenant, tenant]);
 
-	// Build options from cached manifest markets
+	// Build options from cached manifest markets (filtered to active tenant)
 	const manifestOptions = useMemo<MarketOption[]>(() => {
-		return manifestMarkets.map((m) => {
-			const { adminName, tribeName } = resolveNames(m.creator);
-			return {
-				marketId: m.id,
-				symbol: symbolFromCoinType(m.coinType),
-				adminName,
-				tribeName,
-				creator: m.creator,
-			};
-		});
-	}, [manifestMarkets, manifestChars, manifestTribes]);
+		return manifestMarkets
+			.filter((m) => isOnTenant(m.id, tenant))
+			.map((m) => {
+				const { adminName, tribeName } = resolveNames(m.creator);
+				return {
+					marketId: m.id,
+					symbol: symbolFromCoinType(m.coinType),
+					adminName,
+					tribeName,
+					creator: m.creator,
+				};
+			});
+	}, [manifestMarkets, manifestChars, manifestTribes, isOnTenant, tenant]);
 
 	// Discover decommissioned markets
 	useEffect(() => {
@@ -143,34 +148,38 @@ export function MarketSelector({ value, onChange }: MarketSelectorProps) {
 		};
 	}, [client, addrs.marketStandings?.packageId, manifestChars, manifestTribes]);
 
-	// Merge all sources, dedup by marketId, exclude decommissioned
+	// Merge all sources, dedup by marketId, exclude decommissioned, filter by tenant
 	const options = useMemo<MarketOption[]>(() => {
 		const seen = new Set<string>();
 		const merged: MarketOption[] = [];
 
-		// Manifest markets first (they have creator/admin info)
+		// Manifest markets first (they have creator/admin info, already tenant-filtered)
 		for (const opt of manifestOptions) {
 			if (!seen.has(opt.marketId) && !decommissioned.has(opt.marketId)) {
 				seen.add(opt.marketId);
 				merged.push(opt);
 			}
 		}
-		// Local currency records (user-created currencies)
+		// Local currency records (user-created currencies, already tenant-filtered)
 		for (const opt of currencyOptions) {
 			if (!seen.has(opt.marketId) && !decommissioned.has(opt.marketId)) {
 				seen.add(opt.marketId);
 				merged.push(opt);
 			}
 		}
-		// Standings markets from chain
+		// Standings markets from chain (not in manifestMarkets, filter by creator address)
 		for (const opt of standingsOptions) {
-			if (!seen.has(opt.marketId) && !decommissioned.has(opt.marketId)) {
+			if (
+				!seen.has(opt.marketId) &&
+				!decommissioned.has(opt.marketId) &&
+				isAddressOnTenant(opt.creator, tenant)
+			) {
 				seen.add(opt.marketId);
 				merged.push(opt);
 			}
 		}
 		return merged;
-	}, [manifestOptions, currencyOptions, standingsOptions, decommissioned]);
+	}, [manifestOptions, currencyOptions, standingsOptions, decommissioned, isAddressOnTenant, tenant]);
 
 	const filtered = useMemo(() => {
 		if (!search) return options;
