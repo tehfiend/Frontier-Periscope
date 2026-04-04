@@ -1,6 +1,6 @@
 # Plan: Currency Trading UI in Periscope
 
-**Status:** Review Pass 2
+**Status:** Review Pass 3
 **Created:** 2026-04-04
 **Module:** periscope
 
@@ -122,42 +122,48 @@ Add inline trading forms and row-level actions to the Market Order Book section 
 
 2. **Create `CurrencyTrading.tsx`** (`apps/periscope/src/components/CurrencyTrading.tsx`) with these components:
 
+   **Wallet/signing pattern**: Each panel component calls `useCurrentAccount()`, `useDAppKit()`, `useWallets()`, and `useSuiClient()` directly (same hooks used in `CurrencyDetail`). This avoids passing `signAndExecute` and `ensureWallet` as props and follows the same pattern as existing admin panels in Currencies.tsx. Each panel has its own `ensureWallet()` helper.
+
    a. `PostSellListingPanel` -- inline form:
-      - Props: `marketId`, `coinType`, `packageId`, `decimals`, `symbol`, `suiAddress`, `onSuccess`, `onError`
-      - SSU picker: query `db.deployables` filtered to SSU assembly types, show dropdown
-      - Item autocomplete: query `db.gameTypes`, fuzzy search by name
-      - Price per unit input (number, converted via `10 ** decimals`)
+      - Props: `marketId`, `coinType`, `packageId`, `decimals`, `symbol`, `onSuccess(msg: string)`, `onError(msg: string)`
+      - SSU picker: `useLiveQuery(() => db.deployables.filter(...)` filtered to SSU assembly types, show dropdown with `${ssuName} (${systemName})` labels
+      - Item autocomplete: `useLiveQuery(() => db.gameTypes.toArray())`, fuzzy search by name, show dropdown
+      - Price per unit input (number, converted to bigint via `BigInt(Math.floor(Number(input) * 10 ** decimals))`)
       - Quantity input (integer)
-      - Submit: call `buildPostSellListing({ packageId, marketId, coinType, ssuId, typeId, pricePerUnit, quantity, senderAddress })` -> `signAndExecute`
+      - Submit: `ensureWallet()` -> `buildPostSellListing({ packageId, marketId, coinType, ssuId, typeId, pricePerUnit, quantity, senderAddress })` -> `signAndExecute`
 
    b. `CreateBuyOrderPanel` -- inline form:
-      - Props: `marketId`, `coinType`, `packageId`, `decimals`, `symbol`, `suiAddress`, `onSuccess`, `onError`
+      - Props: `marketId`, `coinType`, `packageId`, `decimals`, `symbol`, `onSuccess(msg: string)`, `onError(msg: string)`
       - Item autocomplete (same pattern as sell)
       - Price per unit input
       - Quantity input
-      - Balance display: call `queryOwnedCoins(suiClient, suiAddress, coinType)` to show current balance
-      - Total escrow preview: `pricePerUnit * quantity`
-      - Insufficient balance warning
-      - Submit: call `buildPostBuyOrder({ packageId, marketId, coinType, coinObjectIds, totalAmount, typeId, pricePerUnit, quantity, senderAddress })` -> `signAndExecute`
+      - Balance display: use `queryOwnedCoins(suiClient, account.address, coinType)` in a `useEffect` to show current balance
+      - Total escrow preview: `pricePerUnit * BigInt(quantity)`
+      - Insufficient balance warning (red text when total > balance)
+      - Submit: `ensureWallet()` -> `buildPostBuyOrder({ packageId, marketId, coinType, coinObjectIds, totalAmount, typeId, pricePerUnit, quantity, senderAddress })` -> `signAndExecute`
 
    c. `BuyFromListingPanel` -- compact inline form for row-level buy action:
-      - Props: `listing` (MarketOrderRow subset), `marketId`, `coinType`, `packageId`, `decimals`, `symbol`, `suiAddress`, `onSuccess`, `onError`, `onCancel`
-      - Quantity input (max = listing.quantity)
-      - Total cost display: `listing.pricePerUnit * quantity`
-      - Submit: `buildBuyFromListing({ packageId, marketId, coinType, listingId, quantity, coinObjectIds, senderAddress })`
+      - Props: `listingId: number`, `maxQuantity: number`, `pricePerUnit: bigint`, `itemName: string`, `marketId`, `coinType`, `packageId`, `decimals`, `symbol`, `onSuccess(msg: string)`, `onError(msg: string)`, `onCancel()`
+      - Quantity input (max = maxQuantity)
+      - Total cost display: `pricePerUnit * BigInt(quantity)`, formatted with `formatTokenAmount`
+      - Fetch owned coins for payment on mount
+      - Submit: `ensureWallet()` -> `buildBuyFromListing({ packageId, marketId, coinType, listingId, quantity, coinObjectIds, senderAddress })` -> `signAndExecute`
+      - Note: `buildBuyFromListing` passes all coin objects and the contract calculates payment. No `totalAmount` param needed.
 
    d. `FillBuyOrderPanel` -- compact inline form for row-level fill action:
-      - Props: `order` (MarketOrderRow subset), `marketId`, `coinType`, `packageId`, `suiAddress`, `onSuccess`, `onError`, `onCancel`
-      - Quantity input (max = order.quantity)
-      - Submit: `buildFillBuyOrder({ packageId, marketId, coinType, orderId, typeId, quantity, senderAddress })`
+      - Props: `orderId: number`, `typeId: number`, `maxQuantity: number`, `itemName: string`, `marketId`, `coinType`, `packageId`, `onSuccess(msg: string)`, `onError(msg: string)`, `onCancel()`
+      - Quantity input (max = maxQuantity)
+      - Submit: `ensureWallet()` -> `buildFillBuyOrder({ packageId, marketId, coinType, orderId, typeId, quantity, senderAddress })` -> `signAndExecute`
 
 3. **Add Actions column to `orderColumns`** (currently defined at line 1045):
-   - New column `id: "actions"`, size: 80, no header, no filter
+   - New column `id: "actions"`, size: 80, no header text, `enableColumnFilter: false`, `enableSorting: false`
+   - The `orderColumns` `useMemo` dependency array (line 1154: `[coinDecimals, coinSymbol]`) must be expanded to include `suiAddress`, `walletAddress`, `isAuthorized`
    - Cell renderer checks `row.original.type` and `row.original.byAddress`:
-     - Own sell listing (`byAddress === suiAddress`): "Cancel" text button (red) -> calls handler with `buildCancelSellListing`
-     - Other's sell listing: "Buy" text button (emerald) -> sets `buyTarget` state to show `BuyFromListingPanel`
-     - Own buy order: "Cancel" text button (red) -> calls handler with `buildCancelBuyOrder`
+     - Own sell listing (`byAddress === suiAddress || byAddress === walletAddress`): "Cancel" text button (red) -> calls handler with `buildCancelSellListing({ packageId: marketPkg, marketId: row.marketId, coinType: row.coinType, listingId: row.numericId, senderAddress })`
+     - Other's sell listing + wallet connected: "Buy" text button (emerald) -> sets `buyTarget` state to show `BuyFromListingPanel`
+     - Own buy order (`byAddress === suiAddress || byAddress === walletAddress`): "Cancel" text button (red) -> calls handler with `buildCancelBuyOrder`
      - Other's buy order + `isAuthorized`: "Fill" text button (amber) -> sets `fillTarget` state to show `FillBuyOrderPanel`
+   - Note: `suiAddress` is the active character's address, `walletAddress` is the connected wallet's address. Both should be checked since Sui addresses from chain data may match either.
 
 4. **Add state variables** to CurrencyDetail:
    - `showPostSell: boolean`, `showCreateBuyOrder: boolean` -- toggle buttons for header-level forms
@@ -172,32 +178,40 @@ Add inline trading forms and row-level actions to the Market Order Book section 
 
 6. **Render `BuyFromListingPanel` / `FillBuyOrderPanel`** below the DataGrid when `buyTarget` / `fillTarget` is set. Include a dismiss button to clear the target.
 
-7. **Add new imports** to Currencies.tsx:
-   - `buildBuyFromListing`, `buildPostSellListing`, `buildPostBuyOrder`, `buildCancelSellListing`, `buildCancelBuyOrder`, `buildFillBuyOrder` from `@tehfrontier/chain-shared`
-   - The new panel components from `@/components/CurrencyTrading`
+7. **Cancel handlers** stay in Currencies.tsx (not extracted):
+   - `handleCancelSellListing(listingId: number)`: `ensureWallet()` -> `buildCancelSellListing` -> `signAndExecute` -> `loadOrders()`
+   - `handleCancelBuyOrder(orderId: number)`: `ensureWallet()` -> `buildCancelBuyOrder` -> `signAndExecute` -> `loadOrders()`
+   - These are simple one-shot calls, no form UI needed. Use `onStatusChange` for feedback.
+
+8. **Add new imports** to Currencies.tsx:
+   - `buildCancelSellListing`, `buildCancelBuyOrder` from `@tehfrontier/chain-shared`
+   - `PostSellListingPanel`, `CreateBuyOrderPanel`, `BuyFromListingPanel`, `FillBuyOrderPanel` from `@/components/CurrencyTrading`
 
 ### Phase 2: Exchange Pair Trading Actions
 
 Add trading actions to the Exchange Pairs section of CurrencyDetail.
 
 1. **Add `PlaceExchangeOrderPanel`** to `CurrencyTrading.tsx`:
-   - Props: `bookObjectId`, `coinTypeA`, `coinTypeB`, `feeBps`, `suiAddress`, `decimals` (for both coins), `onSuccess`, `onError`, `onCancel`
+   - Props: `bookObjectId`, `coinTypeA`, `coinTypeB`, `feeBps`, `decimalsA: number`, `decimalsB: number`, `symbolA: string`, `symbolB: string`, `onSuccess(msg: string)`, `onError(msg: string)`, `onCancel()`
+   - Uses `useCurrentAccount()`, `useDAppKit()`, `useSuiClient()` for wallet access
    - Side toggle (Bid/Ask) -- Bid deposits coinTypeB, Ask deposits coinTypeA
-   - Price input (denominated in coinTypeB)
-   - Amount input (denominated in coinTypeA)
-   - Fetch owned coins for the payment side via `queryOwnedCoins`
+   - Price input (denominated in coinTypeB, converted via `BigInt(Math.floor(Number(input) * 10 ** decimalsB))`)
+   - Amount input (denominated in coinTypeA, converted similarly)
+   - Fetch owned coins for the payment side via `queryOwnedCoins(suiClient, account.address, payCoinType)` where `payCoinType = side === "bid" ? coinTypeB : coinTypeA`
    - Display wallet balance for the deposit coin
-   - Total deposit preview (bid: price * amount; ask: amount)
+   - Total deposit preview (bid: `price * amount / 10^decimalsA`; ask: `amount`) -- same formula as SSU dApp PlaceOrderDialog line 82
    - Insufficient balance warning
-   - Submit: `buildPlaceBid` or `buildPlaceAsk` -> `signAndExecute`
-   - Reference: closely mirrors `apps/ssu-dapp/src/components/PlaceOrderDialog.tsx` but as an inline panel
+   - Submit: `ensureWallet()` -> `buildPlaceBid` or `buildPlaceAsk` -> `signAndExecute`
+   - Reference: closely mirrors `apps/ssu-dapp/src/components/PlaceOrderDialog.tsx` (lines 27-310) but as an inline panel
+   - Exchange package ID resolved via `getContractAddresses(tenant).exchange?.packageId` -- requires `tenant` prop or direct hook access
 
 2. **Add `CreateExchangePairPanel`** to `CurrencyTrading.tsx`:
-   - Props: `currentCoinType`, `currentSymbol`, `suiAddress`, `tenant`, `onSuccess`, `onError`, `onCancel`
+   - Props: `currentCoinType`, `currentSymbol`, `tenant: TenantId`, `onSuccess(msg: string)`, `onError(msg: string)`, `onCancel()`
    - CoinTypeA pre-filled with current currency's coinType (read-only display)
-   - CoinTypeB text input (user enters full coin type like `0xpkg::module::SYMBOL`)
+   - CoinTypeB text input (user enters full coin type like `0xpkg::module::SYMBOL`), or picks from `db.currencies` via autocomplete
    - Fee BPS input (number, default 0)
-   - Submit: `buildCreatePair({ packageId: exchangePkg, coinTypeA, coinTypeB, feeBps, senderAddress })` -> `signAndExecute`
+   - Exchange package ID resolved via `getContractAddresses(tenant).exchange?.packageId`
+   - Submit: `ensureWallet()` -> `buildCreatePair({ packageId: exchangePkg, coinTypeA, coinTypeB, feeBps, senderAddress })` -> `signAndExecute`
 
 3. **Add "Create Pair" toggle button** to Exchange Pairs section header (line 2500 of Currencies.tsx):
    - New state: `showCreatePair: boolean`
@@ -219,8 +233,12 @@ Add trading actions to the Exchange Pairs section of CurrencyDetail.
    - Cancel handler: determine if bid or ask from `row.original.side`, then call `buildCancelBid` or `buildCancelAsk` with the exchange package ID, pair's coinTypeA/coinTypeB, bookObjectId, and orderId
    - Need to pass `expandedPair` ID (the bookObjectId) and the pair's coin types into the column cell -- this may require wrapping the columns in a closure or using column meta
 
-7. **Add new imports** to Currencies.tsx:
-   - `buildPlaceBid`, `buildPlaceAsk`, `buildCancelBid`, `buildCancelAsk`, `buildCreatePair` from `@tehfrontier/chain-shared`
+7. **Cancel handler for exchange orders** stays in Currencies.tsx:
+   - `handleCancelExchangeOrder(pairId: string, orderId: number, isBid: boolean, coinTypeA: string, coinTypeB: string)`: `ensureWallet()` -> `buildCancelBid` or `buildCancelAsk` -> `signAndExecute` -> `loadExchangeOrders(pairId)`
+   - Uses `getContractAddresses(tenant).exchange?.packageId` for the exchange package ID
+
+8. **Add new imports** to Currencies.tsx:
+   - `buildCancelBid`, `buildCancelAsk` from `@tehfrontier/chain-shared`
    - `PlaceExchangeOrderPanel`, `CreateExchangePairPanel` from `@/components/CurrencyTrading`
 
 ### Phase 3: Polish and UX
