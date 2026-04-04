@@ -18,6 +18,7 @@ import {
 import { useLiveQuery } from "dexie-react-hooks";
 import { AlertCircle, CheckCircle2, Loader2, Settings2, Vault } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ErrorMessage } from "../ErrorMessage";
 import { CurrencySelector } from "./CurrencySelector";
 import { MarketSelector } from "./MarketSelector";
 import { RegistrySelector } from "./RegistrySelector";
@@ -788,7 +789,11 @@ function StandingsExtensionPanelInner({
 							{status === "error" && "Configuration failed"}
 						</span>
 					</div>
-					{error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+					{error && (
+						<p className="mt-1 text-xs text-red-400">
+							<ErrorMessage text={error} />
+						</p>
+					)}
 				</div>
 			)}
 

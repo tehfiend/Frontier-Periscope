@@ -8,6 +8,7 @@ import { AlertCircle, Loader2, Send, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { ContactPicker } from "./ContactPicker";
 import { CopyAddress } from "./CopyAddress";
+import { ErrorMessage } from "./ErrorMessage";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -322,7 +323,7 @@ export function TransferDialog({
 						{error && (
 							<div className="flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
 								<AlertCircle size={14} className="shrink-0" />
-								{error}
+								<ErrorMessage text={error} />
 							</div>
 						)}
 

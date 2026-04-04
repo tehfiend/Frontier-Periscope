@@ -10,6 +10,7 @@ import { AppWindow, ExternalLink, Fuel, Loader2, MapPin, Settings2 } from "lucid
 import { useState } from "react";
 import { CopyAddress } from "./CopyAddress";
 import { EditableCell } from "./EditableCell";
+import { ErrorMessage } from "./ErrorMessage";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -260,7 +261,7 @@ export function StructureDetailCard({
 										Reset dApp URL
 									</label>
 									{resetError && (
-										<span className="text-[10px] text-red-400">{resetError}</span>
+										<span className="text-[10px] text-red-400"><ErrorMessage text={resetError} /></span>
 									)}
 								</span>
 							) : (
@@ -277,7 +278,7 @@ export function StructureDetailCard({
 										Remove Periscope Extension
 									</button>
 									{resetError && (
-										<span className="text-[10px] text-red-400">{resetError}</span>
+										<span className="text-[10px] text-red-400"><ErrorMessage text={resetError} /></span>
 									)}
 								</span>
 							))}

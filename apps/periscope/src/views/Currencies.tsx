@@ -22,6 +22,7 @@ import { syncCurrenciesFromManifest } from "@/chain/currency-sync";
 import { discoverExchangePairs, fetchExchangeOrders } from "@/chain/exchange-queries";
 import { ContactPicker } from "@/components/ContactPicker";
 import { CopyAddress } from "@/components/CopyAddress";
+import { ErrorMessage } from "@/components/ErrorMessage";
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { ConnectWalletButton } from "@/components/WalletConnect";
 import { db, notDeleted } from "@/db";
@@ -174,7 +175,11 @@ function StatusBanner({
 					{messages[status] ?? "Processing..."}
 				</span>
 			</div>
-			{error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+			{error && (
+				<p className="mt-2 text-xs text-red-400">
+					<ErrorMessage text={error} />
+				</p>
+			)}
 			{isError && (
 				<button
 					type="button"

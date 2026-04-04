@@ -3,6 +3,7 @@ import type { OwnedAssembly } from "@/chain/queries";
 import { type DeployStatus, useExtensionDeploy } from "@/hooks/useExtensionDeploy";
 import { AlertCircle, CheckCircle2, ExternalLink, Loader2, X } from "lucide-react";
 import { useState } from "react";
+import { ErrorMessage } from "../ErrorMessage";
 import { StandingsExtensionPanel } from "./StandingsExtensionPanel";
 
 interface DeployExtensionPanelProps {
@@ -180,7 +181,11 @@ export function DeployExtensionPanel({
 								{statusMessages[status]}
 							</span>
 						</div>
-						{error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+						{error && (
+							<p className="mt-2 text-xs text-red-400">
+								<ErrorMessage text={error} />
+							</p>
+						)}
 						{txDigest && (
 							<a
 								href={`https://suiscan.xyz/testnet/tx/${txDigest}`}

@@ -14,6 +14,7 @@ import { getContractAddresses } from "@tehfrontier/chain-shared";
 import { useLiveQuery } from "dexie-react-hooks";
 import { AlertCircle, Loader2, MapPin } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ErrorMessage } from "./ErrorMessage";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -322,7 +323,7 @@ export function AddToMapDialog({ structureRow, onClose, onAdded }: AddToMapDialo
 				{error && (
 					<div className="mb-4 flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
 						<AlertCircle size={14} />
-						{error}
+						<ErrorMessage text={error} />
 					</div>
 				)}
 

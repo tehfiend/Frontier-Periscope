@@ -13,6 +13,7 @@ import {
 } from "@tehfrontier/chain-shared";
 import { AlertCircle, AlertTriangle, CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { ErrorMessage } from "../ErrorMessage";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -420,7 +421,11 @@ export function TurretPublishFlow({
 						<AlertCircle size={14} className="text-red-400" />
 						<span className="text-xs text-red-300">Configuration failed</span>
 					</div>
-					{error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+					{error && (
+						<p className="mt-1 text-xs text-red-400">
+							<ErrorMessage text={error} />
+						</p>
+					)}
 					<button
 						type="button"
 						onClick={() => {
