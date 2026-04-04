@@ -48,16 +48,22 @@ export function useStructureRows({
 	const subscribedRegistries = useLiveQuery(() => db.subscribedRegistries.toArray(), []);
 	const registryStandings = useLiveQuery(() => db.registryStandings.toArray(), []);
 
-	// ── Owner Name Lookup ──────────────────────────────────────────────────
-	const ownerNames = useMemo(() => {
-		const map = new Map<string, string>();
+	// ── Owner Name + Tenant Lookup ─────────────────────────────────────────
+	const { ownerNames, addressTenantMap } = useMemo(() => {
+		const nameMap = new Map<string, string>();
+		const tenantMap = new Map<string, Set<string>>();
 		for (const mc of manifestChars) {
-			if (mc.name && mc.suiAddress) map.set(mc.suiAddress, mc.name);
+			if (mc.name && mc.suiAddress) nameMap.set(mc.suiAddress, mc.name);
+			if (mc.suiAddress && mc.tenant) {
+				const existing = tenantMap.get(mc.suiAddress);
+				if (existing) existing.add(mc.tenant);
+				else tenantMap.set(mc.suiAddress, new Set([mc.tenant]));
+			}
 		}
 		for (const p of players ?? []) {
-			map.set(p.address, p.name);
+			nameMap.set(p.address, p.name);
 		}
-		return map;
+		return { ownerNames: nameMap, addressTenantMap: tenantMap };
 	}, [players, manifestChars]);
 
 	// ── Extension Lookup ───────────────────────────────────────────────────
@@ -128,6 +134,15 @@ export function useStructureRows({
 
 	// ── Merge + Filter Rows ────────────────────────────────────────────────
 	const data: StructureRow[] = useMemo(() => {
+		// Tenant filter: hide structures whose owner is known to belong
+		// exclusively to a different tenant. Unresolvable/missing owners pass through.
+		const isOwnerOnTenant = (owner: string | undefined): boolean => {
+			if (!owner) return true; // no owner -> show
+			const tenants = addressTenantMap.get(owner);
+			if (!tenants) return true; // unresolvable -> show
+			return tenants.has(tenant);
+		};
+
 		const seenObjectIds = new Set<string>();
 		const rows: StructureRow[] = [];
 
@@ -190,12 +205,13 @@ export function useStructureRows({
 			});
 		}
 
-		// When showAll, return everything (including removed)
-		if (showAll) return rows;
+		// When showAll, return everything (including removed) but still tenant-filter
+		if (showAll) return rows.filter((row) => isOwnerOnTenant(row.owner));
 
-		// Filter: owned OR sonar-targeted OR registry-matched; exclude removed
+		// Filter: owned OR sonar-targeted OR registry-matched; exclude removed + wrong tenant
 		return rows.filter((row) => {
 			if (row.status === "removed") return false;
+			if (!isOwnerOnTenant(row.owner)) return false;
 			// Owned
 			if (addressSet.has(row.owner)) return true;
 			// Sonar-targeted
@@ -214,6 +230,8 @@ export function useStructureRows({
 		showAll,
 		sonarAssemblyIds,
 		registryMatchedAddresses,
+		addressTenantMap,
+		tenant,
 	]);
 
 	return { data, ownerNames };
