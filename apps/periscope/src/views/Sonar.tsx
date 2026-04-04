@@ -732,13 +732,13 @@ function PingsTab() {
 				.where("[source+eventType]")
 				.between(["local", Dexie.minKey], ["local", Dexie.maxKey])
 				.reverse()
-				.limit(2500)
+				.limit(250)
 				.toArray(),
 			db.sonarEvents
 				.where("[source+eventType]")
 				.between(["chain", Dexie.minKey], ["chain", Dexie.maxKey])
 				.reverse()
-				.limit(2500)
+				.limit(250)
 				.toArray(),
 		]);
 		// Merge and sort by id descending (most recent first)
