@@ -19,6 +19,7 @@ import type {
 	ManifestRegistry,
 	ManifestTribe,
 } from "@/db/types";
+import { useMarketTenantMap } from "@/hooks/useMarketTenantMap";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useTaskWorker } from "@/hooks/useTaskWorker";
@@ -365,85 +366,107 @@ function makeLocationColumns(
 
 // ── Market Columns ──────────────────────────────────────────────────────────
 
-const marketColumns: ColumnDef<ManifestMarket, unknown>[] = [
-	{
-		id: "coinType",
-		accessorFn: (m) => {
-			const parts = m.coinType.split("::");
-			return parts.length >= 3 ? parts[2] : m.coinType;
+function makeMarketColumns(
+	marketTenantMap: Map<string, Set<string>>,
+): ColumnDef<ManifestMarket, unknown>[] {
+	return [
+		{
+			id: "coinType",
+			accessorFn: (m) => {
+				const parts = m.coinType.split("::");
+				return parts.length >= 3 ? parts[2] : m.coinType;
+			},
+			header: "Token",
+			filterFn: excelFilterFn,
+			cell: ({ row }) => {
+				const parts = row.original.coinType.split("::");
+				const short = parts.length >= 3 ? parts[2] : row.original.coinType;
+				return <span className="font-medium text-zinc-100">{short}</span>;
+			},
 		},
-		header: "Token",
-		filterFn: excelFilterFn,
-		cell: ({ row }) => {
-			const parts = row.original.coinType.split("::");
-			const short = parts.length >= 3 ? parts[2] : row.original.coinType;
-			return <span className="font-medium text-zinc-100">{short}</span>;
+		{
+			id: "tenant",
+			accessorFn: (m) => {
+				const tenants = marketTenantMap.get(m.id);
+				if (!tenants || tenants.size === 0) return "unknown";
+				return [...tenants].join(", ");
+			},
+			header: "Tenant",
+			size: 120,
+			filterFn: excelFilterFn,
+			cell: ({ row }) => {
+				const tenants = marketTenantMap.get(row.original.id);
+				if (!tenants || tenants.size === 0) {
+					return <span className="text-xs text-zinc-600">unknown</span>;
+				}
+				return <span className="text-xs text-zinc-400">{[...tenants].join(", ")}</span>;
+			},
 		},
-	},
-	{
-		id: "creator",
-		accessorKey: "creator",
-		header: "Creator",
-		size: 150,
-		filterFn: excelFilterFn,
-		cell: ({ row }) => (
-			<CopyAddress
-				address={row.original.creator}
-				explorerUrl={`https://suiscan.xyz/testnet/account/${row.original.creator}`}
-				className="text-xs text-zinc-500"
-			/>
-		),
-	},
-	{
-		id: "feeBps",
-		accessorKey: "feeBps",
-		header: "Fee (bps)",
-		size: 90,
-		enableColumnFilter: false,
-		cell: ({ row }) => (
-			<span className="font-mono text-xs text-zinc-400">{row.original.feeBps}</span>
-		),
-	},
-	{
-		id: "totalSupply",
-		accessorFn: (m) => m.totalSupply ?? 0,
-		header: "Supply",
-		size: 110,
-		enableColumnFilter: false,
-		cell: ({ row }) => (
-			<span className="font-mono text-xs text-zinc-400">
-				{row.original.totalSupply != null ? row.original.totalSupply.toLocaleString() : "--"}
-			</span>
-		),
-	},
-	{
-		id: "id",
-		accessorKey: "id",
-		header: "Market ID",
-		size: 150,
-		enableColumnFilter: false,
-		cell: ({ row }) => (
-			<CopyAddress
-				address={row.original.id}
-				explorerUrl={`https://suiscan.xyz/testnet/object/${row.original.id}`}
-				className="text-xs text-zinc-600"
-			/>
-		),
-	},
-	{
-		id: "cachedAt",
-		accessorKey: "cachedAt",
-		header: "Cached",
-		size: 100,
-		enableColumnFilter: false,
-		cell: ({ row }) => (
-			<div className="flex items-center gap-1 text-xs text-zinc-600">
-				<Clock size={10} />
-				{formatAge(row.original.cachedAt)}
-			</div>
-		),
-	},
-];
+		{
+			id: "creator",
+			accessorKey: "creator",
+			header: "Creator",
+			size: 150,
+			filterFn: excelFilterFn,
+			cell: ({ row }) => (
+				<CopyAddress
+					address={row.original.creator}
+					explorerUrl={`https://suiscan.xyz/testnet/account/${row.original.creator}`}
+					className="text-xs text-zinc-500"
+				/>
+			),
+		},
+		{
+			id: "feeBps",
+			accessorKey: "feeBps",
+			header: "Fee (bps)",
+			size: 90,
+			enableColumnFilter: false,
+			cell: ({ row }) => (
+				<span className="font-mono text-xs text-zinc-400">{row.original.feeBps}</span>
+			),
+		},
+		{
+			id: "totalSupply",
+			accessorFn: (m) => m.totalSupply ?? 0,
+			header: "Supply",
+			size: 110,
+			enableColumnFilter: false,
+			cell: ({ row }) => (
+				<span className="font-mono text-xs text-zinc-400">
+					{row.original.totalSupply != null ? row.original.totalSupply.toLocaleString() : "--"}
+				</span>
+			),
+		},
+		{
+			id: "id",
+			accessorKey: "id",
+			header: "Market ID",
+			size: 150,
+			enableColumnFilter: false,
+			cell: ({ row }) => (
+				<CopyAddress
+					address={row.original.id}
+					explorerUrl={`https://suiscan.xyz/testnet/object/${row.original.id}`}
+					className="text-xs text-zinc-600"
+				/>
+			),
+		},
+		{
+			id: "cachedAt",
+			accessorKey: "cachedAt",
+			header: "Cached",
+			size: 100,
+			enableColumnFilter: false,
+			cell: ({ row }) => (
+				<div className="flex items-center gap-1 text-xs text-zinc-600">
+					<Clock size={10} />
+					{formatAge(row.original.cachedAt)}
+				</div>
+			),
+		},
+	];
+}
 
 // ── Registry Columns ────────────────────────────────────────────────────────
 
@@ -617,6 +640,7 @@ type Tab = "characters" | "tribes" | "locations" | "markets" | "registries" | "p
 export function Manifest() {
 	const client = useSuiClient();
 	const tenant = useActiveTenant();
+	const { marketTenantMap, isOnTenant } = useMarketTenantMap();
 	const worldPkg = TENANTS[tenant].worldPackageId;
 
 	const [tab, setTab] = useState<Tab>("characters");
@@ -661,8 +685,13 @@ export function Manifest() {
 
 	const locationColumns = useMemo(() => makeLocationColumns(systemNames), [systemNames]);
 
-	// Markets (global -- no tenant filter)
-	const markets = useLiveQuery(() => db.manifestMarkets.toArray()) ?? [];
+	// Markets (filtered by tenant via creator -> character join)
+	const allMarkets = useLiveQuery(() => db.manifestMarkets.toArray()) ?? [];
+	const markets = useMemo(
+		() => allMarkets.filter((m) => isOnTenant(m.id, tenant)),
+		[allMarkets, isOnTenant, tenant],
+	);
+	const marketColumns = useMemo(() => makeMarketColumns(marketTenantMap), [marketTenantMap]);
 
 	// Registries (global -- no tenant filter)
 	const registries = useLiveQuery(() => db.manifestRegistries.toArray()) ?? [];
