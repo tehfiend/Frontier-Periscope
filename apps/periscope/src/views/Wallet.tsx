@@ -2,6 +2,7 @@ import { CopyAddress } from "@/components/CopyAddress";
 import { TransferDialog } from "@/components/TransferDialog";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { ErrorMessage } from "@/components/ErrorMessage";
 import { walletErrorMessage } from "@/lib/format";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import {
@@ -376,7 +377,9 @@ export function Wallet() {
 			{/* Error banner */}
 			{error && (
 				<div className="mb-6 rounded-lg border border-red-900/50 bg-red-950/20 p-4">
-					<p className="text-sm text-red-400">{error}</p>
+					<p className="text-sm text-red-400">
+						<ErrorMessage text={error} />
+					</p>
 				</div>
 			)}
 
@@ -554,7 +557,9 @@ export function Wallet() {
 								<span className="ml-2 text-xs text-zinc-500">Loading transactions...</span>
 							</div>
 						) : txError ? (
-							<div className="px-4 py-6 text-center text-xs text-red-400">{txError}</div>
+							<div className="px-4 py-6 text-center text-xs text-red-400">
+								<ErrorMessage text={txError} />
+							</div>
 						) : filtered.length === 0 ? (
 							<div className="px-4 py-8 text-center text-xs text-zinc-600">
 								{flatTxs.length === 0

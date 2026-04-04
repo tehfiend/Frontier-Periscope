@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { discoverRegistries } from "@/chain/manifest";
 import { ContactPicker } from "@/components/ContactPicker";
 import { CopyAddress } from "@/components/CopyAddress";
+import { ErrorMessage } from "@/components/ErrorMessage";
 import { StandingBadge } from "@/components/StandingBadge";
 import { db } from "@/db";
 import type { Contact, RegistryStanding } from "@/db/types";
@@ -1680,7 +1681,7 @@ function CreateRegistryDialog({
 			{error && (
 				<div className="mb-4 flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
 					<AlertCircle size={14} />
-					{error}
+					<ErrorMessage text={error} />
 				</div>
 			)}
 
@@ -1929,7 +1930,7 @@ function SetRegistryStandingDialog({
 			{error && (
 				<div className="mb-4 flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
 					<AlertCircle size={14} />
-					{error}
+					<ErrorMessage text={error} />
 				</div>
 			)}
 
@@ -2036,7 +2037,7 @@ function AddAdminDialog({
 			{error && (
 				<div className="mb-4 flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
 					<AlertCircle size={14} />
-					{error}
+					<ErrorMessage text={error} />
 				</div>
 			)}
 

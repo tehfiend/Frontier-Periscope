@@ -10,6 +10,7 @@ import { parseLogFilename, parseHeader, decodeChatLog } from "@/lib/logParser";
 import { lookupCharacterByItemId } from "@/chain/client";
 import { walletErrorMessage } from "@/lib/format";
 import { getStoredHandle, requestDirectoryAccess, verifyPermission } from "@/lib/logFileAccess";
+import { ErrorMessage } from "./ErrorMessage";
 import { useAppStore } from "@/stores/appStore";
 import {
 	X,
@@ -301,7 +302,7 @@ function WalletMethod({ onClose, tenant }: { onClose: () => void; tenant: Tenant
 
 			{error && (
 				<div className="rounded-lg border border-red-900/50 bg-red-950/20 p-3 text-sm text-red-400">
-					{error}
+					<ErrorMessage text={error} />
 				</div>
 			)}
 
@@ -765,7 +766,7 @@ function SearchMethod({ onClose, tenant }: { onClose: () => void; tenant: Tenant
 
 			{error && (
 				<div className="rounded-lg border border-zinc-800 bg-zinc-800/30 p-3 text-sm text-zinc-400">
-					{error}
+					<ErrorMessage text={error} />
 				</div>
 			)}
 
