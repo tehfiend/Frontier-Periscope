@@ -1,6 +1,6 @@
 # Plan: Currency Trading UI in Periscope
 
-**Status:** Draft
+**Status:** Review Pass 2
 **Created:** 2026-04-04
 **Module:** periscope
 
@@ -105,7 +105,9 @@ For exchange trading specifically, where the PlaceOrderDialog is self-contained 
 | Row-level actions | Add a small actions column to both DataGrids | Follows the SSU dApp's pattern of per-row Cancel buttons |
 | Cancel own orders | Show cancel button only for own address rows | Standard pattern matching SSU dApp |
 | Wallet connect | Auto-connect via Eve Vault on action click (existing `ensureWallet()` pattern) | Matches existing Currencies behavior per CLAUDE.md: "Auto-connect wallet inline on action click" |
-| File organization | All changes in Currencies.tsx | The file is already large (~2700 lines) but contains all the detail panel logic; adding trading dialogs keeps related code together. If the file gets unwieldy, a future refactor can extract sub-components. |
+| File organization | Extract trading components into a separate file | Currencies.tsx is ~2700 lines; extracting keeps file sizes manageable |
+| MarketOrderRow extension | Add `listingId`/`orderId` numeric field to MarketOrderRow | The existing `id` is a string like `sell-123`; row-level actions need the raw numeric ID for TX builders |
+| Coin format utilities | Reuse existing `formatTokenAmount`/`formatPrice` from Currencies.tsx | The view already has these; no need to import `formatBaseUnits` from chain-shared for consistency |
 
 ## Implementation Phases
 
@@ -113,55 +115,113 @@ For exchange trading specifically, where the PlaceOrderDialog is self-contained 
 
 Add inline trading forms and row-level actions to the Market Order Book section of CurrencyDetail.
 
-1. Add "Post Sell Listing" toggle button to order book header actions (beside Refresh), with inline form panel containing:
-   - SSU ID field (text input, required by the `buildPostSellListing` TX builder)
-   - Item type ID field (number input, or autocomplete from db.gameTypes)
-   - Price per unit field (number input)
-   - Quantity field (number input)
-   - Submit button calling `buildPostSellListing` -> `signAndExecute`
+1. **Extend `MarketOrderRow` type** (line 96 of Currencies.tsx):
+   - Add `numericId: number` field (the listingId for sell rows, orderId for buy rows)
+   - Add `ssuId?: string` field (needed for sell listings context -- from `MarketSellListing.ssuId`)
+   - Update the row builder at line 1012 to populate these fields from `sellListings` and `buyOrders`
 
-2. Add "Create Buy Order" toggle button to order book header actions, with inline form panel containing:
-   - Item type ID field (number input, or autocomplete from db.gameTypes)
-   - Price per unit field (number input)
-   - Quantity field (number input)
-   - Wallet balance display for the currency
-   - Total escrow preview
-   - Submit button calling `buildPostBuyOrder` -> `signAndExecute`
+2. **Create `CurrencyTrading.tsx`** (`apps/periscope/src/components/CurrencyTrading.tsx`) with these components:
 
-3. Add an "Actions" column to the `orderColumns` definition in CurrencyDetail:
-   - For sell listings where `byAddress === suiAddress`: show "Cancel" button -> `buildCancelSellListing`
-   - For sell listings where `byAddress !== suiAddress` and wallet connected: show "Buy" button -> open inline buy form (quantity input, total cost preview, submit via `buildBuyFromListing`)
-   - For buy orders where `byAddress === suiAddress`: show "Cancel" button -> `buildCancelBuyOrder`
-   - For buy orders where `byAddress !== suiAddress` and `isAuthorized`: show "Fill" button -> open inline fill form (quantity input, submit via `buildFillBuyOrder`)
+   a. `PostSellListingPanel` -- inline form:
+      - Props: `marketId`, `coinType`, `packageId`, `decimals`, `symbol`, `suiAddress`, `onSuccess`, `onError`
+      - SSU picker: query `db.deployables` filtered to SSU assembly types, show dropdown
+      - Item autocomplete: query `db.gameTypes`, fuzzy search by name
+      - Price per unit input (number, converted via `10 ** decimals`)
+      - Quantity input (integer)
+      - Submit: call `buildPostSellListing({ packageId, marketId, coinType, ssuId, typeId, pricePerUnit, quantity, senderAddress })` -> `signAndExecute`
 
-4. Add state variables for the new trading forms:
-   - `showPostSell` / `showCreateBuyOrder` toggles
-   - Form field state for each
-   - `buyTarget` / `fillTarget` state for row-level actions (track which listing/order is being acted on)
+   b. `CreateBuyOrderPanel` -- inline form:
+      - Props: `marketId`, `coinType`, `packageId`, `decimals`, `symbol`, `suiAddress`, `onSuccess`, `onError`
+      - Item autocomplete (same pattern as sell)
+      - Price per unit input
+      - Quantity input
+      - Balance display: call `queryOwnedCoins(suiClient, suiAddress, coinType)` to show current balance
+      - Total escrow preview: `pricePerUnit * quantity`
+      - Insufficient balance warning
+      - Submit: call `buildPostBuyOrder({ packageId, marketId, coinType, coinObjectIds, totalAmount, typeId, pricePerUnit, quantity, senderAddress })` -> `signAndExecute`
 
-5. Fetch owned coins when needed for buy/fill actions using existing `queryOwnedCoins`.
+   c. `BuyFromListingPanel` -- compact inline form for row-level buy action:
+      - Props: `listing` (MarketOrderRow subset), `marketId`, `coinType`, `packageId`, `decimals`, `symbol`, `suiAddress`, `onSuccess`, `onError`, `onCancel`
+      - Quantity input (max = listing.quantity)
+      - Total cost display: `listing.pricePerUnit * quantity`
+      - Submit: `buildBuyFromListing({ packageId, marketId, coinType, listingId, quantity, coinObjectIds, senderAddress })`
+
+   d. `FillBuyOrderPanel` -- compact inline form for row-level fill action:
+      - Props: `order` (MarketOrderRow subset), `marketId`, `coinType`, `packageId`, `suiAddress`, `onSuccess`, `onError`, `onCancel`
+      - Quantity input (max = order.quantity)
+      - Submit: `buildFillBuyOrder({ packageId, marketId, coinType, orderId, typeId, quantity, senderAddress })`
+
+3. **Add Actions column to `orderColumns`** (currently defined at line 1045):
+   - New column `id: "actions"`, size: 80, no header, no filter
+   - Cell renderer checks `row.original.type` and `row.original.byAddress`:
+     - Own sell listing (`byAddress === suiAddress`): "Cancel" text button (red) -> calls handler with `buildCancelSellListing`
+     - Other's sell listing: "Buy" text button (emerald) -> sets `buyTarget` state to show `BuyFromListingPanel`
+     - Own buy order: "Cancel" text button (red) -> calls handler with `buildCancelBuyOrder`
+     - Other's buy order + `isAuthorized`: "Fill" text button (amber) -> sets `fillTarget` state to show `FillBuyOrderPanel`
+
+4. **Add state variables** to CurrencyDetail:
+   - `showPostSell: boolean`, `showCreateBuyOrder: boolean` -- toggle buttons for header-level forms
+   - `buyTarget: MarketOrderRow | null` -- which sell listing row the user wants to buy from
+   - `fillTarget: MarketOrderRow | null` -- which buy order row the user wants to fill
+   - `tradePending: boolean` -- loading state during TX execution
+
+5. **Add trading toggle buttons** to the Market Order Book section header (line 2483, beside the existing Refresh button):
+   - "Sell" toggle -> shows `PostSellListingPanel` below the DataGrid
+   - "Buy Order" toggle -> shows `CreateBuyOrderPanel` below the DataGrid
+   - Both use the `AdminToggle` component pattern already in the file
+
+6. **Render `BuyFromListingPanel` / `FillBuyOrderPanel`** below the DataGrid when `buyTarget` / `fillTarget` is set. Include a dismiss button to clear the target.
+
+7. **Add new imports** to Currencies.tsx:
+   - `buildBuyFromListing`, `buildPostSellListing`, `buildPostBuyOrder`, `buildCancelSellListing`, `buildCancelBuyOrder`, `buildFillBuyOrder` from `@tehfrontier/chain-shared`
+   - The new panel components from `@/components/CurrencyTrading`
 
 ### Phase 2: Exchange Pair Trading Actions
 
 Add trading actions to the Exchange Pairs section of CurrencyDetail.
 
-1. Add "Create Pair" button to the Exchange Pairs section header:
-   - Inline form with coinTypeA (pre-filled with current currency's coinType), coinTypeB (text input), feeBps (number input)
-   - Submit via `buildCreatePair` -> `signAndExecute`
+1. **Add `PlaceExchangeOrderPanel`** to `CurrencyTrading.tsx`:
+   - Props: `bookObjectId`, `coinTypeA`, `coinTypeB`, `feeBps`, `suiAddress`, `decimals` (for both coins), `onSuccess`, `onError`, `onCancel`
+   - Side toggle (Bid/Ask) -- Bid deposits coinTypeB, Ask deposits coinTypeA
+   - Price input (denominated in coinTypeB)
+   - Amount input (denominated in coinTypeA)
+   - Fetch owned coins for the payment side via `queryOwnedCoins`
+   - Display wallet balance for the deposit coin
+   - Total deposit preview (bid: price * amount; ask: amount)
+   - Insufficient balance warning
+   - Submit: `buildPlaceBid` or `buildPlaceAsk` -> `signAndExecute`
+   - Reference: closely mirrors `apps/ssu-dapp/src/components/PlaceOrderDialog.tsx` but as an inline panel
 
-2. Add "Place Order" button inside each expanded pair's detail area (beside the DataGrid):
-   - Side toggle: Bid / Ask
-   - Price input (in coinTypeB units)
-   - Amount input (in coinTypeA units)
-   - Wallet balance display for the payment coin type
-   - Total deposit preview
-   - Submit via `buildPlaceBid` or `buildPlaceAsk` -> `signAndExecute`
+2. **Add `CreateExchangePairPanel`** to `CurrencyTrading.tsx`:
+   - Props: `currentCoinType`, `currentSymbol`, `suiAddress`, `tenant`, `onSuccess`, `onError`, `onCancel`
+   - CoinTypeA pre-filled with current currency's coinType (read-only display)
+   - CoinTypeB text input (user enters full coin type like `0xpkg::module::SYMBOL`)
+   - Fee BPS input (number, default 0)
+   - Submit: `buildCreatePair({ packageId: exchangePkg, coinTypeA, coinTypeB, feeBps, senderAddress })` -> `signAndExecute`
 
-3. Add an "Actions" column to the `exchangeColumns` definition:
-   - For orders where `owner === suiAddress` (or walletAddress): show "Cancel" button
-   - Cancel calls `buildCancelBid` or `buildCancelAsk` based on the order's side
+3. **Add "Create Pair" toggle button** to Exchange Pairs section header (line 2500 of Currencies.tsx):
+   - New state: `showCreatePair: boolean`
+   - Renders `CreateExchangePairPanel` below the header when active
+   - After success, trigger `discoverExchangePairs` re-sync
 
-4. After placing/cancelling exchange orders, refetch the pair's orders via `loadExchangeOrders(pairId)`.
+4. **Add "Place Order" button** inside each expanded pair's detail panel (line 2552):
+   - New state: `placeOrderPairId: string | null` -- which pair has the order form open
+   - Show `PlaceExchangeOrderPanel` below the DataGrid inside the expanded pair section
+   - After success, call `loadExchangeOrders(pairId)`
+
+5. **Extend `ExchangeOrderRow` type** (line 109):
+   - Add `orderId: number` field (currently only has `id` string)
+   - Update row builder at line 2517 to populate from `OrderInfo.orderId`
+
+6. **Add Actions column to `exchangeColumns`** (currently at line 1158):
+   - New column `id: "actions"`, size: 70
+   - Cell: if `owner === suiAddress || owner === walletAddress`, show "Cancel" button
+   - Cancel handler: determine if bid or ask from `row.original.side`, then call `buildCancelBid` or `buildCancelAsk` with the exchange package ID, pair's coinTypeA/coinTypeB, bookObjectId, and orderId
+   - Need to pass `expandedPair` ID (the bookObjectId) and the pair's coin types into the column cell -- this may require wrapping the columns in a closure or using column meta
+
+7. **Add new imports** to Currencies.tsx:
+   - `buildPlaceBid`, `buildPlaceAsk`, `buildCancelBid`, `buildCancelAsk`, `buildCreatePair` from `@tehfrontier/chain-shared`
+   - `PlaceExchangeOrderPanel`, `CreateExchangePairPanel` from `@/components/CurrencyTrading`
 
 ### Phase 3: Polish and UX
 
@@ -182,7 +242,8 @@ Add trading actions to the Exchange Pairs section of CurrencyDetail.
 
 | File | Action | Description |
 |------|--------|-------------|
-| `apps/periscope/src/views/Currencies.tsx` | Modify | Add trading forms, row actions, and state to CurrencyDetail. Add Actions column to orderColumns and exchangeColumns. Add inline panels for PostSellListing, CreateBuyOrder, PlaceExchangeOrder, CreatePair. Add row-level Buy/Cancel/Fill buttons. |
+| `apps/periscope/src/views/Currencies.tsx` | Modify | Extend `MarketOrderRow` and `ExchangeOrderRow` types with numeric IDs. Add Actions column to `orderColumns` and `exchangeColumns`. Add state for trade form targets. Add trading toggle buttons to order book and exchange headers. Import new trading components. |
+| `apps/periscope/src/components/CurrencyTrading.tsx` | Create | New file with inline trading panel components: `PostSellListingPanel`, `CreateBuyOrderPanel`, `BuyFromListingPanel`, `FillBuyOrderPanel`, `PlaceExchangeOrderPanel`, `CreateExchangePairPanel`. Each uses chain-shared TX builders and the existing `ensureWallet` + `signAndExecute` pattern. |
 
 ## Open Questions
 
@@ -197,11 +258,11 @@ Add trading actions to the Exchange Pairs section of CurrencyDetail.
    - **Option B: Fetch from World API on demand** -- Pros: Always up to date. Cons: Adds network dependency, different from existing Periscope patterns.
    - **Recommendation:** Option A. Use `db.gameTypes` with a search/autocomplete similar to how `loadOrders` already resolves item names via `db.gameTypes.bulkGet()`. Fall back to manual typeId input if the database is empty.
 
-3. **File size concern**: `Currencies.tsx` is already ~2700 lines. Adding 6+ trading forms will push it further. Should we extract sub-components?
-   - **Option A: Keep everything in Currencies.tsx** -- Pros: All related code together, no import graph changes. Cons: Very large file.
-   - **Option B: Extract trading panels into separate files** -- E.g., `CurrencyTradePanel.tsx`, `ExchangeTradePanel.tsx`. Pros: Better separation of concerns, smaller files. Cons: More files, need to pass many props.
-   - **Option C: Extract after initial implementation** -- Implement in Currencies.tsx first, then extract if the file becomes unwieldy. Pros: Faster initial implementation. Cons: Deferred cleanup.
-   - **Recommendation:** Option B. Extract the new trading components into `apps/periscope/src/components/CurrencyTrading.tsx` (for market order book trading actions) and add exchange trading inline. This keeps the main Currencies.tsx from growing excessively while keeping related trading logic together.
+3. **Exchange column actions need pair context**: The `exchangeColumns` definition at line 1158 is a static `useMemo` with no dependencies except `[]`. To show cancel buttons that know the `bookObjectId` and `coinTypeA`/`coinTypeB`, we need to either: (a) pass these values through column meta, (b) move the column definition inside the per-pair render loop, or (c) use a callback ref from the parent. How to handle this?
+   - **Option A: Move exchangeColumns into the per-pair render function** -- Pros: Each pair's columns naturally have access to its book ID and coin types. Cons: Columns are re-created on every render of every pair.
+   - **Option B: Use column meta / cell context** -- Pass `bookObjectId`, `coinTypeA`, `coinTypeB` via TanStack Table's column meta. Pros: Columns stay memoized. Cons: Requires accessing meta in cell renderers, slightly more complex.
+   - **Option C: Use a callback map** -- Store a `Map<string, { bookObjectId, coinTypeA, coinTypeB }>` and look up from row.original.id prefix. Pros: Simple. Cons: Fragile string parsing.
+   - **Recommendation:** Option A. The exchange order tables are small (typically <50 rows) and rendered one at a time inside an expanded pair. Recreating columns per-pair is negligible and keeps the code straightforward. The columns are already inside a `.map()` loop for each pair (line 2506).
 
 ## Deferred
 
