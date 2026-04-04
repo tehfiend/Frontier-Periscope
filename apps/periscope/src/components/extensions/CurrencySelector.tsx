@@ -1,3 +1,4 @@
+import { useMarketTenantMap } from "@/hooks/useMarketTenantMap";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { db } from "@/db";
@@ -38,6 +39,7 @@ export function CurrencySelector({ value, onChange }: CurrencySelectorProps) {
 
 	const client = useSuiClient();
 	const tenant = useActiveTenant();
+	const { isOnTenant } = useMarketTenantMap();
 
 	// Reactive currency list from IndexedDB, excluding archived
 	const currencies = useLiveQuery(() => db.currencies.filter((c) => !c._archived).toArray(), []);
@@ -55,6 +57,7 @@ export function CurrencySelector({ value, onChange }: CurrencySelectorProps) {
 		const decomSet = decommissioned ?? new Set<string>();
 		const currencyOptions: CurrencyOption[] = (currencies ?? [])
 			.filter((c: CurrencyRecord) => !c.marketId || !decomSet.has(c.marketId))
+			.filter((c: CurrencyRecord) => isOnTenant(c.marketId, tenant))
 			.map((c: CurrencyRecord) => ({
 				coinType: c.coinType,
 				symbol: c.symbol,
@@ -62,7 +65,7 @@ export function CurrencySelector({ value, onChange }: CurrencySelectorProps) {
 				label: `${c.symbol} -- ${c.name || c.coinType}`,
 			}));
 		return [SUI_OPTION, ...currencyOptions];
-	}, [currencies, decommissioned]);
+	}, [currencies, decommissioned, isOnTenant, tenant]);
 
 	const selected =
 		options.find((o) => (value ? o.coinType === value : o.coinType === undefined)) ?? SUI_OPTION;

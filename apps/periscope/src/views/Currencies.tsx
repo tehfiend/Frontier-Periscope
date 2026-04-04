@@ -28,6 +28,7 @@ import { db, notDeleted } from "@/db";
 import { walletErrorMessage } from "@/lib/format";
 import type { CurrencyRecord, ManifestExchangePair, ManifestMarket } from "@/db/types";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { useMarketTenantMap } from "@/hooks/useMarketTenantMap";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import {
@@ -267,6 +268,7 @@ export function Currencies() {
 	const suiAddress = activeCharacter?.suiAddress;
 	const walletAddress = account?.address;
 	const tenant = useActiveTenant();
+	const { isOnTenant } = useMarketTenantMap();
 	const suiClient = useSuiClient();
 
 	// ── Data from IndexedDB ──────────────────────────────────────────────────
@@ -391,11 +393,12 @@ export function Currencies() {
 	const filteredRows = useMemo(
 		() =>
 			unifiedRows.filter((r) => {
+				if (!isOnTenant(r.marketId, tenant)) return false;
 				if (r.decommissioned && !showDecommissioned) return false;
 				if (!decommissionedLoaded && r.marketId) return false;
 				return true;
 			}),
-		[unifiedRows, showDecommissioned, decommissionedLoaded],
+		[unifiedRows, showDecommissioned, decommissionedLoaded, isOnTenant, tenant],
 	);
 
 	// ── Sync ─────────────────────────────────────────────────────────────────
