@@ -569,9 +569,11 @@ function StandingsExtensionPanelInner({
 			const eveVault = wallets.find(
 				(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
 			);
-			const wallet = eveVault || wallets[0];
-			if (!wallet) return;
-			const result = await connectWallet({ wallet });
+			if (!eveVault) {
+				setError("EVE Vault extension not found. Install it from https://github.com/evefrontier/evevault/releases");
+				return;
+			}
+			const result = await connectWallet({ wallet: eveVault });
 			senderAddress = result.accounts[0]?.address;
 			if (!senderAddress) return;
 		}

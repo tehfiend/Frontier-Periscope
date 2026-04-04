@@ -163,6 +163,10 @@ export function parseEntries(text: string): ParsedEvent[] {
 			}
 			case "notify": {
 				const stripped = stripMarkup(message);
+				if (CARGO_FULL_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "cargo_full", message: stripped });
+					break;
+				}
 				const departed = stripped.match(STRUCTURE_DEPARTED_RE);
 				if (departed) {
 					events.push({
@@ -186,11 +190,21 @@ export function parseEntries(text: string): ParsedEvent[] {
 				events.push({ timestamp, raw, type: "notify", message: stripped });
 				break;
 			}
-			case "info":
-				events.push({ timestamp, raw, type: "info", message: stripMarkup(message) });
+			case "info": {
+				const stripped = stripMarkup(message);
+				if (CARGO_FULL_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "cargo_full", message: stripped });
+					break;
+				}
+				events.push({ timestamp, raw, type: "info", message: stripped });
 				break;
+			}
 			case "hint": {
 				const stripped = stripMarkup(message);
+				if (CARGO_FULL_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "cargo_full", message: stripped });
+					break;
+				}
 				if (BUILD_FAIL_RE.test(stripped)) {
 					events.push({ timestamp, raw, type: "build_fail", message: stripped });
 					break;

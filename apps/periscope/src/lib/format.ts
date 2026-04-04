@@ -32,7 +32,11 @@ export function walletErrorMessage(err: unknown): string {
 		return "Eve Vault error: Max epoch is not set. Try logging out of the Eve Vault extension and logging back in, then reconnect your wallet.";
 	}
 	if (msg.includes("gas selection") || msg.includes("insufficient SUI balance")) {
-		return "Insufficient SUI for gas fees. You need SUI in your wallet to pay for transactions. Get free testnet SUI at https://faucet.sui.io/";
+		const addrMatch = msg.match(/for account (0x[0-9a-fA-F]+)/);
+		const faucetUrl = addrMatch
+			? `https://faucet.sui.io/?address=${addrMatch[1]}`
+			: "https://faucet.sui.io/";
+		return `Not enough SUI for gas fees. Request free testnet SUI from the ${faucetUrl} .`;
 	}
 	return msg;
 }

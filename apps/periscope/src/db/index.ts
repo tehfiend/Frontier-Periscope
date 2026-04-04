@@ -599,6 +599,39 @@ db.on("ready", async () => {
 	}
 });
 
+const SONAR_EVENT_MAX = 5_000;
+const LOG_EVENT_MAX = 10_000;
+
+/**
+ * Prune sonarEvents and logEvents tables to prevent unbounded IndexedDB growth.
+ * Keeps the most recent N events by auto-increment id and deletes the rest.
+ */
+export async function pruneEventTables(): Promise<void> {
+	const sonarCount = await db.sonarEvents.count();
+	if (sonarCount > SONAR_EVENT_MAX) {
+		const cutoff = await db.sonarEvents
+			.orderBy("id")
+			.reverse()
+			.offset(SONAR_EVENT_MAX)
+			.first();
+		if (cutoff?.id != null) {
+			await db.sonarEvents.where("id").belowOrEqual(cutoff.id).delete();
+		}
+	}
+
+	const logCount = await db.logEvents.count();
+	if (logCount > LOG_EVENT_MAX) {
+		const cutoff = await db.logEvents
+			.orderBy("id")
+			.reverse()
+			.offset(LOG_EVENT_MAX)
+			.first();
+		if (cutoff?.id != null) {
+			await db.logEvents.where("id").belowOrEqual(cutoff.id).delete();
+		}
+	}
+}
+
 /** Filter predicate to exclude soft-deleted records from queries */
 export function notDeleted<T extends { _deleted?: boolean }>(record: T): boolean {
 	return !record._deleted;

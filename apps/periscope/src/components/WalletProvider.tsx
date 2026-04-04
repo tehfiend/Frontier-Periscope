@@ -10,10 +10,6 @@ const dAppKit = createDAppKit({
 			url: `https://graphql.${network}.sui.io/graphql`,
 			network: network as "testnet",
 		}),
-	slushWalletConfig: {
-		appName: "Frontier Periscope",
-		origin: "https://vault.evefrontier.com",
-	},
 	autoConnect: false,
 });
 

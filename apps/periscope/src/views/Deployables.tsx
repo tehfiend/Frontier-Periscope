@@ -12,7 +12,7 @@ import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-reac
 import { useLiveQuery } from "dexie-react-hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ASSEMBLY_TYPE_IDS, TENANTS, type TenantId, classifyExtension, getWorldTarget } from "@/chain/config";
+import { ASSEMBLY_TYPE_IDS, FUEL_TYPES, TENANTS, type TenantId, classifyExtension, getWorldTarget } from "@/chain/config";
 import { ASSEMBLY_MODULE_MAP, getObjectJson } from "@tehfrontier/chain-shared";
 import { Transaction } from "@mysten/sui/transactions";
 import {
@@ -217,9 +217,12 @@ async function fetchFuelData(
 			const f = fuelObj;
 			const quantity = Number(f.quantity ?? 0);
 			const isBurning = f.is_burning as boolean;
-			const burnRateMs = Number(f.burn_rate_in_ms ?? 0);
+			const baseBurnRateMs = Number(f.burn_rate_in_ms ?? 0);
 			const burnStartTime = Number(f.burn_start_time ?? 0);
 			const prevElapsed = Number(f.previous_cycle_elapsed_time ?? 0);
+			const typeId = Number(f.type_id ?? 0);
+			const efficiency = (FUEL_TYPES[typeId]?.efficiency ?? 100) / 100;
+			const burnRateMs = baseBurnRateMs * efficiency;
 
 			if (quantity > 0 && isBurning && burnRateMs > 0) {
 				const nowMs = Date.now();
@@ -561,10 +564,9 @@ export function Deployables() {
 				const eveVault = wallets.find(
 					(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
 				);
-				const wallet = eveVault || wallets[0];
-				if (!wallet) return "No wallet available";
+				if (!eveVault) return "EVE Vault extension not found. Install it from https://github.com/evefrontier/evevault/releases";
 				try {
-					const result = await connectWallet({ wallet });
+					const result = await connectWallet({ wallet: eveVault });
 					senderAddress = result.accounts[0]?.address;
 					if (!senderAddress) return "Wallet connection failed";
 				} catch {

@@ -9,6 +9,8 @@ export type LogActiveTab =
 	| "structures"
 	| "chat";
 
+export type DamageTarget = [name: string, total: number];
+
 interface LogState {
 	// Directory access
 	hasAccess: boolean;
@@ -22,6 +24,11 @@ interface LogState {
 	miningOre: string | null;
 	dpsDealt: number;
 	dpsReceived: number;
+
+	// Session stats (computed periodically, avoids useLiveQuery)
+	miningRunTotal: number;
+	dealtTargets: DamageTarget[];
+	recvTargets: DamageTarget[];
 
 	// UI
 	activeTab: LogActiveTab;
@@ -40,6 +47,9 @@ interface LogState {
 		miningOre?: string | null;
 		dpsDealt?: number;
 		dpsReceived?: number;
+		miningRunTotal?: number;
+		dealtTargets?: DamageTarget[];
+		recvTargets?: DamageTarget[];
 	}) => void;
 	setActiveTab: (tab: LogState["activeTab"]) => void;
 	setSelectedSessionId: (id: string | null) => void;
@@ -55,6 +65,9 @@ export const useLogStore = create<LogState>((set) => ({
 	miningOre: null,
 	dpsDealt: 0,
 	dpsReceived: 0,
+	miningRunTotal: 0,
+	dealtTargets: [],
+	recvTargets: [],
 	activeTab: "activity",
 	selectedSessionId: null,
 	grantAccess: null,
@@ -69,6 +82,9 @@ export const useLogStore = create<LogState>((set) => ({
 			miningOre: stats.miningOre !== undefined ? stats.miningOre : s.miningOre,
 			dpsDealt: stats.dpsDealt ?? s.dpsDealt,
 			dpsReceived: stats.dpsReceived ?? s.dpsReceived,
+			miningRunTotal: stats.miningRunTotal ?? s.miningRunTotal,
+			dealtTargets: stats.dealtTargets ?? s.dealtTargets,
+			recvTargets: stats.recvTargets ?? s.recvTargets,
 		})),
 	setActiveTab: (tab) => set({ activeTab: tab }),
 	setSelectedSessionId: (id) => set({ selectedSessionId: id }),

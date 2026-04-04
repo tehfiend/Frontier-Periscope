@@ -458,9 +458,11 @@ export function Currencies() {
 			const eveVault = wallets.find(
 				(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
 			);
-			const wallet = eveVault || wallets[0];
-			if (!wallet) return;
-			const result = await connectWallet({ wallet });
+			if (!eveVault) {
+				setBuildError("EVE Vault extension not found. Install it from https://github.com/evefrontier/evevault/releases");
+				return;
+			}
+			const result = await connectWallet({ wallet: eveVault });
 			senderAddress = result.accounts[0]?.address;
 			if (!senderAddress) return;
 		}
@@ -513,9 +515,11 @@ export function Currencies() {
 			const eveVault = wallets.find(
 				(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
 			);
-			const wallet = eveVault || wallets[0];
-			if (!wallet) return;
-			await connectWallet({ wallet });
+			if (!eveVault) {
+				setBuildError("EVE Vault extension not found. Install it from https://github.com/evefrontier/evevault/releases");
+				return;
+			}
+			await connectWallet({ wallet: eveVault });
 		}
 
 		setBuildStatus("building");
@@ -891,10 +895,9 @@ function CurrencyDetail({
 		const eveVault = wallets.find(
 			(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
 		);
-		const wallet = eveVault || wallets[0];
-		if (!wallet) return false;
+		if (!eveVault) return false;
 		try {
-			await connectWallet({ wallet });
+			await connectWallet({ wallet: eveVault });
 			return true;
 		} catch {
 			return false;

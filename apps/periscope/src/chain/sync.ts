@@ -15,7 +15,7 @@ import {
 	getOwnedAssemblies,
 	queryEvents,
 } from "./client";
-import { ASSEMBLY_TYPE_IDS, type TenantId, getEventTypes } from "./config";
+import { ASSEMBLY_TYPE_IDS, FUEL_TYPES, type TenantId, getEventTypes } from "./config";
 
 // ── Assembly Sync ───────────────────────────────────────────────────────────
 
@@ -51,11 +51,31 @@ function parseFuelData(fields: Record<string, unknown>): {
 	const fuel = fields.fuel as Record<string, unknown> | undefined;
 	if (!fuel) return {};
 
-	const amount = Number(fuel.amount ?? fuel.balance ?? 0);
-	const burnRate = Number(fuel.burn_rate ?? fuel.burnRate ?? 0);
+	const amount = Number(fuel.amount ?? fuel.balance ?? fuel.quantity ?? 0);
+	const isBurning = fuel.is_burning as boolean | undefined;
+	const typeId = Number(fuel.type_id ?? 0);
+	const efficiency = (FUEL_TYPES[typeId]?.efficiency ?? 100) / 100;
 
+	// burn_rate_in_ms = ms per fuel unit (on-chain struct); burn_rate/burnRate = legacy
+	const burnRateMs = Number(fuel.burn_rate_in_ms ?? 0);
+	if (amount > 0 && burnRateMs > 0 && isBurning !== false) {
+		const effectiveRate = burnRateMs * efficiency;
+		const burnStartTime = Number(fuel.burn_start_time ?? 0);
+		const prevElapsed = Number(fuel.previous_cycle_elapsed_time ?? 0);
+		const nowMs = Date.now();
+		const totalElapsed = prevElapsed + (burnStartTime > 0 ? nowMs - burnStartTime : 0);
+		const fuelUsed = totalElapsed / effectiveRate;
+		const remaining = Math.max(0, amount - fuelUsed);
+		const msRemaining = remaining * effectiveRate;
+		const expiresAt = new Date(nowMs + msRemaining).toISOString();
+		return { fuelLevel: Math.round(remaining), fuelExpiresAt: expiresAt };
+	}
+
+	// Fallback: legacy burn_rate field (units/sec)
+	const burnRate = Number(fuel.burn_rate ?? fuel.burnRate ?? 0);
 	if (amount > 0 && burnRate > 0) {
-		const secondsRemaining = amount / burnRate;
+		const effectiveBurnRate = burnRate / efficiency;
+		const secondsRemaining = amount / effectiveBurnRate;
 		const expiresAt = new Date(Date.now() + secondsRemaining * 1000).toISOString();
 		return { fuelLevel: amount, fuelExpiresAt: expiresAt };
 	}

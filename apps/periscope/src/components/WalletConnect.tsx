@@ -5,7 +5,7 @@ import { CopyAddress } from "./CopyAddress";
 
 const EVE_VAULT_URL = "https://github.com/evefrontier/evevault/releases";
 
-function findEveVault(wallets: ReturnType<typeof useWallets>) {
+export function findEveVault(wallets: ReturnType<typeof useWallets>) {
 	return (
 		wallets.find((w) => w.name === "Eve Vault") ??
 		wallets.find((w) => w.name.toLowerCase().includes("eve"))
@@ -26,9 +26,8 @@ export function WalletConnect() {
 
 	function handleConnect() {
 		const eveVault = findEveVault(wallets);
-		const wallet = eveVault || wallets[0];
-		if (wallet) {
-			connectWallet({ wallet });
+		if (eveVault) {
+			connectWallet({ wallet: eveVault });
 		} else {
 			setShowInstallPrompt(true);
 		}
@@ -101,9 +100,8 @@ export function ConnectWalletButton({ className = "" }: { className?: string }) 
 
 	function handleConnect() {
 		const eveVault = findEveVault(wallets);
-		const wallet = eveVault || wallets[0];
-		if (wallet) {
-			connectWallet({ wallet });
+		if (eveVault) {
+			connectWallet({ wallet: eveVault });
 		} else {
 			setShowInstall(true);
 		}
