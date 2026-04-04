@@ -1,6 +1,6 @@
 # Plan: Currency Trading UI in Periscope
 
-**Status:** Review Pass 3
+**Status:** Review Pass 4
 **Created:** 2026-04-04
 **Module:** periscope
 
@@ -225,13 +225,15 @@ Add trading actions to the Exchange Pairs section of CurrencyDetail.
 
 5. **Extend `ExchangeOrderRow` type** (line 109):
    - Add `orderId: number` field (currently only has `id` string)
-   - Update row builder at line 2517 to populate from `OrderInfo.orderId`
+   - Add `bookObjectId: string`, `coinTypeA: string`, `coinTypeB: string` fields (needed for cancel handler)
+   - Update row builder at line 2517 to populate all new fields from `OrderInfo` + the parent pair context
 
-6. **Add Actions column to `exchangeColumns`** (currently at line 1158):
-   - New column `id: "actions"`, size: 70
+6. **Move `exchangeColumns` into the per-pair render loop** (resolves Open Question 3 with Option A):
+   - Remove the top-level `exchangeColumns` useMemo at line 1158
+   - Define columns inline inside the `currencyPairs.map()` at line 2506, where `pair.id`, `pair.coinTypeA`, `pair.coinTypeB` are in scope
+   - Add new column `id: "actions"`, size: 70
    - Cell: if `owner === suiAddress || owner === walletAddress`, show "Cancel" button
-   - Cancel handler: determine if bid or ask from `row.original.side`, then call `buildCancelBid` or `buildCancelAsk` with the exchange package ID, pair's coinTypeA/coinTypeB, bookObjectId, and orderId
-   - Need to pass `expandedPair` ID (the bookObjectId) and the pair's coin types into the column cell -- this may require wrapping the columns in a closure or using column meta
+   - Cancel calls `handleCancelExchangeOrder(pair.id, row.original.orderId, row.original.side === "Bid", pair.coinTypeA, pair.coinTypeB)`
 
 7. **Cancel handler for exchange orders** stays in Currencies.tsx:
    - `handleCancelExchangeOrder(pairId: string, orderId: number, isBid: boolean, coinTypeA: string, coinTypeB: string)`: `ensureWallet()` -> `buildCancelBid` or `buildCancelAsk` -> `signAndExecute` -> `loadExchangeOrders(pairId)`
