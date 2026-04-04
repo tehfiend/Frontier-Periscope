@@ -79,7 +79,7 @@ A new `useMarketTenantMap()` hook will:
 - **Currencies view**: Add tenant filter to the existing `filteredRows` memo (which already handles decommission filtering). This avoids changing the `unifiedRows` memo and its dependency array.
 - **CurrencySelector**: Filter options by active tenant. CurrencySelector currently reads only `db.currencies` (not manifest markets), but currencies have `marketId` which the hook maps to tenants.
 - **MarketSelector**: Filter options to active tenant markets only.
-- **Manifest view**: Optionally add tenant column to the markets DataGrid, or filter markets by tenant. (The Manifest view is a debug/inspection tool, so showing all with a tenant indicator column is more appropriate than filtering.)
+- **Manifest view**: Add a "Tenant" column to the markets DataGrid and filter markets by active tenant (consistent with how characters, tribes, and locations are already filtered).
 
 ### Edge Cases
 
@@ -135,10 +135,10 @@ A new `useMarketTenantMap()` hook will:
 
 2. Update `apps/periscope/src/components/extensions/MarketSelector.tsx`:
    - Import and call `useMarketTenantMap()`.
-   - For `manifestOptions` (line 89): filter using `isOnTenant(m.id, tenant)` since these are in the manifest cache.
-   - For `standingsOptions` (from `queryAllMarketsStandings`, line 121): these are NOT in `manifestMarkets` (different contract type -- `market_standings::Market`), so filter using `isAddressOnTenant(m.creator, tenant)` which resolves the creator address directly.
-   - For `currencyOptions` (line 76): filter using `isOnTenant(c.marketId!, tenant)`.
-   - Apply these filters in the individual `useMemo` blocks rather than the merged `options` memo, so deduplication works on already-filtered sets.
+   - For `manifestOptions` (built in `useMemo`, line 89): add `.filter((m) => isOnTenant(m.id, tenant))` to the manifest markets before mapping to options.
+   - For `currencyOptions` (built in `useMemo`, line 76): add `.filter((c) => isOnTenant(c.marketId!, tenant))` before mapping.
+   - For `standingsOptions`: these are built in a `useEffect` (line 113), not a `useMemo`, so filter them in the merged `options` memo (line 147). When iterating `standingsOptions`, check `isAddressOnTenant(opt.creator, tenant)` since these markets (type `market_standings::Market`) are NOT in `manifestMarkets` and the `isOnTenant` function (which queries by `marketId`) won't resolve them.
+   - Add `isOnTenant`, `isAddressOnTenant`, and `tenant` to the relevant dependency arrays.
 
 ### Phase 3: Manifest View Enhancement
 
