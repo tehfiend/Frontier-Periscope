@@ -64,8 +64,16 @@ import { useCallback, useMemo, useState } from "react";
 /** Color category for event type badges. */
 function getEventBadgeColor(eventType: string): string {
 	switch (eventType) {
+		// Amber -- mining activity
+		case "mining_started":
+		case "mining_ended":
+		case "asteroid_depleted":
+		case "cargo_full":
+			return "bg-amber-500/15 text-amber-400";
 		// Red -- combat
 		case "killmail":
+		case "combat_started":
+		case "combat_ended":
 			return "bg-red-500/15 text-red-400";
 		// Blue -- navigation / gate
 		case "jump":
@@ -115,30 +123,41 @@ function getEventBadgeColor(eventType: string): string {
 
 // ── Shared Column Helpers ────────────────────────────────────────────────────
 
-const timestampCol: ColumnDef<SonarEvent, unknown> = {
-	accessorKey: "timestamp",
-	header: "Timestamp",
-	size: 180,
-	cell: ({ getValue }) => {
-		const ts = getValue() as string;
-		try {
-			return new Date(ts).toLocaleString();
-		} catch {
-			return ts;
-		}
-	},
-	filterFn: excelFilterFn,
-};
+function makeTimestampCol(eveTime: boolean): ColumnDef<SonarEvent, unknown> {
+	return {
+		accessorKey: "timestamp",
+		header: eveTime ? "Time (EVE)" : "Time",
+		size: 135,
+		cell: ({ getValue }) => {
+			const ts = getValue() as string;
+			try {
+				const d = new Date(ts);
+				if (eveTime) {
+					const m = d.getUTCMonth() + 1;
+					const day = d.getUTCDate();
+					const h = String(d.getUTCHours()).padStart(2, "0");
+					const min = String(d.getUTCMinutes()).padStart(2, "0");
+					const sec = String(d.getUTCSeconds()).padStart(2, "0");
+					return `${m}/${day} ${h}:${min}:${sec}`;
+				}
+				return `${d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" })} ${d.toLocaleTimeString()}`;
+			} catch {
+				return ts;
+			}
+		},
+		filterFn: excelFilterFn,
+	};
+}
 
 const eventTypeCol: ColumnDef<SonarEvent, unknown> = {
 	accessorKey: "eventType",
 	header: "Event",
-	size: 160,
+	size: 110,
 	cell: ({ getValue }) => {
 		const type = getValue() as string;
 		const badgeColor = getEventBadgeColor(type);
 		return (
-			<span className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${badgeColor}`}>
+			<span className={`inline-flex rounded px-1 py-0.5 text-xs font-medium ${badgeColor}`}>
 				{type.replace(/_/g, " ")}
 			</span>
 		);
@@ -149,8 +168,22 @@ const eventTypeCol: ColumnDef<SonarEvent, unknown> = {
 const characterCol: ColumnDef<SonarEvent, unknown> = {
 	accessorKey: "characterName",
 	header: "Character",
-	size: 140,
-	cell: ({ getValue }) => (getValue() as string) || "-",
+	size: 100,
+	cell: ({ getValue }) => {
+		const name = (getValue() as string) || "-";
+		return <span className="truncate" title={name}>{name}</span>;
+	},
+	filterFn: excelFilterFn,
+};
+
+const detailsCol: ColumnDef<SonarEvent, unknown> = {
+	id: "details",
+	header: "Details",
+	accessorFn: detailsAccessor,
+	cell: ({ getValue }) => {
+		const text = getValue() as string;
+		return <span className="truncate" title={text}>{text}</span>;
+	},
 	filterFn: excelFilterFn,
 };
 
@@ -172,79 +205,62 @@ function detailsAccessor(row: SonarEvent): string {
 
 // ── Column Definitions: Pings / All Events (includes Source) ────────────────
 
-const columns: ColumnDef<SonarEvent, unknown>[] = [
-	timestampCol,
-	{
-		accessorKey: "source",
-		header: "Source",
-		size: 90,
-		cell: ({ getValue }) => {
-			const source = getValue() as string;
+const sourceCol: ColumnDef<SonarEvent, unknown> = {
+	accessorKey: "source",
+	header: "Src",
+	size: 44,
+	cell: ({ getValue }) => {
+		const source = getValue() as string;
+		return (
+			<span
+				className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${
+					source === "local"
+						? "bg-green-500/10 text-green-400"
+						: "bg-orange-500/10 text-orange-400"
+				}`}
+			>
+				{source === "local" ? "Log" : "Chain"}
+			</span>
+		);
+	},
+	filterFn: excelFilterFn,
+};
+
+const actionsCol: ColumnDef<SonarEvent, unknown> = {
+	id: "actions",
+	header: "",
+	size: 32,
+	enableSorting: false,
+	enableColumnFilter: false,
+	cell: ({ row }) => {
+		const event = row.original;
+		if (event.source === "local" && event.sessionId) {
 			return (
-				<span
-					className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${
-						source === "local"
-							? "bg-green-500/10 text-green-400"
-							: "bg-orange-500/10 text-orange-400"
-					}`}
+				<button
+					type="button"
+					onClick={() => {
+						useSonarStore.getState().setActiveTab("logFeed");
+						useLogStore.getState().setActiveTab("sessions");
+						useLogStore.getState().setSelectedSessionId(event.sessionId ?? "");
+					}}
+					className="text-zinc-600 hover:text-cyan-400"
+					title="View session in Log Feed"
 				>
-					{source === "local" ? "Log" : "Chain"}
-				</span>
+					<Clock size={14} />
+				</button>
 			);
-		},
-		filterFn: excelFilterFn,
+		}
+		return null;
 	},
-	eventTypeCol,
-	characterCol,
-	{
-		id: "details",
-		header: "Details",
-		accessorFn: detailsAccessor,
-		filterFn: excelFilterFn,
-	},
-	{
-		id: "actions",
-		header: "",
-		size: 40,
-		enableSorting: false,
-		enableColumnFilter: false,
-		cell: ({ row }) => {
-			const event = row.original;
-			if (event.source === "local" && event.sessionId) {
-				return (
-					<button
-						type="button"
-						onClick={() => {
-							useSonarStore.getState().setActiveTab("logFeed");
-							useLogStore.getState().setActiveTab("sessions");
-							useLogStore.getState().setSelectedSessionId(event.sessionId ?? "");
-						}}
-						className="text-zinc-600 hover:text-cyan-400"
-						title="View session in Log Feed"
-					>
-						<Clock size={14} />
-					</button>
-				);
-			}
-			return null;
-		},
-	},
-];
+};
 
-// ── Column Definitions: Chain Feed (no Source, no-wrap details) ──────────────
+function makePingColumns(eveTime: boolean): ColumnDef<SonarEvent, unknown>[] {
+	return [makeTimestampCol(eveTime), sourceCol, eventTypeCol, characterCol, detailsCol, actionsCol];
+}
 
-const chainColumns: ColumnDef<SonarEvent, unknown>[] = [
-	timestampCol,
-	eventTypeCol,
-	characterCol,
-	{
-		id: "details",
-		header: "Details",
-		accessorFn: detailsAccessor,
-		cell: ({ getValue }) => <span className="whitespace-nowrap">{getValue() as string}</span>,
-		filterFn: excelFilterFn,
-	},
-];
+function makeChainColumns(eveTime: boolean): ColumnDef<SonarEvent, unknown>[] {
+	return [makeTimestampCol(eveTime), eventTypeCol, characterCol, detailsCol];
+}
 
 // ── Channel Colors ───────────────────────────────────────────────────────────
 
@@ -409,6 +425,10 @@ const PING_CATEGORIES: PingCategory[] = [
 		types: {
 			system_change: "System Change (Jump)",
 			chat: "Chat Message",
+			mining_started: "Mining Started",
+			mining_ended: "Mining Ended",
+			asteroid_depleted: "Asteroid Depleted",
+			cargo_full: "Cargo Hold Full",
 		},
 	},
 	{
@@ -425,6 +445,8 @@ const PING_CATEGORIES: PingCategory[] = [
 		label: "Combat / Intel",
 		types: {
 			killmail: "Killmail",
+			combat_started: "Combat Started",
+			combat_ended: "Combat Ended",
 		},
 	},
 	{
@@ -590,27 +612,24 @@ function formatRelative(isoTimestamp: string): string {
 
 function LocationCard({ locations }: { locations: LocationEntry[] }) {
 	return (
-		<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-			<div className="mb-3 flex items-center gap-2">
-				<Navigation size={16} className="text-cyan-400" />
-				<h2 className="text-sm font-semibold text-zinc-200">Character Locations</h2>
+		<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+			<div className="flex items-center gap-2">
+				<Navigation size={14} className="text-cyan-400" />
+				<p className="text-xs text-zinc-500">Locations</p>
 			</div>
 			{locations.length === 0 ? (
-				<p className="text-sm text-zinc-600">
-					No location data. Enable Log Sonar and ensure log files are accessible.
-				</p>
+				<p className="mt-1 text-xs text-zinc-600">No location data</p>
 			) : (
-				<div className="space-y-2">
+				<div className="mt-1 space-y-1">
 					{locations.map((loc) => (
-						<div
-							key={loc.characterName}
-							className="flex items-center justify-between rounded-md bg-zinc-800/50 px-3 py-2"
-						>
-							<div>
-								<span className="text-sm font-medium text-zinc-200">{loc.characterName}</span>
-								<span className="ml-2 text-sm text-cyan-400">{loc.systemName}</span>
+						<div key={loc.characterName} className="flex items-baseline justify-between gap-2">
+							<div className="min-w-0">
+								<span className="text-sm font-bold text-zinc-200">{loc.characterName}</span>
+								<span className="ml-1.5 text-sm text-cyan-400">{loc.systemName}</span>
 							</div>
-							<span className="text-xs text-zinc-600">{formatRelative(loc.timestamp)}</span>
+							<span className="shrink-0 text-[10px] text-zinc-600">
+								{formatRelative(loc.timestamp)}
+							</span>
 						</div>
 					))}
 				</div>
@@ -626,9 +645,11 @@ function PingsTab() {
 	const pingEventTypes = useSonarStore((s) => s.pingEventTypes);
 	const pingAudioEnabled = useSonarStore((s) => s.pingAudioEnabled);
 	const pingNotifyEnabled = useSonarStore((s) => s.pingNotifyEnabled);
+	const useEveTime = useSonarStore((s) => s.useEveTime);
 	const setPingEventTypes = useSonarStore((s) => s.setPingEventTypes);
 	const setPingAudioEnabled = useSonarStore((s) => s.setPingAudioEnabled);
 	const setPingNotifyEnabled = useSonarStore((s) => s.setPingNotifyEnabled);
+	const setUseEveTime = useSonarStore((s) => s.setUseEveTime);
 	const { matchesWatchlist } = useWatchlistFilter();
 
 	// Stat card hooks
@@ -639,7 +660,7 @@ function PingsTab() {
 	const dpsReceived = useLogStore((s) => s.dpsReceived);
 	const activeSessionId = useLogStore((s) => s.activeSessionId);
 
-	// Session totals
+	// Mining run total: contiguous mining events at session tail (same ore type)
 	const sessionMining = useLiveQuery(
 		() =>
 			activeSessionId
@@ -647,8 +668,20 @@ function PingsTab() {
 				: [],
 		[activeSessionId],
 	);
-	const totalMined = sessionMining?.reduce((sum, e) => sum + (e.amount ?? 0), 0) ?? 0;
+	const miningRunTotal = useMemo(() => {
+		if (!sessionMining || sessionMining.length === 0) return 0;
+		// Walk backwards from the latest mining event; sum while ore matches
+		const latest = sessionMining[sessionMining.length - 1];
+		const oreType = latest.ore;
+		let total = 0;
+		for (let i = sessionMining.length - 1; i >= 0; i--) {
+			if (sessionMining[i].ore !== oreType) break;
+			total += sessionMining[i].amount ?? 0;
+		}
+		return total;
+	}, [sessionMining]);
 
+	// DPS target breakdowns from current session combat events
 	const sessionDamageDealt = useLiveQuery(
 		() =>
 			activeSessionId
@@ -656,7 +689,17 @@ function PingsTab() {
 				: [],
 		[activeSessionId],
 	);
-	const totalDamageDealt = sessionDamageDealt?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
+	const dealtTargets = useMemo(() => {
+		if (!sessionDamageDealt || sessionDamageDealt.length === 0) return [];
+		const byTarget = new Map<string, number>();
+		for (const e of sessionDamageDealt) {
+			const name = e.target ?? "Unknown";
+			byTarget.set(name, (byTarget.get(name) ?? 0) + (e.damage ?? 0));
+		}
+		return Array.from(byTarget.entries())
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, 5);
+	}, [sessionDamageDealt]);
 
 	const sessionDamageRecv = useLiveQuery(
 		() =>
@@ -668,25 +711,56 @@ function PingsTab() {
 				: [],
 		[activeSessionId],
 	);
-	const totalDamageRecv = sessionDamageRecv?.reduce((sum, e) => sum + (e.damage ?? 0), 0) ?? 0;
+	const recvTargets = useMemo(() => {
+		if (!sessionDamageRecv || sessionDamageRecv.length === 0) return [];
+		const byTarget = new Map<string, number>();
+		for (const e of sessionDamageRecv) {
+			const name = e.target ?? "Unknown";
+			byTarget.set(name, (byTarget.get(name) ?? 0) + (e.damage ?? 0));
+		}
+		return Array.from(byTarget.entries())
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, 5);
+	}, [sessionDamageRecv]);
 
-	const events = useLiveQuery(
-		() => db.sonarEvents.orderBy("id").reverse().limit(500).toArray(),
+	// Query local and chain events separately so neither source drowns out
+	// the other in the fixed-size window (chain event floods from cursor
+	// resets could otherwise push all local events out of the result set).
+	const events = useLiveQuery(async () => {
+		const [local, chain] = await Promise.all([
+			db.sonarEvents
+				.where("[source+eventType]")
+				.between(["local", Dexie.minKey], ["local", Dexie.maxKey])
+				.reverse()
+				.limit(2500)
+				.toArray(),
+			db.sonarEvents
+				.where("[source+eventType]")
+				.between(["chain", Dexie.minKey], ["chain", Dexie.maxKey])
+				.reverse()
+				.limit(2500)
+				.toArray(),
+		]);
+		// Merge and sort by id descending (most recent first)
+		return [...local, ...chain].sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+	}, []);
+
+	// Character locations: query system_change events directly (not limited by event window)
+	const locationEvents = useLiveQuery(
+		() =>
+			db.sonarEvents
+				.where("[source+eventType]")
+				.equals(["local", "system_change"])
+				.reverse()
+				.limit(200)
+				.toArray(),
 		[],
 	);
-
-	// Derive character locations from latest system_change per character
 	const locations = useMemo<LocationEntry[]>(() => {
-		if (!events) return [];
+		if (!locationEvents) return [];
 		const latest = new Map<string, SonarEvent>();
-		// Events are sorted newest first, so first occurrence per character wins
-		for (const e of events) {
-			if (
-				e.eventType === "system_change" &&
-				e.characterName &&
-				e.systemName &&
-				!latest.has(e.characterName)
-			) {
+		for (const e of locationEvents) {
+			if (e.characterName && e.systemName && !latest.has(e.characterName)) {
 				latest.set(e.characterName, e);
 			}
 		}
@@ -695,7 +769,7 @@ function PingsTab() {
 			systemName: e.systemName as string,
 			timestamp: e.timestamp,
 		}));
-	}, [events]);
+	}, [locationEvents]);
 
 	const filteredData = useMemo(() => {
 		if (!events) return [];
@@ -736,8 +810,8 @@ function PingsTab() {
 				return null;
 			},
 		};
-		return [...columns, badgeCol];
-	}, [matchesWatchlist]);
+		return [...makePingColumns(useEveTime), badgeCol];
+	}, [matchesWatchlist, useEveTime]);
 
 	function toggleEventType(type: SonarEventType) {
 		const next = new Set(pingEventTypes);
@@ -756,45 +830,77 @@ function PingsTab() {
 
 	return (
 		<div className="flex h-full flex-col gap-3">
-			{/* Live stat cards */}
-			{isWatching && (
-				<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-					<StatCard
-						label="Mining Rate"
-						value={`${Math.round(miningRate)}/min`}
-						sub={miningOre ?? "--"}
-						color="text-amber-400"
-						icon={Pickaxe}
-						active={miningRate > 0}
-					/>
-					<StatCard
-						label="DPS Dealt"
-						value={dpsDealt.toFixed(1)}
-						sub="damage/sec"
-						color="text-cyan-400"
-						icon={Swords}
-						active={dpsDealt > 0}
-					/>
-					<StatCard
-						label="DPS Received"
-						value={dpsReceived.toFixed(1)}
-						sub="damage/sec"
-						color="text-red-400"
-						icon={Swords}
-						active={dpsReceived > 0}
-					/>
-					<StatCard
-						label="Session Totals"
-						value={totalMined.toLocaleString()}
-						sub={`ore mined | ${totalDamageDealt.toLocaleString()} dealt | ${totalDamageRecv.toLocaleString()} recv`}
-						color="text-zinc-300"
-						icon={Activity}
-					/>
-				</div>
-			)}
-
-			{/* Character locations */}
-			<LocationCard locations={locations} />
+			{/* Dashboard cards */}
+			<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+				<LocationCard locations={locations} />
+				{isWatching && (
+					<>
+						<StatCard
+							label="Mining Rate"
+							value={`${Math.round(miningRate)}/min`}
+							sub={
+								<>
+									<span>{miningOre ?? "--"}</span>
+									{miningRunTotal > 0 && (
+										<span className="ml-1 text-amber-400/60">
+											({miningRunTotal.toLocaleString()} this run)
+										</span>
+									)}
+								</>
+							}
+							color="text-amber-400"
+							icon={Pickaxe}
+							active={miningRate > 0}
+						/>
+						<StatCard
+							label="DPS Dealt"
+							value={dpsDealt.toFixed(1)}
+							sub={
+								dealtTargets.length > 0 ? (
+									<div className="space-y-0.5">
+										{dealtTargets.map(([name, dmg]) => (
+											<div key={name} className="flex justify-between gap-2">
+												<span className="truncate">{name}</span>
+												<span className="shrink-0 text-cyan-400/60">
+													{dmg.toLocaleString()}
+												</span>
+											</div>
+										))}
+									</div>
+								) : (
+									"damage/sec"
+								)
+							}
+							color="text-cyan-400"
+							icon={Swords}
+							active={dpsDealt > 0}
+						/>
+						<StatCard
+							label="DPS Received"
+							value={dpsReceived.toFixed(1)}
+							sub={
+								recvTargets.length > 0 ? (
+									<div className="space-y-0.5">
+										{recvTargets.map(([name, dmg]) => (
+											<div key={name} className="flex justify-between gap-2">
+												<span className="truncate">{name}</span>
+												<span className="shrink-0 text-red-400/60">
+													{dmg.toLocaleString()}
+												</span>
+											</div>
+										))}
+									</div>
+								) : (
+									"damage/sec"
+								)
+							}
+							color="text-red-400"
+							icon={Swords}
+							active={dpsReceived > 0}
+						/>
+					</>
+				)}
+			</div>
 
 			{/* Settings toggle */}
 			<div className="flex items-center justify-between">
@@ -837,6 +943,19 @@ function PingsTab() {
 						{pingNotifyEnabled ? <Bell size={12} /> : <BellOff size={12} />}
 						Notify
 					</button>
+					<button
+						type="button"
+						onClick={() => setUseEveTime(!useEveTime)}
+						className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+							useEveTime
+								? "border-indigo-500/40 bg-indigo-500/10 text-indigo-300"
+								: "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300"
+						}`}
+						title={useEveTime ? "Showing EVE time (UTC)" : "Showing local time"}
+					>
+						<Clock size={12} />
+						{useEveTime ? "EVE" : "Local"}
+					</button>
 				</div>
 				<span className="text-xs text-zinc-600">
 					{filteredData.length} ping{filteredData.length !== 1 ? "s" : ""}
@@ -856,6 +975,7 @@ function PingsTab() {
 					keyFn={(row) => String(row.id ?? 0)}
 					searchPlaceholder="Search events..."
 					emptyMessage="No events. Adjust event type filters in Ping Settings above."
+					initialSorting={[{ id: "timestamp", desc: true }]}
 				/>
 			</div>
 		</div>
@@ -1373,8 +1493,10 @@ function ChainFeedTab() {
 		});
 	}, [events, matchesWatchlist, isOwnedEvent]);
 
+	const useEveTime = useSonarStore((s) => s.useEveTime);
+
 	// Augment columns with a "Source" badge column for watched items
-	const chainColumns = useMemo((): ColumnDef<SonarEvent, unknown>[] => {
+	const chainFeedColumns = useMemo((): ColumnDef<SonarEvent, unknown>[] => {
 		const badgeCol: ColumnDef<SonarEvent, unknown> = {
 			id: "watchBadge",
 			header: "",
@@ -1394,18 +1516,19 @@ function ChainFeedTab() {
 				return null;
 			},
 		};
-		return [...columns, badgeCol];
-	}, [matchesWatchlist]);
+		return [...makeChainColumns(useEveTime), badgeCol];
+	}, [matchesWatchlist, useEveTime]);
 
 	return (
 		<div className="flex h-full flex-col gap-3">
 			<div className="flex-1 overflow-hidden">
 				<DataGrid
-					columns={chainColumns}
+					columns={chainFeedColumns}
 					data={data}
 					keyFn={(row) => String(row.id ?? 0)}
 					searchPlaceholder="Search chain events..."
 					emptyMessage="No chain events. Enable Chain Sonar to monitor jumps, killmails, inventory, market, and structure events."
+					initialSorting={[{ id: "timestamp", desc: true }]}
 				/>
 			</div>
 		</div>

@@ -30,7 +30,7 @@ export interface MarketInfo {
 	nextSellId: number;
 	nextBuyId: number;
 	coinType: string;
-	totalSupply?: number;
+	totalSupply?: string;
 }
 
 export interface MarketSellListing {
@@ -73,7 +73,7 @@ export interface MarketStandingsInfo {
 	nextSellId: number;
 	nextBuyId: number;
 	coinType: string;
-	totalSupply?: number;
+	totalSupply?: string;
 }
 
 // ── SSU Config Types ───────────────────────────────────────────────────────

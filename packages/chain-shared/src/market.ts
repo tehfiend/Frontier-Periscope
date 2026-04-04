@@ -537,7 +537,7 @@ export async function queryMarkets(
 			// Extract total supply from treasury_cap.total_supply.value
 			const treasuryCap = json.treasury_cap as Record<string, unknown> | undefined;
 			const supplyObj = treasuryCap?.total_supply as Record<string, unknown> | undefined;
-			const totalSupply = supplyObj?.value != null ? Number(supplyObj.value) : undefined;
+			const totalSupply = supplyObj?.value != null ? String(supplyObj.value) : undefined;
 
 			markets.push({
 				objectId: node.address,
@@ -579,7 +579,7 @@ export async function queryMarketDetails(
 		// Extract total supply from treasury_cap.total_supply.value
 		const treasuryCap = fields.treasury_cap as Record<string, unknown> | undefined;
 		const supplyObj = treasuryCap?.total_supply as Record<string, unknown> | undefined;
-		const totalSupply = supplyObj?.value != null ? Number(supplyObj.value) : undefined;
+		const totalSupply = supplyObj?.value != null ? String(supplyObj.value) : undefined;
 
 		return {
 			objectId: marketId,

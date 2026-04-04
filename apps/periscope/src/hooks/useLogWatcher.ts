@@ -9,6 +9,7 @@ import {
 	parseHeader,
 	parseLogFilename,
 } from "@/lib/logParser";
+import { resumeLocalSonar, signalLocalSonarReset } from "@/hooks/useLocalSonar";
 import { useLogStore } from "@/stores/logStore";
 import { useCallback, useEffect, useRef } from "react";
 
@@ -22,6 +23,9 @@ const pendingLines = new Map<string, string>();
 
 /** Poll counter for periodic diagnostic summaries */
 let pollCount = 0;
+
+/** Guard flag -- prevents in-flight pollLogs from writing during clear */
+let clearingInProgress = false;
 
 /** Consecutive poll error counter -- stop polling after too many failures */
 let consecutiveErrors = 0;
@@ -348,6 +352,7 @@ export function useLogWatcher() {
 	}
 
 	const pollLogs = useCallback(async () => {
+		if (clearingInProgress) return;
 		const handle = dirHandleRef.current;
 		if (!handle) return;
 
@@ -489,17 +494,23 @@ export function useLogWatcher() {
 	);
 
 	const clearAndReimport = useCallback(async () => {
+		// Pause both pollers BEFORE clearing to prevent stale writes
+		clearingInProgress = true;
+		signalLocalSonarReset();
 		stopWatching();
+		// Let any in-flight polls finish before clearing tables
+		await new Promise((r) => setTimeout(r, POLL_INTERVAL + 200));
 		await db.logEvents.clear();
 		await db.logSessions.clear();
 		await db.logOffsets.clear();
-		// Also clear local sonar events derived from logEvents
 		await db.sonarEvents.where("source").equals("local").delete();
-		// Reset local HWM so useLocalSonar reprocesses from scratch
-		await db.sonarState.update("local", { lastProcessedLogId: 0 });
+		await db.settings.put({ key: "localSonarHWM", value: 0 });
 		pendingLines.clear();
 		setActiveSessionId(null);
 		setLiveStats({ miningRate: 0, miningOre: null, dpsDealt: 0, dpsReceived: 0 });
+		// Resume both pollers AFTER clearing is complete
+		clearingInProgress = false;
+		resumeLocalSonar();
 		startWatching();
 	}, [stopWatching, startWatching, setActiveSessionId, setLiveStats]);
 

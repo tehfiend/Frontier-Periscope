@@ -24,6 +24,8 @@ export type ParsedEvent = {
 	| { type: "gate_offline"; systemName: string }
 	| { type: "build_fail"; message: string }
 	| { type: "dismantle"; message: string }
+	| { type: "asteroid_depleted"; message: string }
+	| { type: "cargo_full"; message: string }
 	| { type: "notify"; message: string }
 	| { type: "info"; message: string }
 	| { type: "hint"; message: string }
@@ -47,6 +49,10 @@ const GATE_OFFLINE_RE = /^(.+?) Traffic Control is currently offline/;
 const BUILD_FAIL_RE =
 	/insufficient resources to build this Assembly|Failed to build job|must be located at an L-Point|There is already something in that location/i;
 const DISMANTLE_RE = /dismantle the structure|Dismantling this facility/i;
+
+// SYS-type patterns (mining feedback)
+const ASTEROID_DEPLETED_RE = /a pale shadow of its former glory/;
+const CARGO_FULL_RE = /cargo hold is full/i;
 
 const HEADER_LISTENER_RE = /^\s+Listener:\s+(.+)/;
 const HEADER_SESSION_RE = /^\s+Session Started:\s+(.+)/;
@@ -199,6 +205,18 @@ export function parseEntries(text: string): ParsedEvent[] {
 					break;
 				}
 				events.push({ timestamp, raw, type: "question", message: stripped });
+				break;
+			}
+			case "SYS": {
+				const stripped = stripMarkup(message);
+				if (ASTEROID_DEPLETED_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "asteroid_depleted", message: stripped });
+					break;
+				}
+				if (CARGO_FULL_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "cargo_full", message: stripped });
+					break;
+				}
 				break;
 			}
 		}

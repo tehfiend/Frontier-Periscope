@@ -405,7 +405,7 @@ export async function queryMarketStandingsDetails(
 			| Record<string, unknown>
 			| undefined;
 		const totalSupply =
-			supplyObj?.value != null ? Number(supplyObj.value) : undefined;
+			supplyObj?.value != null ? String(supplyObj.value) : undefined;
 
 		return {
 			objectId: marketId,
@@ -499,7 +499,7 @@ export async function queryAllMarketsStandings(
 				| undefined;
 			const totalSupply =
 				supplyObj?.value != null
-					? Number(supplyObj.value)
+					? String(supplyObj.value)
 					: undefined;
 
 			markets.push({

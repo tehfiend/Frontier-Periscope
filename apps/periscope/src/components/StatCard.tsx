@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 export function StatCard({
 	label,
@@ -10,7 +11,7 @@ export function StatCard({
 }: {
 	label: string;
 	value: string;
-	sub: string;
+	sub: ReactNode;
 	color: string;
 	icon: LucideIcon;
 	active?: boolean;
@@ -28,7 +29,7 @@ export function StatCard({
 			>
 				{value}
 			</p>
-			<p className="mt-0.5 truncate text-xs text-zinc-600">{sub}</p>
+			<div className="mt-0.5 text-xs text-zinc-600">{sub}</div>
 		</div>
 	);
 }

@@ -1,8 +1,8 @@
 # Frontier Periscope
 
-Peer into the frontier -- organizational toolkit for [EVE Frontier](https://evefrontier.com).
+Peer into the frontier. Organizational toolkit and real-time monitoring platform for [EVE Frontier](https://evefrontier.com).
 
-Frontier Periscope is a comprehensive organizational platform for EVE Frontier players and groups. Create custom currencies and run player-driven markets. Deploy standings registries that control who can use your gates, turrets, and storage units. Share encrypted maps with trusted allies. Pool resources in shared treasury wallets. Monitor territory with real-time sonar alerts. Navigate the cluster with a 3D star map and jump planner. Everything runs locally in your browser -- no backend, no accounts, no tracking.
+Frontier Periscope gives non-technical players access to blockchain data and extends Smart Assemblies with custom economies, diplomacy systems, and shared infrastructure. The whole thing runs entirely in your browser with no backend server. All your data stays local and every chain interaction goes directly through public Sui and EVE Frontier endpoints.
 
 Currently targeting **Cycle 5** (Sui testnet). Support will be updated as future cycles release.
 
@@ -20,22 +20,24 @@ For on-chain features (wallet connection, transaction signing, extension deploym
 
 ## Features
 
-- **Custom Currencies & Markets** -- Create your own token economy. Publish custom currencies, manage markets, and trade on player-run exchanges. Power your organization with its own medium of exchange.
-- **Standings & Diplomacy** -- Manage shared infrastructure access between cooperating groups. On-chain standings registries control who can use your gates, turrets, and storage units. Define friend-or-foe rules and subscribe to allied registries.
-- **Private Maps** -- Encrypted location sharing for secure coordination. Share structure positions only with trusted allies using sealed-box cryptography. Standings-based access modes let you control visibility through your registries.
-- **Treasury** -- Shared multi-user wallet for organizations. Pool resources, collect gate toll revenue in custom currencies, and manage group finances with admin-controlled access.
-- **Sonar** -- Real-time event monitoring across on-chain data and local game logs. Configurable watchlists with per-target ping alerts track activity in your territory.
-- **Structures** -- Manage owned deployables and assemblies with fuel tracking, extension deployment, and location resolution from both public reveals and private maps.
-- **Star Map & Navigation** -- 3D WebGL solar system visualization with jump route planning. Search systems, plot routes, and explore the cluster.
+- **Custom Currencies & Markets** -- The only project in the hackathon that lets players create their own custom currencies, and it does it entirely in the browser through in-browser Move bytecode patching. No CLI, no gas station, nothing. These tokens trade through on-chain order book markets deployed to any Smart Storage Unit. All trades use atomic escrow so items and payment move together in a single transaction, zero trust required. Markets can be open or standings-gated, controlling who can mint, trade, or place buy orders.
+- **Standings & Diplomacy** -- Manage relationships with players and tribes through on-chain registries on a seven-point scale. Standings feed into everything else. They control who can access your gates, trade at your SSUs, how your turrets pick targets, and who gets access to your storage units. Subscribe to allied registries for federated diplomacy across groups.
+- **Gate Tolls & Treasuries** -- Gates can charge tolls in any custom currency with configurable standing thresholds for free passage. Toll revenue routes to shared treasury wallets that support multiple admins and multi-currency balances. Collect tolls, fund operations, control spending.
+- **Private Maps** -- Share structure locations with your organization without exposing them on chain. Invite-based encryption uses X25519 sealed boxes with keys derived from wallet signatures, so there's no local key storage at all. Or use standings-gated maps where visibility is controlled by registry thresholds.
+- **Sonar** -- Real-time event monitoring from two channels: blockchain polling via Sui GraphQL and local game log tailing via File System Access API. Tracks combat, trades, fuel levels, gate activity, structure changes, mining efficiency, DPS, and more. The log analyzer detects mining runs, calculates ore-per-minute rates, spots cargo-full events, and tracks live DPS dealt and received with per-encounter breakdowns. Configurable watchlists with per-target audio alerts.
+- **Structures** -- Monitor and manage owned deployables with fuel expiration tracking, extension deployment, and location resolution from both public reveals and private maps.
+- **Star Map & Navigation** -- 3D WebGL solar system visualization with jump route planning. Route by fewest jumps, shortest distance, or prefer gates, with waypoints, avoidance lists, and fuel consumption estimates.
 - **Killmails** -- Combat event tracking and threat assessment across the cluster.
+
+Seven Move smart contracts are deployed on testnet covering markets, treasuries, standings, gate tolls, turret priority, and SSU integration.
 
 ## Why This Exists
 
-This project started as a hackathon entry and grew into something I use every day in EVE Frontier. Here's the thing -- I didn't write a single line of code by hand. Every line was generated through AI-assisted development using [Claude Code](https://claude.ai/claude-code). 100% vibe coded, from the first commit to the latest feature.
+This project started as a hackathon entry and grew into something I use every day in EVE Frontier. I didn't write a single line of code by hand. Every line was generated through AI-assisted development using [Claude Code](https://claude.ai/claude-code). 100% vibe coded, from the first commit to the latest feature.
 
-One of the core intentions behind this project is to show EVE Frontier players who have no coding background that they CAN build tools on the Frontier blockchain. You don't need to be a software developer. If you can describe what you want clearly enough, AI can help you build it. The barrier to entry has never been lower.
+One of the big goals here is to show EVE Frontier players who have no coding background that they CAN build tools on the Frontier blockchain. You don't need to be a software developer. If you can describe what you want clearly enough, AI can help you build it. The barrier to entry has never been lower.
 
-That's also why this project is open source. Not just for transparency, but so anyone can learn from it, fork it, modify it, and build their own tools. If Periscope does something you like, take it. If it doesn't do what you need, change it. The whole point is to lower the barrier.
+That's also why this project is open source. Not just for transparency, but so anyone can learn from it, fork it, and build their own tools. If Periscope does something you like, take it. If it doesn't do what you need, change it.
 
 ## Privacy
 

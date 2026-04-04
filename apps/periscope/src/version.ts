@@ -1,7 +1,7 @@
 // Version and changelog -- pure module (no browser APIs, no app imports).
 // Imported by vite.config.ts at build time in a Node context.
 
-export const APP_VERSION = "2.26.04.02";
+export const APP_VERSION = "3.26.04.02";
 
 export interface ChangelogEntry {
 	version: string;

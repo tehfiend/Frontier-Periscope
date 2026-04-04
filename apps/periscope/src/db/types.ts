@@ -372,6 +372,8 @@ export type LogEventType =
 	| "gate_offline"
 	| "build_fail"
 	| "dismantle"
+	| "asteroid_depleted"
+	| "cargo_full"
 	| "notify"
 	| "info"
 	| "hint"
@@ -502,7 +504,7 @@ export interface ManifestMarket {
 	nextBuyId: number;
 	/** Full coin type string */
 	coinType: string;
-	totalSupply?: number;
+	totalSupply?: string;
 	/** When this entry was last cached */
 	cachedAt: string;
 	// No tenant -- market packageId is shared across tenants
@@ -858,6 +860,13 @@ export type SonarEventType =
 	// ── Log events ──────────────────────────────────────────────────────────
 	| "system_change"
 	| "chat"
+	// ── Log activity ────────────────────────────────────────────────────────
+	| "mining_started"
+	| "mining_ended"
+	| "combat_started"
+	| "combat_ended"
+	| "asteroid_depleted"
+	| "cargo_full"
 	// ── Inventory ───────────────────────────────────────────────────────────
 	| "item_deposited"
 	| "item_withdrawn"
