@@ -27,4 +27,4 @@ The 3D Star Map shows the full solar system in WebGL with jump route planning. Y
 
 Structure management lets you monitor and manage all your owned deployables with fuel expiration tracking, extension deployment, and cross-referencing against private map locations.
 
-Seven Move smart contracts are deployed on testnet covering markets, treasuries, standings, gate tolls, turret priority, and SSU integration. Every line of code was written through Claude Code.
+Seven Move smart contracts are deployed on testnet covering markets, treasuries, standings, gate tolls, turret priority, and SSU integration.
