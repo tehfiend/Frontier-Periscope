@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<meta name="description" content="Organizational toolkit for EVE Frontier -- custom currencies, on-chain diplomacy, encrypted maps, shared treasury, and real-time intel. Runs entirely in your browser." />
+		<meta name="description" content="Organizational toolkit and real-time monitoring platform for EVE Frontier. Custom currencies, on-chain diplomacy, encrypted maps, shared treasury, mining analytics, and live DPS tracking. Runs entirely in your browser." />
 		<meta name="theme-color" content="#09090b" />
 		<title>Frontier Periscope -- Organizational Toolkit for EVE Frontier</title>
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -22,10 +22,13 @@
 				<h1 class="text-5xl font-bold tracking-tight sm:text-6xl">
 					Frontier <span class="text-cyan-400">Periscope</span>
 				</h1>
-				<p class="max-w-lg text-lg text-zinc-400">
-					An organizational toolkit for
+				<p class="max-w-xl text-lg text-zinc-400">
+					An organizational toolkit and real-time monitoring platform for
 					<a href="https://evefrontier.com" class="text-zinc-300 underline decoration-zinc-700 hover:text-cyan-400 hover:decoration-cyan-400/50 transition-colors">EVE Frontier</a>.
-					Custom currencies, on-chain diplomacy, encrypted coordination, shared treasury, and real-time intel -- all running locally in your browser.
+					Give non-technical players access to blockchain data and extend Smart Assemblies with custom economies, diplomacy systems, and shared infrastructure.
+				</p>
+				<p class="max-w-lg text-sm text-zinc-500">
+					The whole thing runs entirely in your browser with no backend server. All your data stays local and every chain interaction goes directly through public Sui and EVE Frontier endpoints.
 				</p>
 			</div>
 
@@ -37,20 +40,16 @@
 					Open Periscope
 				</a>
 				<a
-					href="#install"
+					href="https://github.com/tehfiend/Frontier-Periscope"
 					class="rounded-lg border border-zinc-700 px-8 py-3 text-sm font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
 				>
-					Install as Desktop App
+					View on GitHub
 				</a>
 			</div>
 
 			<p class="mt-6 text-xs text-zinc-600">
-				No download required -- runs in Chrome and Edge. Or
-				<a href="#install" class="text-zinc-500 underline decoration-zinc-700 hover:text-zinc-400">install it</a>
-				as a standalone desktop app.
-			</p>
-			<p class="mt-3 text-xs text-zinc-600">
-				Alpha release -- built during EVE Frontier Cycle 5 on Sui testnet.
+				No download required. Runs in Chrome and Edge, or
+				<a href="#install" class="text-zinc-500 underline decoration-zinc-700 hover:text-zinc-400">install as a desktop app</a>.
 			</p>
 
 			<!-- Scroll indicator -->
@@ -61,15 +60,16 @@
 
 		<!-- Features -->
 		<section class="mx-auto max-w-5xl px-6 py-24">
-			<h2 class="mb-12 text-center text-3xl font-bold">Features</h2>
-			<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+			<h2 class="mb-4 text-center text-3xl font-bold">Features</h2>
+			<p class="mb-12 text-center text-sm text-zinc-500">Seven Move smart contracts deployed on testnet. Every line of code written through Claude Code.</p>
+			<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
 				<!-- Custom Currencies -->
 				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
 					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>
 					</div>
-					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Custom Currencies</h3>
-					<p class="text-xs text-zinc-500">Publish your own tokens, create markets, and trade on player-run exchanges. Build the economy your organization needs.</p>
+					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Custom Currencies &amp; Markets</h3>
+					<p class="text-xs text-zinc-500">Create your own tokens directly in the browser through in-browser Move bytecode patching. No CLI, no gas station. Trade through on-chain order book markets at any SSU with atomic escrow.</p>
 				</div>
 				<!-- Standings & Diplomacy -->
 				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
@@ -77,7 +77,15 @@
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 13a3 3 0 1 0-6 0"/><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><circle cx="12" cy="8" r="2"/></svg>
 					</div>
 					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Standings &amp; Diplomacy</h3>
-					<p class="text-xs text-zinc-500">On-chain friend-or-foe lists. Standings registries control access to your gates, turrets, and storage -- define alliances and enforce them automatically.</p>
+					<p class="text-xs text-zinc-500">Manage relationships through on-chain registries on a seven-point scale. Standings control gate access, market permissions, turret targeting, and storage authorization. Subscribe to allied registries for federated diplomacy.</p>
+				</div>
+				<!-- Gate Tolls & Treasury -->
+				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
+					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+					</div>
+					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Gate Tolls &amp; Treasuries</h3>
+					<p class="text-xs text-zinc-500">Charge tolls in any custom currency with standing thresholds for free passage. Revenue routes to shared treasury wallets with multiple admins and multi-currency balances.</p>
 				</div>
 				<!-- Private Maps -->
 				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
@@ -85,23 +93,15 @@
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
 					</div>
 					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Private Maps</h3>
-					<p class="text-xs text-zinc-500">End-to-end encrypted location sharing. Share structure positions with invited members -- no one else can read them, not even the chain.</p>
-				</div>
-				<!-- Treasury -->
-				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
-					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
-						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
-					</div>
-					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Treasury</h3>
-					<p class="text-xs text-zinc-500">Shared wallets for organizations. Collect toll revenue from gates and SSUs, pool funds, and manage group finances on-chain.</p>
+					<p class="text-xs text-zinc-500">Share structure locations without exposing them on chain. Invite-based encryption using X25519 sealed boxes with keys derived from wallet signatures, or standings-gated maps controlled by registry thresholds.</p>
 				</div>
 				<!-- Sonar -->
 				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
 					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
 					</div>
-					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Sonar</h3>
-					<p class="text-xs text-zinc-500">Real-time monitoring from both on-chain events and local game logs. Set up watchlists, get ping alerts, and track activity across the cluster.</p>
+					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Sonar &amp; Mining Analytics</h3>
+					<p class="text-xs text-zinc-500">Real-time monitoring from blockchain polling and local game log tailing. Tracks combat, trades, fuel, gate activity, mining efficiency, and live DPS. Distinct alert sounds for cargo full, under attack, and other events. Configurable watchlists.</p>
 				</div>
 				<!-- Structures -->
 				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
@@ -109,7 +109,138 @@
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
 					</div>
 					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Structures</h3>
-					<p class="text-xs text-zinc-500">Manage your on-chain structures. Track fuel levels, deploy and configure extensions, and resolve locations -- all from one view.</p>
+					<p class="text-xs text-zinc-500">Monitor and manage owned deployables with fuel expiration tracking, extension deployment, and location resolution from public reveals and private maps.</p>
+				</div>
+				<!-- Star Map -->
+				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
+					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+					</div>
+					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Star Map &amp; Navigation</h3>
+					<p class="text-xs text-zinc-500">3D WebGL solar system visualization with jump route planning. Route by fewest jumps, shortest distance, or prefer gates, with waypoints, avoidance lists, and fuel estimates.</p>
+				</div>
+				<!-- Killmails -->
+				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
+					<div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg>
+					</div>
+					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Killmails</h3>
+					<p class="text-xs text-zinc-500">Combat event tracking and threat assessment across the cluster.</p>
+				</div>
+			</div>
+		</section>
+
+		<!-- How It Works: Gas Station Narrative -->
+		<section class="border-t border-zinc-800 px-6 py-24">
+			<div class="mx-auto max-w-5xl">
+				<h2 class="mb-4 text-center text-3xl font-bold">Build a Player-Run Economy</h2>
+				<p class="mb-12 mx-auto max-w-2xl text-center text-sm text-zinc-400">
+					Here's an example of what you can build with Periscope. Create a currency, fund a treasury, stock a store, set prices, control access, share the location privately, and let players trade. All from one toolkit.
+				</p>
+
+				<div class="space-y-16">
+					<!-- Step 1: Create Currency -->
+					<div class="flex flex-col items-center gap-8 md:flex-row">
+						<div class="flex-1">
+							<div class="mb-2 inline-block rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-400">Step 1</div>
+							<h3 class="mb-2 text-lg font-semibold text-zinc-200">Create Your Currency</h3>
+							<p class="text-sm text-zinc-400">
+								Publish a custom token directly in your browser. No CLI tools, no gas station, nothing. Pick a name and symbol and Periscope handles the bytecode patching and on-chain deployment. Mint tokens and deposit them into a shared treasury.
+							</p>
+						</div>
+						<div class="w-full max-w-md shrink-0">
+							<img src="/screenshots/currencies.png" alt="Currencies page showing TEH token with treasury and market order book" class="rounded-lg border border-zinc-800 shadow-2xl" loading="lazy" />
+						</div>
+					</div>
+
+					<!-- Step 2: Stock the Store -->
+					<div class="flex flex-col items-center gap-8 md:flex-row-reverse">
+						<div class="flex-1">
+							<div class="mb-2 inline-block rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-400">Step 2</div>
+							<h3 class="mb-2 text-lg font-semibold text-zinc-200">Stock Your Store</h3>
+							<p class="text-sm text-zinc-400">
+								Set up a Smart Storage Unit as a gas station and post sell listings for raw materials priced in your custom currency. Create an exchange pair so players can buy your currency with SUI before they shop.
+							</p>
+						</div>
+						<div class="w-full max-w-md shrink-0">
+							<img src="/screenshots/SSU_dApp_market.png" alt="SSU dApp market tab with active sell listings" class="rounded-lg border border-zinc-800 shadow-2xl" loading="lazy" />
+						</div>
+					</div>
+
+					<!-- Step 3: Control Access -->
+					<div class="flex flex-col items-center gap-8 md:flex-row">
+						<div class="flex-1">
+							<div class="mb-2 inline-block rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-400">Step 3</div>
+							<h3 class="mb-2 text-lg font-semibold text-zinc-200">Control Access</h3>
+							<p class="text-sm text-zinc-400">
+								Deploy a standings extension on your structure and link it to your registry. Friendly players trade freely, unknowns pay a toll or get blocked. Configure it all from the Structures page.
+							</p>
+						</div>
+						<div class="w-full max-w-md shrink-0">
+							<img src="/screenshots/SSU_extension.png" alt="Deploy Extension panel with standings configuration" class="rounded-lg border border-zinc-800 shadow-2xl" loading="lazy" />
+						</div>
+					</div>
+
+					<!-- Step 4: Share Location -->
+					<div class="flex flex-col items-center gap-8 md:flex-row-reverse">
+						<div class="flex-1">
+							<div class="mb-2 inline-block rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-400">Step 4</div>
+							<h3 class="mb-2 text-lg font-semibold text-zinc-200">Share Privately</h3>
+							<p class="text-sm text-zinc-400">
+								Publish your gas station's location to an encrypted private map. Only invited members can see it. Advertise what you're selling and at what price without revealing your position to the whole chain.
+							</p>
+						</div>
+						<div class="w-full max-w-md shrink-0">
+							<img src="/screenshots/private_maps.png" alt="Private Maps page with encrypted location sharing" class="rounded-lg border border-zinc-800 shadow-2xl" loading="lazy" />
+						</div>
+					</div>
+
+					<!-- Step 5: Monitor -->
+					<div class="flex flex-col items-center gap-8 md:flex-row">
+						<div class="flex-1">
+							<div class="mb-2 inline-block rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-400">Step 5</div>
+							<h3 class="mb-2 text-lg font-semibold text-zinc-200">Monitor Everything</h3>
+							<p class="text-sm text-zinc-400">
+								Sonar tracks real-time events from both the blockchain and your game logs. See mining rates, combat DPS, gate activity, and fuel status all in one feed. Different alert sounds for different situations -- cargo full plays a warning alarm, getting shot first triggers a threat pulse. Set up watchlists so you never miss anything.
+							</p>
+						</div>
+						<div class="w-full max-w-md shrink-0">
+							<img src="/screenshots/sonar_mining.png" alt="Sonar dashboard with mining rate and combat events" class="rounded-lg border border-zinc-800 shadow-2xl" loading="lazy" />
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<!-- More Screenshots -->
+		<section class="border-t border-zinc-800 px-6 py-24">
+			<div class="mx-auto max-w-5xl">
+				<h2 class="mb-12 text-center text-3xl font-bold">In Action</h2>
+				<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+					<div>
+						<img src="/screenshots/SSU_dApp.png" alt="SSU dApp inventory view inside EVE Frontier" class="mb-3 rounded-lg border border-zinc-800 shadow-lg" loading="lazy" />
+						<p class="text-xs text-zinc-500">The Periscope SSU dApp loaded inside EVE Frontier's in-game browser, showing the full inventory of a Smart Storage Unit.</p>
+					</div>
+					<div>
+						<img src="/screenshots/currency_exchange.png" alt="Exchange tab with SUI/TEH trading pair" class="mb-3 rounded-lg border border-zinc-800 shadow-lg" loading="lazy" />
+						<p class="text-xs text-zinc-500">The in-game exchange interface for trading between currencies. Players buy your custom currency with SUI before shopping at your market.</p>
+					</div>
+					<div>
+						<img src="/screenshots/transfer_player.png" alt="Player-to-player item transfer dialog" class="mb-3 rounded-lg border border-zinc-800 shadow-lg" loading="lazy" />
+						<p class="text-xs text-zinc-500">Player-to-player item transfer with character search autocomplete. Send directly to a player's inventory or through escrow.</p>
+					</div>
+					<div>
+						<img src="/screenshots/sonar_mining_logview.png" alt="Mining analytics with ore breakdown and run history" class="mb-3 rounded-lg border border-zinc-800 shadow-lg" loading="lazy" />
+						<p class="text-xs text-zinc-500">Mining analytics showing total ore mined, breakdown by type with rates per minute, and individual run history with yield calculations.</p>
+					</div>
+					<div>
+						<img src="/screenshots/structures.png" alt="Structures overview with status tracking" class="mb-3 rounded-lg border border-zinc-800 shadow-lg" loading="lazy" />
+						<p class="text-xs text-zinc-500">Structure management overview showing online/offline status, fuel warnings, and chain sync for all your deployables.</p>
+					</div>
+					<div>
+						<img src="/screenshots/SSU_dApp_escrow.png" alt="SSU dApp compact view with escrow transfer" class="mb-3 rounded-lg border border-zinc-800 shadow-lg" loading="lazy" />
+						<p class="text-xs text-zinc-500">The compact SSU dApp view with inventory management, extension details, and the Publish to Map button for sharing locations.</p>
+					</div>
 				</div>
 			</div>
 		</section>
@@ -119,12 +250,11 @@
 			<div class="mx-auto max-w-3xl">
 				<h2 class="mb-4 text-center text-3xl font-bold">Install Periscope</h2>
 				<p class="mb-12 text-center text-zinc-400">
-					Run Periscope as a standalone desktop app -- no installer required. You'll be prompted when updates are available.
+					Run Periscope as a standalone desktop app. No installer required.
 				</p>
 
 				<!-- Steps -->
 				<div class="space-y-6">
-					<!-- Step 1 -->
 					<div class="flex gap-5">
 						<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">1</div>
 						<div class="pt-1.5">
@@ -135,46 +265,41 @@
 							</p>
 						</div>
 					</div>
-
-					<!-- Step 2 -->
 					<div class="flex gap-5">
 						<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">2</div>
 						<div class="pt-1.5">
 							<h3 class="mb-1 text-sm font-semibold text-zinc-200">Install from the browser menu</h3>
 							<p class="text-xs text-zinc-500">
 								<span class="font-medium text-zinc-400">Chrome:</span> Click the
-								<span class="text-zinc-400">&#8942;</span> menu (top right) &gt;
+								<span class="text-zinc-400">&#8942;</span> menu &gt;
 								<span class="text-zinc-400">Cast, save, and share</span> &gt;
 								<span class="text-zinc-400">Install page as app</span>
 							</p>
 							<p class="mt-1.5 text-xs text-zinc-500">
 								<span class="font-medium text-zinc-400">Edge:</span> Click the
-								<span class="text-zinc-400">&#8943;</span> menu (top right) &gt;
+								<span class="text-zinc-400">&#8943;</span> menu &gt;
 								<span class="text-zinc-400">Apps</span> &gt;
 								<span class="text-zinc-400">Install Frontier Periscope</span>
 							</p>
 						</div>
 					</div>
-
-					<!-- Step 3 -->
 					<div class="flex gap-5">
 						<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">3</div>
 						<div class="pt-1.5">
 							<h3 class="mb-1 text-sm font-semibold text-zinc-200">Click "Install" in the prompt</h3>
 							<p class="text-xs text-zinc-500">
-								Periscope opens in its own window with no address bar or browser tabs. A shortcut is added to your desktop and start menu automatically.
+								Periscope opens in its own window. A shortcut is added to your desktop and start menu automatically.
 							</p>
 						</div>
 					</div>
 				</div>
 
-				<!-- After steps -->
 				<div class="mt-10 rounded-lg border border-zinc-800 bg-zinc-900/30 p-5">
 					<p class="text-xs text-zinc-500">
 						<span class="font-medium text-zinc-400">Prefer the browser?</span>
 						Periscope works just as well in a regular tab. Bookmark
 						<a href="https://app.frontierperiscope.com" class="text-cyan-400 hover:text-cyan-300 transition-colors">app.frontierperiscope.com</a>
-						and you're set. Either way, your data stays local.
+						and you're set.
 					</p>
 				</div>
 			</div>
@@ -185,7 +310,7 @@
 			<div class="mx-auto max-w-2xl text-center">
 				<h2 class="mb-4 text-3xl font-bold">Fully Client-Side</h2>
 				<p class="mb-8 text-zinc-400">
-					No backend. No accounts. No tracking. Periscope runs entirely in your browser -- data stays in local IndexedDB and talks directly to public Sui and EVE Frontier endpoints.
+					No backend. No accounts. No tracking. Periscope runs entirely in your browser. Data stays in local IndexedDB and talks directly to public Sui and EVE Frontier endpoints.
 				</p>
 				<div class="grid gap-4 text-left sm:grid-cols-3">
 					<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-center">
@@ -193,12 +318,12 @@
 						<p class="text-xs text-zinc-500">Backend servers</p>
 					</div>
 					<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-center">
-						<p class="text-2xl font-bold text-cyan-400">0</p>
-						<p class="text-xs text-zinc-500">Accounts required</p>
+						<p class="text-2xl font-bold text-cyan-400">7</p>
+						<p class="text-xs text-zinc-500">Move contracts on testnet</p>
 					</div>
 					<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-center">
 						<p class="text-2xl font-bold text-cyan-400">100%</p>
-						<p class="text-xs text-zinc-500">Local storage</p>
+						<p class="text-xs text-zinc-500">AI-generated code</p>
 					</div>
 				</div>
 			</div>
@@ -214,7 +339,7 @@
 					browser extension.
 				</p>
 				<p class="text-xs text-zinc-600">
-					EVE Vault is optional -- read-only features work without it.
+					EVE Vault is optional. Read-only features like Star Map, standings, killmails, and log analysis work without it.
 				</p>
 			</div>
 		</section>
