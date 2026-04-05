@@ -11,7 +11,7 @@ import { db } from "@/db";
 import type { ManifestExchangePair } from "@/db/types";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import type { OrderInfo } from "@tehfrontier/chain-shared";
-import { getContractAddresses, queryOrders } from "@tehfrontier/chain-shared";
+import { getContractAddresses, queryOrders, splitTypeParams } from "@tehfrontier/chain-shared";
 
 // ── Discover Exchange Pairs ──────────────────────────────────────────────────
 
@@ -72,13 +72,16 @@ export async function discoverExchangePairs(
 			if (!json) continue;
 
 			// Extract coin types from "PKG::exchange::OrderBook<CoinA, CoinB>"
-			const match = typeRepr.match(/::exchange::OrderBook<(.+),\s*(.+)>$/);
-			if (!match) continue;
+			const bracketStart = typeRepr.indexOf("OrderBook<");
+			const params = bracketStart >= 0
+				? splitTypeParams(typeRepr.slice(bracketStart + 10, -1))
+				: null;
+			if (!params) continue;
 
 			const entry: ManifestExchangePair = {
 				id: node.address,
-				coinTypeA: match[1].trim(),
-				coinTypeB: match[2].trim(),
+				coinTypeA: params[0],
+				coinTypeB: params[1],
 				feeBps: Number(json.fee_bps ?? 0),
 				cachedAt: now,
 			};

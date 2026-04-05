@@ -163,6 +163,21 @@ export function buildCancelAsk(params: CancelOrderParams): Transaction {
 	return tx;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+/** Split a generic type parameter list on the top-level comma, handling nested brackets. */
+export function splitTypeParams(params: string): [string, string] | null {
+	let depth = 0;
+	for (let i = 0; i < params.length; i++) {
+		if (params[i] === "<") depth++;
+		else if (params[i] === ">") depth--;
+		else if (params[i] === "," && depth === 0) {
+			return [params.slice(0, i).trim(), params.slice(i + 1).trim()];
+		}
+	}
+	return null;
+}
+
 // ── Query Functions ────────────────────────────────────────────────────────
 
 /**
@@ -182,9 +197,12 @@ export async function queryOrderBook(
 		const typeRepr = obj.type ?? "";
 
 		// Extract coin types from "PKG::exchange::OrderBook<CoinTypeA, CoinTypeB>"
-		const match = typeRepr.match(/::exchange::OrderBook<(.+),\s*(.+)>$/);
-		const coinTypeA = match ? match[1].trim() : "";
-		const coinTypeB = match ? match[2].trim() : "";
+		const bracketStart = typeRepr.indexOf("OrderBook<");
+		const params = bracketStart >= 0
+			? splitTypeParams(typeRepr.slice(bracketStart + 10, -1))
+			: null;
+		const coinTypeA = params?.[0] ?? "";
+		const coinTypeB = params?.[1] ?? "";
 
 		return {
 			objectId: bookObjectId,
