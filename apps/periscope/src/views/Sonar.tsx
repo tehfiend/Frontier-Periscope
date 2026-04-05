@@ -68,8 +68,10 @@ function getEventBadgeColor(eventType: string): string {
 		case "mining_started":
 		case "mining_ended":
 		case "asteroid_depleted":
-		case "cargo_full":
 			return "bg-amber-500/15 text-amber-400";
+		// Orange -- cargo warning
+		case "cargo_full":
+			return "bg-orange-500/15 text-orange-400";
 		// Red -- combat
 		case "killmail":
 		case "combat_started":
