@@ -225,11 +225,17 @@ export async function queryOrders(
 				const isAsk = df.nameType.includes("AskKey");
 				if (!isBid && !isAsk) continue;
 
-				const fields = df.valueJson as Record<string, unknown> | undefined;
-				if (!fields) continue;
-
 				const nameObj = df.nameJson as Record<string, unknown> | null;
 				const orderId = nameObj ? Number(nameObj.order_id ?? 0) : 0;
+
+				// Dynamic fields may come back as MoveValue (inline json) or
+				// MoveObject (wrapped object -- only address returned).
+				let fields = df.valueJson as Record<string, unknown> | undefined;
+				if (!fields && df.valueAddress) {
+					const obj = await getObjectJson(client, df.valueAddress);
+					fields = obj?.json as Record<string, unknown> | undefined;
+				}
+				if (!fields) continue;
 
 				orders.push({
 					orderId: Number(fields.order_id ?? orderId),

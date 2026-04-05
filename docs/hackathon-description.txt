@@ -1,0 +1,30 @@
+Frontier Periscope is an organizational toolkit and real-time monitoring platform for EVE Frontier.
+
+- Custom currencies and player-run markets at any SSU
+- Standings-based diplomacy with gate, turret, and storage access control
+- Gate tolls in custom currencies with shared treasury wallets
+- Encrypted private maps for organization intel sharing
+- Real-time sonar monitoring from chain events and local game logs
+- Mining efficiency tracking and live DPS analysis
+- 3D star map with jump route planning
+- Structure management with fuel tracking and extension deployment
+
+The core idea is to give non-technical players access to blockchain data and to offer enhanced features to smart assemblies like custom markets, standings-gated access, and shared treasuries. The whole thing runs entirely in the browser with no backend server. All your data stays local in IndexedDB and every chain interaction goes directly through the Sui GraphQL endpoint and your Eve Vault wallet.
+
+Periscope is the only project in the hackathon that lets players create their own custom currencies, and it does it entirely in the browser through in-browser Move bytecode patching. No CLI, no gas station, nothing. You just pick a name and symbol and it handles everything. These tokens trade through on-chain order book markets deployed to any Smart Storage Unit. All trades use atomic escrow so items and payment move together in a single transaction, zero trust required. Markets can be open or standings-gated, so you control who can mint, trade, or place buy orders based on diplomatic standing.
+
+There's a standings and diplomacy system that lets you manage relationships with other players and tribes through on-chain registries on a seven-point scale. These standings feed into everything else. They control who can access your gates, trade at your SSUs, how your turrets pick targets, and who gets access to your storage units. You can subscribe to allied registries too for federated diplomacy across groups.
+
+Gates can charge tolls in any custom currency with configurable standing thresholds for free passage. Toll revenue routes to shared treasury wallets that support multiple admins and multi-currency balances. So you've got a complete organizational finance layer. Collect tolls, fund operations, control spending.
+
+Private encrypted maps let you share structure locations with your organization without exposing them on chain. There are two modes. Invite-based encryption uses X25519 sealed boxes with keys derived deterministically from wallet signatures so there's no local key storage at all. Or you can use standings-gated maps where visibility is controlled by registry thresholds. Either way only the people you want seeing your intel can see it.
+
+On the monitoring side, Sonar tracks real-time events from two channels. Blockchain polling every 15 seconds via Sui GraphQL and local game log tailing via File System Access API. It tracks combat, trades, fuel levels, gate activity, structure changes, mining efficiency, DPS, and more. You can set up watchlists with per-target audio alerts so you never miss anything important.
+
+The log analyzer parses your game client output in real time to pull out mining and combat data. For mining it detects individual harvest cycles, groups them into mining runs, and calculates ore-per-minute rates for each run and ore type. It even detects cargo-full events by spotting drops in your cycle yield. For combat it tracks every hit and miss in both directions, calculates live DPS dealt and received over a rolling window, and groups events into discrete encounters. Each encounter gets a full breakdown with per-target damage, per-attacker damage, hit rate percentage, hit quality distribution, weapons used, and sustained DPS across the fight. All of this updates live during gameplay with no manual input. Just point the app at your game log directory and it starts reading.
+
+The 3D Star Map shows the full solar system in WebGL with jump route planning. You can route by fewest jumps, shortest distance, or prefer gates, and it supports waypoints, avoidance lists, and fuel consumption estimates.
+
+Structure management lets you monitor and manage all your owned deployables with fuel expiration tracking, extension deployment, and cross-referencing against private map locations.
+
+Seven Move smart contracts are deployed on testnet covering markets, treasuries, standings, gate tolls, turret priority, and SSU integration. Every line of code was written through Claude Code.

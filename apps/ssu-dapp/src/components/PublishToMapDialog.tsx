@@ -1,21 +1,25 @@
 import { useDAppKit } from "@mysten/dapp-kit-react";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CopyAddress } from "./CopyAddress";
 
-import { useMapKey } from "@/hooks/useMapKey";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { getTenant } from "@/lib/constants";
 import {
 	type MapInviteInfo,
 	type PrivateMapInfo,
+	type PrivateMapV2Info,
 	type TenantId,
 	buildAddLocation,
+	buildAddLocationEncrypted,
+	deriveMapKeyFromSignature,
 	encodeLocationData,
 	getContractAddresses,
 	hexToBytes,
 	queryMapInvitesForUser,
+	queryMapInvitesV2ForUser,
 	queryPrivateMap,
+	queryPrivateMapV2,
 	sealForRecipient,
 } from "@tehfrontier/chain-shared";
 
@@ -26,8 +30,11 @@ interface PublishToMapDialogProps {
 }
 
 interface ResolvedMap {
-	invite: MapInviteInfo;
-	map: PrivateMapInfo;
+	version: "v1" | "v2";
+	inviteObjectId: string;
+	mapId: string;
+	name: string;
+	publicKey: string;
 }
 
 export function PublishToMapDialog({
@@ -39,9 +46,9 @@ export function PublishToMapDialog({
 	const dAppKit = useDAppKit();
 	const tenant = getTenant() as TenantId;
 	const addresses = getContractAddresses(tenant);
-	const packageId = addresses.privateMap?.packageId;
+	const packageIdV1 = addresses.privateMap?.packageId;
+	const packageIdV2 = addresses.privateMapStandings?.packageId;
 
-	const { keyPair, deriveKey, isDerivingKey } = useMapKey();
 	const [selectedMapId, setSelectedMapId] = useState<string | null>(null);
 	const [systemId, setSystemId] = useState<number | null>(null);
 	const [systemSearch, setSystemSearch] = useState("");
@@ -82,31 +89,75 @@ export function PublishToMapDialog({
 		? (systemLabels?.[String(systemId)] ?? `System ${systemId}`)
 		: "";
 
-	// Fetch user's map invites + resolve map names
+	// Fetch user's map invites from both V1 and V2 contracts (no key needed)
 	const { data: resolvedMaps, isLoading: mapsLoading } = useQuery({
-		queryKey: ["mapInvites", packageId, walletAddress],
+		queryKey: ["mapInvites", packageIdV1, packageIdV2, walletAddress],
 		queryFn: async (): Promise<ResolvedMap[]> => {
-			if (!packageId) return [];
-			const invites = await queryMapInvitesForUser(client, packageId, walletAddress);
 			const maps: ResolvedMap[] = [];
-			for (const invite of invites) {
-				const map = await queryPrivateMap(client, invite.mapId);
-				if (map) {
-					maps.push({ invite, map });
+
+			// Query V1 maps
+			if (packageIdV1) {
+				try {
+					const invites = await queryMapInvitesForUser(client, packageIdV1, walletAddress);
+					for (const invite of invites) {
+						const map = await queryPrivateMap(client, invite.mapId);
+						if (map) {
+							maps.push({
+								version: "v1",
+								inviteObjectId: invite.objectId,
+								mapId: map.objectId,
+								name: map.name,
+								publicKey: map.publicKey,
+							});
+						}
+					}
+				} catch {
+					// V1 query failed, continue with V2
 				}
 			}
+
+			// Query V2 maps
+			if (packageIdV2) {
+				try {
+					const invites = await queryMapInvitesV2ForUser(client, packageIdV2, walletAddress);
+					for (const invite of invites) {
+						const map = await queryPrivateMapV2(client, invite.mapId);
+						if (map && map.mode === 0 && map.publicKey) {
+							maps.push({
+								version: "v2",
+								inviteObjectId: invite.objectId,
+								mapId: map.objectId,
+								name: map.name,
+								publicKey: map.publicKey,
+							});
+						}
+					}
+				} catch {
+					// V2 query failed
+				}
+			}
+
 			return maps;
 		},
-		enabled: !!packageId && !!keyPair,
+		enabled: !!(packageIdV1 || packageIdV2),
 		staleTime: 60_000,
 	});
+
+	// Auto-select the first map when maps load
+	const firstMapId = resolvedMaps?.[0]?.mapId ?? null;
+	useEffect(() => {
+		if (firstMapId) {
+			setSelectedMapId((prev) => prev ?? firstMapId);
+		}
+	}, [firstMapId]);
 
 	const solarSystemId = systemId ?? 0;
 	const planetNum = Number(planet) || 0;
 	const lPointNum = Number(lPoint) || 0;
 
+	// Derive key and publish in a single action
 	const handlePublish = useCallback(async () => {
-		if (!keyPair || !selectedMapId || !packageId) return;
+		if (!selectedMapId) return;
 		if (!systemId || solarSystemId <= 0) {
 			setError("Select a solar system");
 			return;
@@ -115,8 +166,14 @@ export function PublishToMapDialog({
 		setError(null);
 
 		try {
-			const resolved = resolvedMaps?.find((m) => m.map.objectId === selectedMapId);
+			const resolved = resolvedMaps?.find((m) => m.mapId === selectedMapId);
 			if (!resolved) throw new Error("Map not found");
+
+			// Derive encryption key (prompts wallet signature)
+			const { signature } = await dAppKit.signPersonalMessage({
+				message: new TextEncoder().encode("TehFrontier Map Key v1"),
+			});
+			const _keyPair = deriveMapKeyFromSignature(signature);
 
 			// Encrypt location data with map's public key
 			const plaintext = encodeLocationData({
@@ -126,17 +183,30 @@ export function PublishToMapDialog({
 				description: description.trim() || undefined,
 			});
 
-			const mapPublicKey = hexToBytes(resolved.map.publicKey);
+			const mapPublicKey = hexToBytes(resolved.publicKey);
 			const encryptedData = sealForRecipient(plaintext, mapPublicKey);
 
-			const tx = buildAddLocation({
-				packageId,
-				mapId: selectedMapId,
-				inviteId: resolved.invite.objectId,
-				structureId: ssuObjectId,
-				encryptedData,
-				senderAddress: walletAddress,
-			});
+			const packageId = resolved.version === "v2" ? packageIdV2 : packageIdV1;
+			if (!packageId) throw new Error("Map contract not available");
+
+			const tx =
+				resolved.version === "v2"
+					? buildAddLocationEncrypted({
+							packageId,
+							mapId: selectedMapId,
+							inviteId: resolved.inviteObjectId,
+							structureId: ssuObjectId,
+							encryptedData,
+							senderAddress: walletAddress,
+						})
+					: buildAddLocation({
+							packageId,
+							mapId: selectedMapId,
+							inviteId: resolved.inviteObjectId,
+							structureId: ssuObjectId,
+							encryptedData,
+							senderAddress: walletAddress,
+						});
 
 			await dAppKit.signAndExecuteTransaction({ transaction: tx });
 			onClose();
@@ -146,9 +216,9 @@ export function PublishToMapDialog({
 			setIsPending(false);
 		}
 	}, [
-		keyPair,
 		selectedMapId,
-		packageId,
+		packageIdV1,
+		packageIdV2,
 		resolvedMaps,
 		systemId,
 		solarSystemId,
@@ -161,7 +231,7 @@ export function PublishToMapDialog({
 		onClose,
 	]);
 
-	if (!packageId) {
+	if (!packageIdV1 && !packageIdV2) {
 		return (
 			<DialogOverlay onClose={onClose}>
 				<h2 className="mb-4 text-lg font-semibold text-zinc-100">Publish to Map</h2>
@@ -179,36 +249,6 @@ export function PublishToMapDialog({
 		);
 	}
 
-	// Step 1: Derive key
-	if (!keyPair) {
-		return (
-			<DialogOverlay onClose={onClose}>
-				<h2 className="mb-4 text-lg font-semibold text-zinc-100">Publish to Map</h2>
-				<p className="mb-4 text-sm text-zinc-400">
-					Sign a message to derive your map encryption key.
-				</p>
-				<div className="flex justify-end gap-2">
-					<button
-						type="button"
-						onClick={onClose}
-						className="rounded-lg px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-300"
-					>
-						Cancel
-					</button>
-					<button
-						type="button"
-						onClick={deriveKey}
-						disabled={isDerivingKey}
-						className="rounded-lg bg-cyan-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50"
-					>
-						{isDerivingKey ? "Signing..." : "Derive Key"}
-					</button>
-				</div>
-			</DialogOverlay>
-		);
-	}
-
-	// Step 2: Select map + publish
 	return (
 		<DialogOverlay onClose={onClose}>
 			<h2 className="mb-4 text-lg font-semibold text-zinc-100">Publish to Map</h2>
@@ -280,21 +320,23 @@ export function PublishToMapDialog({
 						/>
 					</div>
 					<div className="flex-1">
-						<label htmlFor="publish-lpoint" className="mb-1 block text-xs text-zinc-400">
-							L-Point
-						</label>
-						<select
-							id="publish-lpoint"
-							value={lPoint}
-							onChange={(e) => setLPoint(e.target.value)}
-							className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none"
-						>
-							<option value="1">L1</option>
-							<option value="2">L2</option>
-							<option value="3">L3</option>
-							<option value="4">L4</option>
-							<option value="5">L5</option>
-						</select>
+						<span className="mb-1 block text-xs text-zinc-400">L-Point</span>
+						<div className="flex gap-1">
+							{[1, 2, 3, 4, 5].map((n) => (
+								<button
+									key={n}
+									type="button"
+									onClick={() => setLPoint(String(n))}
+									className={`flex-1 rounded-lg border px-1 py-2 text-sm transition-colors ${
+										lPoint === String(n)
+											? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
+											: "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
+									}`}
+								>
+									L{n}
+								</button>
+							))}
+						</div>
 					</div>
 				</div>
 				{systemId && (
@@ -316,18 +358,18 @@ export function PublishToMapDialog({
 					<div className="mb-3 max-h-48 space-y-1 overflow-y-auto">
 						{resolvedMaps.map((rm) => (
 							<button
-								key={rm.map.objectId}
+								key={rm.mapId}
 								type="button"
-								onClick={() => setSelectedMapId(rm.map.objectId)}
+								onClick={() => setSelectedMapId(rm.mapId)}
 								className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-									selectedMapId === rm.map.objectId
+									selectedMapId === rm.mapId
 										? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
 										: "border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-600"
 								}`}
 							>
-								{rm.map.name}
+								{rm.name}
 								<CopyAddress
-									address={rm.map.objectId}
+									address={rm.mapId}
 									sliceStart={10}
 									sliceEnd={4}
 									className="ml-2 text-xs text-zinc-600"
@@ -386,16 +428,14 @@ function DialogOverlay({
 	return (
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-			onClick={onClose}
+			onClick={(e) => {
+				if (e.target === e.currentTarget) onClose();
+			}}
 			onKeyDown={(e) => {
 				if (e.key === "Escape") onClose();
 			}}
 		>
-			<div
-				className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl"
-				onClick={(e) => e.stopPropagation()}
-				onKeyDown={() => {}}
-			>
+			<div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
 				{children}
 			</div>
 		</div>

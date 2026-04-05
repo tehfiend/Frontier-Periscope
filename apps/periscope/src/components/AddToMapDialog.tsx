@@ -9,7 +9,7 @@ import { walletErrorMessage } from "@/lib/format";
 import { buildAddLocationTx } from "@/lib/mapLocation";
 import { useAppStore } from "@/stores/appStore";
 import type { StructureRow } from "@/views/Deployables";
-import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
+import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-react";
 import { getContractAddresses } from "@tehfrontier/chain-shared";
 import { useLiveQuery } from "dexie-react-hooks";
 import { AlertCircle, Loader2, MapPin } from "lucide-react";
@@ -35,7 +35,22 @@ export function AddToMapDialog({ structureRow, onClose, onAdded }: AddToMapDialo
 	const account = useCurrentAccount();
 	const client = useSuiClient();
 	const dAppKit = useDAppKit();
+	const wallets = useWallets();
 	const { activeCharacter } = useActiveCharacter();
+
+	async function ensureWallet(): Promise<boolean> {
+		if (account) return true;
+		const eveVault = wallets.find(
+			(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
+		);
+		if (!eveVault) return false;
+		try {
+			await dAppKit.connectWallet({ wallet: eveVault });
+			return true;
+		} catch {
+			return false;
+		}
+	}
 	const defaultMapId = useAppStore((s) => s.defaultMapId);
 
 	// Read all maps from IndexedDB
@@ -102,7 +117,11 @@ export function AddToMapDialog({ structureRow, onClose, onAdded }: AddToMapDialo
 	const selectedOption = mapOptions.find((o) => o.map.id === selectedMapId);
 
 	const handleAdd = async () => {
-		if (!solarSystemId || !planet || !lPoint || !selectedOption || !account) return;
+		if (!solarSystemId || !planet || !lPoint || !selectedOption) return;
+		if (!(await ensureWallet())) {
+			setError("Wallet connection required. Install Eve Vault to continue.");
+			return;
+		}
 		setIsPending(true);
 		setError(null);
 
@@ -345,7 +364,7 @@ export function AddToMapDialog({ structureRow, onClose, onAdded }: AddToMapDialo
 						type="button"
 						onClick={handleAdd}
 						disabled={
-							!solarSystemId || !planet || !lPoint || !selectedOption || !account || isPending
+							!solarSystemId || !planet || !lPoint || !selectedOption || isPending
 						}
 						className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
 					>

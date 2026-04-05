@@ -10,7 +10,6 @@ import {
 	MapPin,
 	Plus,
 	RefreshCw,
-	Shield,
 	Star,
 	Trash2,
 	UserPlus,
@@ -27,6 +26,7 @@ import {
 	syncPrivateMapsForUser,
 	syncPrivateMapsV2ForUser,
 } from "@/chain/manifest";
+import { ContactPicker } from "@/components/ContactPicker";
 import { CopyAddress } from "@/components/CopyAddress";
 import { ErrorMessage } from "@/components/ErrorMessage";
 import { db } from "@/db";
@@ -43,7 +43,6 @@ import {
 	type TenantId,
 	buildCreateEncryptedMap,
 	buildCreateMap,
-	buildCreateStandingsMap,
 	buildInviteMember,
 	buildRemoveLocation,
 	buildRemoveLocationV2,
@@ -294,7 +293,7 @@ export function PrivateMaps() {
 			{/* Map List */}
 			{totalMaps === 0 ? (
 				<EmptyState
-					icon={<Shield size={48} className="text-zinc-700" />}
+					icon={<Lock size={48} className="text-zinc-700" />}
 					title="No private maps"
 					description={
 						isSyncing || isLoadingKey
@@ -389,40 +388,9 @@ export function PrivateMaps() {
 			{/* Selected V2 Map Details */}
 			{selectedMapV2 && selectedMapVersion === "v2" && (
 				<div className="mt-6 space-y-4">
-					{/* Standings info for mode=1 maps */}
-					{selectedMapV2.mode === 1 && (
-						<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-							<div className="flex items-center gap-2 text-xs text-zinc-400">
-								<Shield size={14} className="text-amber-500" />
-								<span>Standings-Gated Map</span>
-							</div>
-							<div className="mt-2 grid grid-cols-2 gap-3 text-xs">
-								<div>
-									<span className="text-zinc-600">Min Read:</span>{" "}
-									<span className="text-zinc-300">{selectedMapV2.minReadStanding ?? 0}</span>
-								</div>
-								<div>
-									<span className="text-zinc-600">Min Write:</span>{" "}
-									<span className="text-zinc-300">{selectedMapV2.minWriteStanding ?? 0}</span>
-								</div>
-								{selectedMapV2.registryId && (
-									<div className="col-span-2">
-										<span className="text-zinc-600">Registry:</span>{" "}
-										<CopyAddress
-											address={selectedMapV2.registryId}
-											sliceStart={14}
-											sliceEnd={6}
-											className="text-zinc-400"
-										/>
-									</div>
-								)}
-							</div>
-						</div>
-					)}
-
 					{walletAddress && (
 						<div className="flex items-center gap-2">
-							{selectedMapV2.creator === walletAddress && selectedMapV2.mode === 0 && (
+							{selectedMapV2.creator === walletAddress && (
 								<button
 									type="button"
 									onClick={() => setShowInviteDialog(true)}
@@ -547,7 +515,7 @@ function Header({
 					<Lock size={24} />
 					Private Maps
 				</h1>
-				<p className="mt-1 text-sm text-zinc-500">Encrypted and standings-gated location sharing</p>
+				<p className="mt-1 text-sm text-zinc-500">Encrypted location sharing</p>
 			</div>
 			<div className="flex items-center gap-2">
 				{onToggleArchived && (
@@ -728,10 +696,6 @@ function MapCardV2({
 	onSelect: () => void;
 	onArchive?: (archived: boolean) => void;
 }) {
-	const isEncrypted = map.mode === 0;
-	const ModeIcon = isEncrypted ? Lock : Shield;
-	const modeColor = isEncrypted ? "text-cyan-500" : "text-amber-500";
-	const modeLabel = isEncrypted ? "Encrypted" : "Standings";
 	const defaultMapId = useAppStore((s) => s.defaultMapId);
 	const isDefault = defaultMapId === map.id;
 
@@ -752,19 +716,12 @@ function MapCardV2({
 					className="flex min-w-0 flex-1 items-center gap-3 text-left"
 				>
 					<div className="rounded-lg bg-zinc-800 p-2">
-						<ModeIcon size={18} className={modeColor} />
+						<Lock size={18} className="text-cyan-500" />
 					</div>
 					<div>
 						<div className="flex items-center gap-2">
 							<p className="text-sm font-medium text-zinc-200">{map.name}</p>
 							{isDefault && <Star size={12} className="fill-amber-400 text-amber-400" />}
-							<span
-								className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-									isEncrypted ? "bg-cyan-500/10 text-cyan-400" : "bg-amber-500/10 text-amber-400"
-								}`}
-							>
-								{modeLabel}
-							</span>
 							<span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">
 								V2
 							</span>
@@ -1142,19 +1099,8 @@ function CreateMapDialog({
 	const dAppKit = useDAppKit();
 	const client = useSuiClient();
 	const [name, setName] = useState("");
-	const [mode, setMode] = useState<"encrypted" | "standings">("encrypted");
-	const [registryId, setRegistryId] = useState("");
-	const [minRead, setMinRead] = useState("3");
-	const [minWrite, setMinWrite] = useState("4");
 	const [isPending, setIsPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-
-	// Load subscribed registries for the registry dropdown
-	const registries =
-		useLiveQuery(
-			() => db.subscribedRegistries.where("tenant").equals(tenant).toArray(),
-			[tenant],
-		) ?? [];
 
 	const handleCreate = async () => {
 		if (!name.trim()) return;
@@ -1162,163 +1108,100 @@ function CreateMapDialog({
 		setError(null);
 
 		try {
-			if (mode === "encrypted") {
-				// Use V1 contract if available, otherwise V2 encrypted mode
-				const targetPkg = packageId || packageIdV2;
-				if (!targetPkg) {
-					setError("No map contract deployed on this tenant.");
-					return;
-				}
+			// Use V1 contract if available, otherwise V2 encrypted mode
+			const targetPkg = packageId || packageIdV2;
+			if (!targetPkg) {
+				setError("No map contract deployed on this tenant.");
+				return;
+			}
 
-				// Generate ephemeral map keypair
-				const mapKeyPair = generateEphemeralX25519Keypair();
-				const selfInviteEncrypted = sealForRecipient(mapKeyPair.secretKey, walletKeyPair.publicKey);
+			// Generate ephemeral map keypair
+			const mapKeyPair = generateEphemeralX25519Keypair();
+			const selfInviteEncrypted = sealForRecipient(mapKeyPair.secretKey, walletKeyPair.publicKey);
 
-				let tx: Transaction;
-				if (packageIdV2) {
-					tx = buildCreateEncryptedMap({
-						packageId: packageIdV2,
-						name: name.trim(),
-						publicKey: mapKeyPair.publicKey,
-						selfInviteEncryptedKey: selfInviteEncrypted,
-						senderAddress,
-					});
-				} else {
-					tx = buildCreateMap({
-						packageId: targetPkg,
-						name: name.trim(),
-						publicKey: mapKeyPair.publicKey,
-						selfInviteEncryptedKey: selfInviteEncrypted,
-						senderAddress,
-					});
-				}
-
-				const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
-				const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
-
-				let mapObjectId: string | undefined;
-				let inviteObjectId: string | undefined;
-				try {
-					const fullResult = await client.waitForTransaction({
-						digest,
-						include: { effects: true, objectTypes: true },
-					});
-					const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
-					const changedObjects = fullTx?.effects?.changedObjects ?? [];
-					const objectTypesMap = fullTx?.objectTypes ?? {};
-
-					for (const change of changedObjects) {
-						const objType = objectTypesMap[change.objectId] ?? "";
-						if (
-							objType.includes("::private_map::PrivateMap") ||
-							objType.includes("::private_map_standings::PrivateMapV2")
-						) {
-							mapObjectId = change.objectId;
-						} else if (
-							objType.includes("::private_map::MapInvite") ||
-							objType.includes("::private_map_standings::MapInviteV2")
-						) {
-							inviteObjectId = change.objectId;
-						}
-					}
-				} catch {
-					// Fallback to indexer sync
-				}
-
-				if (mapObjectId) {
-					if (packageIdV2) {
-						const entry: ManifestPrivateMapV2 = {
-							id: mapObjectId,
-							name: name.trim(),
-							creator: senderAddress,
-							editors: [senderAddress],
-							mode: 0,
-							publicKey: bytesToHex(mapKeyPair.publicKey),
-							decryptedMapKey: bytesToHex(mapKeyPair.secretKey),
-							encryptedMapKey: bytesToHex(selfInviteEncrypted),
-							inviteId: inviteObjectId,
-							tenant,
-							cachedAt: new Date().toISOString(),
-						};
-						await db.manifestPrivateMapsV2.put(entry);
-					} else {
-						const entry: ManifestPrivateMap = {
-							id: mapObjectId,
-							name: name.trim(),
-							creator: senderAddress,
-							publicKey: bytesToHex(mapKeyPair.publicKey),
-							decryptedMapKey: bytesToHex(mapKeyPair.secretKey),
-							inviteId: inviteObjectId ?? "",
-							tenant,
-							cachedAt: new Date().toISOString(),
-						};
-						await db.manifestPrivateMaps.put(entry);
-					}
-				} else {
-					await new Promise((r) => setTimeout(r, 3000));
-					onCreated();
-				}
-			} else {
-				// Standings mode -- requires V2 package
-				if (!packageIdV2) {
-					setError("Standings map requires private_map_standings contract.");
-					return;
-				}
-				if (!registryId.trim()) {
-					setError("Please select a StandingsRegistry.");
-					return;
-				}
-
-				const tx = buildCreateStandingsMap({
+			let tx: Transaction;
+			if (packageIdV2) {
+				tx = buildCreateEncryptedMap({
 					packageId: packageIdV2,
 					name: name.trim(),
-					registryId: registryId.trim(),
-					minReadStanding: Number(minRead),
-					minWriteStanding: Number(minWrite),
+					publicKey: mapKeyPair.publicKey,
+					selfInviteEncryptedKey: selfInviteEncrypted,
 					senderAddress,
 				});
+			} else {
+				tx = buildCreateMap({
+					packageId: targetPkg,
+					name: name.trim(),
+					publicKey: mapKeyPair.publicKey,
+					selfInviteEncryptedKey: selfInviteEncrypted,
+					senderAddress,
+				});
+			}
 
-				const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
-				const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
+			const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+			const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest ?? "";
 
-				let mapObjectId: string | undefined;
-				try {
-					const fullResult = await client.waitForTransaction({
-						digest,
-						include: { effects: true, objectTypes: true },
-					});
-					const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
-					const changedObjects = fullTx?.effects?.changedObjects ?? [];
-					const objectTypesMap = fullTx?.objectTypes ?? {};
+			let mapObjectId: string | undefined;
+			let inviteObjectId: string | undefined;
+			try {
+				const fullResult = await client.waitForTransaction({
+					digest,
+					include: { effects: true, objectTypes: true },
+				});
+				const fullTx = fullResult.Transaction ?? fullResult.FailedTransaction;
+				const changedObjects = fullTx?.effects?.changedObjects ?? [];
+				const objectTypesMap = fullTx?.objectTypes ?? {};
 
-					for (const change of changedObjects) {
-						const objType = objectTypesMap[change.objectId] ?? "";
-						if (objType.includes("::private_map_standings::PrivateMapV2")) {
-							mapObjectId = change.objectId;
-						}
+				for (const change of changedObjects) {
+					const objType = objectTypesMap[change.objectId] ?? "";
+					if (
+						objType.includes("::private_map::PrivateMap") ||
+						objType.includes("::private_map_standings::PrivateMapV2")
+					) {
+						mapObjectId = change.objectId;
+					} else if (
+						objType.includes("::private_map::MapInvite") ||
+						objType.includes("::private_map_standings::MapInviteV2")
+					) {
+						inviteObjectId = change.objectId;
 					}
-				} catch {
-					// Fallback
 				}
+			} catch {
+				// Fallback to indexer sync
+			}
 
-				if (mapObjectId) {
+			if (mapObjectId) {
+				if (packageIdV2) {
 					const entry: ManifestPrivateMapV2 = {
 						id: mapObjectId,
 						name: name.trim(),
 						creator: senderAddress,
 						editors: [senderAddress],
-						mode: 1,
-						registryId: registryId.trim(),
-						minReadStanding: Number(minRead),
-						minWriteStanding: Number(minWrite),
+						mode: 0,
+						publicKey: bytesToHex(mapKeyPair.publicKey),
+						decryptedMapKey: bytesToHex(mapKeyPair.secretKey),
+						encryptedMapKey: bytesToHex(selfInviteEncrypted),
+						inviteId: inviteObjectId,
 						tenant,
 						cachedAt: new Date().toISOString(),
 					};
 					await db.manifestPrivateMapsV2.put(entry);
 				} else {
-					await new Promise((r) => setTimeout(r, 3000));
-					onCreated();
+					const entry: ManifestPrivateMap = {
+						id: mapObjectId,
+						name: name.trim(),
+						creator: senderAddress,
+						publicKey: bytesToHex(mapKeyPair.publicKey),
+						decryptedMapKey: bytesToHex(mapKeyPair.secretKey),
+						inviteId: inviteObjectId ?? "",
+						tenant,
+						cachedAt: new Date().toISOString(),
+					};
+					await db.manifestPrivateMaps.put(entry);
 				}
+			} else {
+				await new Promise((r) => setTimeout(r, 3000));
+				onCreated();
 			}
 
 			onClose();
@@ -1344,92 +1227,6 @@ function CreateMapDialog({
 				/>
 			</label>
 
-			{/* Mode selector */}
-			<div className="mb-4">
-				<span className="mb-2 block text-xs text-zinc-400">Map Mode</span>
-				<div className="flex gap-2">
-					<button
-						type="button"
-						onClick={() => setMode("encrypted")}
-						className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs transition-colors ${
-							mode === "encrypted"
-								? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
-								: "border border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
-						}`}
-					>
-						<Lock size={14} />
-						Encrypted (Invite-Only)
-					</button>
-					<button
-						type="button"
-						onClick={() => setMode("standings")}
-						disabled={!packageIdV2}
-						className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs transition-colors disabled:opacity-40 ${
-							mode === "standings"
-								? "border border-amber-500/50 bg-amber-500/10 text-amber-300"
-								: "border border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
-						}`}
-					>
-						<Shield size={14} />
-						Standings-Gated
-					</button>
-				</div>
-			</div>
-
-			{/* Standings-specific fields */}
-			{mode === "standings" && (
-				<>
-					<label className="mb-3 block">
-						<span className="mb-1 block text-xs text-zinc-400">StandingsRegistry</span>
-						{registries.length > 0 ? (
-							<select
-								value={registryId}
-								onChange={(e) => setRegistryId(e.target.value)}
-								className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none"
-							>
-								<option value="">Select a registry...</option>
-								{registries.map((r) => (
-									<option key={r.id} value={r.id}>
-										[{r.ticker}] {r.name}
-									</option>
-								))}
-							</select>
-						) : (
-							<input
-								type="text"
-								value={registryId}
-								onChange={(e) => setRegistryId(e.target.value)}
-								placeholder="0x... (registry object ID)"
-								className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-							/>
-						)}
-					</label>
-					<div className="mb-4 grid grid-cols-2 gap-3">
-						<label className="block">
-							<span className="mb-1 block text-xs text-zinc-400">Min Read Standing (0-6)</span>
-							<input
-								type="number"
-								min={0}
-								max={6}
-								value={minRead}
-								onChange={(e) => setMinRead(e.target.value)}
-								className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none"
-							/>
-						</label>
-						<label className="block">
-							<span className="mb-1 block text-xs text-zinc-400">Min Write Standing (0-6)</span>
-							<input
-								type="number"
-								min={0}
-								max={6}
-								value={minWrite}
-								onChange={(e) => setMinWrite(e.target.value)}
-								className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none"
-							/>
-						</label>
-					</div>
-				</>
-			)}
 
 			{error && (
 				<div className="mb-4 flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
@@ -1474,6 +1271,7 @@ function InviteMemberDialog({
 	const dAppKit = useDAppKit();
 	const client = useSuiClient();
 	const [recipientAddress, setRecipientAddress] = useState("");
+	const [recipientName, setRecipientName] = useState("");
 	const [isPending, setIsPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -1516,21 +1314,41 @@ function InviteMemberDialog({
 				Map: <span className="text-zinc-300">{map.name}</span>
 			</p>
 
-			<label className="mb-4 block">
-				<span className="mb-1 block text-xs text-zinc-400">Recipient Sui Address</span>
-				<input
-					type="text"
-					value={recipientAddress}
-					onChange={(e) => setRecipientAddress(e.target.value)}
-					placeholder="0x..."
-					className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-sm text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none"
-				/>
-			</label>
-
-			<p className="mb-4 text-xs text-zinc-600">
-				The recipient's Ed25519 public key will be extracted from their on-chain transactions. Only
-				Ed25519 wallets are supported.
-			</p>
+			<div className="mb-4">
+				<span className="mb-1 block text-xs text-zinc-400">Recipient</span>
+				{recipientAddress ? (
+					<div className="flex items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
+						<div className="min-w-0">
+							<span className="text-sm text-zinc-200">{recipientName || "Unknown"}</span>
+							<CopyAddress
+								address={recipientAddress}
+								sliceStart={10}
+								sliceEnd={4}
+								className="ml-2 text-xs text-zinc-500"
+							/>
+						</div>
+						<button
+							type="button"
+							onClick={() => {
+								setRecipientAddress("");
+								setRecipientName("");
+							}}
+							className="ml-2 text-xs text-zinc-500 hover:text-zinc-300"
+						>
+							Change
+						</button>
+					</div>
+				) : (
+					<ContactPicker
+						onSelect={(character) => {
+							setRecipientAddress(character.suiAddress);
+							setRecipientName(character.name);
+						}}
+						excludeAddresses={[senderAddress]}
+						placeholder="Search by name or address..."
+					/>
+				)}
+			</div>
 
 			{error && (
 				<div className="mb-4 flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
@@ -1550,7 +1368,7 @@ function InviteMemberDialog({
 				<button
 					type="button"
 					onClick={handleInvite}
-					disabled={!recipientAddress.trim() || isPending}
+					disabled={!recipientAddress || isPending}
 					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
 				>
 					{isPending && <Loader2 size={14} className="animate-spin" />}
@@ -1580,7 +1398,6 @@ function AddLocationDialog({
 	const dAppKit = useDAppKit();
 	const client = useSuiClient();
 	const tenant = useActiveTenant();
-	const { activeCharacter } = useActiveCharacter();
 	const [solarSystemId, setSolarSystemId] = useState("");
 	const [planet, setPlanet] = useState("");
 	const [lPoint, setLPoint] = useState("");
@@ -1589,43 +1406,15 @@ function AddLocationDialog({
 	const [isPending, setIsPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const mapMode = mapVersion === "v2" ? (map as ManifestPrivateMapV2).mode : 0;
-
 	const handleAdd = async () => {
 		if (!solarSystemId || !planet || !lPoint) return;
 		setIsPending(true);
 		setError(null);
 
 		try {
-			// Resolve charId and tribeId for V2 standings
-			let charId: number | undefined;
-			let tribeId: number | undefined;
-			let registryId: string | undefined;
-
-			if (mapVersion === "v2" && mapMode === 1) {
-				const v2Map = map as ManifestPrivateMapV2;
-				registryId = v2Map.registryId;
-				if (activeCharacter?.characterId) {
-					charId = Number(activeCharacter.characterId);
-				}
-				tribeId = activeCharacter?.tribeId ?? undefined;
-
-				// Fallback: lookup from manifest characters
-				if ((charId == null || tribeId == null) && senderAddress) {
-					const mc = await db.manifestCharacters
-						.where("suiAddress")
-						.equals(senderAddress)
-						.first();
-					if (mc) {
-						if (charId == null) charId = Number(mc.characterItemId);
-						if (tribeId == null) tribeId = mc.tribeId;
-					}
-				}
-			}
-
 			const tx = buildAddLocationTx({
 				mapVersion,
-				mapMode,
+				mapMode: 0,
 				packageId,
 				mapId: map.id,
 				inviteId: map.inviteId,
@@ -1638,9 +1427,6 @@ function AddLocationDialog({
 				},
 				senderAddress,
 				mapPublicKey: map.publicKey,
-				registryId,
-				tribeId,
-				charId,
 			});
 
 			await dAppKit.signAndExecuteTransaction({ transaction: tx });
@@ -1650,9 +1436,7 @@ function AddLocationDialog({
 			// Sync locations with correct version
 			if (mapVersion === "v2") {
 				const v2Map = map as ManifestPrivateMapV2;
-				if (v2Map.mode === 1) {
-					await syncMapLocationsV2(client, v2Map.id, 1, undefined, undefined, tenant as TenantId);
-				} else if (v2Map.decryptedMapKey && v2Map.publicKey) {
+				if (v2Map.decryptedMapKey && v2Map.publicKey) {
 					await syncMapLocationsV2(
 						client, v2Map.id, 0, v2Map.decryptedMapKey, v2Map.publicKey, tenant as TenantId,
 					);
