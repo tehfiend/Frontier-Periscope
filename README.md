@@ -33,9 +33,9 @@ Seven Move smart contracts are deployed on testnet covering markets, treasuries,
 
 ## Why This Exists
 
-This project started as a hackathon entry and grew into something I use every day in EVE Frontier. I didn't write a single line of code by hand. Every line was generated through AI-assisted development using [Claude Code](https://claude.ai/claude-code). 100% vibe coded, from the first commit to the latest feature.
+This project started as a hackathon entry and grew into something I use every day in EVE Frontier. Built and maintained by [TehFiend](https://github.com/tehfiend).
 
-One of the big goals here is to show EVE Frontier players who have no coding background that they CAN build tools on the Frontier blockchain. You don't need to be a software developer. If you can describe what you want clearly enough, AI can help you build it. The barrier to entry has never been lower.
+One of the big goals here is to show EVE Frontier players who have no coding background that they CAN build tools on the Frontier blockchain. You don't need to be a professional software developer to ship something useful.
 
 That's also why this project is open source. Not just for transparency, but so anyone can learn from it, fork it, and build their own tools. If Periscope does something you like, take it. If it doesn't do what you need, change it.
 
