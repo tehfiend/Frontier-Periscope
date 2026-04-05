@@ -516,38 +516,54 @@ export function TransferDialog({
 
 						{/* Destination selector */}
 						<div>
-							<label htmlFor="transfer-dest" className="mb-1 block text-xs text-zinc-500">
+							<span className="mb-1 block text-xs text-zinc-500">
 								Destination
-							</label>
-							<select
-								id="transfer-dest"
-								value={selectedDestIdx}
-								onChange={(e) => {
-									const val = Number(e.target.value);
-									if (val >= -2) {
-										setSelectedDestIdx(val);
-										setError(null);
-										// Reset search state when switching away
-										if (val !== SEARCH_PLAYER_IDX) {
+							</span>
+							<div className="space-y-1">
+								{destinations.map((d, idx) => (
+									<button
+										key={d.slot.key}
+										type="button"
+										onClick={() => {
+											setSelectedDestIdx(idx);
+											setError(null);
 											setSearchQuery("");
 											setSelectedCharacter(null);
-										}
-									}
-								}}
-								className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none"
-							>
-								{destinations.map((d, idx) => (
-									<option key={d.slot.key} value={idx}>
+										}}
+										className={`w-full rounded border px-3 py-2 text-left text-sm transition-colors ${
+											selectedDestIdx === idx
+												? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
+												: "border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-600"
+										}`}
+									>
 										{d.slot.label}
-									</option>
+									</button>
 								))}
-								{showSearchOption && <option value={SEARCH_PLAYER_IDX}>Send to player...</option>}
+								{showSearchOption && (
+									<button
+										type="button"
+										onClick={() => {
+											setSelectedDestIdx(SEARCH_PLAYER_IDX);
+											setError(null);
+										}}
+										className={`w-full rounded border px-3 py-2 text-left text-sm transition-colors ${
+											isSearchMode
+												? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
+												: "border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-600"
+										}`}
+									>
+										Send to player...
+									</button>
+								)}
 								{inaccessibleSlots.map((s) => (
-									<option key={s.key} value={-1} disabled>
+									<div
+										key={s.key}
+										className="rounded border border-zinc-800 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-600"
+									>
 										{s.label} (no access)
-									</option>
+									</div>
 								))}
-							</select>
+							</div>
 							{inaccessibleSlots.length > 0 && (
 								<p className="mt-1 text-xs text-zinc-600">
 									Grayed-out slots require extension permissions.
