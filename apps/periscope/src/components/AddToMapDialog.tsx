@@ -38,17 +38,17 @@ export function AddToMapDialog({ structureRow, onClose, onAdded }: AddToMapDialo
 	const wallets = useWallets();
 	const { activeCharacter } = useActiveCharacter();
 
-	async function ensureWallet(): Promise<boolean> {
-		if (account) return true;
+	async function ensureWallet(): Promise<string | null> {
+		if (account) return account.address;
 		const eveVault = wallets.find(
 			(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
 		);
-		if (!eveVault) return false;
+		if (!eveVault) return null;
 		try {
-			await dAppKit.connectWallet({ wallet: eveVault });
-			return true;
+			const result = await dAppKit.connectWallet({ wallet: eveVault });
+			return result?.accounts?.[0]?.address ?? null;
 		} catch {
-			return false;
+			return null;
 		}
 	}
 	const defaultMapId = useAppStore((s) => s.defaultMapId);
@@ -118,7 +118,8 @@ export function AddToMapDialog({ structureRow, onClose, onAdded }: AddToMapDialo
 
 	const handleAdd = async () => {
 		if (!solarSystemId || !planet || !lPoint || !selectedOption) return;
-		if (!(await ensureWallet())) {
+		const walletAddr = await ensureWallet();
+		if (!walletAddr) {
 			setError("Wallet connection required. Install Eve Vault to continue.");
 			return;
 		}
@@ -160,10 +161,10 @@ export function AddToMapDialog({ structureRow, onClose, onAdded }: AddToMapDialo
 				tribeId = activeCharacter?.tribeId ?? undefined;
 
 				// Fallback: lookup from manifest characters
-				if ((charId == null || tribeId == null) && account?.address) {
+				if ((charId == null || tribeId == null) && walletAddr) {
 					const mc = await db.manifestCharacters
 						.where("suiAddress")
-						.equals(account.address)
+						.equals(walletAddr)
 						.first();
 					if (mc) {
 						if (charId == null) charId = Number(mc.characterItemId);
@@ -185,7 +186,7 @@ export function AddToMapDialog({ structureRow, onClose, onAdded }: AddToMapDialo
 					lPoint: Number(lPoint),
 					description: description.trim() || undefined,
 				},
-				senderAddress: account!.address,
+				senderAddress: walletAddr,
 				mapPublicKey,
 				registryId,
 				tribeId,

@@ -8,8 +8,8 @@ const LINK_LABELS: Record<string, string> = {
  * Known domains get friendly link text (e.g. "SUI Faucet").
  */
 export function ErrorMessage({ text }: { text: string }) {
-	// Match URLs starting with https:// or http://
-	const parts = text.split(/(https?:\/\/[^\s)]+)/g);
+	// Match URLs starting with https:// or http:// -- exclude trailing punctuation
+	const parts = text.split(/(https?:\/\/[^\s)>"]+[^\s)>".,;:!?])/g);
 
 	if (parts.length === 1) {
 		return <>{text}</>;

@@ -70,6 +70,7 @@ const LIST_DYNAMIC_FIELDS = `
 				nodes {
 					name { json type { repr } }
 					value {
+						__typename
 						... on MoveObject {
 							address
 							contents { json type { repr } }
@@ -90,10 +91,11 @@ interface GqlDynamicFieldsResponse {
 				name: { json: unknown; type: { repr: string } };
 				value:
 					| {
+							__typename: "MoveObject";
 							address: string;
 							contents?: { json: unknown; type: { repr: string } };
 					  }
-					| { json: unknown; type: { repr: string } };
+					| { __typename: "MoveValue"; json: unknown; type: { repr: string } };
 			}>;
 			pageInfo: { hasNextPage: boolean; endCursor: string | null };
 		};
@@ -143,19 +145,19 @@ export async function listDynamicFieldsGql(
 	return {
 		entries: dfs.nodes.map((node) => {
 			const val = node.value;
-			const isMoveObject = val && "address" in val;
+			const isMoveObject = val?.__typename === "MoveObject";
 			// MoveObject: json lives inside contents; MoveValue: json is top-level
 			const valueJson = isMoveObject
-				? (val as { contents?: { json: unknown } }).contents?.json
-				: val && "json" in val
+				? val.contents?.json
+				: val?.__typename === "MoveValue"
 					? val.json
 					: undefined;
 			const valueType = isMoveObject
-				? (val as { contents?: { type: { repr: string } } }).contents?.type?.repr
-				: val && "type" in val
-					? (val as { type: { repr: string } }).type?.repr
+				? val.contents?.type?.repr
+				: val?.__typename === "MoveValue"
+					? val.type?.repr
 					: undefined;
-			const valueAddress = isMoveObject ? (val as { address: string }).address : undefined;
+			const valueAddress = isMoveObject ? val.address : undefined;
 			return {
 				nameType: node.name.type.repr,
 				nameJson: node.name.json,

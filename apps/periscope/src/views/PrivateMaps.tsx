@@ -138,15 +138,16 @@ export function PrivateMaps() {
 				await decryptMapKeys(keyPair, tenant as TenantId);
 			}
 
-			// Sync V1 location records (stores encrypted if no key yet)
+			// Sync V1 location records in parallel (stores encrypted if no key yet)
 			const cachedMaps = await db.manifestPrivateMaps.where("tenant").equals(tenant).toArray();
-			for (const m of cachedMaps) {
-				await syncMapLocations(client, m.id, m.decryptedMapKey, tenant as TenantId);
-				// If we just got the key, decrypt any stored encrypted locations
-				if (m.decryptedMapKey) {
-					await decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
-				}
-			}
+			await Promise.all(
+				cachedMaps.map(async (m) => {
+					await syncMapLocations(client, m.id, m.decryptedMapKey, tenant as TenantId);
+					if (m.decryptedMapKey) {
+						await decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
+					}
+				}),
+			);
 
 			// Sync V2 maps
 			await syncPrivateMapsV2ForUser(client, tenant as TenantId, suiAddress);
@@ -156,22 +157,22 @@ export function PrivateMaps() {
 				await decryptMapKeysV2(keyPair, tenant as TenantId);
 			}
 
-			// Sync V2 location records
+			// Sync V2 location records in parallel
 			const cachedV2Maps = await db.manifestPrivateMapsV2.where("tenant").equals(tenant).toArray();
-			for (const m of cachedV2Maps) {
-				if (m.mode === 1) {
-					await syncMapLocationsV2(client, m.id, 1, undefined, undefined, tenant as TenantId);
-				} else {
-					// Fetch records (decrypts inline if key available, stores encrypted otherwise)
-					await syncMapLocationsV2(
-						client, m.id, 0, m.decryptedMapKey, m.publicKey, tenant as TenantId,
-					);
-					// Decrypt any previously stored encrypted locations
-					if (m.decryptedMapKey && m.publicKey) {
-						await decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
+			await Promise.all(
+				cachedV2Maps.map(async (m) => {
+					if (m.mode === 1) {
+						await syncMapLocationsV2(client, m.id, 1, undefined, undefined, tenant as TenantId);
+					} else {
+						await syncMapLocationsV2(
+							client, m.id, 0, m.decryptedMapKey, m.publicKey, tenant as TenantId,
+						);
+						if (m.decryptedMapKey && m.publicKey) {
+							await decryptStoredLocations(m.id, m.decryptedMapKey, m.publicKey);
+						}
 					}
-				}
-			}
+				}),
+			);
 		} catch {
 			// Sync error -- silently continue
 		} finally {

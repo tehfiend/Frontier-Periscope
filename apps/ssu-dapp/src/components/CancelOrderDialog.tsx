@@ -18,8 +18,8 @@ interface CancelOrderDialogProps {
 	coinTypeB: string;
 	orderId: number;
 	isBid: boolean;
-	price: number;
-	amount: number;
+	price: string;
+	amount: string;
 	onClose: () => void;
 }
 

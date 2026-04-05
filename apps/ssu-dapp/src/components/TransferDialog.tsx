@@ -519,7 +519,7 @@ export function TransferDialog({
 							<span className="mb-1 block text-xs text-zinc-500">
 								Destination
 							</span>
-							<div className="space-y-1">
+							<div className="max-h-48 space-y-1 overflow-y-auto">
 								{destinations.map((d, idx) => (
 									<button
 										key={d.slot.key}

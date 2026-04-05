@@ -29,7 +29,10 @@ export function ExchangeContent({ isConnected, walletAddress }: ExchangeContentP
 	// Sort orders: bids first (descending by price), then asks (ascending by price)
 	const sortedOrders = [...(orders ?? [])].sort((a, b) => {
 		if (a.isBid !== b.isBid) return a.isBid ? -1 : 1;
-		return a.isBid ? b.price - a.price : a.price - b.price;
+		const pa = BigInt(a.price);
+		const pb = BigInt(b.price);
+		if (a.isBid) return pa > pb ? -1 : pa < pb ? 1 : 0;
+		return pa < pb ? -1 : pa > pb ? 1 : 0;
 	});
 
 	return (
