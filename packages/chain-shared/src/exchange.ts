@@ -1,6 +1,6 @@
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { Transaction } from "@mysten/sui/transactions";
-import { getObjectJson, listDynamicFieldsGql } from "./graphql-queries";
+import { getObjectJson } from "./graphql-queries";
 import type { OrderBookInfo, OrderInfo } from "./types";
 
 export interface CreatePairParams {
@@ -200,58 +200,48 @@ export async function queryOrderBook(
 }
 
 /**
- * Enumerate all bid and ask orders from an order book's dynamic fields.
- * Orders are stored as dynamic fields keyed by BidKey/AskKey structs.
- * Follows the same pagination pattern as queryMarketListings.
+ * Fetch all bid and ask orders from an order book.
+ * Orders are stored as `bids` and `asks` vectors directly on the OrderBook object.
  */
 export async function queryOrders(
 	client: SuiGraphQLClient,
 	bookObjectId: string,
 ): Promise<OrderInfo[]> {
-	const orders: OrderInfo[] = [];
-
 	try {
-		let cursor: string | null = null;
-		let hasMore = true;
+		const obj = await getObjectJson(client, bookObjectId);
+		if (!obj.json) return [];
 
-		while (hasMore) {
-			const page = await listDynamicFieldsGql(client, bookObjectId, {
-				cursor,
-				limit: 50,
-			});
+		const fields = obj.json;
+		const orders: OrderInfo[] = [];
 
-			for (const df of page.entries) {
-				const isBid = df.nameType.includes("BidKey");
-				const isAsk = df.nameType.includes("AskKey");
-				if (!isBid && !isAsk) continue;
-
-				const nameObj = df.nameJson as Record<string, unknown> | null;
-				const orderId = nameObj ? Number(nameObj.order_id ?? 0) : 0;
-
-				// Dynamic fields may come back as MoveValue (inline json) or
-				// MoveObject (wrapped object -- only address returned).
-				let fields = df.valueJson as Record<string, unknown> | undefined;
-				if (!fields && df.valueAddress) {
-					const obj = await getObjectJson(client, df.valueAddress);
-					fields = obj?.json as Record<string, unknown> | undefined;
-				}
-				if (!fields) continue;
-
+		const bids = fields.bids as Array<Record<string, unknown>> | undefined;
+		if (bids) {
+			for (const b of bids) {
 				orders.push({
-					orderId: Number(fields.order_id ?? orderId),
-					owner: String(fields.owner ?? ""),
-					price: Number(fields.price ?? 0),
-					amount: Number(fields.amount ?? 0),
-					isBid,
+					orderId: Number(b.order_id ?? 0),
+					owner: String(b.owner ?? ""),
+					price: Number(b.price ?? 0),
+					amount: Number(b.amount ?? 0),
+					isBid: true,
 				});
 			}
-
-			hasMore = page.hasNextPage;
-			cursor = page.cursor;
 		}
-	} catch {
-		// Return whatever we've collected so far
-	}
 
-	return orders;
+		const asks = fields.asks as Array<Record<string, unknown>> | undefined;
+		if (asks) {
+			for (const a of asks) {
+				orders.push({
+					orderId: Number(a.order_id ?? 0),
+					owner: String(a.owner ?? ""),
+					price: Number(a.price ?? 0),
+					amount: Number(a.amount ?? 0),
+					isBid: false,
+				});
+			}
+		}
+
+		return orders;
+	} catch {
+		return [];
+	}
 }

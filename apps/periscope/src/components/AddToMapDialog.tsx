@@ -160,7 +160,7 @@ export function AddToMapDialog({ structureRow, onClose, onAdded }: AddToMapDialo
 				tribeId = activeCharacter?.tribeId ?? undefined;
 
 				// Fallback: lookup from manifest characters
-				if ((charId == null || tribeId == null) && account.address) {
+				if ((charId == null || tribeId == null) && account?.address) {
 					const mc = await db.manifestCharacters
 						.where("suiAddress")
 						.equals(account.address)
@@ -185,7 +185,7 @@ export function AddToMapDialog({ structureRow, onClose, onAdded }: AddToMapDialo
 					lPoint: Number(lPoint),
 					description: description.trim() || undefined,
 				},
-				senderAddress: account.address,
+				senderAddress: account!.address,
 				mapPublicKey,
 				registryId,
 				tribeId,
