@@ -67,25 +67,25 @@ export const useSonarStore = create<SonarState>((set) => ({
 	setLocalEnabled: (v) => {
 		set({ localEnabled: v });
 		db.sonarState
-			.update("local", { enabled: v })
+			.put({ channel: "local", enabled: v, status: useSonarStore.getState().localStatus })
 			.catch((e) => console.error("[sonarStore] DB persist failed:", e));
 	},
 	setChainEnabled: (v) => {
 		set({ chainEnabled: v });
 		db.sonarState
-			.update("chain", { enabled: v })
+			.put({ channel: "chain", enabled: v, status: useSonarStore.getState().chainStatus })
 			.catch((e) => console.error("[sonarStore] DB persist failed:", e));
 	},
 	setLocalStatus: (s) => {
 		set({ localStatus: s });
 		db.sonarState
-			.update("local", { status: s })
+			.put({ channel: "local", enabled: useSonarStore.getState().localEnabled, status: s })
 			.catch((e) => console.error("[sonarStore] DB persist failed:", e));
 	},
 	setChainStatus: (s) => {
 		set({ chainStatus: s });
 		db.sonarState
-			.update("chain", { status: s })
+			.put({ channel: "chain", enabled: useSonarStore.getState().chainEnabled, status: s })
 			.catch((e) => console.error("[sonarStore] DB persist failed:", e));
 	},
 	pingLocal: () => set((s) => ({ localPingCount: s.localPingCount + 1 })),

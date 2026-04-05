@@ -4,6 +4,7 @@ import {
 	type OrderBookInfo,
 	type TenantId,
 	getContractAddresses,
+	splitTypeParams,
 } from "@tehfrontier/chain-shared";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { useQuery } from "@tanstack/react-query";
@@ -60,13 +61,16 @@ async function fetchExchangePairs(client: SuiGraphQLClient): Promise<OrderBookIn
 			if (!json) continue;
 
 			// Extract coin types from "PKG::exchange::OrderBook<CoinA, CoinB>"
-			const match = typeRepr.match(/::exchange::OrderBook<(.+),\s*(.+)>$/);
-			if (!match) continue;
+			const bracketStart = typeRepr.indexOf("OrderBook<");
+			const params = bracketStart >= 0
+				? splitTypeParams(typeRepr.slice(bracketStart + 10, -1))
+				: null;
+			if (!params) continue;
 
 			pairs.push({
 				objectId: node.address,
-				coinTypeA: match[1].trim(),
-				coinTypeB: match[2].trim(),
+				coinTypeA: params[0],
+				coinTypeB: params[1],
 				bidCount: Number(json.bid_count ?? 0),
 				askCount: Number(json.ask_count ?? 0),
 				feeBps: Number(json.fee_bps ?? 0),

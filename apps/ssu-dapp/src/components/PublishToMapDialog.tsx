@@ -95,20 +95,16 @@ export function PublishToMapDialog({
 			if (packageIdV1) {
 				try {
 					const invites = await queryMapInvitesForUser(client, packageIdV1, walletAddress);
-					for (const invite of invites) {
-						const map = await queryPrivateMap(client, invite.mapId);
-						if (map) {
-							maps.push({
-								version: "v1",
-								inviteObjectId: invite.objectId,
-								mapId: map.objectId,
-								name: map.name,
-								publicKey: map.publicKey,
-							});
-						}
+					const resolved = await Promise.all(
+						invites.map((invite) => queryPrivateMap(client, invite.mapId).then((map) =>
+							map ? { version: "v1" as const, inviteObjectId: invite.objectId, mapId: map.objectId, name: map.name, publicKey: map.publicKey } : null,
+						)),
+					);
+					for (const r of resolved) {
+						if (r) maps.push(r);
 					}
-				} catch {
-					// V1 query failed, continue with V2
+				} catch (e) {
+					console.warn("[PublishToMap] V1 query failed:", e);
 				}
 			}
 
@@ -116,20 +112,16 @@ export function PublishToMapDialog({
 			if (packageIdV2) {
 				try {
 					const invites = await queryMapInvitesV2ForUser(client, packageIdV2, walletAddress);
-					for (const invite of invites) {
-						const map = await queryPrivateMapV2(client, invite.mapId);
-						if (map && map.mode === 0 && map.publicKey) {
-							maps.push({
-								version: "v2",
-								inviteObjectId: invite.objectId,
-								mapId: map.objectId,
-								name: map.name,
-								publicKey: map.publicKey,
-							});
-						}
+					const resolved = await Promise.all(
+						invites.map((invite) => queryPrivateMapV2(client, invite.mapId).then((map) =>
+							map && map.mode === 0 && map.publicKey ? { version: "v2" as const, inviteObjectId: invite.objectId, mapId: map.objectId, name: map.name, publicKey: map.publicKey } : null,
+						)),
+					);
+					for (const r of resolved) {
+						if (r) maps.push(r);
 					}
-				} catch {
-					// V2 query failed
+				} catch (e) {
+					console.warn("[PublishToMap] V2 query failed:", e);
 				}
 			}
 

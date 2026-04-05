@@ -486,7 +486,9 @@ export function useLogWatcher() {
 			consecutiveErrors = 0;
 
 			if (hadNewEvents && latestSessionId) {
-				computeLiveStats(latestSessionId);
+				computeLiveStats(latestSessionId).catch((e) =>
+					console.warn("[LogWatcher] computeLiveStats failed:", e),
+				);
 			}
 
 			// Periodic diagnostic summary every 30 polls
@@ -562,7 +564,15 @@ export function useLogWatcher() {
 		await db.settings.put({ key: "localSonarHWM", value: 0 });
 		pendingLines.clear();
 		setActiveSessionId(null);
-		setLiveStats({ miningRate: 0, miningOre: null, dpsDealt: 0, dpsReceived: 0 });
+		setLiveStats({
+			miningRate: 0,
+			miningOre: null,
+			dpsDealt: 0,
+			dpsReceived: 0,
+			miningRunTotal: 0,
+			dealtTargets: [],
+			recvTargets: [],
+		});
 		// Resume both pollers AFTER clearing is complete
 		clearingInProgress = false;
 		resumeLocalSonar();

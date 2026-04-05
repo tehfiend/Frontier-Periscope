@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import type { SonarEvent, SonarWatchItem } from "@/db/types";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 // ── CRUD Operations ──────────────────────────────────────────────────────────
 
@@ -118,25 +118,31 @@ export function useWatchlistFilter() {
 	}, []);
 
 	/** Check if an event matches a watchlist item. Returns the item or null. */
-	function matchesWatchlist(event: SonarEvent): SonarWatchItem | null {
-		if (event.characterId) {
-			const item = charToItem.get(event.characterId);
-			if (item) return item;
-		}
-		if (event.tribeId) {
-			const item = tribeToItem.get(event.tribeId);
-			if (item) return item;
-		}
-		return null;
-	}
+	const matchesWatchlist = useCallback(
+		(event: SonarEvent): SonarWatchItem | null => {
+			if (event.characterId) {
+				const item = charToItem.get(event.characterId);
+				if (item) return item;
+			}
+			if (event.tribeId) {
+				const item = tribeToItem.get(event.tribeId);
+				if (item) return item;
+			}
+			return null;
+		},
+		[charToItem, tribeToItem],
+	);
 
 	/** Check if an event is from an owned entity. */
-	function isOwnedEvent(event: SonarEvent): boolean {
-		if (event.sender && ownedAddresses?.has(event.sender)) return true;
-		if (event.assemblyId && ownedAssemblyIds?.has(event.assemblyId)) return true;
-		if (event.characterId && ownedCharacterIds?.has(event.characterId)) return true;
-		return false;
-	}
+	const isOwnedEvent = useCallback(
+		(event: SonarEvent): boolean => {
+			if (event.sender && ownedAddresses?.has(event.sender)) return true;
+			if (event.assemblyId && ownedAssemblyIds?.has(event.assemblyId)) return true;
+			if (event.characterId && ownedCharacterIds?.has(event.characterId)) return true;
+			return false;
+		},
+		[ownedAddresses, ownedAssemblyIds, ownedCharacterIds],
+	);
 
 	return {
 		items,

@@ -28,9 +28,9 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 		initialize();
 
 		// Prune event tables on startup and every 10 minutes to prevent OOM
-		pruneEventTables().catch(() => {});
+		pruneEventTables().catch((e) => console.warn("[DataInit] Prune failed:", e));
 		const pruneInterval = setInterval(
-			() => pruneEventTables().catch(() => {}),
+			() => pruneEventTables().catch((e) => console.warn("[DataInit] Prune failed:", e)),
 			10 * 60 * 1000,
 		);
 		return () => clearInterval(pruneInterval);
