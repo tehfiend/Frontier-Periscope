@@ -34,6 +34,9 @@ interface LogState {
 	activeTab: LogActiveTab;
 	selectedSessionId: string | null;
 
+	// True while clearAndReimport is reprocessing log files (suppresses alerts)
+	reimporting: boolean;
+
 	// Callbacks registered by useLogWatcher (running at Layout level)
 	grantAccess: ((h: FileSystemDirectoryHandle) => void) | null;
 	clearAndReimport: (() => void) | null;
@@ -42,6 +45,7 @@ interface LogState {
 	setHasAccess: (v: boolean) => void;
 	setIsWatching: (v: boolean) => void;
 	setActiveSessionId: (id: string | null) => void;
+	setReimporting: (v: boolean) => void;
 	setLiveStats: (stats: {
 		miningRate?: number;
 		miningOre?: string | null;
@@ -68,6 +72,7 @@ export const useLogStore = create<LogState>((set) => ({
 	miningRunTotal: 0,
 	dealtTargets: [],
 	recvTargets: [],
+	reimporting: false,
 	activeTab: "activity",
 	selectedSessionId: null,
 	grantAccess: null,
@@ -76,6 +81,7 @@ export const useLogStore = create<LogState>((set) => ({
 	setHasAccess: (v) => set({ hasAccess: v }),
 	setIsWatching: (v) => set({ isWatching: v }),
 	setActiveSessionId: (id) => set({ activeSessionId: id }),
+	setReimporting: (v) => set({ reimporting: v }),
 	setLiveStats: (stats) =>
 		set((s) => ({
 			miningRate: stats.miningRate ?? s.miningRate,

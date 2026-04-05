@@ -42,12 +42,27 @@ export const CHANGELOG: ChangelogEntry[] = [
 			{
 				category: "added",
 				description:
-					"Automatic cleanup of old events so the browser doesn't run out of memory during long play sessions",
+					"Event log is now continuous and only trims the oldest entries when it hits the cap (50k sonar, 100k log events)",
 			},
 			{
 				category: "added",
 				description:
 					"Private Maps invite dialog now has character search instead of requiring a raw Sui address",
+			},
+			{
+				category: "added",
+				description:
+					"Sonar event details now highlight numbers so they pop against the rest of the text",
+			},
+			{
+				category: "added",
+				description:
+					"Distinct alert sounds for cargo full (warning alarm) and getting shot first (threat pulse) so you know what's happening without looking",
+			},
+			{
+				category: "fixed",
+				description:
+					"Sonar notifications no longer fire when reprocessing existing log files",
 			},
 			{
 				category: "fixed",

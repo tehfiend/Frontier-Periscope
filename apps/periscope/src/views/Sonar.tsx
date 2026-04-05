@@ -182,7 +182,19 @@ const detailsCol: ColumnDef<SonarEvent, unknown> = {
 	accessorFn: detailsAccessor,
 	cell: ({ getValue }) => {
 		const text = getValue() as string;
-		return <span className="truncate" title={text}>{text}</span>;
+		// Highlight numbers (with optional commas/decimals) so they stand out
+		const parts = text.split(/(\d[\d,]*\.?\d*)/g);
+		return (
+			<span className="truncate" title={text}>
+				{parts.map((part, i) =>
+					/^\d/.test(part) ? (
+						<span key={i} className="font-semibold text-zinc-100">{part}</span>
+					) : (
+						part
+					),
+				)}
+			</span>
+		);
 	},
 	filterFn: excelFilterFn,
 };
@@ -781,7 +793,7 @@ function PingsTab() {
 								<>
 									<span>{miningOre ?? "--"}</span>
 									{miningRunTotal > 0 && (
-										<span className="ml-1 text-amber-400/60">
+										<span className="ml-1 font-medium text-zinc-200">
 											({miningRunTotal.toLocaleString()} this run)
 										</span>
 									)}
@@ -800,7 +812,7 @@ function PingsTab() {
 										{dealtTargets.map(([name, dmg]) => (
 											<div key={name} className="flex justify-between gap-2">
 												<span className="truncate">{name}</span>
-												<span className="shrink-0 text-cyan-400/60">
+												<span className="shrink-0 font-medium text-zinc-200">
 													{dmg.toLocaleString()}
 												</span>
 											</div>
@@ -823,7 +835,7 @@ function PingsTab() {
 										{recvTargets.map(([name, dmg]) => (
 											<div key={name} className="flex justify-between gap-2">
 												<span className="truncate">{name}</span>
-												<span className="shrink-0 text-red-400/60">
+												<span className="shrink-0 font-medium text-zinc-200">
 													{dmg.toLocaleString()}
 												</span>
 											</div>

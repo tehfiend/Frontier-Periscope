@@ -550,7 +550,11 @@ export function useLogWatcher() {
 		[setHasAccess, startWatching],
 	);
 
+	const setReimporting = useLogStore.getState().setReimporting;
+
 	const clearAndReimport = useCallback(async () => {
+		// Suppress alerts during reimport
+		setReimporting(true);
 		// Pause both pollers BEFORE clearing to prevent stale writes
 		clearingInProgress = true;
 		signalLocalSonarReset();
@@ -577,7 +581,9 @@ export function useLogWatcher() {
 		clearingInProgress = false;
 		resumeLocalSonar();
 		startWatching();
-	}, [stopWatching, startWatching, setActiveSessionId, setLiveStats]);
+		// Wait for reimport to settle before re-enabling alerts
+		setTimeout(() => setReimporting(false), POLL_INTERVAL * 3);
+	}, [stopWatching, startWatching, setActiveSessionId, setLiveStats, setReimporting]);
 
 	// Register callbacks on the store so other components (e.g. Logs view) can use them
 	// without needing to call this hook themselves
