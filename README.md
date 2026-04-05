@@ -2,7 +2,7 @@
 
 Peer into the frontier. The only [EVE Frontier](https://evefrontier.com) tool that lets players create custom currencies and use them as a real medium of exchange.
 
-Frontier Periscope publishes Move smart contracts directly from the browser through in-browser bytecode patching -- no CLI, no gas station, no development environment. Custom currencies trade through on-chain order book markets with atomic escrow at any Smart Storage Unit. Eight Move contracts deployed on testnet cover markets, treasuries, standings, gate tolls, turret priority, SSU integration, encrypted private maps, and token factory, all connected through a single on-chain diplomacy layer. Everything runs in your browser with no backend server, no accounts, and no trust assumptions.
+Frontier Periscope publishes Move smart contracts directly from the browser through in-browser bytecode patching -- no CLI, no gas station, no development environment. Custom currencies trade through on-chain order book markets with atomic escrow at any Smart Storage Unit. Eight Move contracts deployed on testnet cover markets, standings, gate tolls, SSU integration, turret extensions, treasuries, encrypted private maps, and token factory. Markets, gates, and storage units are connected through the on-chain standings layer. Everything runs in your browser with no backend server, no accounts, and no trust assumptions.
 
 Currently targeting **Cycle 5** (Sui testnet). Support will be updated as future cycles release.
 
@@ -21,7 +21,7 @@ For on-chain features (wallet connection, transaction signing, extension deploym
 ## Features
 
 - **Custom Currencies & Markets** -- The only project in the hackathon that lets players create their own custom currencies, and it does it entirely in the browser through in-browser Move bytecode patching. No CLI, no gas station, nothing. These tokens trade through on-chain order book markets deployed to any Smart Storage Unit. All trades use atomic escrow so items and payment move together in a single transaction, zero trust required. Markets can be open or standings-gated, controlling who can mint, trade, or place buy orders.
-- **Standings & Diplomacy** -- Manage relationships with players and tribes through on-chain registries on a seven-point scale. Standings feed into everything else. They control who can access your gates, trade at your SSUs, how your turrets pick targets, and who gets access to your storage units. Subscribe to allied registries for federated diplomacy across groups.
+- **Standings & Diplomacy** -- Manage relationships with players and tribes through on-chain registries on a seven-point scale. Standings control who can access your gates, trade at your markets, and use your storage units. One diplomatic change cascades across all your Smart Assemblies.
 - **Gate Tolls & Treasuries** -- Gates can charge tolls in any custom currency with configurable standing thresholds for free passage. Toll revenue routes to shared treasury wallets that support multiple admins and multi-currency balances. Collect tolls, fund operations, control spending.
 - **Private Maps** -- Share structure locations on chain without exposing them publicly. Location data is encrypted with X25519 sealed boxes and keys are derived deterministically from wallet signatures, so there's no key management or local key storage at all. Only invited members can decrypt.
 - **Sonar** -- Real-time event monitoring from two channels: blockchain polling via Sui GraphQL and local game log tailing via File System Access API. Tracks combat, trades, fuel levels, gate activity, structure changes, mining efficiency, DPS, and more. The log analyzer detects mining runs, calculates ore-per-minute rates, spots cargo-full events, and tracks live DPS dealt and received with per-encounter breakdowns. Configurable watchlists with distinct alert sounds -- cargo full plays a warning alarm, getting attacked triggers a threat pulse, and combat events tell you who shot first.
@@ -29,7 +29,7 @@ For on-chain features (wallet connection, transaction signing, extension deploym
 - **Star Map & Navigation** -- 3D WebGL solar system visualization with jump route planning. Route by fewest jumps, shortest distance, or prefer gates, with waypoints, avoidance lists, and fuel consumption estimates.
 - **Killmails** -- Combat event tracking and threat assessment across the cluster.
 
-Eight Move smart contracts are deployed on testnet covering markets, treasuries, standings, gate tolls, turret priority, SSU integration, encrypted private maps, and token factory.
+Eight Move smart contracts are deployed on testnet covering markets, standings, gate tolls, SSU integration, turret extensions, treasuries, encrypted private maps, and token factory.
 
 ## Why This Exists
 
