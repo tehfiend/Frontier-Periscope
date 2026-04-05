@@ -599,37 +599,47 @@ db.on("ready", async () => {
 	}
 });
 
-const SONAR_EVENT_MAX = 5_000;
-const LOG_EVENT_MAX = 10_000;
+const SONAR_EVENT_MAX = 50_000;
+const LOG_EVENT_MAX = 100_000;
+const TRIM_THROTTLE_MS = 60_000;
+let lastTrimAt = 0;
 
 /**
- * Prune sonarEvents and logEvents tables to prevent unbounded IndexedDB growth.
- * Keeps the most recent N events by auto-increment id and deletes the rest.
+ * Trim oldest events when tables exceed their max size.
+ * Throttled to run at most once per minute. Call after bulk inserts.
  */
-export async function pruneEventTables(): Promise<void> {
-	const sonarCount = await db.sonarEvents.count();
-	if (sonarCount > SONAR_EVENT_MAX) {
-		const cutoff = await db.sonarEvents
-			.orderBy("id")
-			.reverse()
-			.offset(SONAR_EVENT_MAX)
-			.first();
-		if (cutoff?.id != null) {
-			await db.sonarEvents.where("id").belowOrEqual(cutoff.id).delete();
-		}
-	}
+export function trimEventTables(): void {
+	const now = Date.now();
+	if (now - lastTrimAt < TRIM_THROTTLE_MS) return;
+	lastTrimAt = now;
 
-	const logCount = await db.logEvents.count();
-	if (logCount > LOG_EVENT_MAX) {
-		const cutoff = await db.logEvents
-			.orderBy("id")
-			.reverse()
-			.offset(LOG_EVENT_MAX)
-			.first();
-		if (cutoff?.id != null) {
-			await db.logEvents.where("id").belowOrEqual(cutoff.id).delete();
+	(async () => {
+		const sonarCount = await db.sonarEvents.count();
+		if (sonarCount > SONAR_EVENT_MAX) {
+			const cutoff = await db.sonarEvents
+				.orderBy("id")
+				.reverse()
+				.offset(SONAR_EVENT_MAX)
+				.first();
+			if (cutoff?.id != null) {
+				const deleted = await db.sonarEvents.where("id").belowOrEqual(cutoff.id).delete();
+				console.log(`[DB] Trimmed ${deleted} sonar events (${sonarCount} -> ${sonarCount - deleted})`);
+			}
 		}
-	}
+
+		const logCount = await db.logEvents.count();
+		if (logCount > LOG_EVENT_MAX) {
+			const cutoff = await db.logEvents
+				.orderBy("id")
+				.reverse()
+				.offset(LOG_EVENT_MAX)
+				.first();
+			if (cutoff?.id != null) {
+				const deleted = await db.logEvents.where("id").belowOrEqual(cutoff.id).delete();
+				console.log(`[DB] Trimmed ${deleted} log events (${logCount} -> ${logCount - deleted})`);
+			}
+		}
+	})().catch((e) => console.warn("[DB] Trim failed:", e));
 }
 
 /** Filter predicate to exclude soft-deleted records from queries */

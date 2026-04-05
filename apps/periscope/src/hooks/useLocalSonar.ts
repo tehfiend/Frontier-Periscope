@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, trimEventTables } from "@/db";
 import type { LogEvent, SonarEvent } from "@/db/types";
 import { useSonarStore } from "@/stores/sonarStore";
 import { useCallback, useEffect, useRef } from "react";
@@ -234,7 +234,9 @@ function processCombatEvents(
 					characterId: charId,
 					sessionId,
 					typeName: target,
-					details: `Engaged ${target}`,
+					details: e.type === "combat_received" || e.type === "miss_received"
+					? `Under attack by ${target}`
+					: `Engaged ${target}`,
 				});
 			}
 		} else {
@@ -277,7 +279,9 @@ function processCombatEvents(
 					characterId: charId,
 					sessionId,
 					typeName: target,
-					details: `Engaged ${target}`,
+					details: e.type === "combat_received" || e.type === "miss_received"
+					? `Under attack by ${target}`
+					: `Engaged ${target}`,
 				});
 			}
 		}
@@ -644,6 +648,9 @@ export function useLocalSonar() {
 
 			// Trigger backfill check on next poll since we added new events
 			needsBackfill.current = true;
+
+			// Trim oldest events if tables exceed max size
+			trimEventTables();
 
 			setLocalStatus("active");
 			pingLocal();

@@ -1,7 +1,7 @@
 import { getEventTypes, getExtensionEventTypes } from "@/chain/config";
 import { pollCharacterEvents } from "@/chain/manifest";
 import { EVENT_HANDLER_REGISTRY, type HandlerContext } from "@/chain/sonarEventHandlers";
-import { db } from "@/db";
+import { db, trimEventTables } from "@/db";
 import type { SonarEvent } from "@/db/types";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
@@ -234,6 +234,9 @@ export function useChainSonar() {
 					}
 				}
 			}
+
+			// Trim oldest events if tables exceed max size
+			trimEventTables();
 
 			// Persist cursors to DB
 			await persistCursors(cursorsRef, setChainStatus);
