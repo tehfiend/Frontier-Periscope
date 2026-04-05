@@ -90,4 +90,4 @@ The build output (`apps/periscope/dist/`) is a fully static site. Deploy to any 
 
 ## License
 
-MIT
+Frontier Periscope License v1.0 -- free for personal and community use, no commercial use without permission. See [LICENSE](LICENSE) for full terms.
