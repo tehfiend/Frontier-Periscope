@@ -17,42 +17,47 @@ export const CHANGELOG: ChangelogEntry[] = [
 	{
 		version: "3.26.04.04",
 		date: "2026-04-04",
-		highlights: "Sonar stability, exchange orders, in-game browser fixes, private maps overhaul",
+		highlights: "Sonar stability, tenant filtering, exchange orders, in-game browser fixes",
 		changes: [
 			{
 				category: "added",
 				description:
-					"Sonar mining and combat session tracking -- real-time ore totals, damage dealt/received, session summaries",
+					"Sonar mining and combat session tracking -- real-time ore totals, damage dealt/received, and session summaries on the dashboard",
 			},
 			{
 				category: "added",
 				description:
-					"Insufficient SUI balance detection with clickable faucet link in error messages",
+					"EVE time toggle -- switch between local time and EVE server time across Sonar feeds",
 			},
 			{
 				category: "added",
 				description:
-					"Tenant filtering for structures -- only shows structures belonging to the active tenant",
+					"Tenant filtering for structures and currencies -- only shows data belonging to the active tenant (Stillness or Utopia)",
 			},
 			{
 				category: "added",
 				description:
-					"DB pruning -- automatic cleanup of old sonar and log events to prevent memory growth",
+					"Low SUI balance errors now show a clickable faucet link to request free testnet tokens",
 			},
 			{
 				category: "added",
 				description:
-					"Private Maps invite dialog now uses character search instead of raw address input",
+					"Automatic DB pruning to prevent browser memory issues during long play sessions",
+			},
+			{
+				category: "added",
+				description:
+					"Private Maps invite dialog uses character search instead of requiring a raw Sui address",
 			},
 			{
 				category: "fixed",
 				description:
-					"Out of Memory crashes on Sonar page -- eliminated reactive DB subscriptions that re-fired every second",
+					"Out of Memory crashes on Sonar page during active play -- eliminated reactive DB queries that re-fired every second",
 			},
 			{
 				category: "fixed",
 				description:
-					"Exchange orders not displaying -- orders are read from OrderBook vectors, not dynamic fields",
+					"Exchange orders not displaying -- fixed data read to match on-chain OrderBook structure",
 			},
 			{
 				category: "fixed",
@@ -62,42 +67,32 @@ export const CHANGELOG: ChangelogEntry[] = [
 			{
 				category: "fixed",
 				description:
-					"EVE Vault connect button redirecting to non-existent domain on browsers without the extension",
+					"EVE Vault connect button no longer redirects to a non-existent domain when the extension is not installed",
 			},
 			{
 				category: "fixed",
 				description:
-					"Cargo hold full events not captured in Sonar -- added detection to notify, hint, and info channels",
+					"Cargo hold full events now captured in Sonar across all game log channels",
 			},
 			{
 				category: "fixed",
 				description:
-					"SSU dApp in-game browser -- replaced native select dropdowns with button lists (L-point, transfer destination)",
+					"SSU dApp in-game browser compatibility -- replaced native select dropdowns with button lists for L-point, transfer destination, and publish dialog",
 			},
 			{
 				category: "fixed",
 				description:
-					"SSU dApp Publish to Map -- queries both V1 and V2 maps, no longer requires pre-deriving encryption key",
+					"SSU dApp Publish to Map now discovers both V1 and V2 maps and no longer prompts an unnecessary wallet signature",
 			},
 			{
 				category: "fixed",
 				description:
-					"Exchange order price/amount precision -- uses string representation to avoid u64 overflow",
-			},
-			{
-				category: "fixed",
-				description:
-					"GraphQL dynamic field queries now return inline data for MoveObject values",
+					"Large exchange order amounts no longer lose precision from JavaScript number overflow",
 			},
 			{
 				category: "changed",
 				description:
-					"Private Maps -- removed standings-gated map mode (cleartext locations provided no real access control)",
-			},
-			{
-				category: "changed",
-				description:
-					"Private Maps sync parallelized -- location fetches run concurrently instead of sequentially",
+					"Private Maps -- removed standings-gated map mode (cleartext on-chain locations provided no real access control)",
 			},
 		],
 	},
