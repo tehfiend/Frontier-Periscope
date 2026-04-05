@@ -427,5 +427,34 @@
 				<span class="text-xs text-zinc-700">MIT License</span>
 			</div>
 		</footer>
+		<!-- Lightbox -->
+		<div id="lightbox" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/90 p-4 backdrop-blur-sm" style="cursor:zoom-out">
+			<img id="lightbox-img" src="" alt="" class="max-h-[95vh] max-w-[95vw] rounded-lg" />
+		</div>
+		<script>
+			const lb = document.getElementById('lightbox');
+			const lbImg = document.getElementById('lightbox-img');
+			document.querySelectorAll('img[loading="lazy"], img[src*="screenshots"]').forEach(img => {
+				img.style.cursor = 'zoom-in';
+				img.addEventListener('click', () => {
+					lbImg.src = img.src;
+					lbImg.alt = img.alt;
+					lb.classList.remove('hidden');
+					lb.classList.add('flex');
+				});
+			});
+			lb.addEventListener('click', () => {
+				lb.classList.add('hidden');
+				lb.classList.remove('flex');
+				lbImg.src = '';
+			});
+			document.addEventListener('keydown', e => {
+				if (e.key === 'Escape' && !lb.classList.contains('hidden')) {
+					lb.classList.add('hidden');
+					lb.classList.remove('flex');
+					lbImg.src = '';
+				}
+			});
+		</script>
 	</body>
 </html>
