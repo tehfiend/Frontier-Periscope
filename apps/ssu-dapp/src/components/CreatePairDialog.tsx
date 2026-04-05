@@ -211,6 +211,9 @@ function CoinTypeInput({
 	loading: boolean;
 }) {
 	const [showDropdown, setShowDropdown] = useState(false);
+	const [isFocused, setIsFocused] = useState(false);
+	const isWalletCoin = walletCoinTypes.includes(value);
+	const displayValue = !isFocused && isWalletCoin ? formatCoinTypeName(value) : value;
 
 	return (
 		<div className="relative">
@@ -218,11 +221,18 @@ function CoinTypeInput({
 			<div className="flex gap-1">
 				<input
 					type="text"
-					value={value}
+					value={displayValue}
 					onChange={(e) => onChange(e.target.value)}
-					onFocus={() => setShowDropdown(true)}
-					onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+					onFocus={() => {
+						setIsFocused(true);
+						setShowDropdown(true);
+					}}
+					onBlur={() => {
+						setIsFocused(false);
+						setTimeout(() => setShowDropdown(false), 200);
+					}}
 					placeholder="0x...::module::CoinType"
+					title={value}
 					className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
 				/>
 			</div>
@@ -257,5 +267,6 @@ function CoinTypeInput({
 
 function formatCoinTypeName(coinType: string): string {
 	const parts = coinType.split("::");
-	return parts.length >= 3 ? parts[parts.length - 1] : coinType.slice(0, 16);
+	const name = parts.length >= 3 ? parts[parts.length - 1] : coinType.slice(0, 16);
+	return name.replace(/_TOKEN$/, "");
 }
