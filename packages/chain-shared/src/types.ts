@@ -12,8 +12,10 @@ export interface OrderBookInfo {
 export interface OrderInfo {
 	orderId: number;
 	owner: string;
-	price: number;
-	amount: number;
+	/** Price in base units (string to avoid u64 precision loss). */
+	price: string;
+	/** Amount in base units (string to avoid u64 precision loss). */
+	amount: string;
 	isBid: boolean;
 }
 

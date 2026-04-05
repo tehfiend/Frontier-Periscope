@@ -109,8 +109,8 @@ interface MarketOrderRow {
 interface ExchangeOrderRow {
 	id: string;
 	side: "Bid" | "Ask";
-	price: number;
-	amount: number;
+	price: string;
+	amount: string;
 	owner: string;
 	ownerName?: string;
 }
@@ -1188,7 +1188,9 @@ function CurrencyDetail({
 				size: 100,
 				enableColumnFilter: false,
 				cell: ({ row }) => (
-					<span className="font-mono text-xs">{row.original.amount.toLocaleString()}</span>
+					<span className="font-mono text-xs">
+						{Number(row.original.amount).toLocaleString()}
+					</span>
 				),
 			},
 			{

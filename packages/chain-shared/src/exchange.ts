@@ -220,8 +220,8 @@ export async function queryOrders(
 				orders.push({
 					orderId: Number(b.order_id ?? 0),
 					owner: String(b.owner ?? ""),
-					price: Number(b.price ?? 0),
-					amount: Number(b.amount ?? 0),
+					price: String(b.price ?? "0"),
+					amount: String(b.amount ?? "0"),
 					isBid: true,
 				});
 			}
@@ -233,8 +233,8 @@ export async function queryOrders(
 				orders.push({
 					orderId: Number(a.order_id ?? 0),
 					owner: String(a.owner ?? ""),
-					price: Number(a.price ?? 0),
-					amount: Number(a.amount ?? 0),
+					price: String(a.price ?? "0"),
+					amount: String(a.amount ?? "0"),
 					isBid: false,
 				});
 			}

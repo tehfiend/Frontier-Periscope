@@ -6,13 +6,9 @@ import { CopyAddress } from "./CopyAddress";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { getTenant } from "@/lib/constants";
 import {
-	type MapInviteInfo,
-	type PrivateMapInfo,
-	type PrivateMapV2Info,
 	type TenantId,
 	buildAddLocation,
 	buildAddLocationEncrypted,
-	deriveMapKeyFromSignature,
 	encodeLocationData,
 	getContractAddresses,
 	hexToBytes,
@@ -168,12 +164,6 @@ export function PublishToMapDialog({
 		try {
 			const resolved = resolvedMaps?.find((m) => m.mapId === selectedMapId);
 			if (!resolved) throw new Error("Map not found");
-
-			// Derive encryption key (prompts wallet signature)
-			const { signature } = await dAppKit.signPersonalMessage({
-				message: new TextEncoder().encode("TehFrontier Map Key v1"),
-			});
-			const _keyPair = deriveMapKeyFromSignature(signature);
 
 			// Encrypt location data with map's public key
 			const plaintext = encodeLocationData({
