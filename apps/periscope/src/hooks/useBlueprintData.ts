@@ -2,7 +2,7 @@ import type { Blueprint, BlueprintData } from "@/lib/bomTypes";
 import { useEffect, useMemo, useState } from "react";
 
 /** Known salvage-type leaf node typeIDs */
-const SALVAGE_MATERIAL_IDS: ReadonlySet<number> = new Set([
+const SALVAGE_MATERIAL_IDS: Set<number> = new Set([
 	88764, // Salvaged Materials
 	88765, // Mummified Clone
 ]);

@@ -315,7 +315,7 @@ export function BomStockPanel({ onStockChange }: BomStockPanelProps) {
 						) : (
 							<div className="space-y-1">
 								{storageAssemblies.map((a) => {
-									const label = a.label || `${a.objectId.slice(0, 8)}...${a.objectId.slice(-4)}`;
+									const label = a.name || `${a.objectId.slice(0, 8)}...${a.objectId.slice(-4)}`;
 									const checked = selectedSsuIds.includes(a.objectId);
 									return (
 										<label
