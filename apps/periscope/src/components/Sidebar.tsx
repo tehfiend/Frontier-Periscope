@@ -5,6 +5,7 @@ import { Link } from "@tanstack/react-router";
 import {
 	BookUser,
 	Boxes,
+	ClipboardList,
 	Cog,
 	Coins,
 	Database,
@@ -70,9 +71,15 @@ const navGroups: NavGroup[] = [
 		],
 	},
 	{
+		title: "Industry",
+		items: [
+			{ to: "/blueprints", icon: Wrench, label: "Blueprint Library" },
+			{ to: "/bom", icon: ClipboardList, label: "Bill of Materials" },
+		],
+	},
+	{
 		title: "System",
 		items: [
-			{ to: "/blueprints", icon: Wrench, label: "Blueprints" },
 			{ to: "/workers", icon: Cog, label: "Workers" },
 			{ to: "/settings", icon: Settings, label: "Settings" },
 		],

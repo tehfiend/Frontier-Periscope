@@ -7,6 +7,7 @@ const VIEW_SHORTCUTS: Record<string, string> = {
 	"6": "/sonar",
 	"7": "/killmails",
 	"8": "/blueprints",
+	"9": "/bom",
 	"0": "/settings",
 };
 

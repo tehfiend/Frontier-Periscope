@@ -1,54 +1,13 @@
+import { useBlueprintData } from "@/hooks/useBlueprintData";
+import type { Blueprint } from "@/lib/bomTypes";
 import { ArrowRight, Clock, Minus, Package, Plus, Search, Wrench, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-
-interface BlueprintInput {
-	typeID: number;
-	typeName: string;
-	quantity: number;
-}
-
-interface Blueprint {
-	blueprintID: number;
-	primaryTypeID: number;
-	primaryTypeName: string;
-	runTime: number;
-	runTimeFormatted: string;
-	inputs: BlueprintInput[];
-	outputs: BlueprintInput[];
-}
-
-interface BlueprintData {
-	blueprints: Record<string, Blueprint>;
-	materialIndex?: Record<string, string[]>;
-}
+import { useMemo, useState } from "react";
 
 export function Blueprints() {
-	const [data, setData] = useState<BlueprintData | null>(null);
-	const [loading, setLoading] = useState(true);
+	const { blueprintList, isLoading } = useBlueprintData();
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedBp, setSelectedBp] = useState<Blueprint | null>(null);
 	const [runs, setRuns] = useState(1);
-
-	// Load blueprint data from bundled JSON
-	useEffect(() => {
-		fetch("/data/blueprints.json")
-			.then((res) => {
-				if (!res.ok) throw new Error(`Failed to load blueprints: ${res.status}`);
-				return res.json();
-			})
-			.then((d: BlueprintData) => {
-				setData(d);
-				setLoading(false);
-			})
-			.catch(() => setLoading(false));
-	}, []);
-
-	const blueprintList = useMemo(() => {
-		if (!data) return [];
-		return Object.values(data.blueprints).sort((a, b) =>
-			a.primaryTypeName.localeCompare(b.primaryTypeName),
-		);
-	}, [data]);
 
 	const filtered = useMemo(() => {
 		if (!searchQuery) return blueprintList;
@@ -79,7 +38,7 @@ export function Blueprints() {
 
 	const totalTime = selectedBp ? selectedBp.runTime * runs : 0;
 
-	if (loading) {
+	if (isLoading) {
 		return (
 			<div className="flex h-full items-center justify-center">
 				<p className="text-sm text-zinc-500">Loading blueprint data...</p>
@@ -87,7 +46,7 @@ export function Blueprints() {
 		);
 	}
 
-	if (!data) {
+	if (blueprintList.length === 0) {
 		return (
 			<div className="p-6">
 				<h1 className="flex items-center gap-2 text-2xl font-bold text-zinc-100">

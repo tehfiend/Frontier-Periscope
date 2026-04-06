@@ -27,6 +27,9 @@ const LazyStandings = lazy(() =>
 const LazyDashboard = lazy(() =>
 	import("@/views/Dashboard").then((m) => ({ default: m.Dashboard })),
 );
+const LazyBillOfMaterials = lazy(() =>
+	import("@/views/BillOfMaterials").then((m) => ({ default: m.BillOfMaterials })),
+);
 
 function LoadingFallback() {
 	return (
@@ -96,6 +99,14 @@ function DashboardPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
 			<LazyDashboard />
+		</Suspense>
+	);
+}
+
+function BillOfMaterialsPage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyBillOfMaterials />
 		</Suspense>
 	);
 }
@@ -236,6 +247,12 @@ const standingsRoute = createRoute({
 	component: StandingsPage,
 });
 
+const bomRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/bom",
+	component: BillOfMaterialsPage,
+});
+
 const workersRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/workers",
@@ -258,6 +275,7 @@ const routeTree = rootRoute.addChildren([
 	targetsRoute,
 	killmailsRoute,
 	blueprintsRoute,
+	bomRoute,
 	logsRoute,
 	sonarRoute,
 	extensionsRoute,

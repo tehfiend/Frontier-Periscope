@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Box,
+	ClipboardList,
 	type LucideIcon,
 	Map,
 	Package,
@@ -35,9 +36,15 @@ const NAV_ITEMS: { path: string; label: string; icon: LucideIcon; keywords: stri
 	{ path: "/assemblies", label: "Assemblies", icon: Box, keywords: "tracked discovered" },
 	{
 		path: "/blueprints",
-		label: "Blueprints",
+		label: "Blueprint Library",
 		icon: Wrench,
-		keywords: "manufacturing bom materials",
+		keywords: "manufacturing recipes",
+	},
+	{
+		path: "/bom",
+		label: "Bill of Materials",
+		icon: ClipboardList,
+		keywords: "bom manufacturing materials production industry",
 	},
 	{
 		path: "/sonar",
