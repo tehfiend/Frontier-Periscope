@@ -1,5 +1,4 @@
 import { BomStockPanel } from "@/components/BomStockPanel";
-import { db } from "@/db";
 import { useBlueprintData } from "@/hooks/useBlueprintData";
 import { classifyRecipePath } from "@/hooks/useBlueprintData";
 import { type BomResult, resolveBom } from "@/lib/bomResolver";
@@ -10,12 +9,13 @@ import type {
 	BomSurplus,
 	RecipeOverride,
 } from "@/lib/bomTypes";
-import { useLiveQuery } from "dexie-react-hooks";
+import { buildNameLookup, parseItemList } from "@/lib/fittingParser";
 import {
 	AlertTriangle,
 	ChevronDown,
 	ChevronRight,
 	ClipboardList,
+	ClipboardPaste,
 	Clock,
 	Minus,
 	Pickaxe,
@@ -23,7 +23,6 @@ import {
 	Recycle,
 	Search,
 	Trash2,
-	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -197,6 +196,11 @@ function MaterialTable({ items }: { items: BomLineItem[] }) {
 	if (items.length === 0) {
 		return <div className="px-4 py-3 text-xs text-zinc-600">None</div>;
 	}
+	const totalVolume = items.reduce(
+		(sum, item) => (item.volumeMissing ? sum : sum + item.volume),
+		0,
+	);
+	const hasMissing = items.some((item) => item.volumeMissing);
 	return (
 		<table className="w-full text-sm">
 			<thead>
@@ -205,7 +209,7 @@ function MaterialTable({ items }: { items: BomLineItem[] }) {
 					<th className="px-4 py-2 text-right">Need</th>
 					<th className="px-4 py-2 text-right">Have</th>
 					<th className="px-4 py-2 text-right">Still Need</th>
-					<th className="px-4 py-2 text-right">Volume</th>
+					<th className="px-4 py-2 text-right">Volume (m³)</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -229,7 +233,7 @@ function MaterialTable({ items }: { items: BomLineItem[] }) {
 							{item.volumeMissing ? (
 								<span
 									className="inline-flex items-center gap-1 text-amber-400"
-									title="Volume data missing from gameTypes for this item"
+									title="Volume data missing for this item"
 								>
 									<AlertTriangle size={12} />
 									<span className="text-xs">??</span>
@@ -245,6 +249,21 @@ function MaterialTable({ items }: { items: BomLineItem[] }) {
 					</tr>
 				))}
 			</tbody>
+			<tfoot>
+				<tr className="border-t border-zinc-700">
+					<td className="px-4 py-2 text-xs font-medium text-zinc-400" colSpan={4}>
+						Total
+					</td>
+					<td className="px-4 py-2 text-right font-mono text-sm text-zinc-200">
+						{totalVolume.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+						{hasMissing && (
+							<span className="ml-1 text-amber-400" title="Some items have missing volume">
+								*
+							</span>
+						)}
+					</td>
+				</tr>
+			</tfoot>
 		</table>
 	);
 }
@@ -255,13 +274,15 @@ function SurplusTable({ items }: { items: BomSurplus[] }) {
 	if (items.length === 0) {
 		return <div className="px-4 py-3 text-xs text-zinc-600">No surplus co-products</div>;
 	}
+	const totalVolume = items.reduce((sum, item) => (item.volume < 0 ? sum : sum + item.volume), 0);
+	const hasMissing = items.some((item) => item.volume < 0);
 	return (
 		<table className="w-full text-sm">
 			<thead>
 				<tr className="border-t border-zinc-800 text-xs text-zinc-500">
 					<th className="px-4 py-2 text-left">Item</th>
 					<th className="px-4 py-2 text-right">Quantity</th>
-					<th className="px-4 py-2 text-right">Volume</th>
+					<th className="px-4 py-2 text-right">Volume (m³)</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -284,17 +305,32 @@ function SurplusTable({ items }: { items: BomSurplus[] }) {
 					</tr>
 				))}
 			</tbody>
+			<tfoot>
+				<tr className="border-t border-zinc-700">
+					<td className="px-4 py-2 text-xs font-medium text-zinc-400">Total</td>
+					<td className="px-4 py-2" />
+					<td className="px-4 py-2 text-right font-mono text-sm text-zinc-200">
+						{totalVolume.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+						{hasMissing && (
+							<span className="ml-1 text-amber-400" title="Some items have missing volume">
+								*
+							</span>
+						)}
+					</td>
+				</tr>
+			</tfoot>
 		</table>
 	);
 }
 
-// ── Recipe Configuration section (Phase 4) ──────────────────────────────────
+// ── Recipe Configuration section ────────────────────────────────────────────
 
 function RecipeConfigSection({
 	result,
 	outputToBlueprints,
 	rawMaterialIds,
 	salvageMaterialIds,
+	blueprintFacilities,
 	overrides,
 	onOverrideChange,
 }: {
@@ -302,6 +338,7 @@ function RecipeConfigSection({
 	outputToBlueprints: Map<number, Blueprint[]>;
 	rawMaterialIds: Set<number>;
 	salvageMaterialIds: Set<number>;
+	blueprintFacilities: Map<number, string[]>;
 	overrides: RecipeOverride[];
 	onOverrideChange: (overrides: RecipeOverride[]) => void;
 }) {
@@ -351,41 +388,62 @@ function RecipeConfigSection({
 									);
 									const outputQty = bp.outputs.find((o) => o.typeID === item.typeId)?.quantity ?? 1;
 									const totalInputQty = bp.inputs.reduce((s, i) => s + i.quantity, 0);
-									const efficiency = (totalInputQty / outputQty).toFixed(1);
+									const rawEff = totalInputQty / outputQty;
+									const efficiency = rawEff < 1 ? rawEff.toPrecision(2) : rawEff.toFixed(1);
+									const secPerUnit = bp.runTime / outputQty;
 									const isSelected = bp.blueprintID === currentBpId;
+									const facilities = blueprintFacilities.get(bp.blueprintID) ?? [];
 
 									return (
 										<button
 											key={bp.blueprintID}
 											type="button"
 											onClick={() => handleChange(item.typeId, bp.blueprintID)}
-											className={`flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs transition-colors ${
+											className={`flex w-full flex-col gap-1.5 rounded px-3 py-2 text-left text-xs transition-colors ${
 												isSelected
 													? "border border-cyan-600/50 bg-cyan-500/10 text-cyan-300"
 													: "border border-zinc-800 text-zinc-400 hover:bg-zinc-800/50"
 											}`}
 										>
-											{path === "ore" ? (
-												<Pickaxe size={12} className="shrink-0 text-amber-400" />
-											) : (
-												<Recycle size={12} className="shrink-0 text-green-400" />
-											)}
-											<span className="flex-1">
-												<span className="text-zinc-200">BP #{bp.blueprintID}</span>
-												<span className="ml-2 text-zinc-500">
-													{bp.inputs.map((i) => `${i.typeName} x${i.quantity}`).join(", ")}
+											<div className="flex w-full items-center gap-2">
+												{path === "ore" ? (
+													<Pickaxe size={12} className="shrink-0 text-amber-400" />
+												) : (
+													<Recycle size={12} className="shrink-0 text-green-400" />
+												)}
+												<span className="flex-1">
+													<span className="text-zinc-200">BP #{bp.blueprintID}</span>
+													<span className="ml-1.5 text-cyan-400">x{outputQty}</span>
+													<span className="ml-2 text-zinc-500">
+														{bp.inputs.map((i) => `${i.typeName} x${i.quantity}`).join(", ")}
+													</span>
 												</span>
-											</span>
-											<span className="shrink-0 text-zinc-500">{efficiency} input/unit</span>
-											<span
-												className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${
-													path === "ore"
-														? "bg-amber-500/10 text-amber-400"
-														: "bg-green-500/10 text-green-400"
-												}`}
-											>
-												{path}
-											</span>
+												<span className="shrink-0 text-zinc-500">
+													{formatTimePerUnit(secPerUnit)}/unit
+												</span>
+												<span className="shrink-0 text-zinc-500">{efficiency} input/unit</span>
+												<span
+													className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${
+														path === "ore"
+															? "bg-amber-500/10 text-amber-400"
+															: "bg-green-500/10 text-green-400"
+													}`}
+												>
+													{path}
+												</span>
+											</div>
+											{facilities.length > 0 && (
+												<div className="flex flex-wrap gap-1 pl-5">
+													{facilities.map((name) => (
+														<span
+															key={name}
+															className="rounded bg-zinc-700/60 px-1.5 py-0.5 text-[10px] text-zinc-300"
+														>
+															{name}
+														</span>
+													))}
+												</div>
+											)}
 										</button>
 									);
 								})}
@@ -407,6 +465,8 @@ export function BillOfMaterials() {
 		defaultRecipes,
 		rawMaterialIds,
 		salvageMaterialIds,
+		volumeMap,
+		blueprintFacilities,
 		isLoading,
 	} = useBlueprintData();
 
@@ -429,19 +489,7 @@ export function BillOfMaterials() {
 		saveToStorage(LS_OVERRIDES_KEY, recipeOverrides);
 	}, [recipeOverrides]);
 
-	// Build volume map from gameTypes
-	const gameTypes = useLiveQuery(() => db.gameTypes.toArray()) ?? [];
-	const volumeMap = useMemo(() => {
-		const map = new Map<number, number>();
-		for (const gt of gameTypes) {
-			if (gt.volume !== undefined && gt.volume !== null) {
-				map.set(gt.id, gt.volume);
-			}
-		}
-		return map;
-	}, [gameTypes]);
-
-	// Producible items list (for type-ahead search)
+	// Producible items list (outputs only, for order list search)
 	const producibleItems = useMemo(() => {
 		const seen = new Set<number>();
 		const items: Array<{ typeId: number; typeName: string }> = [];
@@ -454,6 +502,22 @@ export function BillOfMaterials() {
 			}
 		}
 		items.sort((a, b) => a.typeName.localeCompare(b.typeName));
+		return items;
+	}, [blueprints]);
+
+	// All blueprint-related types (inputs + outputs, for stock search)
+	const blueprintTypes = useMemo(() => {
+		const seen = new Set<number>();
+		const items: Array<{ id: number; name: string }> = [];
+		for (const bp of Object.values(blueprints)) {
+			for (const io of [...bp.inputs, ...bp.outputs]) {
+				if (!seen.has(io.typeID)) {
+					seen.add(io.typeID);
+					items.push({ id: io.typeID, name: io.typeName });
+				}
+			}
+		}
+		items.sort((a, b) => a.name.localeCompare(b.name));
 		return items;
 	}, [blueprints]);
 
@@ -517,6 +581,35 @@ export function BillOfMaterials() {
 		setRecipeOverrides([]);
 	}, []);
 
+	// Import from clipboard
+	const [showPaste, setShowPaste] = useState(false);
+	const [pasteText, setPasteText] = useState("");
+
+	const producibleNameLookup = useMemo(
+		() => buildNameLookup(producibleItems.map((i) => ({ id: i.typeId, name: i.typeName }))),
+		[producibleItems],
+	);
+
+	const handleImportItems = useCallback(() => {
+		if (!pasteText.trim()) return;
+		const parsed = parseItemList(pasteText, producibleNameLookup);
+		if (parsed.length === 0) return;
+		setOrderItems((prev) => {
+			const updated = [...prev];
+			for (const item of parsed) {
+				const existing = updated.find((i) => i.typeId === item.typeId);
+				if (existing) {
+					existing.quantity += item.quantity;
+				} else {
+					updated.push(item);
+				}
+			}
+			return updated;
+		});
+		setPasteText("");
+		setShowPaste(false);
+	}, [pasteText, producibleNameLookup]);
+
 	if (isLoading) {
 		return (
 			<div className="flex h-full items-center justify-center">
@@ -528,27 +621,86 @@ export function BillOfMaterials() {
 	const hasResults = orderItems.length > 0 && result.rawMaterials.length > 0;
 
 	return (
-		<div className="flex h-full">
-			{/* Order List Panel (left) */}
+		<div className="flex h-full flex-col">
+			{/* Page header */}
+			<div className="flex items-center gap-2 border-b border-zinc-800 px-5 py-3">
+				<ClipboardList size={18} className="text-violet-500" />
+				<h1 className="text-base font-semibold text-zinc-100">Bill of Materials Calculator</h1>
+			</div>
+
+			<div className="flex flex-1 overflow-hidden">
+			{/* Production List (left) */}
 			<div className="flex w-96 shrink-0 flex-col border-r border-zinc-800">
-				<div className="border-b border-zinc-800 px-4 py-3">
-					<h1 className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
-						<ClipboardList size={16} className="text-violet-500" />
-						Bill of Materials
+				<div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2.5">
+					<h2 className="flex items-center gap-2 text-sm font-medium text-zinc-300">
+						Production List
 						{orderItems.length > 0 && (
-							<span className="text-xs text-zinc-500">({orderItems.length} items)</span>
+							<span className="text-xs text-zinc-500">({orderItems.length})</span>
 						)}
-					</h1>
+					</h2>
+					{orderItems.length > 0 && (
+						<button
+							type="button"
+							onClick={handleClearAll}
+							className="flex items-center gap-1 text-xs text-zinc-500 hover:text-red-400"
+						>
+							<Trash2 size={11} />
+							Clear
+						</button>
+					)}
 				</div>
 
 				{/* Search to add items */}
-				<div className="border-b border-zinc-800 px-3 py-2">
-					<ProducibleItemSearch
-						producibleItems={producibleItems}
-						onSelect={handleAddItem}
-						placeholder="Add producible item..."
-					/>
+				<div className="flex items-center gap-1.5 border-b border-zinc-800 px-3 py-2">
+					<div className="flex-1">
+						<ProducibleItemSearch
+							producibleItems={producibleItems}
+							onSelect={handleAddItem}
+							placeholder="Add producible item..."
+						/>
+					</div>
+					<button
+						type="button"
+						onClick={() => setShowPaste(!showPaste)}
+						className={`rounded p-1.5 ${showPaste ? "bg-violet-600/20 text-violet-400" : "text-zinc-500 hover:text-zinc-300"}`}
+						title="Import from clipboard"
+					>
+						<ClipboardPaste size={14} />
+					</button>
 				</div>
+				{showPaste && (
+					<div className="border-b border-zinc-800 px-3 py-2 space-y-2">
+						<textarea
+							value={pasteText}
+							onChange={(e) => setPasteText(e.target.value)}
+							placeholder={"Paste from EVE client...\nFitting or inventory format"}
+							rows={6}
+							className="w-full rounded border border-zinc-700 bg-zinc-800 px-2.5 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:border-violet-600 focus:outline-none"
+						/>
+						<div className="flex items-center justify-between">
+							<span className="text-xs text-zinc-600">
+								{pasteText.trim() ? `${parseItemList(pasteText, producibleNameLookup).length} items matched` : ""}
+							</span>
+							<div className="flex gap-1.5">
+								<button
+									type="button"
+									onClick={() => { setPasteText(""); setShowPaste(false); }}
+									className="rounded px-2.5 py-1 text-xs text-zinc-500 hover:text-zinc-300"
+								>
+									Cancel
+								</button>
+								<button
+									type="button"
+									onClick={handleImportItems}
+									disabled={!pasteText.trim()}
+									className="rounded bg-violet-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-40"
+								>
+									Import
+								</button>
+							</div>
+						</div>
+					</div>
+				)}
 
 				{/* Order list */}
 				<div className="flex-1 overflow-y-auto">
@@ -556,7 +708,7 @@ export function BillOfMaterials() {
 						<div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
 							<ClipboardList size={32} className="text-zinc-800" />
 							<p className="text-sm text-zinc-500">
-								Search for items above to add them to your production order.
+								Search above to add items to your production list.
 							</p>
 						</div>
 					) : (
@@ -608,20 +760,6 @@ export function BillOfMaterials() {
 						</div>
 					)}
 				</div>
-
-				{/* Footer */}
-				{orderItems.length > 0 && (
-					<div className="border-t border-zinc-800 px-4 py-2">
-						<button
-							type="button"
-							onClick={handleClearAll}
-							className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-red-400"
-						>
-							<X size={12} />
-							Clear all
-						</button>
-					</div>
-				)}
 			</div>
 
 			{/* Results Panel (right) */}
@@ -631,7 +769,7 @@ export function BillOfMaterials() {
 						<div className="text-center">
 							<ClipboardList size={48} className="mx-auto mb-3 text-zinc-800" />
 							<p className="text-sm text-zinc-500">
-								Add items to your order list to see the bill of materials.
+								Add items to your production list to calculate materials.
 							</p>
 						</div>
 					</div>
@@ -639,18 +777,19 @@ export function BillOfMaterials() {
 
 				{orderItems.length > 0 && (
 					<div className="space-y-4">
-						{/* Recipe Configuration (Phase 4) */}
+						{/* Recipe Configuration */}
 						<RecipeConfigSection
 							result={result}
 							outputToBlueprints={outputToBlueprints}
 							rawMaterialIds={rawMaterialIds}
 							salvageMaterialIds={salvageMaterialIds}
+							blueprintFacilities={blueprintFacilities}
 							overrides={recipeOverrides}
 							onOverrideChange={setRecipeOverrides}
 						/>
 
-						{/* Stock Integration (Phase 5) */}
-						<BomStockPanel onStockChange={setStockMap} />
+						{/* Stock Integration */}
+						<BomStockPanel onStockChange={setStockMap} typeList={blueprintTypes} />
 
 						{/* Summary */}
 						<CollapsibleSection title="Summary">
@@ -719,8 +858,15 @@ export function BillOfMaterials() {
 					</div>
 				)}
 			</div>
+			</div>
 		</div>
 	);
+}
+
+function formatTimePerUnit(seconds: number): string {
+	if (seconds < 1) return `${(seconds * 1000).toFixed(0)}ms`;
+	if (seconds < 60) return `${seconds.toFixed(1)}s`;
+	return formatTime(Math.round(seconds));
 }
 
 function formatTime(seconds: number): string {

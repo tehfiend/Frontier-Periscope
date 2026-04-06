@@ -1,15 +1,15 @@
 import { type AssemblyInventory, fetchAssemblyInventory } from "@/chain/inventory";
-import { db } from "@/db";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { buildNameLookup, parseItemList } from "@/lib/fittingParser";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import { useQuery } from "@tanstack/react-query";
-import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Box,
 	ChevronDown,
 	ChevronRight,
+	ClipboardPaste,
 	Loader2,
 	Plus,
 	Search,
@@ -50,8 +50,10 @@ function saveToStorage<T>(key: string, value: T): void {
 
 function AnyTypeSearch({
 	onSelect,
+	typeList,
 }: {
 	onSelect: (typeId: number, typeName: string) => void;
+	typeList: Array<{ id: number; name: string }>;
 }) {
 	const [query, setQuery] = useState("");
 	const [results, setResults] = useState<Array<{ id: number; name: string }>>([]);
@@ -66,23 +68,14 @@ function AnyTypeSearch({
 			setIsOpen(false);
 			return;
 		}
-		const timer = setTimeout(async () => {
-			const q = query.trim().toLowerCase();
-			let items = await db.gameTypes.where("name").startsWithIgnoreCase(q).limit(20).toArray();
-			if (items.length < 5) {
-				const existingIds = new Set(items.map((i) => i.id));
-				const extra = await db.gameTypes
-					.filter((t) => !existingIds.has(t.id) && t.name.toLowerCase().includes(q))
-					.limit(20)
-					.toArray();
-				items = [...items, ...extra].slice(0, 20);
-			}
-			setResults(items.map((i) => ({ id: i.id, name: i.name })));
-			setHighlightIndex(0);
-			setIsOpen(items.length > 0);
-		}, 200);
-		return () => clearTimeout(timer);
-	}, [query]);
+		const q = query.trim().toLowerCase();
+		const matched = typeList
+			.filter((t) => t.name.toLowerCase().includes(q))
+			.slice(0, 20);
+		setResults(matched);
+		setHighlightIndex(0);
+		setIsOpen(matched.length > 0);
+	}, [query, typeList]);
 
 	useEffect(() => {
 		function handleMouseDown(e: MouseEvent) {
@@ -164,9 +157,10 @@ function AnyTypeSearch({
 
 interface BomStockPanelProps {
 	onStockChange: (stockMap: Map<number, number>) => void;
+	typeList: Array<{ id: number; name: string }>;
 }
 
-export function BomStockPanel({ onStockChange }: BomStockPanelProps) {
+export function BomStockPanel({ onStockChange, typeList }: BomStockPanelProps) {
 	const [open, setOpen] = useState(false);
 	const account = useCurrentAccount();
 	const { activeCharacter } = useActiveCharacter();
@@ -184,12 +178,11 @@ export function BomStockPanel({ onStockChange }: BomStockPanelProps) {
 	);
 
 	// Type name lookup
-	const gameTypes = useLiveQuery(() => db.gameTypes.toArray()) ?? [];
 	const typeNameMap = useMemo(() => {
 		const map: Record<number, string> = {};
-		for (const gt of gameTypes) map[gt.id] = gt.name;
+		for (const t of typeList) map[t.id] = t.name;
 		return map;
-	}, [gameTypes]);
+	}, [typeList]);
 
 	// Persist selections
 	useEffect(() => {
@@ -274,6 +267,32 @@ export function BomStockPanel({ onStockChange }: BomStockPanelProps) {
 		setManualStock((prev) => prev.filter((e) => e.typeId !== typeId));
 	}, []);
 
+	// Import from clipboard
+	const [showPaste, setShowPaste] = useState(false);
+	const [pasteText, setPasteText] = useState("");
+
+	const stockNameLookup = useMemo(() => buildNameLookup(typeList), [typeList]);
+
+	const handleImportItems = useCallback(() => {
+		if (!pasteText.trim()) return;
+		const parsed = parseItemList(pasteText, stockNameLookup);
+		if (parsed.length === 0) return;
+		setManualStock((prev) => {
+			const updated = [...prev];
+			for (const item of parsed) {
+				const existing = updated.find((e) => e.typeId === item.typeId);
+				if (existing) {
+					existing.quantity += item.quantity;
+				} else {
+					updated.push({ typeId: item.typeId, typeName: item.typeName, quantity: item.quantity });
+				}
+			}
+			return updated;
+		});
+		setPasteText("");
+		setShowPaste(false);
+	}, [pasteText, stockNameLookup]);
+
 	const hasWallet = !!activeCharacter?.suiAddress || !!account?.address;
 	const totalStockItems = mergedStock.size;
 
@@ -344,11 +363,54 @@ export function BomStockPanel({ onStockChange }: BomStockPanelProps) {
 
 					{/* Manual Stock */}
 					<div>
-						<h4 className="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-400">
-							<Plus size={12} />
-							Manual Stock
-						</h4>
-						<AnyTypeSearch onSelect={handleAddManualItem} />
+						<div className="mb-2 flex items-center justify-between">
+							<h4 className="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+								<Plus size={12} />
+								Manual Stock
+							</h4>
+							<button
+								type="button"
+								onClick={() => setShowPaste(!showPaste)}
+								className={`rounded p-1 ${showPaste ? "bg-violet-600/20 text-violet-400" : "text-zinc-600 hover:text-zinc-300"}`}
+								title="Import from clipboard"
+							>
+								<ClipboardPaste size={12} />
+							</button>
+						</div>
+						{showPaste && (
+							<div className="mb-2 space-y-1.5">
+								<textarea
+									value={pasteText}
+									onChange={(e) => setPasteText(e.target.value)}
+									placeholder={"Paste from EVE client...\nFitting or inventory format"}
+									rows={5}
+									className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 focus:border-violet-600 focus:outline-none"
+								/>
+								<div className="flex items-center justify-between">
+									<span className="text-xs text-zinc-600">
+										{pasteText.trim() ? `${parseItemList(pasteText, stockNameLookup).length} items matched` : ""}
+									</span>
+									<div className="flex gap-1.5">
+										<button
+											type="button"
+											onClick={() => { setPasteText(""); setShowPaste(false); }}
+											className="rounded px-2 py-0.5 text-xs text-zinc-500 hover:text-zinc-300"
+										>
+											Cancel
+										</button>
+										<button
+											type="button"
+											onClick={handleImportItems}
+											disabled={!pasteText.trim()}
+											className="rounded bg-violet-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-40"
+										>
+											Import
+										</button>
+									</div>
+								</div>
+							</div>
+						)}
+						<AnyTypeSearch onSelect={handleAddManualItem} typeList={typeList} />
 						{manualStock.length > 0 && (
 							<div className="mt-2 space-y-1">
 								{manualStock.map((entry) => (

@@ -20,6 +20,12 @@ interface BlueprintDataResult {
 	rawMaterialIds: Set<number>;
 	/** Known salvage-type leaf nodes */
 	salvageMaterialIds: Set<number>;
+	/** Map of typeID -> volume (m3) from static types.json */
+	volumeMap: Map<number, number>;
+	/** All game types sorted by name (for search) */
+	typeList: Array<{ id: number; name: string }>;
+	/** blueprintID -> list of facility names that can run it */
+	blueprintFacilities: Map<number, string[]>;
 	/** Whether data is still loading */
 	isLoading: boolean;
 }
@@ -45,6 +51,78 @@ function fetchBlueprintData(): Promise<BlueprintData | null> {
 			return null;
 		});
 	return fetchPromise;
+}
+
+// Static game data cache -- types.json + facilities.json
+interface StaticGameData {
+	volumeMap: Map<number, number>;
+	typeList: Array<{ id: number; name: string }>;
+	/** blueprintID -> list of facility names that can run it */
+	blueprintFacilities: Map<number, string[]>;
+}
+
+let cachedGameData: StaticGameData | null = null;
+let gameDataPromise: Promise<StaticGameData> | null = null;
+
+interface RawTypeEntry {
+	typeID: number;
+	typeNameID: string;
+	volume: number;
+}
+interface RawFacilityEntry {
+	facilityID: number;
+	blueprints: Array<{ blueprintID: number }>;
+}
+
+function fetchStaticGameData(): Promise<StaticGameData> {
+	if (cachedGameData) return Promise.resolve(cachedGameData);
+	if (gameDataPromise) return gameDataPromise;
+	gameDataPromise = Promise.all([
+		fetch("/data/types.json").then((r) =>
+			r.ok ? (r.json() as Promise<Record<string, RawTypeEntry>>) : ({} as Record<string, RawTypeEntry>),
+		),
+		fetch("/data/facilities.json").then((r) =>
+			r.ok ? (r.json() as Promise<Record<string, RawFacilityEntry>>) : ({} as Record<string, RawFacilityEntry>),
+		),
+	])
+		.then(([types, facilities]) => {
+			const volumeMap = new Map<number, number>();
+			const typeList: Array<{ id: number; name: string }> = [];
+			const typeNames = new Map<number, string>();
+			for (const t of Object.values(types)) {
+				if (t.volume != null) volumeMap.set(t.typeID, t.volume);
+				if (t.typeNameID) {
+					typeList.push({ id: t.typeID, name: t.typeNameID });
+					typeNames.set(t.typeID, t.typeNameID);
+				}
+			}
+			typeList.sort((a, b) => a.name.localeCompare(b.name));
+
+			const blueprintFacilities = new Map<number, string[]>();
+			for (const fac of Object.values(facilities)) {
+				const facName = typeNames.get(fac.facilityID) ?? `Facility #${fac.facilityID}`;
+				for (const bp of fac.blueprints) {
+					const existing = blueprintFacilities.get(bp.blueprintID);
+					if (existing) {
+						existing.push(facName);
+					} else {
+						blueprintFacilities.set(bp.blueprintID, [facName]);
+					}
+				}
+			}
+
+			cachedGameData = { volumeMap, typeList, blueprintFacilities };
+			return cachedGameData;
+		})
+		.catch(() => {
+			gameDataPromise = null;
+			return {
+				volumeMap: new Map<number, number>(),
+				typeList: [],
+				blueprintFacilities: new Map<number, string[]>(),
+			};
+		});
+	return gameDataPromise;
 }
 
 /**
@@ -140,18 +218,30 @@ export function computeDefaultRecipes(
 
 export function useBlueprintData(): BlueprintDataResult {
 	const [data, setData] = useState<BlueprintData | null>(cachedData);
-	const [isLoading, setIsLoading] = useState(!cachedData);
+	const [volumeMap, setVolumeMap] = useState<Map<number, number>>(
+		cachedGameData?.volumeMap ?? new Map(),
+	);
+	const [typeList, setTypeList] = useState<Array<{ id: number; name: string }>>(
+		cachedGameData?.typeList ?? [],
+	);
+	const [blueprintFacilities, setBlueprintFacilities] = useState<Map<number, string[]>>(
+		cachedGameData?.blueprintFacilities ?? new Map(),
+	);
+	const [isLoading, setIsLoading] = useState(!cachedData || !cachedGameData);
 
 	useEffect(() => {
-		if (cachedData) {
-			setData(cachedData);
-			setIsLoading(false);
-			return;
-		}
-		fetchBlueprintData().then((d) => {
+		let active = true;
+		Promise.all([fetchBlueprintData(), fetchStaticGameData()]).then(([d, gd]) => {
+			if (!active) return;
 			setData(d);
+			setVolumeMap(gd.volumeMap);
+			setTypeList(gd.typeList);
+			setBlueprintFacilities(gd.blueprintFacilities);
 			setIsLoading(false);
 		});
+		return () => {
+			active = false;
+		};
 	}, []);
 
 	const blueprints = data?.blueprints ?? {};
@@ -193,6 +283,9 @@ export function useBlueprintData(): BlueprintDataResult {
 		defaultRecipes,
 		rawMaterialIds,
 		salvageMaterialIds,
+		volumeMap,
+		typeList,
+		blueprintFacilities,
 		isLoading,
 	};
 }
