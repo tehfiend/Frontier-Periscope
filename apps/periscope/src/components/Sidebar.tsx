@@ -23,8 +23,6 @@ import {
 	Wallet,
 	Wrench,
 } from "lucide-react";
-import { useState } from "react";
-import { ChangelogModal } from "./ChangelogModal";
 import { CharacterSwitcher } from "./CharacterSwitcher";
 import { WalletConnect } from "./WalletConnect";
 
@@ -150,87 +148,81 @@ export function Sidebar() {
 	const collapsed = useAppStore((s) => s.sidebarCollapsed);
 	const toggleSidebar = useAppStore((s) => s.toggleSidebar);
 	const tenant = useActiveTenant();
-	const [changelogOpen, setChangelogOpen] = useState(false);
 
 	return (
-		<>
-			<aside
-				className={`flex h-full flex-col border-r border-zinc-800 bg-zinc-950 transition-all ${
-					collapsed ? "w-16" : "w-56"
-				}`}
-			>
-				{/* Logo + Server Indicator */}
-				<div className="flex h-14 items-center gap-3 border-b border-zinc-800 px-4">
-					<img
-						src="/periscope.svg"
-						alt="Periscope"
-						className="h-6 w-6 shrink-0"
-						style={{
-							filter: "invert(73%) sepia(65%) saturate(500%) hue-rotate(140deg) brightness(95%)",
-						}}
-					/>
-					{!collapsed && (
-						<div className="flex items-center gap-2">
-							<span className="text-sm font-semibold text-zinc-100">Frontier Periscope</span>
-							<span
-								className={`h-2 w-2 shrink-0 rounded-full ${SERVER_DOTS[tenant] ?? "bg-zinc-500"}`}
-								title={tenant}
-							/>
-							<span className="text-[10px] capitalize text-zinc-600">{tenant}</span>
-						</div>
-					)}
-				</div>
-
-				{/* Character Switcher + Wallet */}
-				<CharacterSwitcher />
-				<div className="px-2 pb-2">
-					<WalletConnect />
-				</div>
-
-				{/* Navigation */}
-				<nav className="flex-1 overflow-y-auto px-2 py-4">
-					<div className="mb-4">
-						<NavLink to="/" icon={LayoutDashboard} label="Dashboard" exact />
+		<aside
+			className={`flex h-full flex-col border-r border-zinc-800 bg-zinc-950 transition-all ${
+				collapsed ? "w-16" : "w-56"
+			}`}
+		>
+			{/* Logo + Server Indicator */}
+			<div className="flex h-14 items-center gap-3 border-b border-zinc-800 px-4">
+				<img
+					src="/periscope.svg"
+					alt="Periscope"
+					className="h-6 w-6 shrink-0"
+					style={{
+						filter: "invert(73%) sepia(65%) saturate(500%) hue-rotate(140deg) brightness(95%)",
+					}}
+				/>
+				{!collapsed && (
+					<div className="flex items-center gap-2">
+						<span className="text-sm font-semibold text-zinc-100">Frontier Periscope</span>
+						<span
+							className={`h-2 w-2 shrink-0 rounded-full ${SERVER_DOTS[tenant] ?? "bg-zinc-500"}`}
+							title={tenant}
+						/>
+						<span className="text-[10px] capitalize text-zinc-600">{tenant}</span>
 					</div>
-					{navGroups.map((group) => (
-						<div key={group.title} className="mb-4">
-							{!collapsed && (
-								<h3 className="mb-1 px-3 text-xs font-medium uppercase tracking-wider text-zinc-600">
-									{group.title}
-								</h3>
-							)}
-							<div className="space-y-0.5">
-								{group.items.map((item) => (
-									<NavLink key={item.to} {...item} />
-								))}
-							</div>
-						</div>
-					))}
-				</nav>
+				)}
+			</div>
 
-				{/* Footer */}
-				<div className="border-t border-zinc-800 p-2">
-					{!collapsed && (
-						<button
-							type="button"
-							onClick={() => setChangelogOpen(true)}
-							className="w-full px-3 pt-1 text-[10px] text-zinc-600 transition-colors hover:text-zinc-400"
-						>
-							v{__APP_VERSION__}
-						</button>
-					)}
-					<button
-						type="button"
-						onClick={toggleSidebar}
-						className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-500 transition-colors hover:bg-zinc-800/50 hover:text-zinc-300"
-					>
-						{collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
-						{!collapsed && <span>Collapse</span>}
-					</button>
+			{/* Character Switcher + Wallet */}
+			<CharacterSwitcher />
+			<div className="px-2 pb-2">
+				<WalletConnect />
+			</div>
+
+			{/* Navigation */}
+			<nav className="flex-1 overflow-y-auto px-2 py-4">
+				<div className="mb-4">
+					<NavLink to="/" icon={LayoutDashboard} label="Dashboard" exact />
 				</div>
-			</aside>
+				{navGroups.map((group) => (
+					<div key={group.title} className="mb-4">
+						{!collapsed && (
+							<h3 className="mb-1 px-3 text-xs font-medium uppercase tracking-wider text-zinc-600">
+								{group.title}
+							</h3>
+						)}
+						<div className="space-y-0.5">
+							{group.items.map((item) => (
+								<NavLink key={item.to} {...item} />
+							))}
+						</div>
+					</div>
+				))}
+			</nav>
 
-			<ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
-		</>
+			{/* Footer */}
+			<div className="border-t border-zinc-800 p-2">
+				{!collapsed && (
+					<Link
+						to="/release-notes"
+						className="block w-full px-3 pt-1 text-[10px] text-zinc-600 transition-colors hover:text-zinc-400"
+					>
+						v{__APP_VERSION__}
+					</Link>
+				)}
+				<button
+					type="button"
+					onClick={toggleSidebar}
+					className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-500 transition-colors hover:bg-zinc-800/50 hover:text-zinc-300"
+				>
+					{collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
+					{!collapsed && <span>Collapse</span>}
+				</button>
+			</div>
+		</aside>
 	);
 }
