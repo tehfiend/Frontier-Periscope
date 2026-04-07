@@ -27,6 +27,9 @@ const LazyStandings = lazy(() =>
 const LazyDashboard = lazy(() =>
 	import("@/views/Dashboard").then((m) => ({ default: m.Dashboard })),
 );
+const LazyReleaseNotes = lazy(() =>
+	import("@/views/ReleaseNotes").then((m) => ({ default: m.ReleaseNotes })),
+);
 
 function LoadingFallback() {
 	return (
@@ -96,6 +99,14 @@ function DashboardPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
 			<LazyDashboard />
+		</Suspense>
+	);
+}
+
+function ReleaseNotesPage() {
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<LazyReleaseNotes />
 		</Suspense>
 	);
 }
@@ -194,6 +205,12 @@ const currenciesRoute = createRoute({
 	component: CurrenciesPage,
 });
 
+const releaseNotesRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/release-notes",
+	component: ReleaseNotesPage,
+});
+
 const settingsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/settings",
@@ -269,6 +286,7 @@ const routeTree = rootRoute.addChildren([
 	privateMapsRoute,
 	standingsRoute,
 	workersRoute,
+	releaseNotesRoute,
 	settingsRoute,
 	setupRoute,
 ]);

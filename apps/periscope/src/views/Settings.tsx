@@ -16,8 +16,8 @@ import { getStoredHandle, requestDirectoryAccess } from "@/lib/logFileAccess";
 import { fetchAndStoreGameTypes } from "@/lib/worldApi";
 import { useDAppKit } from "@mysten/dapp-kit-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ChangelogModal } from "@/components/ChangelogModal";
 import {
 	Database,
 	Download,
@@ -423,34 +423,27 @@ function BackupRestore() {
 }
 
 function AboutSection() {
-	const [changelogOpen, setChangelogOpen] = useState(false);
-
 	return (
-		<>
-			<section className="mt-8">
-				<h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-400">
-					<Info size={16} />
-					About
-				</h2>
-				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-					<div className="flex items-center justify-between">
-						<div className="grid grid-cols-2 gap-2 text-sm">
-							<span className="text-zinc-500">Version</span>
-							<span className="text-zinc-300">v{__APP_VERSION__}</span>
-						</div>
-						<button
-							type="button"
-							onClick={() => setChangelogOpen(true)}
-							className="flex items-center gap-1.5 text-xs text-zinc-500 transition-colors hover:text-cyan-400"
-						>
-							View Changelog
-						</button>
+		<section className="mt-8">
+			<h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-400">
+				<Info size={16} />
+				About
+			</h2>
+			<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+				<div className="flex items-center justify-between">
+					<div className="grid grid-cols-2 gap-2 text-sm">
+						<span className="text-zinc-500">Version</span>
+						<span className="text-zinc-300">v{__APP_VERSION__}</span>
 					</div>
+					<Link
+						to="/release-notes"
+						className="flex items-center gap-1.5 text-xs text-zinc-500 transition-colors hover:text-cyan-400"
+					>
+						View Changelog
+					</Link>
 				</div>
-			</section>
-
-			<ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
-		</>
+			</div>
+		</section>
 	);
 }
 
