@@ -13,5 +13,10 @@ declare module "javascript-lp-solver" {
 		[key: string]: number | boolean;
 	}
 
-	export function Solve(model: Model): Solution;
+	interface Solver {
+		Solve(model: Model): Solution;
+	}
+
+	const solver: Solver;
+	export default solver;
 }

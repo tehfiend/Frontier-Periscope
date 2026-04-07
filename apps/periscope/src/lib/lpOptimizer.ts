@@ -1,4 +1,4 @@
-import { Solve } from "javascript-lp-solver";
+import solver from "javascript-lp-solver";
 import type { Blueprint, BomOrderItem, RecipePin } from "./bomTypes";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -161,7 +161,7 @@ export function solveLp(
 		variables,
 	};
 
-	const solution = Solve(model);
+	const solution = solver.Solve(model);
 
 	// 7. Extract results
 	const runs = new Map<number, number>();
