@@ -28,6 +28,8 @@ interface DataGridProps<T> {
 	searchPlaceholder?: string;
 	emptyMessage?: string;
 	actions?: ReactNode;
+	/** Content rendered after the search box in the toolbar. */
+	afterSearch?: ReactNode;
 	/** Enable global search. Default true. */
 	enableSearch?: boolean;
 	/** Currently selected row ID (optional). */
@@ -42,6 +44,7 @@ interface DataGridProps<T> {
 
 export function DataGrid<T>({
 	columns,
+	afterSearch,
 	data,
 	keyFn,
 	searchPlaceholder = "Search...",
@@ -75,11 +78,12 @@ export function DataGrid<T>({
 	const hasFilters = columnFilters.length > 0;
 
 	return (
-		<div className="flex h-full flex-col gap-3">
+		<div className="flex h-full flex-col gap-3 pt-3">
 			{/* Toolbar */}
 			<div className="flex items-center gap-3">
+				{actions}
 				{enableSearch && (
-					<div className="relative flex-1">
+					<div className="relative max-w-sm flex-1">
 						<Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
 						<input
 							type="text"
@@ -99,6 +103,7 @@ export function DataGrid<T>({
 						)}
 					</div>
 				)}
+				{afterSearch}
 				{hasFilters && (
 					<button
 						type="button"
@@ -109,7 +114,6 @@ export function DataGrid<T>({
 						Clear {columnFilters.length} filter{columnFilters.length > 1 ? "s" : ""}
 					</button>
 				)}
-				{actions}
 				{onExport && (
 					<button
 						type="button"

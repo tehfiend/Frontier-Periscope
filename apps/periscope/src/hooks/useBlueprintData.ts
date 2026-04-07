@@ -26,6 +26,10 @@ interface BlueprintDataResult {
 	typeList: Array<{ id: number; name: string }>;
 	/** blueprintID -> list of facility names that can run it */
 	blueprintFacilities: Map<number, string[]>;
+	/** typeID -> group name */
+	typeGroups: Map<number, string>;
+	/** typeID -> category name */
+	typeCategories: Map<number, string>;
 	/** Whether data is still loading */
 	isLoading: boolean;
 }
@@ -59,6 +63,10 @@ interface StaticGameData {
 	typeList: Array<{ id: number; name: string }>;
 	/** blueprintID -> list of facility names that can run it */
 	blueprintFacilities: Map<number, string[]>;
+	/** typeID -> group name */
+	typeGroups: Map<number, string>;
+	/** typeID -> category name */
+	typeCategories: Map<number, string>;
 }
 
 let cachedGameData: StaticGameData | null = null;
@@ -68,10 +76,20 @@ interface RawTypeEntry {
 	typeID: number;
 	typeNameID: string;
 	volume: number;
+	groupID?: number;
 }
 interface RawFacilityEntry {
 	facilityID: number;
 	blueprints: Array<{ blueprintID: number }>;
+}
+interface RawGroupEntry {
+	groupID: number;
+	groupNameID: string;
+	categoryID: number;
+}
+interface RawCategoryEntry {
+	categoryID: number;
+	categoryNameID: string;
 }
 
 function fetchStaticGameData(): Promise<StaticGameData> {
@@ -84,19 +102,44 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 		fetch("/data/facilities.json").then((r) =>
 			r.ok ? (r.json() as Promise<Record<string, RawFacilityEntry>>) : ({} as Record<string, RawFacilityEntry>),
 		),
+		fetch("/data/groups.json").then((r) =>
+			r.ok ? (r.json() as Promise<Record<string, RawGroupEntry>>) : ({} as Record<string, RawGroupEntry>),
+		),
+		fetch("/data/categories.json").then((r) =>
+			r.ok ? (r.json() as Promise<Record<string, RawCategoryEntry>>) : ({} as Record<string, RawCategoryEntry>),
+		),
 	])
-		.then(([types, facilities]) => {
+		.then(([types, facilities, groups, categories]) => {
 			const volumeMap = new Map<number, number>();
 			const typeList: Array<{ id: number; name: string }> = [];
 			const typeNames = new Map<number, string>();
+			const typeGroupIds = new Map<number, number>();
 			for (const t of Object.values(types)) {
 				if (t.volume != null) volumeMap.set(t.typeID, t.volume);
 				if (t.typeNameID) {
 					typeList.push({ id: t.typeID, name: t.typeNameID });
 					typeNames.set(t.typeID, t.typeNameID);
 				}
+				if (t.groupID != null) typeGroupIds.set(t.typeID, t.groupID);
 			}
 			typeList.sort((a, b) => a.name.localeCompare(b.name));
+
+			// Build group and category lookups
+			const groupMap = new Map<number, RawGroupEntry>();
+			for (const g of Object.values(groups)) groupMap.set(g.groupID, g);
+			const categoryMap = new Map<number, string>();
+			for (const c of Object.values(categories)) categoryMap.set(c.categoryID, c.categoryNameID);
+
+			const typeGroups = new Map<number, string>();
+			const typeCategories = new Map<number, string>();
+			for (const [typeId, groupId] of typeGroupIds) {
+				const group = groupMap.get(groupId);
+				if (group) {
+					typeGroups.set(typeId, group.groupNameID);
+					const catName = categoryMap.get(group.categoryID);
+					if (catName) typeCategories.set(typeId, catName);
+				}
+			}
 
 			const blueprintFacilities = new Map<number, string[]>();
 			for (const fac of Object.values(facilities)) {
@@ -111,7 +154,7 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 				}
 			}
 
-			cachedGameData = { volumeMap, typeList, blueprintFacilities };
+			cachedGameData = { volumeMap, typeList, blueprintFacilities, typeGroups, typeCategories };
 			return cachedGameData;
 		})
 		.catch(() => {
@@ -120,6 +163,8 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 				volumeMap: new Map<number, number>(),
 				typeList: [],
 				blueprintFacilities: new Map<number, string[]>(),
+				typeGroups: new Map<number, string>(),
+				typeCategories: new Map<number, string>(),
 			};
 		});
 	return gameDataPromise;
@@ -129,32 +174,57 @@ function fetchStaticGameData(): Promise<StaticGameData> {
  * Classify whether a blueprint's recipe path is "ore" or "salvage".
  * A recipe is salvage-path if any of its recursive leaf-node inputs are salvage materials.
  */
+/**
+ * Classify whether a blueprint's recipe path is "ore" or "salvage".
+ * For intermediates with multiple producers, checks ALL producers --
+ * a type is "ore" if ANY producer can make it without salvage inputs.
+ * Uses memoization via an optional shared cache across calls.
+ */
 export function classifyRecipePath(
 	blueprint: Blueprint,
 	outputToBlueprints: Map<number, Blueprint[]>,
 	rawMaterialIds: Set<number>,
 	salvageMaterialIds: Set<number>,
+	typeCache?: Map<number, "ore" | "salvage">,
 ): "ore" | "salvage" {
-	const visited = new Set<number>();
-	const queue = blueprint.inputs.map((i) => i.typeID);
+	const cache = typeCache ?? new Map<number, "ore" | "salvage">();
 
-	while (queue.length > 0) {
-		const typeId = queue.pop() as number;
-		if (visited.has(typeId)) continue;
+	function classifyType(typeId: number, visited: Set<number>): "ore" | "salvage" {
+		if (salvageMaterialIds.has(typeId)) return "salvage";
+		if (rawMaterialIds.has(typeId)) return "ore";
+		if (cache.has(typeId)) return cache.get(typeId)!;
+		if (visited.has(typeId)) return "ore"; // cycle guard
 		visited.add(typeId);
 
-		if (salvageMaterialIds.has(typeId)) return "salvage";
-		if (rawMaterialIds.has(typeId)) continue;
-
-		// Recurse into the first available blueprint for this intermediate
 		const producers = outputToBlueprints.get(typeId);
-		if (producers && producers.length > 0) {
-			for (const input of producers[0].inputs) {
-				queue.push(input.typeID);
+		if (!producers || producers.length === 0) {
+			cache.set(typeId, "ore");
+			visited.delete(typeId);
+			return "ore";
+		}
+
+		// A type is "ore" if ANY producer can make it without salvage inputs
+		for (const producer of producers) {
+			if (classifyBp(producer, visited) === "ore") {
+				cache.set(typeId, "ore");
+				visited.delete(typeId);
+				return "ore";
 			}
 		}
+
+		cache.set(typeId, "salvage");
+		visited.delete(typeId);
+		return "salvage";
 	}
-	return "ore";
+
+	function classifyBp(bp: Blueprint, visited: Set<number>): "ore" | "salvage" {
+		for (const input of bp.inputs) {
+			if (classifyType(input.typeID, visited) === "salvage") return "salvage";
+		}
+		return "ore";
+	}
+
+	return classifyBp(blueprint, new Set<number>());
 }
 
 /**
@@ -188,6 +258,7 @@ export function computeDefaultRecipes(
 	salvageMaterialIds: Set<number>,
 ): Map<number, number> {
 	const defaults = new Map<number, number>();
+	const typeCache = new Map<number, "ore" | "salvage">();
 
 	for (const [typeId, bps] of outputToBlueprints) {
 		if (bps.length === 1) {
@@ -200,7 +271,7 @@ export function computeDefaultRecipes(
 			const outputQty = bp.outputs.find((o) => o.typeID === typeId)?.quantity ?? 1;
 			const totalInputQty = bp.inputs.reduce((sum, i) => sum + i.quantity, 0);
 			const efficiency = totalInputQty / outputQty;
-			const path = classifyRecipePath(bp, outputToBlueprints, rawMaterialIds, salvageMaterialIds);
+			const path = classifyRecipePath(bp, outputToBlueprints, rawMaterialIds, salvageMaterialIds, typeCache);
 			return { bp, efficiency, path };
 		});
 
@@ -227,6 +298,12 @@ export function useBlueprintData(): BlueprintDataResult {
 	const [blueprintFacilities, setBlueprintFacilities] = useState<Map<number, string[]>>(
 		cachedGameData?.blueprintFacilities ?? new Map(),
 	);
+	const [typeGroups, setTypeGroups] = useState<Map<number, string>>(
+		cachedGameData?.typeGroups ?? new Map(),
+	);
+	const [typeCategories, setTypeCategories] = useState<Map<number, string>>(
+		cachedGameData?.typeCategories ?? new Map(),
+	);
 	const [isLoading, setIsLoading] = useState(!cachedData || !cachedGameData);
 
 	useEffect(() => {
@@ -237,6 +314,8 @@ export function useBlueprintData(): BlueprintDataResult {
 			setVolumeMap(gd.volumeMap);
 			setTypeList(gd.typeList);
 			setBlueprintFacilities(gd.blueprintFacilities);
+			setTypeGroups(gd.typeGroups);
+			setTypeCategories(gd.typeCategories);
 			setIsLoading(false);
 		});
 		return () => {
@@ -286,6 +365,8 @@ export function useBlueprintData(): BlueprintDataResult {
 		volumeMap,
 		typeList,
 		blueprintFacilities,
+		typeGroups,
+		typeCategories,
 		isLoading,
 	};
 }

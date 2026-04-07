@@ -63,4 +63,6 @@ export interface BomSurplus {
 	typeName: string;
 	quantity: number;
 	volume: number;
+	/** Recipe name (primary output) that produced this co-product */
+	source?: string;
 }

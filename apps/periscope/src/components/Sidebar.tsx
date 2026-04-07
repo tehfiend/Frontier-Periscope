@@ -74,7 +74,7 @@ const navGroups: NavGroup[] = [
 		title: "Industry",
 		items: [
 			{ to: "/blueprints", icon: Wrench, label: "Blueprint Library" },
-			{ to: "/bom", icon: ClipboardList, label: "Bill of Materials" },
+			{ to: "/industry", icon: ClipboardList, label: "Industry Calculator" },
 		],
 	},
 	{

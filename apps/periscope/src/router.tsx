@@ -27,8 +27,8 @@ const LazyStandings = lazy(() =>
 const LazyDashboard = lazy(() =>
 	import("@/views/Dashboard").then((m) => ({ default: m.Dashboard })),
 );
-const LazyBillOfMaterials = lazy(() =>
-	import("@/views/BillOfMaterials").then((m) => ({ default: m.BillOfMaterials })),
+const LazyIndustryCalculator = lazy(() =>
+	import("@/views/IndustryCalculator").then((m) => ({ default: m.IndustryCalculator })),
 );
 
 function LoadingFallback() {
@@ -103,10 +103,10 @@ function DashboardPage() {
 	);
 }
 
-function BillOfMaterialsPage() {
+function IndustryCalculatorPage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
-			<LazyBillOfMaterials />
+			<LazyIndustryCalculator />
 		</Suspense>
 	);
 }
@@ -249,8 +249,8 @@ const standingsRoute = createRoute({
 
 const bomRoute = createRoute({
 	getParentRoute: () => rootRoute,
-	path: "/bom",
-	component: BillOfMaterialsPage,
+	path: "/industry",
+	component: IndustryCalculatorPage,
 });
 
 const workersRoute = createRoute({

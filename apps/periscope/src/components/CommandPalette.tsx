@@ -41,10 +41,10 @@ const NAV_ITEMS: { path: string; label: string; icon: LucideIcon; keywords: stri
 		keywords: "manufacturing recipes",
 	},
 	{
-		path: "/bom",
-		label: "Bill of Materials",
+		path: "/industry",
+		label: "Industry Calculator",
 		icon: ClipboardList,
-		keywords: "bom manufacturing materials production industry",
+		keywords: "bom manufacturing materials production industry calculator",
 	},
 	{
 		path: "/sonar",
