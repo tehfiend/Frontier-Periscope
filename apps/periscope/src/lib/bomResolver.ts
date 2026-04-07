@@ -1,4 +1,12 @@
-import type { Blueprint, BomLineItem, BomOrderItem, BomSurplus, RecipeOverride } from "./bomTypes";
+import type {
+	Blueprint,
+	BomLineItem,
+	BomOrderItem,
+	BomSurplus,
+	ProductionSplit,
+	RecipeOverride,
+} from "./bomTypes";
+import type { LpSolution } from "./lpOptimizer";
 
 // ── Result type ─────────────────────────────────────────────────────────────
 
@@ -13,6 +21,8 @@ export interface BomResult {
 		totalVolume: number;
 		totalTime: number;
 		iterations: number;
+		objectiveValue?: number;
+		solveTimeMs?: number;
 	};
 }
 
@@ -197,10 +207,7 @@ function expandDemand(
 						(interDemand.get(input.typeID) ?? 0) + input.quantity * runs,
 					);
 				} else {
-					rawTotals.set(
-						input.typeID,
-						(rawTotals.get(input.typeID) ?? 0) + input.quantity * runs,
-					);
+					rawTotals.set(input.typeID, (rawTotals.get(input.typeID) ?? 0) + input.quantity * runs);
 				}
 			}
 		}
@@ -222,7 +229,14 @@ function expandDemand(
 		}
 	}
 
-	return { rawTotals, intermediateTotals, finalTotals, coProductYields, coProductSources, totalTime };
+	return {
+		rawTotals,
+		intermediateTotals,
+		finalTotals,
+		coProductYields,
+		coProductSources,
+		totalTime,
+	};
 }
 
 // ── Main resolver ───────────────────────────────────────────────────────────
@@ -385,6 +399,234 @@ export function resolveBom(
 			totalVolume: rawVolume + intermediateVolume,
 			totalTime: result.totalTime,
 			iterations,
+		},
+	};
+}
+
+// ── LP Result Builder ──────────────────────────────────────────────────────
+
+export function buildBomFromLp(
+	lpSolution: LpSolution,
+	blueprintData: {
+		blueprints: Record<string, Blueprint>;
+		outputToBlueprints: Map<number, Blueprint[]>;
+		defaultRecipes: Map<number, number>;
+	},
+	orderItems: BomOrderItem[],
+	volumeMap: Map<number, number>,
+	stockMap: Map<number, number>,
+	externalNameMap?: Map<number, string>,
+	solveTimeMs?: number,
+): BomResult {
+	const { blueprints, outputToBlueprints } = blueprintData;
+
+	// Build name map
+	const nameMap =
+		externalNameMap ??
+		(() => {
+			const names = new Map<number, string>();
+			for (const bp of Object.values(blueprints)) {
+				for (const i of bp.inputs) names.set(i.typeID, i.typeName);
+				for (const o of bp.outputs) names.set(o.typeID, o.typeName);
+			}
+			return names;
+		})();
+
+	// Identify raw materials
+	const allOutputIds = new Set<number>();
+	const allInputIds = new Set<number>();
+	for (const bp of Object.values(blueprints)) {
+		for (const out of bp.outputs) allOutputIds.add(out.typeID);
+		for (const inp of bp.inputs) allInputIds.add(inp.typeID);
+	}
+	const rawTypeIds = new Set<number>();
+	for (const id of allInputIds) {
+		if (!allOutputIds.has(id)) rawTypeIds.add(id);
+	}
+
+	// Order demand lookup
+	const orderSet = new Set<number>();
+	const orderDemand = new Map<number, number>();
+	for (const item of orderItems) {
+		orderSet.add(item.typeId);
+		orderDemand.set(item.typeId, (orderDemand.get(item.typeId) ?? 0) + item.quantity);
+	}
+
+	// Compute total produced and consumed per type from LP blueprint runs
+	const totalProduced = new Map<number, number>();
+	const totalConsumed = new Map<number, number>();
+	let totalTime = 0;
+
+	// Track per-type production splits (typeId -> array of {blueprintId, runs, quantity})
+	const typeSplits = new Map<number, ProductionSplit[]>();
+
+	for (const [bpId, runs] of lpSolution.runs) {
+		if (runs <= 0) continue;
+		const bp = blueprints[String(bpId)];
+		if (!bp) continue;
+
+		totalTime += bp.runTime * runs;
+
+		for (const out of bp.outputs) {
+			const qty = out.quantity * runs;
+			totalProduced.set(out.typeID, (totalProduced.get(out.typeID) ?? 0) + qty);
+
+			// Track splits for this type
+			const splits = typeSplits.get(out.typeID) ?? [];
+			splits.push({ blueprintId: bpId, runs, quantity: qty });
+			typeSplits.set(out.typeID, splits);
+		}
+
+		for (const inp of bp.inputs) {
+			const qty = inp.quantity * runs;
+			totalConsumed.set(inp.typeID, (totalConsumed.get(inp.typeID) ?? 0) + qty);
+		}
+	}
+
+	// Classify types and build line items
+	// Finals: ordered items that are producible
+	// Intermediates: produced types that are not ordered (consumed by other blueprints)
+	// Raw: inputs never produced, or ordered items that aren't producible
+	const rawTotals = new Map<number, number>();
+	const intermediateTotals = new Map<number, number>();
+	const finalTotals = new Map<number, number>();
+
+	// Raw material totals: sum of consumed for each raw type
+	for (const rawId of rawTypeIds) {
+		const consumed = totalConsumed.get(rawId) ?? 0;
+		if (consumed > 0) rawTotals.set(rawId, consumed);
+	}
+
+	// Handle directly ordered raw materials (non-producible)
+	for (const item of orderItems) {
+		if (!outputToBlueprints.has(item.typeId)) {
+			rawTotals.set(item.typeId, (rawTotals.get(item.typeId) ?? 0) + item.quantity);
+		}
+	}
+
+	// Producible types: classify as final or intermediate
+	for (const typeId of allOutputIds) {
+		const produced = totalProduced.get(typeId) ?? 0;
+		const consumed = totalConsumed.get(typeId) ?? 0;
+		const demand = orderDemand.get(typeId) ?? 0;
+
+		if (orderSet.has(typeId)) {
+			// Final: show the ordered quantity
+			if (demand > 0) finalTotals.set(typeId, demand);
+			// If also consumed as an intermediate, show the consumed portion as intermediate
+			if (consumed > 0) intermediateTotals.set(typeId, consumed);
+		} else if (produced > 0) {
+			// Pure intermediate: total needed = consumed by other blueprints
+			if (consumed > 0) intermediateTotals.set(typeId, consumed);
+		}
+	}
+
+	// Compute surplus: for each produced type, produced - consumed - demand
+	const surplus: BomSurplus[] = [];
+	for (const [typeId, produced] of totalProduced) {
+		const consumed = totalConsumed.get(typeId) ?? 0;
+		const demand = orderDemand.get(typeId) ?? 0;
+		const excess = produced - consumed - demand;
+		if (excess > 0) {
+			const unitVol = volumeMap.get(typeId);
+			// Find source: the blueprint that produces the most of this type
+			const splits = typeSplits.get(typeId) ?? [];
+			const primarySplit =
+				splits.length > 0 ? splits.reduce((a, b) => (b.quantity > a.quantity ? b : a)) : null;
+			const sourceBp = primarySplit ? blueprints[String(primarySplit.blueprintId)] : undefined;
+
+			surplus.push({
+				typeId,
+				typeName: nameMap.get(typeId) ?? `Type ${typeId}`,
+				quantity: excess,
+				volume: unitVol !== undefined ? excess * unitVol : -1,
+				source: sourceBp?.primaryTypeName,
+			});
+		}
+	}
+
+	// Build line items with stock allocation (finals first for priority)
+	const stockPool = new Map(stockMap);
+
+	function buildLpLineItem(
+		typeId: number,
+		quantity: number,
+		tier: "raw" | "intermediate" | "final",
+	): BomLineItem {
+		const unitVol = volumeMap.get(typeId);
+		const volumeMissing = unitVol === undefined;
+		const volume = volumeMissing ? -1 : quantity * unitVol;
+		const remaining = stockPool.get(typeId) ?? 0;
+		const allocated = Math.min(remaining, quantity);
+		stockPool.set(typeId, remaining - allocated);
+
+		// Determine primary blueprint and splits
+		const splits = typeSplits.get(typeId) ?? [];
+		let blueprintId: number | undefined;
+		let itemSplits: ProductionSplit[] | undefined;
+
+		if (tier !== "raw" && splits.length > 0) {
+			// Sort by runs descending to pick primary
+			const sorted = [...splits].sort((a, b) => b.runs - a.runs);
+			blueprintId = sorted[0].blueprintId;
+			if (sorted.length > 1) {
+				itemSplits = sorted;
+			}
+		}
+
+		return {
+			typeId,
+			typeName: nameMap.get(typeId) ?? `Type ${typeId}`,
+			quantity,
+			volume,
+			volumeMissing,
+			tier,
+			blueprintId,
+			splits: itemSplits,
+			stockQty: allocated,
+			stillNeed: quantity - allocated,
+		};
+	}
+
+	// Finals first (order items get stock priority)
+	const finals: BomLineItem[] = [];
+	for (const [typeId, qty] of finalTotals) {
+		if (qty > 0) finals.push(buildLpLineItem(typeId, qty, "final"));
+	}
+	finals.sort((a, b) => a.typeName.localeCompare(b.typeName));
+
+	const intermediates: BomLineItem[] = [];
+	for (const [typeId, qty] of intermediateTotals) {
+		if (qty > 0) intermediates.push(buildLpLineItem(typeId, qty, "intermediate"));
+	}
+	intermediates.sort((a, b) => a.typeName.localeCompare(b.typeName));
+
+	const rawMaterials: BomLineItem[] = [];
+	for (const [typeId, qty] of rawTotals) {
+		if (qty > 0) rawMaterials.push(buildLpLineItem(typeId, qty, "raw"));
+	}
+	rawMaterials.sort((a, b) => a.typeName.localeCompare(b.typeName));
+
+	// Compute volume totals
+	const rawVolume = rawMaterials.reduce((s, i) => s + (i.volumeMissing ? 0 : i.volume), 0);
+	const intermediateVolume = intermediates.reduce(
+		(s, i) => s + (i.volumeMissing ? 0 : i.volume),
+		0,
+	);
+
+	return {
+		rawMaterials,
+		intermediates,
+		finals,
+		surplus,
+		totals: {
+			rawVolume,
+			intermediateVolume,
+			totalVolume: rawVolume + intermediateVolume,
+			totalTime: totalTime,
+			iterations: 0,
+			objectiveValue: lpSolution.objectiveValue,
+			solveTimeMs,
 		},
 	};
 }

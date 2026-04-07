@@ -1,16 +1,23 @@
 import { BomStockPanel } from "@/components/BomStockPanel";
 import { ItemIcon } from "@/components/ItemIcon";
 import { useBlueprintData } from "@/hooks/useBlueprintData";
-import { classifyRecipePath, computeDefaultRecipes, findRawMaterials } from "@/hooks/useBlueprintData";
-import { type BomResult, resolveBom } from "@/lib/bomResolver";
+import {
+	classifyRecipePath,
+	computeDefaultRecipes,
+	findRawMaterials,
+} from "@/hooks/useBlueprintData";
+import { type BomResult, buildBomFromLp, resolveBom } from "@/lib/bomResolver";
 import type {
 	Blueprint,
 	BomLineItem,
 	BomOrderItem,
 	BomSurplus,
+	OptimizationMode,
 	RecipeOverride,
+	RecipePin,
 } from "@/lib/bomTypes";
 import { buildNameLookup, parseItemList } from "@/lib/fittingParser";
+import { ceilLpSolution, solveLp } from "@/lib/lpOptimizer";
 import {
 	AlertTriangle,
 	ChevronDown,
@@ -23,13 +30,16 @@ import {
 	Plus,
 	Search,
 	Trash2,
+	Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // ── localStorage keys ───────────────────────────────────────────────────────
 
 const LS_ORDER_KEY = "bom-order-items";
 const LS_OVERRIDES_KEY = "bom-recipe-overrides";
+const LS_OPT_MODE_KEY = "bom-optimization-mode";
+const LS_PINS_KEY = "bom-recipe-pins";
 
 function loadFromStorage<T>(key: string, fallback: T): T {
 	try {
@@ -189,7 +199,13 @@ function materialsToCsv(items: BomLineItem[]): string {
 	const rows = [["Item", "Need", "Have", "Still Need", "Volume (m³)"].join("\t")];
 	for (const i of items) {
 		rows.push(
-			[i.typeName, i.quantity, i.stockQty || "", i.stillNeed, i.volumeMissing ? "" : i.volume.toFixed(1)].join("\t"),
+			[
+				i.typeName,
+				i.quantity,
+				i.stockQty || "",
+				i.stillNeed,
+				i.volumeMissing ? "" : i.volume.toFixed(1),
+			].join("\t"),
 		);
 	}
 	return rows.join("\n");
@@ -390,7 +406,9 @@ function SurplusTable({ items }: { items: BomSurplus[] }) {
 			</tbody>
 			<tfoot>
 				<tr className="border-t border-zinc-700">
-					<td className="px-4 py-2 text-xs font-medium text-zinc-400" colSpan={3}>Total</td>
+					<td className="px-4 py-2 text-xs font-medium text-zinc-400" colSpan={3}>
+						Total
+					</td>
 					<td className="px-4 py-2 text-right font-mono text-sm text-zinc-200">
 						{totalVolume.toLocaleString(undefined, { maximumFractionDigits: 1 })}
 						{hasMissing && (
@@ -462,7 +480,12 @@ function RecipeDropdown({
 			{open && (
 				<div className="absolute left-0 top-full z-20 mt-1 min-w-[320px] rounded border border-zinc-700 bg-zinc-900 py-1 shadow-lg">
 					{producers.map((bp) => {
-						const path = classifyRecipePath(bp, outputToBlueprints, rawMaterialIds, salvageMaterialIds);
+						const path = classifyRecipePath(
+							bp,
+							outputToBlueprints,
+							rawMaterialIds,
+							salvageMaterialIds,
+						);
 						const isSelected = bp.blueprintID === currentBpId;
 						return (
 							<button
@@ -478,7 +501,8 @@ function RecipeDropdown({
 							>
 								{isSelected && <span className="text-cyan-400">●</span>}
 								<span className={isSelected ? "" : "ml-4"}>
-									{path === "salvage" ? "♻ " : ""}{formatOptionLabel(bp, typeId)}
+									{path === "salvage" ? "♻ " : ""}
+									{formatOptionLabel(bp, typeId)}
 								</span>
 							</button>
 						);
@@ -570,7 +594,10 @@ function ProductionTable({
 					const currentBp = producers.find((p) => p.blueprintID === currentBpId) ?? producers[0];
 
 					return (
-						<tr key={item.typeId} className="border-t border-zinc-800/50 hover:bg-zinc-800/30 align-middle">
+						<tr
+							key={item.typeId}
+							className="border-t border-zinc-800/50 hover:bg-zinc-800/30 align-middle"
+						>
 							<td className="px-4 py-1 text-zinc-200">
 								<span className="flex items-center gap-2">
 									<ItemIcon typeId={item.typeId} size={24} />
@@ -593,9 +620,7 @@ function ProductionTable({
 										getFacilityLabel={getFacilityLabel}
 									/>
 								) : currentBp ? (
-									<span className="text-xs text-zinc-500">
-										{getFacilityLabel(currentBp)}
-									</span>
+									<span className="text-xs text-zinc-500">{getFacilityLabel(currentBp)}</span>
 								) : null}
 							</td>
 							<td className="px-4 py-2">
@@ -626,15 +651,11 @@ function ProductionTable({
 								</div>
 							</td>
 							<td className="px-4 py-2 text-right font-mono text-cyan-400">
-								{finalItem && finalItem.stockQty > 0
-									? finalItem.stockQty.toLocaleString()
-									: "--"}
+								{finalItem && finalItem.stockQty > 0 ? finalItem.stockQty.toLocaleString() : "--"}
 							</td>
 							<td
 								className={`px-4 py-2 text-right font-mono ${
-									finalItem && finalItem.stillNeed === 0
-										? "text-green-400"
-										: "text-violet-300"
+									finalItem && finalItem.stillNeed === 0 ? "text-green-400" : "text-violet-300"
 								}`}
 							>
 								{finalItem
@@ -646,7 +667,10 @@ function ProductionTable({
 							<td className="px-4 py-2 text-right">
 								{finalItem ? (
 									finalItem.volumeMissing ? (
-										<span className="inline-flex items-center gap-1 text-amber-400" title="Volume data missing">
+										<span
+											className="inline-flex items-center gap-1 text-amber-400"
+											title="Volume data missing"
+										>
 											<AlertTriangle size={12} />
 											<span className="text-xs">??</span>
 										</span>
@@ -686,6 +710,9 @@ function IntermediateTable({
 	blueprintFacilities,
 	overrides,
 	onOverrideChange,
+	optimizationMode = "manual",
+	recipePins = [],
+	onRecipePinChange,
 }: {
 	items: BomLineItem[];
 	outputToBlueprints: Map<number, Blueprint[]>;
@@ -694,12 +721,21 @@ function IntermediateTable({
 	blueprintFacilities: Map<number, string[]>;
 	overrides: RecipeOverride[];
 	onOverrideChange: (overrides: RecipeOverride[]) => void;
+	optimizationMode?: OptimizationMode;
+	recipePins?: RecipePin[];
+	onRecipePinChange?: (pins: RecipePin[]) => void;
 }) {
 	const overrideMap = useMemo(() => {
 		const map = new Map<number, number>();
 		for (const o of overrides) map.set(o.typeId, o.blueprintId);
 		return map;
 	}, [overrides]);
+
+	const pinMap = useMemo(() => {
+		const map = new Map<number, RecipePin>();
+		for (const p of recipePins) map.set(p.typeId, p);
+		return map;
+	}, [recipePins]);
 
 	if (items.length === 0) {
 		return <div className="px-4 py-3 text-xs text-zinc-600">None</div>;
@@ -712,8 +748,20 @@ function IntermediateTable({
 	const hasMissing = items.some((item) => item.volumeMissing);
 
 	function handleRecipeChange(typeId: number, blueprintId: number) {
-		const existing = overrides.filter((o) => o.typeId !== typeId);
-		onOverrideChange([...existing, { typeId, blueprintId }]);
+		if (optimizationMode === "optimize" && onRecipePinChange) {
+			// In optimize mode, toggle exclusive pin
+			const existingPin = pinMap.get(typeId);
+			const otherPins = recipePins.filter((p) => p.typeId !== typeId);
+			if (existingPin?.kind === "exclusive" && existingPin.blueprintId === blueprintId) {
+				// Clicking the same pin clears it
+				onRecipePinChange(otherPins);
+			} else {
+				onRecipePinChange([...otherPins, { typeId, kind: "exclusive", blueprintId }]);
+			}
+		} else {
+			const existing = overrides.filter((o) => o.typeId !== typeId);
+			onOverrideChange([...existing, { typeId, blueprintId }]);
+		}
 	}
 
 	function getFacilityLabel(bp: Blueprint): string {
@@ -757,74 +805,103 @@ function IntermediateTable({
 				{items.map((item) => {
 					const producers = outputToBlueprints.get(item.typeId) ?? [];
 					const hasMultiple = producers.length > 1;
-					const currentBpId = overrideMap.get(item.typeId) ?? item.blueprintId;
-					const isOverridden = overrideMap.has(item.typeId);
+					const pin = pinMap.get(item.typeId);
+					const pinnedBpId = pin?.kind === "exclusive" ? pin.blueprintId : undefined;
+					const currentBpId =
+						optimizationMode === "optimize" && pinnedBpId
+							? pinnedBpId
+							: (overrideMap.get(item.typeId) ?? item.blueprintId);
+					const isOverridden =
+						optimizationMode === "optimize"
+							? pinnedBpId !== undefined
+							: overrideMap.has(item.typeId);
 					const currentBp = producers.find((p) => p.blueprintID === currentBpId) ?? producers[0];
+					const hasSplits = item.splits && item.splits.length > 1;
 
 					return (
-						<tr key={item.typeId} className="border-t border-zinc-800/50 hover:bg-zinc-800/30">
-							<td className="px-4 py-1 text-zinc-200">
-								<span className="flex items-center gap-2">
-									<ItemIcon typeId={item.typeId} size={32} />
-									{item.typeName}
-								</span>
-							</td>
-							<td className="px-4 py-2">
-								<div className="flex flex-col gap-0.5">
-									{hasMultiple && currentBp ? (
-										<RecipeDropdown
-											typeId={item.typeId}
-											producers={producers}
-											currentBpId={currentBpId}
-											isOverridden={isOverridden}
-											outputToBlueprints={outputToBlueprints}
-											rawMaterialIds={rawMaterialIds}
-											salvageMaterialIds={salvageMaterialIds}
-											blueprintFacilities={blueprintFacilities}
-											onSelect={(bpId) => handleRecipeChange(item.typeId, bpId)}
-											formatOptionLabel={formatOptionLabel}
-											getFacilityLabel={getFacilityLabel}
-										/>
-									) : currentBp ? (
-										<span className="text-xs text-zinc-500">
-											{getFacilityLabel(currentBp)}
+						<Fragment key={item.typeId}>
+							<tr className="border-t border-zinc-800/50 hover:bg-zinc-800/30">
+								<td className="px-4 py-1 text-zinc-200">
+									<span className="flex items-center gap-2">
+										<ItemIcon typeId={item.typeId} size={32} />
+										{item.typeName}
+									</span>
+								</td>
+								<td className="px-4 py-2">
+									<div className="flex flex-col gap-0.5">
+										{hasMultiple && currentBp ? (
+											<RecipeDropdown
+												typeId={item.typeId}
+												producers={producers}
+												currentBpId={currentBpId}
+												isOverridden={isOverridden}
+												outputToBlueprints={outputToBlueprints}
+												rawMaterialIds={rawMaterialIds}
+												salvageMaterialIds={salvageMaterialIds}
+												blueprintFacilities={blueprintFacilities}
+												onSelect={(bpId) => handleRecipeChange(item.typeId, bpId)}
+												formatOptionLabel={formatOptionLabel}
+												getFacilityLabel={getFacilityLabel}
+											/>
+										) : currentBp ? (
+											<span className="text-xs text-zinc-500">{getFacilityLabel(currentBp)}</span>
+										) : null}
+										{currentBp && !hasSplits && (
+											<span className="text-xs text-zinc-500">
+												{getTotalInputs(currentBp, item.typeId, item.stillNeed)
+													.map((i) => `${i.total.toLocaleString()} ${i.typeName}`)
+													.join(", ")}
+											</span>
+										)}
+									</div>
+								</td>
+								<td className="px-4 py-2 text-right font-mono text-zinc-400">
+									{item.quantity.toLocaleString()}
+								</td>
+								<td className="px-4 py-2 text-right font-mono text-cyan-400">
+									{item.stockQty > 0 ? item.stockQty.toLocaleString() : "--"}
+								</td>
+								<td
+									className={`px-4 py-2 text-right font-mono ${
+										item.stillNeed === 0 ? "text-green-400" : "text-violet-300"
+									}`}
+								>
+									{item.stillNeed === 0 ? "0" : item.stillNeed.toLocaleString()}
+								</td>
+								<td className="px-4 py-2 text-right">
+									{item.volumeMissing ? (
+										<span
+											className="inline-flex items-center gap-1 text-amber-400"
+											title="Volume data missing"
+										>
+											<AlertTriangle size={12} />
+											<span className="text-xs">??</span>
 										</span>
-									) : null}
-									{currentBp && (
-										<span className="text-xs text-zinc-500">
-											{getTotalInputs(currentBp, item.typeId, item.stillNeed)
-												.map((i) => `${i.total.toLocaleString()} ${i.typeName}`)
-												.join(", ")}
+									) : (
+										<span className="font-mono text-zinc-400">
+											{item.volume.toLocaleString(undefined, { maximumFractionDigits: 1 })}
 										</span>
 									)}
-								</div>
-							</td>
-							<td className="px-4 py-2 text-right font-mono text-zinc-400">
-								{item.quantity.toLocaleString()}
-							</td>
-							<td className="px-4 py-2 text-right font-mono text-cyan-400">
-								{item.stockQty > 0 ? item.stockQty.toLocaleString() : "--"}
-							</td>
-							<td
-								className={`px-4 py-2 text-right font-mono ${
-									item.stillNeed === 0 ? "text-green-400" : "text-violet-300"
-								}`}
-							>
-								{item.stillNeed === 0 ? "0" : item.stillNeed.toLocaleString()}
-							</td>
-							<td className="px-4 py-2 text-right">
-								{item.volumeMissing ? (
-									<span className="inline-flex items-center gap-1 text-amber-400" title="Volume data missing">
-										<AlertTriangle size={12} />
-										<span className="text-xs">??</span>
-									</span>
-								) : (
-									<span className="font-mono text-zinc-400">
-										{item.volume.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-									</span>
-								)}
-							</td>
-						</tr>
+								</td>
+							</tr>
+							{hasSplits && (
+								<tr className="border-t border-zinc-800/30">
+									<td colSpan={6} className="pl-12 py-1 text-xs text-zinc-500">
+										{item.splits?.map((split, idx) => {
+											const facs = blueprintFacilities.get(split.blueprintId) ?? [];
+											const label = facs.length > 0 ? facs[0] : `BP #${split.blueprintId}`;
+											return (
+												<span key={split.blueprintId}>
+													{idx > 0 && ", "}
+													{Math.round(split.quantity).toLocaleString()} from {label} (
+													{Math.round(split.runs)} run{Math.round(split.runs) !== 1 ? "s" : ""})
+												</span>
+											);
+										})}
+									</td>
+								</tr>
+							)}
+						</Fragment>
 					);
 				})}
 			</tbody>
@@ -836,7 +913,9 @@ function IntermediateTable({
 					<td className="px-4 py-2 text-right font-mono text-sm text-zinc-200">
 						{totalVolume.toLocaleString(undefined, { maximumFractionDigits: 1 })}
 						{hasMissing && (
-							<span className="ml-1 text-amber-400" title="Some items have missing volume">*</span>
+							<span className="ml-1 text-amber-400" title="Some items have missing volume">
+								*
+							</span>
 						)}
 					</td>
 				</tr>
@@ -869,8 +948,16 @@ export function IndustryCalculator() {
 		}
 		const groups: Array<{ label: string; facilities: Array<{ name: string; short: string }> }> = [];
 		const classify: Array<[string, string[], string[]]> = [
-			["Refineries", ["Field Refinery", "Refinery", "Heavy Refinery"], ["Field", "Standard", "Heavy"]],
-			["Printers", ["Mini Printer", "Field Printer", "Printer", "Heavy Printer"], ["Mini", "Field", "Standard", "Heavy"]],
+			[
+				"Refineries",
+				["Field Refinery", "Refinery", "Heavy Refinery"],
+				["Field", "Standard", "Heavy"],
+			],
+			[
+				"Printers",
+				["Mini Printer", "Field Printer", "Printer", "Heavy Printer"],
+				["Mini", "Field", "Standard", "Heavy"],
+			],
 			["Berths", ["Mini Berth", "Berth", "Heavy Berth"], ["Mini", "Standard", "Heavy"]],
 		];
 		const classified = new Set<string>();
@@ -942,7 +1029,13 @@ export function IndustryCalculator() {
 		if (selectedFacilities.size === 0) return defaultRecipes;
 		const filteredRaw = findRawMaterials(filteredBlueprints);
 		return computeDefaultRecipes(filteredOutputToBlueprints, filteredRaw, salvageMaterialIds);
-	}, [selectedFacilities, defaultRecipes, filteredBlueprints, filteredOutputToBlueprints, salvageMaterialIds]);
+	}, [
+		selectedFacilities,
+		defaultRecipes,
+		filteredBlueprints,
+		filteredOutputToBlueprints,
+		salvageMaterialIds,
+	]);
 
 	// Order list state (persisted to localStorage)
 	const [orderItems, setOrderItems] = useState<BomOrderItem[]>(() =>
@@ -955,13 +1048,27 @@ export function IndustryCalculator() {
 	// Stock state (managed by BomStockPanel)
 	const [stockMap, setStockMap] = useState<Map<number, number>>(new Map());
 
-	// Persist order items and overrides
+	// Optimization mode state
+	const [optimizationMode, setOptimizationMode] = useState<OptimizationMode>(() =>
+		loadFromStorage<OptimizationMode>(LS_OPT_MODE_KEY, "manual"),
+	);
+	const [recipePins, setRecipePins] = useState<RecipePin[]>(() =>
+		loadFromStorage<RecipePin[]>(LS_PINS_KEY, []),
+	);
+
+	// Persist order items, overrides, optimization mode, and recipe pins
 	useEffect(() => {
 		saveToStorage(LS_ORDER_KEY, orderItems);
 	}, [orderItems]);
 	useEffect(() => {
 		saveToStorage(LS_OVERRIDES_KEY, recipeOverrides);
 	}, [recipeOverrides]);
+	useEffect(() => {
+		saveToStorage(LS_OPT_MODE_KEY, optimizationMode);
+	}, [optimizationMode]);
+	useEffect(() => {
+		saveToStorage(LS_PINS_KEY, recipePins);
+	}, [recipePins]);
 
 	// Purge stale overrides whose blueprint no longer produces the target type
 	useEffect(() => {
@@ -1007,23 +1114,93 @@ export function IndustryCalculator() {
 		return items;
 	}, [blueprints]);
 
-	// Resolve BOM
+	// Resolve BOM (manual or LP optimized)
 	const result = useMemo<BomResult>(() => {
-		if (orderItems.length === 0) {
-			return {
-				rawMaterials: [],
-				intermediates: [],
-				finals: [],
-				surplus: [],
-				totals: {
-					rawVolume: 0,
-					intermediateVolume: 0,
-					totalVolume: 0,
-					totalTime: 0,
-					iterations: 0,
-				},
-			};
+		const emptyResult: BomResult = {
+			rawMaterials: [],
+			intermediates: [],
+			finals: [],
+			surplus: [],
+			totals: {
+				rawVolume: 0,
+				intermediateVolume: 0,
+				totalVolume: 0,
+				totalTime: 0,
+				iterations: 0,
+			},
+		};
+		if (orderItems.length === 0) return emptyResult;
+
+		const bpData = {
+			blueprints: filteredBlueprints,
+			outputToBlueprints: filteredOutputToBlueprints,
+			defaultRecipes: filteredDefaultRecipes,
+		};
+
+		if (optimizationMode === "optimize") {
+			console.time("LP solve");
+			const t0 = performance.now();
+
+			// Filter pins to only include blueprints present in filtered set
+			const validPins = recipePins.filter((pin) => {
+				const producers = filteredOutputToBlueprints.get(pin.typeId);
+				if (!producers || producers.length === 0) return false;
+				if (pin.kind === "exclusive") {
+					return producers.some((bp) => bp.blueprintID === pin.blueprintId);
+				}
+				return true;
+			});
+
+			const lpSolution = solveLp(orderItems, bpData, validPins, stockMap);
+			const ceiled = ceilLpSolution(lpSolution);
+			const solveTimeMs = performance.now() - t0;
+			console.timeEnd("LP solve");
+
+			if (!ceiled.feasible) {
+				// Infeasible -- fall back to manual mode
+				console.warn("LP infeasible, falling back to manual BOM resolution");
+				const fallback = resolveBom(
+					orderItems,
+					bpData,
+					recipeOverrides,
+					volumeMap,
+					stockMap,
+					fullNameMap,
+				);
+				return {
+					...fallback,
+					totals: { ...fallback.totals, objectiveValue: -1, solveTimeMs },
+				};
+			}
+
+			return buildBomFromLp(
+				ceiled,
+				bpData,
+				orderItems,
+				volumeMap,
+				stockMap,
+				fullNameMap,
+				solveTimeMs,
+			);
 		}
+
+		return resolveBom(orderItems, bpData, recipeOverrides, volumeMap, stockMap, fullNameMap);
+	}, [
+		orderItems,
+		filteredBlueprints,
+		filteredOutputToBlueprints,
+		filteredDefaultRecipes,
+		optimizationMode,
+		recipePins,
+		recipeOverrides,
+		volumeMap,
+		stockMap,
+		fullNameMap,
+	]);
+
+	// Manual comparison result (only computed in optimize mode for delta display)
+	const manualResult = useMemo<BomResult | null>(() => {
+		if (optimizationMode !== "optimize" || orderItems.length === 0) return null;
 		return resolveBom(
 			orderItems,
 			{
@@ -1037,6 +1214,7 @@ export function IndustryCalculator() {
 			fullNameMap,
 		);
 	}, [
+		optimizationMode,
 		orderItems,
 		filteredBlueprints,
 		filteredOutputToBlueprints,
@@ -1050,7 +1228,12 @@ export function IndustryCalculator() {
 	// Detect items that are raw in the filtered BOM but producible in the full blueprint set
 	const missingFacilities = useMemo(() => {
 		if (selectedFacilities.size === 0) return [];
-		const missing: Array<{ typeId: number; typeName: string; quantity: number; facilities: string[] }> = [];
+		const missing: Array<{
+			typeId: number;
+			typeName: string;
+			quantity: number;
+			facilities: string[];
+		}> = [];
 		for (const raw of result.rawMaterials) {
 			// Skip items fully covered by stock
 			if (raw.stillNeed === 0) continue;
@@ -1149,7 +1332,8 @@ export function IndustryCalculator() {
 		);
 	}
 
-	const hasResults = orderItems.length > 0 &&
+	const hasResults =
+		orderItems.length > 0 &&
 		(result.rawMaterials.length > 0 || result.intermediates.length > 0 || result.finals.length > 0);
 
 	return (
@@ -1163,301 +1347,409 @@ export function IndustryCalculator() {
 						Added after hackathon submission deadline, not part of contest entry
 					</span>
 				</div>
-				{facilityGroups.length > 0 && (
-					<div className="mt-2 flex items-center gap-3">
-						{facilityGroups.map((group) => (
-							<div key={group.label} className="flex items-center gap-1">
-								<span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
-									{group.label}
-								</span>
-								{group.facilities.map((fac) => (
-									<button
-										key={fac.name}
-										type="button"
-										onClick={() => toggleFacility(fac.name)}
-										className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors ${
-											selectedFacilities.has(fac.name)
-												? "bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/40"
-												: "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
-										}`}
-									>
-										{fac.short}
-									</button>
-								))}
-							</div>
-						))}
-						{selectedFacilities.size > 0 && (
-							<button
-								type="button"
-								onClick={() => setSelectedFacilities(new Set())}
-								className="text-[11px] text-zinc-600 hover:text-zinc-400"
-							>
-								Clear
-							</button>
-						)}
+				<div className="mt-2 flex items-center gap-3">
+					{facilityGroups.map((group) => (
+						<div key={group.label} className="flex items-center gap-1">
+							<span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+								{group.label}
+							</span>
+							{group.facilities.map((fac) => (
+								<button
+									key={fac.name}
+									type="button"
+									onClick={() => toggleFacility(fac.name)}
+									className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+										selectedFacilities.has(fac.name)
+											? "bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/40"
+											: "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
+									}`}
+								>
+									{fac.short}
+								</button>
+							))}
+						</div>
+					))}
+					{selectedFacilities.size > 0 && (
+						<button
+							type="button"
+							onClick={() => setSelectedFacilities(new Set())}
+							className="text-[11px] text-zinc-600 hover:text-zinc-400"
+						>
+							Clear
+						</button>
+					)}
+
+					{/* Optimization mode toggle */}
+					<div className="ml-auto flex items-center gap-1">
+						<span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+							Mode
+						</span>
+						<button
+							type="button"
+							onClick={() => setOptimizationMode("manual")}
+							className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+								optimizationMode === "manual"
+									? "bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/40"
+									: "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
+							}`}
+						>
+							Manual
+						</button>
+						<button
+							type="button"
+							onClick={() => setOptimizationMode("optimize")}
+							className={`flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+								optimizationMode === "optimize"
+									? "bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/40"
+									: "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
+							}`}
+						>
+							<Zap size={10} />
+							Optimize
+						</button>
 					</div>
-				)}
+				</div>
 			</div>
 
 			<div className="flex flex-1 overflow-hidden">
-			{/* Results Panel */}
-			<div className="flex-1 overflow-y-auto p-6">
-				{/* Production List -- integrated with finals */}
-				<div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/30">
-					<div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2.5">
-						<h2 className="flex items-center gap-2 text-sm font-medium text-zinc-300">
-							Production List
-							{orderItems.length > 0 && (
-								<span className="text-xs text-zinc-500">({orderItems.length})</span>
-							)}
-						</h2>
-						<div className="flex items-center gap-3">
-							{orderItems.length > 0 && (
-								<>
-									<CopyButton getText={() => orderItemsToCsv(orderItems)} />
-									<button
-										type="button"
-										onClick={handleClearAll}
-										className="flex items-center gap-1 text-xs text-zinc-500 hover:text-red-400"
-									>
-										<Trash2 size={11} />
-										Clear
-									</button>
-								</>
-							)}
-						</div>
-					</div>
-
-					{/* Search + paste */}
-					<div className="flex items-center gap-1.5 border-b border-zinc-800 px-3 py-2">
-						<div className="flex-1">
-							<ProducibleItemSearch
-								producibleItems={producibleItems}
-								onSelect={handleAddItem}
-								placeholder="Add producible item..."
-							/>
-						</div>
-						<button
-							type="button"
-							onClick={() => setShowPaste(!showPaste)}
-							className={`rounded p-1.5 ${showPaste ? "bg-violet-600/20 text-violet-400" : "text-zinc-500 hover:text-zinc-300"}`}
-							title="Import from clipboard"
-						>
-							<ClipboardPaste size={14} />
-						</button>
-					</div>
-					{showPaste && (
-						<div className="border-b border-zinc-800 px-3 py-2 space-y-2">
-							<textarea
-								value={pasteText}
-								onChange={(e) => setPasteText(e.target.value)}
-								placeholder={"Paste from EVE client...\nFitting or inventory format"}
-								rows={6}
-								className="w-full rounded border border-zinc-700 bg-zinc-800 px-2.5 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:border-violet-600 focus:outline-none"
-							/>
-							<div className="flex items-center justify-between">
-								<span className="text-xs text-zinc-600">
-									{pasteText.trim() ? `${parseItemList(pasteText, producibleNameLookup).length} items matched` : ""}
-								</span>
-								<div className="flex gap-1.5">
-									<button
-										type="button"
-										onClick={() => { setPasteText(""); setShowPaste(false); }}
-										className="rounded px-2.5 py-1 text-xs text-zinc-500 hover:text-zinc-300"
-									>
-										Cancel
-									</button>
-									<button
-										type="button"
-										onClick={handleImportItems}
-										disabled={!pasteText.trim()}
-										className="rounded bg-violet-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-40"
-									>
-										Import
-									</button>
-								</div>
+				{/* Results Panel */}
+				<div className="flex-1 overflow-y-auto p-6">
+					{/* Production List -- integrated with finals */}
+					<div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/30">
+						<div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2.5">
+							<h2 className="flex items-center gap-2 text-sm font-medium text-zinc-300">
+								Production List
+								{orderItems.length > 0 && (
+									<span className="text-xs text-zinc-500">({orderItems.length})</span>
+								)}
+							</h2>
+							<div className="flex items-center gap-3">
+								{orderItems.length > 0 && (
+									<>
+										<CopyButton getText={() => orderItemsToCsv(orderItems)} />
+										<button
+											type="button"
+											onClick={handleClearAll}
+											className="flex items-center gap-1 text-xs text-zinc-500 hover:text-red-400"
+										>
+											<Trash2 size={11} />
+											Clear
+										</button>
+									</>
+								)}
 							</div>
 						</div>
-					)}
 
-					{/* Order items table with finals data */}
-					{orderItems.length === 0 ? (
-						<div className="flex flex-col items-center justify-center gap-2 p-8 text-center">
-							<ClipboardList size={32} className="text-zinc-800" />
-							<p className="text-sm text-zinc-500">
-								Search above to add items to your production list.
-							</p>
+						{/* Search + paste */}
+						<div className="flex items-center gap-1.5 border-b border-zinc-800 px-3 py-2">
+							<div className="flex-1">
+								<ProducibleItemSearch
+									producibleItems={producibleItems}
+									onSelect={handleAddItem}
+									placeholder="Add producible item..."
+								/>
+							</div>
+							<button
+								type="button"
+								onClick={() => setShowPaste(!showPaste)}
+								className={`rounded p-1.5 ${showPaste ? "bg-violet-600/20 text-violet-400" : "text-zinc-500 hover:text-zinc-300"}`}
+								title="Import from clipboard"
+							>
+								<ClipboardPaste size={14} />
+							</button>
 						</div>
-					) : (
-						<ProductionTable
-							orderItems={orderItems}
-							finals={result.finals}
-							outputToBlueprints={filteredOutputToBlueprints}
-							rawMaterialIds={rawMaterialIds}
-							salvageMaterialIds={salvageMaterialIds}
-							blueprintFacilities={blueprintFacilities}
-							overrides={recipeOverrides}
-							onOverrideChange={setRecipeOverrides}
-							onQuantityChange={handleQuantityChange}
-							onRemove={handleRemoveItem}
-						/>
-					)}
-				</div>
-
-				{!hasResults && orderItems.length === 0 && (
-					<div className="flex h-64 items-center justify-center">
-						<div className="text-center">
-							<ClipboardList size={48} className="mx-auto mb-3 text-zinc-800" />
-							<p className="text-sm text-zinc-500">
-								Add items to your production list to calculate materials.
-							</p>
-						</div>
-					</div>
-				)}
-
-				{orderItems.length > 0 && (
-					<div className="space-y-4">
-						{/* Missing Facilities Warning */}
-						{missingFacilities.length > 0 && (
-							<div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-								<div className="flex items-center gap-2 text-sm font-medium text-amber-400">
-									<AlertTriangle size={14} />
-									Missing Facilities
-								</div>
-								<p className="mt-1 text-xs text-zinc-400">
-									{missingFacilities.length} item{missingFacilities.length > 1 ? "s" : ""} cannot
-									be produced with the selected facilities and will need to be sourced externally.
-								</p>
-								<div className="mt-3 space-y-1.5">
-									{missingFacilities.map((m) => (
-										<div
-											key={m.typeId}
-											className="flex items-center justify-between text-xs"
+						{showPaste && (
+							<div className="border-b border-zinc-800 px-3 py-2 space-y-2">
+								<textarea
+									value={pasteText}
+									onChange={(e) => setPasteText(e.target.value)}
+									placeholder={"Paste from EVE client...\nFitting or inventory format"}
+									rows={6}
+									className="w-full rounded border border-zinc-700 bg-zinc-800 px-2.5 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:border-violet-600 focus:outline-none"
+								/>
+								<div className="flex items-center justify-between">
+									<span className="text-xs text-zinc-600">
+										{pasteText.trim()
+											? `${parseItemList(pasteText, producibleNameLookup).length} items matched`
+											: ""}
+									</span>
+									<div className="flex gap-1.5">
+										<button
+											type="button"
+											onClick={() => {
+												setPasteText("");
+												setShowPaste(false);
+											}}
+											className="rounded px-2.5 py-1 text-xs text-zinc-500 hover:text-zinc-300"
 										>
-											<span className="text-zinc-300">{m.typeName}</span>
-											<span className="text-zinc-500">
-												{m.facilities.join(", ")}
-											</span>
-										</div>
-									))}
-								</div>
-								{suggestedFacilities.length > 0 && (
-									<div className="mt-3 flex flex-wrap items-center gap-1.5">
-										<span className="text-[11px] text-zinc-500">Add:</span>
-										{suggestedFacilities.map((fac) => (
-											<button
-												key={fac}
-												type="button"
-												onClick={() => toggleFacility(fac)}
-												className="rounded bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300 ring-1 ring-amber-500/30 transition-colors hover:bg-amber-500/20"
-											>
-												{fac}
-											</button>
-										))}
+											Cancel
+										</button>
+										<button
+											type="button"
+											onClick={handleImportItems}
+											disabled={!pasteText.trim()}
+											className="rounded bg-violet-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-40"
+										>
+											Import
+										</button>
 									</div>
-								)}
+								</div>
 							</div>
 						)}
 
-						{/* Stock Integration */}
-						<BomStockPanel onStockChange={setStockMap} typeList={blueprintTypes} />
-
-						{/* Summary */}
-						<CollapsibleSection
-							title="Summary"
-							headerRight={<CopyButton getText={() => summaryToCsv(result.totals)} />}
-						>
-							<div className="grid grid-cols-2 gap-4 px-4 pb-4 text-sm sm:grid-cols-4">
-								<div>
-									<div className="text-xs text-zinc-500">Production Time</div>
-									<div className="mt-1 font-mono text-zinc-200">
-										<span className="flex items-center gap-1">
-											<Clock size={12} className="text-zinc-500" />
-											{formatTime(result.totals.totalTime)}
-										</span>
-									</div>
-								</div>
-								<div>
-									<div className="text-xs text-zinc-500">Raw Volume</div>
-									<div className="mt-1 font-mono text-zinc-200">
-										{result.totals.rawVolume.toLocaleString(undefined, {
-											maximumFractionDigits: 1,
-										})}
-									</div>
-								</div>
-								<div>
-									<div className="text-xs text-zinc-500">Intermediate Volume</div>
-									<div className="mt-1 font-mono text-zinc-200">
-										{result.totals.intermediateVolume.toLocaleString(undefined, {
-											maximumFractionDigits: 1,
-										})}
-									</div>
-								</div>
-								<div>
-									<div className="text-xs text-zinc-500">Convergence</div>
-									<div className="mt-1 font-mono text-zinc-200">
-										{result.totals.iterations} iteration{result.totals.iterations !== 1 ? "s" : ""}
-									</div>
-								</div>
+						{/* Order items table with finals data */}
+						{orderItems.length === 0 ? (
+							<div className="flex flex-col items-center justify-center gap-2 p-8 text-center">
+								<ClipboardList size={32} className="text-zinc-800" />
+								<p className="text-sm text-zinc-500">
+									Search above to add items to your production list.
+								</p>
 							</div>
-						</CollapsibleSection>
-
-						{/* Raw Materials */}
-						<CollapsibleSection
-							title="Raw Materials"
-							count={result.rawMaterials.length}
-							collapsedSummary={summarizeItems(result.rawMaterials)}
-							headerRight={result.rawMaterials.length > 0 ? <CopyButton getText={() => materialsToCsv(result.rawMaterials)} /> : undefined}
-						>
-							<MaterialTable items={result.rawMaterials} />
-						</CollapsibleSection>
-
-						{/* Intermediates */}
-						<CollapsibleSection
-							title="Intermediates"
-							count={result.intermediates.length}
-							collapsedSummary={summarizeItems(result.intermediates)}
-							headerRight={
-								<div className="flex items-center gap-3">
-									{recipeOverrides.length > 0 && (
-										<button
-											type="button"
-											onClick={() => setRecipeOverrides([])}
-											className="text-xs text-zinc-500 hover:text-zinc-300"
-										>
-											Reset Recipes
-										</button>
-									)}
-									{result.intermediates.length > 0 && <CopyButton getText={() => materialsToCsv(result.intermediates)} />}
-								</div>
-							}
-						>
-							<IntermediateTable
-								items={result.intermediates}
+						) : (
+							<ProductionTable
+								orderItems={orderItems}
+								finals={result.finals}
 								outputToBlueprints={filteredOutputToBlueprints}
 								rawMaterialIds={rawMaterialIds}
 								salvageMaterialIds={salvageMaterialIds}
 								blueprintFacilities={blueprintFacilities}
 								overrides={recipeOverrides}
 								onOverrideChange={setRecipeOverrides}
+								onQuantityChange={handleQuantityChange}
+								onRemove={handleRemoveItem}
 							/>
-						</CollapsibleSection>
-
-						{/* Surplus */}
-						{result.surplus.length > 0 && (
-							<CollapsibleSection
-								title="Surplus Co-Products"
-								count={result.surplus.length}
-								defaultOpen={false}
-								collapsedSummary={summarizeSurplus(result.surplus)}
-								headerRight={<CopyButton getText={() => surplusToCsv(result.surplus)} />}
-							>
-								<SurplusTable items={result.surplus} />
-							</CollapsibleSection>
 						)}
 					</div>
-				)}
-			</div>
+
+					{!hasResults && orderItems.length === 0 && (
+						<div className="flex h-64 items-center justify-center">
+							<div className="text-center">
+								<ClipboardList size={48} className="mx-auto mb-3 text-zinc-800" />
+								<p className="text-sm text-zinc-500">
+									Add items to your production list to calculate materials.
+								</p>
+							</div>
+						</div>
+					)}
+
+					{orderItems.length > 0 && (
+						<div className="space-y-4">
+							{/* Missing Facilities Warning */}
+							{missingFacilities.length > 0 && (
+								<div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+									<div className="flex items-center gap-2 text-sm font-medium text-amber-400">
+										<AlertTriangle size={14} />
+										Missing Facilities
+									</div>
+									<p className="mt-1 text-xs text-zinc-400">
+										{missingFacilities.length} item{missingFacilities.length > 1 ? "s" : ""} cannot
+										be produced with the selected facilities and will need to be sourced externally.
+									</p>
+									<div className="mt-3 space-y-1.5">
+										{missingFacilities.map((m) => (
+											<div key={m.typeId} className="flex items-center justify-between text-xs">
+												<span className="text-zinc-300">{m.typeName}</span>
+												<span className="text-zinc-500">{m.facilities.join(", ")}</span>
+											</div>
+										))}
+									</div>
+									{suggestedFacilities.length > 0 && (
+										<div className="mt-3 flex flex-wrap items-center gap-1.5">
+											<span className="text-[11px] text-zinc-500">Add:</span>
+											{suggestedFacilities.map((fac) => (
+												<button
+													key={fac}
+													type="button"
+													onClick={() => toggleFacility(fac)}
+													className="rounded bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300 ring-1 ring-amber-500/30 transition-colors hover:bg-amber-500/20"
+												>
+													{fac}
+												</button>
+											))}
+										</div>
+									)}
+								</div>
+							)}
+
+							{/* Stock Integration */}
+							<BomStockPanel onStockChange={setStockMap} typeList={blueprintTypes} />
+
+							{/* Summary */}
+							<CollapsibleSection
+								title="Summary"
+								headerRight={<CopyButton getText={() => summaryToCsv(result.totals)} />}
+							>
+								<div className="grid grid-cols-2 gap-4 px-4 pb-4 text-sm sm:grid-cols-4">
+									<div>
+										<div className="text-xs text-zinc-500">Production Time</div>
+										<div className="mt-1 font-mono text-zinc-200">
+											<span className="flex items-center gap-1">
+												<Clock size={12} className="text-zinc-500" />
+												{formatTime(result.totals.totalTime)}
+											</span>
+										</div>
+									</div>
+									<div>
+										<div className="text-xs text-zinc-500">Raw Volume</div>
+										<div className="mt-1 font-mono text-zinc-200">
+											{result.totals.rawVolume.toLocaleString(undefined, {
+												maximumFractionDigits: 1,
+											})}
+										</div>
+									</div>
+									<div>
+										<div className="text-xs text-zinc-500">Intermediate Volume</div>
+										<div className="mt-1 font-mono text-zinc-200">
+											{result.totals.intermediateVolume.toLocaleString(undefined, {
+												maximumFractionDigits: 1,
+											})}
+										</div>
+									</div>
+									<div>
+										<div className="text-xs text-zinc-500">Convergence</div>
+										<div className="mt-1 font-mono text-zinc-200">
+											{optimizationMode === "optimize" ? (
+												<>
+													<span className="flex items-center gap-1">
+														<Zap size={12} className="text-violet-400" />
+														LP solve
+													</span>
+													{result.totals.solveTimeMs !== undefined && (
+														<span className="text-xs text-zinc-500">
+															{result.totals.solveTimeMs.toFixed(1)}ms
+														</span>
+													)}
+												</>
+											) : (
+												<>
+													{result.totals.iterations} iteration
+													{result.totals.iterations !== 1 ? "s" : ""}
+												</>
+											)}
+										</div>
+									</div>
+								</div>
+								{/* LP infeasible warning */}
+								{optimizationMode === "optimize" && result.totals.objectiveValue === -1 && (
+									<div className="mx-4 mb-4 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
+										<AlertTriangle size={12} className="mr-1 inline" />
+										The optimizer could not find a feasible solution with the current constraints.
+										This may happen when facility filters exclude necessary blueprints. Falling back
+										to manual mode.
+									</div>
+								)}
+								{/* Optimization delta vs manual */}
+								{optimizationMode === "optimize" &&
+									manualResult &&
+									result.totals.objectiveValue !== -1 && (
+										<div className="mx-4 mb-4">
+											{(() => {
+												const optRaw = result.rawMaterials.reduce((s, i) => s + i.stillNeed, 0);
+												const manRaw = manualResult.rawMaterials.reduce(
+													(s, i) => s + i.stillNeed,
+													0,
+												);
+												const delta = manRaw - optRaw;
+												const pct = manRaw > 0 ? ((delta / manRaw) * 100).toFixed(1) : "0";
+												if (delta > 0) {
+													return (
+														<span className="text-xs text-green-400">
+															Optimize saves {delta.toLocaleString()} raw units ({pct}%) vs manual
+														</span>
+													);
+												}
+												if (delta < 0) {
+													return (
+														<span className="text-xs text-amber-400">
+															Optimize uses {Math.abs(delta).toLocaleString()} more raw units (
+															{Math.abs(Number.parseFloat(pct)).toFixed(1)}%) vs manual
+														</span>
+													);
+												}
+												return (
+													<span className="text-xs text-zinc-500">
+														Optimize matches manual result
+													</span>
+												);
+											})()}
+										</div>
+									)}
+							</CollapsibleSection>
+
+							{/* Raw Materials */}
+							<CollapsibleSection
+								title="Raw Materials"
+								count={result.rawMaterials.length}
+								collapsedSummary={summarizeItems(result.rawMaterials)}
+								headerRight={
+									result.rawMaterials.length > 0 ? (
+										<CopyButton getText={() => materialsToCsv(result.rawMaterials)} />
+									) : undefined
+								}
+							>
+								<MaterialTable items={result.rawMaterials} />
+							</CollapsibleSection>
+
+							{/* Intermediates */}
+							<CollapsibleSection
+								title="Intermediates"
+								count={result.intermediates.length}
+								collapsedSummary={summarizeItems(result.intermediates)}
+								headerRight={
+									<div className="flex items-center gap-3">
+										{optimizationMode === "optimize" && recipePins.length > 0 && (
+											<button
+												type="button"
+												onClick={() => setRecipePins([])}
+												className="text-xs text-zinc-500 hover:text-zinc-300"
+											>
+												Clear Pins
+											</button>
+										)}
+										{optimizationMode === "manual" && recipeOverrides.length > 0 && (
+											<button
+												type="button"
+												onClick={() => setRecipeOverrides([])}
+												className="text-xs text-zinc-500 hover:text-zinc-300"
+											>
+												Reset Recipes
+											</button>
+										)}
+										{result.intermediates.length > 0 && (
+											<CopyButton getText={() => materialsToCsv(result.intermediates)} />
+										)}
+									</div>
+								}
+							>
+								<IntermediateTable
+									items={result.intermediates}
+									outputToBlueprints={filteredOutputToBlueprints}
+									rawMaterialIds={rawMaterialIds}
+									salvageMaterialIds={salvageMaterialIds}
+									blueprintFacilities={blueprintFacilities}
+									overrides={recipeOverrides}
+									onOverrideChange={setRecipeOverrides}
+									optimizationMode={optimizationMode}
+									recipePins={recipePins}
+									onRecipePinChange={setRecipePins}
+								/>
+							</CollapsibleSection>
+
+							{/* Surplus */}
+							{result.surplus.length > 0 && (
+								<CollapsibleSection
+									title="Surplus Co-Products"
+									count={result.surplus.length}
+									defaultOpen={false}
+									collapsedSummary={summarizeSurplus(result.surplus)}
+									headerRight={<CopyButton getText={() => surplusToCsv(result.surplus)} />}
+								>
+									<SurplusTable items={result.surplus} />
+								</CollapsibleSection>
+							)}
+						</div>
+					)}
+				</div>
 			</div>
 		</div>
 	);

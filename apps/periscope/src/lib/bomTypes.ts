@@ -21,6 +21,21 @@ export interface BlueprintData {
 	materialIndex?: Record<string, string[]>;
 }
 
+// ── Optimization types ─────────────────────────────────────────────────────
+
+export type OptimizationMode = "manual" | "optimize";
+
+export interface ProductionSplit {
+	blueprintId: number;
+	runs: number;
+	quantity: number;
+}
+
+export type RecipePin = { typeId: number } & (
+	| { kind: "exclusive"; blueprintId: number }
+	| { kind: "split"; splits: Array<{ blueprintId: number; quantity: number }> }
+);
+
 // ── BOM types ───────────────────────────────────────────────────────────────
 
 /** BOM order list item */
@@ -53,6 +68,7 @@ export interface BomLineItem {
 	volumeMissing: boolean;
 	tier: "raw" | "intermediate" | "final";
 	blueprintId?: number;
+	splits?: ProductionSplit[];
 	stockQty: number;
 	stillNeed: number;
 }
