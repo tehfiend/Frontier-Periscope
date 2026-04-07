@@ -22,6 +22,7 @@
     "@tehfrontier/sui-client": "workspace:*",
     "dexie": "^4.0.11",
     "dexie-react-hooks": "^1.1.7",
+    "javascript-lp-solver": "^1.0.3",
     "lucide-react": "^0.475.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
