@@ -21,6 +21,7 @@ export function solveLp(
 	},
 	recipePins: RecipePin[],
 	stockMap: Map<number, number>,
+	salvageMaterialIds?: Set<number>,
 ): LpSolution {
 	const { blueprints, outputToBlueprints } = blueprintData;
 
@@ -34,6 +35,24 @@ export function solveLp(
 	const rawTypeIds = new Set<number>();
 	for (const id of allInputIds) {
 		if (!allOutputIds.has(id)) rawTypeIds.add(id);
+	}
+
+	// Exclude salvage blueprints unless the player has stock of each specific
+	// salvage material the blueprint requires. A blueprint is only included if
+	// ALL of its salvage inputs have stock > 0.
+	const excludedBpIds = new Set<number>();
+	if (salvageMaterialIds != null && salvageMaterialIds.size > 0) {
+		for (const bp of Object.values(blueprints)) {
+			const salvageInputs = bp.inputs.filter((inp) => salvageMaterialIds.has(inp.typeID));
+			if (salvageInputs.length > 0) {
+				const hasAllSalvageStock = salvageInputs.every(
+					(inp) => (stockMap.get(inp.typeID) ?? 0) > 0,
+				);
+				if (!hasAllSalvageStock) {
+					excludedBpIds.add(bp.blueprintID);
+				}
+			}
+		}
 	}
 
 	// Build pin lookup: typeId -> RecipePin
@@ -81,8 +100,9 @@ export function solveLp(
 		};
 	}
 
-	// 4. Add blueprint variables
+	// 4. Add blueprint variables (skip excluded salvage-path blueprints)
 	for (const bp of Object.values(blueprints)) {
+		if (excludedBpIds.has(bp.blueprintID)) continue;
 		const varName = `bp_${bp.blueprintID}`;
 		const coeffs: Record<string, number> = { objective: 0 };
 

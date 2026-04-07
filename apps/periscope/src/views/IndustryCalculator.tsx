@@ -12,7 +12,6 @@ import type {
 	BomLineItem,
 	BomOrderItem,
 	BomSurplus,
-	OptimizationMode,
 	RecipeOverride,
 	RecipePin,
 } from "@/lib/bomTypes";
@@ -22,6 +21,8 @@ import {
 	AlertTriangle,
 	ChevronDown,
 	ChevronRight,
+	ChevronUp,
+	ChevronsUpDown,
 	ClipboardCopy,
 	ClipboardList,
 	ClipboardPaste,
@@ -38,7 +39,6 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 
 const LS_ORDER_KEY = "bom-order-items";
 const LS_OVERRIDES_KEY = "bom-recipe-overrides";
-const LS_OPT_MODE_KEY = "bom-optimization-mode";
 const LS_PINS_KEY = "bom-recipe-pins";
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -279,20 +279,42 @@ function CollapsibleSection({
 
 // ── Material table ──────────────────────────────────────────────────────────
 
-function MaterialTable({ items }: { items: BomLineItem[] }) {
+function MaterialTable({
+	items,
+	typeGroups,
+	salvageMaterialIds,
+}: {
+	items: BomLineItem[];
+	/** typeID -> group name (asteroid name for ores). When provided, shows a Source column. */
+	typeGroups?: Map<number, string>;
+	salvageMaterialIds?: Set<number>;
+}) {
 	if (items.length === 0) {
 		return <div className="px-4 py-3 text-xs text-zinc-600">None</div>;
 	}
+	const showSource = typeGroups != null;
 	const totalVolume = items.reduce(
 		(sum, item) => (item.volumeMissing ? sum : sum + item.volume),
 		0,
 	);
 	const hasMissing = items.some((item) => item.volumeMissing);
+
+	function getSource(typeId: number): string {
+		const group = typeGroups?.get(typeId);
+		if (group === "Rift") return "Rift";
+		if (group && group.endsWith("Ores")) {
+			const asteroid = group.replace(" Ores", "");
+			return `${asteroid} Asteroid`;
+		}
+		return "Loot";
+	}
+
 	return (
 		<table className="w-full text-sm">
 			<thead>
 				<tr className="border-t border-zinc-800 text-xs text-zinc-500">
 					<th className="px-4 py-2 text-left">Item</th>
+					{showSource && <th className="px-4 py-2 text-left">Source</th>}
 					<th className="px-4 py-2 text-right">Need</th>
 					<th className="px-4 py-2 text-right">Have</th>
 					<th className="px-4 py-2 text-right">Still Need</th>
@@ -308,6 +330,11 @@ function MaterialTable({ items }: { items: BomLineItem[] }) {
 								{item.typeName}
 							</span>
 						</td>
+						{showSource && (
+							<td className="px-4 py-2 text-xs text-zinc-500">
+								{getSource(item.typeId)}
+							</td>
+						)}
 						<td className="px-4 py-2 text-right font-mono text-zinc-400">
 							{item.quantity.toLocaleString()}
 						</td>
@@ -343,7 +370,7 @@ function MaterialTable({ items }: { items: BomLineItem[] }) {
 			</tbody>
 			<tfoot>
 				<tr className="border-t border-zinc-700">
-					<td className="px-4 py-2 text-xs font-medium text-zinc-400" colSpan={4}>
+					<td className="px-4 py-2 text-xs font-medium text-zinc-400" colSpan={showSource ? 5 : 4}>
 						Total
 					</td>
 					<td className="px-4 py-2 text-right font-mono text-sm text-zinc-200">
@@ -437,6 +464,7 @@ function RecipeDropdown({
 	onSelect,
 	formatOptionLabel,
 	getFacilityLabel,
+	onSplitRequest,
 }: {
 	typeId: number;
 	producers: Blueprint[];
@@ -449,6 +477,8 @@ function RecipeDropdown({
 	onSelect: (blueprintId: number) => void;
 	formatOptionLabel: (bp: Blueprint, typeId: number) => string;
 	getFacilityLabel: (bp: Blueprint) => string;
+	/** When provided, shows a "Split..." option in the dropdown. */
+	onSplitRequest?: () => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
@@ -507,6 +537,21 @@ function RecipeDropdown({
 							</button>
 						);
 					})}
+					{onSplitRequest && (
+						<>
+							<div className="mx-2 my-1 border-t border-zinc-800" />
+							<button
+								type="button"
+								onClick={() => {
+									onSplitRequest();
+									setOpen(false);
+								}}
+								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-violet-400 hover:bg-zinc-800"
+							>
+								<span className="ml-4">Split...</span>
+							</button>
+						</>
+					)}
 				</div>
 			)}
 		</div>
@@ -710,9 +755,10 @@ function IntermediateTable({
 	blueprintFacilities,
 	overrides,
 	onOverrideChange,
-	optimizationMode = "manual",
 	recipePins = [],
 	onRecipePinChange,
+	typeGroups,
+	typeCategories,
 }: {
 	items: BomLineItem[];
 	outputToBlueprints: Map<number, Blueprint[]>;
@@ -721,9 +767,10 @@ function IntermediateTable({
 	blueprintFacilities: Map<number, string[]>;
 	overrides: RecipeOverride[];
 	onOverrideChange: (overrides: RecipeOverride[]) => void;
-	optimizationMode?: OptimizationMode;
 	recipePins?: RecipePin[];
 	onRecipePinChange?: (pins: RecipePin[]) => void;
+	typeGroups: Map<number, string>;
+	typeCategories: Map<number, string>;
 }) {
 	const overrideMap = useMemo(() => {
 		const map = new Map<number, number>();
@@ -737,6 +784,103 @@ function IntermediateTable({
 		return map;
 	}, [recipePins]);
 
+	// Sorting
+	const [sortCol, setSortCol] = useState<"name" | "category" | "group" | null>(null);
+	const [sortDesc, setSortDesc] = useState(false);
+
+	function toggleSort(col: "name" | "category" | "group") {
+		if (sortCol === col) {
+			if (sortDesc) {
+				setSortCol(null);
+				setSortDesc(false);
+			} else {
+				setSortDesc(true);
+			}
+		} else {
+			setSortCol(col);
+			setSortDesc(false);
+		}
+	}
+
+	const sortedItems = useMemo(() => {
+		if (!sortCol) return items;
+		const sorted = [...items].sort((a, b) => {
+			let av: string;
+			let bv: string;
+			if (sortCol === "name") {
+				av = a.typeName;
+				bv = b.typeName;
+			} else if (sortCol === "group") {
+				av = typeGroups.get(a.typeId) ?? "";
+				bv = typeGroups.get(b.typeId) ?? "";
+			} else {
+				av = typeCategories.get(a.typeId) ?? "";
+				bv = typeCategories.get(b.typeId) ?? "";
+			}
+			return av.localeCompare(bv);
+		});
+		return sortDesc ? sorted.reverse() : sorted;
+	}, [items, sortCol, sortDesc, typeGroups, typeCategories]);
+
+	// Split editor: which typeId is being edited, and the draft quantities
+	const [splitEditTypeId, setSplitEditTypeId] = useState<number | null>(null);
+	const [splitDraft, setSplitDraft] = useState<Map<number, number>>(new Map());
+
+	function openSplitEditor(typeId: number) {
+		const existingPin = pinMap.get(typeId);
+		const draft = new Map<number, number>();
+		if (existingPin?.kind === "split") {
+			for (const s of existingPin.splits) draft.set(s.blueprintId, s.quantity);
+		} else {
+			const item = items.find((i) => i.typeId === typeId);
+			if (item?.splits && item.splits.length > 1) {
+				// Load LP-decided splits, snapped to batch sizes
+				const prods = outputToBlueprints.get(typeId) ?? [];
+				for (const s of item.splits) {
+					const bpDef = prods.find((p) => p.blueprintID === s.blueprintId);
+					const batch = bpDef?.outputs.find((o) => o.typeID === typeId)?.quantity ?? 1;
+					draft.set(s.blueprintId, Math.round(s.quantity / batch) * batch);
+				}
+			} else if (item) {
+				// Start with full demand on the currently selected recipe
+				const currentBpId =
+					existingPin?.kind === "exclusive"
+						? existingPin.blueprintId
+						: (overrideMap.get(typeId) ?? item.blueprintId);
+				if (currentBpId != null) {
+					draft.set(currentBpId, item.quantity);
+				}
+			}
+		}
+		setSplitDraft(draft);
+		setSplitEditTypeId(typeId);
+	}
+
+	function saveSplitPin(typeId: number) {
+		if (!onRecipePinChange) return;
+		const otherPins = recipePins.filter((p) => p.typeId !== typeId);
+		const entries: Array<{ blueprintId: number; quantity: number }> = [];
+		for (const [bpId, qty] of splitDraft) {
+			if (qty > 0) entries.push({ blueprintId: bpId, quantity: qty });
+		}
+		if (entries.length === 0) {
+			// No quantities -- remove pin
+			onRecipePinChange(otherPins);
+		} else if (entries.length === 1) {
+			// Single entry -- convert to exclusive pin
+			onRecipePinChange([...otherPins, { typeId, kind: "exclusive", blueprintId: entries[0].blueprintId }]);
+		} else {
+			onRecipePinChange([...otherPins, { typeId, kind: "split", splits: entries }]);
+		}
+		setSplitEditTypeId(null);
+	}
+
+	function clearSplitPin(typeId: number) {
+		if (!onRecipePinChange) return;
+		onRecipePinChange(recipePins.filter((p) => p.typeId !== typeId));
+		setSplitEditTypeId(null);
+	}
+
 	if (items.length === 0) {
 		return <div className="px-4 py-3 text-xs text-zinc-600">None</div>;
 	}
@@ -748,8 +892,7 @@ function IntermediateTable({
 	const hasMissing = items.some((item) => item.volumeMissing);
 
 	function handleRecipeChange(typeId: number, blueprintId: number) {
-		if (optimizationMode === "optimize" && onRecipePinChange) {
-			// In optimize mode, toggle exclusive pin
+		if (onRecipePinChange) {
 			const existingPin = pinMap.get(typeId);
 			const otherPins = recipePins.filter((p) => p.typeId !== typeId);
 			if (existingPin?.kind === "exclusive" && existingPin.blueprintId === blueprintId) {
@@ -758,9 +901,6 @@ function IntermediateTable({
 			} else {
 				onRecipePinChange([...otherPins, { typeId, kind: "exclusive", blueprintId }]);
 			}
-		} else {
-			const existing = overrides.filter((o) => o.typeId !== typeId);
-			onOverrideChange([...existing, { typeId, blueprintId }]);
 		}
 	}
 
@@ -789,11 +929,45 @@ function IntermediateTable({
 		return `${facLabel} · ${inputs} · eff ${eff}`;
 	}
 
+	function SortHeader({
+		col,
+		label,
+		align = "left",
+	}: {
+		col: "name" | "category" | "group";
+		label: string;
+		align?: "left" | "right";
+	}) {
+		const icon =
+			sortCol === col ? (
+				sortDesc ? (
+					<ChevronDown size={12} />
+				) : (
+					<ChevronUp size={12} />
+				)
+			) : (
+				<ChevronsUpDown size={12} className="text-zinc-700" />
+			);
+		return (
+			<th className={`px-4 py-2 text-${align}`}>
+				<button
+					type="button"
+					onClick={() => toggleSort(col)}
+					className="flex items-center gap-1 hover:text-zinc-200"
+				>
+					{label}
+					{icon}
+				</button>
+			</th>
+		);
+	}
+
 	return (
 		<table className="w-full text-sm">
 			<thead>
 				<tr className="border-t border-zinc-800 text-xs text-zinc-500">
-					<th className="px-4 py-2 text-left">Item</th>
+					<SortHeader col="name" label="Item" />
+					<SortHeader col="group" label="Group" />
 					<th className="px-4 py-2 text-left">Recipe</th>
 					<th className="px-4 py-2 text-right">Need</th>
 					<th className="px-4 py-2 text-right">Have</th>
@@ -802,19 +976,13 @@ function IntermediateTable({
 				</tr>
 			</thead>
 			<tbody>
-				{items.map((item) => {
+				{sortedItems.map((item) => {
 					const producers = outputToBlueprints.get(item.typeId) ?? [];
 					const hasMultiple = producers.length > 1;
 					const pin = pinMap.get(item.typeId);
 					const pinnedBpId = pin?.kind === "exclusive" ? pin.blueprintId : undefined;
-					const currentBpId =
-						optimizationMode === "optimize" && pinnedBpId
-							? pinnedBpId
-							: (overrideMap.get(item.typeId) ?? item.blueprintId);
-					const isOverridden =
-						optimizationMode === "optimize"
-							? pinnedBpId !== undefined
-							: overrideMap.has(item.typeId);
+					const currentBpId = pinnedBpId ?? item.blueprintId;
+					const isOverridden = pinnedBpId !== undefined;
 					const currentBp = producers.find((p) => p.blueprintID === currentBpId) ?? producers[0];
 					const hasSplits = item.splits && item.splits.length > 1;
 
@@ -827,9 +995,21 @@ function IntermediateTable({
 										{item.typeName}
 									</span>
 								</td>
+								<td className="px-4 py-2 text-xs text-zinc-500">
+									{typeGroups.get(item.typeId) || "--"}
+								</td>
 								<td className="px-4 py-2">
-									<div className="flex flex-col gap-0.5">
-										{hasMultiple && currentBp ? (
+									<div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+										{hasSplits ? (
+											<button
+												type="button"
+												onClick={() => openSplitEditor(item.typeId)}
+												className="inline-flex w-fit items-center gap-1 rounded border border-violet-500/50 bg-zinc-900 px-1.5 py-0.5 text-xs text-violet-300 hover:border-violet-400"
+											>
+												Split
+												<ChevronDown size={10} className="shrink-0 text-zinc-600" />
+											</button>
+										) : hasMultiple && currentBp ? (
 											<RecipeDropdown
 												typeId={item.typeId}
 												producers={producers}
@@ -842,6 +1022,11 @@ function IntermediateTable({
 												onSelect={(bpId) => handleRecipeChange(item.typeId, bpId)}
 												formatOptionLabel={formatOptionLabel}
 												getFacilityLabel={getFacilityLabel}
+												onSplitRequest={
+													onRecipePinChange && hasMultiple
+														? () => openSplitEditor(item.typeId)
+														: undefined
+												}
 											/>
 										) : currentBp ? (
 											<span className="text-xs text-zinc-500">{getFacilityLabel(currentBp)}</span>
@@ -851,6 +1036,25 @@ function IntermediateTable({
 												{getTotalInputs(currentBp, item.typeId, item.stillNeed)
 													.map((i) => `${i.total.toLocaleString()} ${i.typeName}`)
 													.join(", ")}
+											</span>
+										)}
+										{hasSplits && splitEditTypeId !== item.typeId && (
+											<span className="text-xs text-zinc-500">
+												{item.splits?.map((split, idx) => {
+													const facs = blueprintFacilities.get(split.blueprintId) ?? [];
+													const facLabel = facs.length > 0 ? facs[0] : `BP #${split.blueprintId}`;
+													const isRefinery = facs.some((f) => f.includes("Refinery"));
+													const splitBp = producers.find((p) => p.blueprintID === split.blueprintId);
+													const label = isRefinery && splitBp
+														? splitBp.inputs.map((i) => i.typeName).join(", ")
+														: facLabel;
+													return (
+														<span key={split.blueprintId}>
+															{idx > 0 && ", "}
+															{Math.round(split.quantity).toLocaleString()} {label}
+														</span>
+													);
+												})}
 											</span>
 										)}
 									</div>
@@ -884,20 +1088,165 @@ function IntermediateTable({
 									)}
 								</td>
 							</tr>
-							{hasSplits && (
+							{splitEditTypeId === item.typeId && (
 								<tr className="border-t border-zinc-800/30">
-									<td colSpan={6} className="pl-12 py-1 text-xs text-zinc-500">
-										{item.splits?.map((split, idx) => {
-											const facs = blueprintFacilities.get(split.blueprintId) ?? [];
-											const label = facs.length > 0 ? facs[0] : `BP #${split.blueprintId}`;
-											return (
-												<span key={split.blueprintId}>
-													{idx > 0 && ", "}
-													{Math.round(split.quantity).toLocaleString()} from {label} (
-													{Math.round(split.runs)} run{Math.round(split.runs) !== 1 ? "s" : ""})
-												</span>
-											);
-										})}
+									<td colSpan={7} className="px-4 py-3">
+										<div className="ml-8 space-y-2 rounded border border-violet-500/30 bg-violet-500/5 p-3">
+											<div className="text-sm font-medium text-zinc-200">
+												Split production across facilities
+											</div>
+											{producers.map((bp) => {
+												const facs = blueprintFacilities.get(bp.blueprintID) ?? [];
+												const facLabel = facs.length > 0 ? facs[0] : `BP #${bp.blueprintID}`;
+												const outQty = bp.outputs.find((o) => o.typeID === item.typeId)?.quantity ?? 1;
+												const draftQty = splitDraft.get(bp.blueprintID) ?? 0;
+												const inputTotals = getTotalInputs(bp, item.typeId, draftQty);
+
+												function snapToBatch(val: number, batchSize: number): number {
+													return Math.ceil(val / batchSize) * batchSize;
+												}
+
+												function setQtyAndRedistribute(newVal: number) {
+													const snapped = snapToBatch(Math.max(0, Math.min(newVal, item.quantity)), outQty);
+													const next = new Map(splitDraft);
+													next.set(bp.blueprintID, snapped);
+
+													// Only take from others when total exceeds demand
+													let totalAfter = 0;
+													for (const v of next.values()) totalAfter += v;
+													const overflow = totalAfter - item.quantity;
+
+													if (overflow > 0) {
+														const otherBps = producers.filter((p) => p.blueprintID !== bp.blueprintID);
+														let remaining = overflow;
+														let othersSum = 0;
+														for (const p of otherBps) othersSum += next.get(p.blueprintID) ?? 0;
+														if (othersSum > 0) {
+															for (const p of otherBps) {
+																if (remaining <= 0) break;
+																const cur = next.get(p.blueprintID) ?? 0;
+																const otherBatch = p.outputs.find((o) => o.typeID === item.typeId)?.quantity ?? 1;
+																const raw = cur - (cur / othersSum) * overflow;
+																const reduced = snapToBatch(Math.max(0, raw), otherBatch);
+																const took = cur - reduced;
+																next.set(p.blueprintID, reduced);
+																remaining -= took;
+															}
+														}
+													}
+
+													// Clean up zeros
+													for (const [id, q] of next) {
+														if (q <= 0) next.delete(id);
+													}
+													setSplitDraft(next);
+												}
+
+												const pct = item.quantity > 0
+													? Math.round((draftQty / item.quantity) * 100)
+													: 0;
+												return (
+													<div key={bp.blueprintID} className="grid grid-cols-[5rem_12rem_1fr] gap-x-2 gap-y-0">
+														<input
+															type="number"
+															value={draftQty || ""}
+															onChange={(e) => {
+																const val = Math.max(0, Number.parseInt(e.target.value) || 0);
+																const next = new Map(splitDraft);
+																if (val > 0) next.set(bp.blueprintID, val);
+																else next.delete(bp.blueprintID);
+																setSplitDraft(next);
+															}}
+															onBlur={() => setQtyAndRedistribute(draftQty)}
+															placeholder="0"
+															min={0}
+															className="row-span-2 w-20 self-center rounded border border-zinc-700 bg-zinc-800 px-2 py-2.5 text-center text-sm font-mono text-zinc-100 focus:border-violet-600 focus:outline-none"
+														/>
+														<div className="flex items-center gap-1.5">
+															<span className="text-sm text-zinc-200">{facLabel}</span>
+															<button
+																type="button"
+																onClick={() => {
+																	if (!onRecipePinChange) return;
+																	const otherPins = recipePins.filter((p) => p.typeId !== item.typeId);
+																	onRecipePinChange([...otherPins, { typeId: item.typeId, kind: "exclusive", blueprintId: bp.blueprintID }]);
+																	setSplitEditTypeId(null);
+																}}
+																className="text-xs text-violet-400/60 hover:text-violet-300"
+																title="Use only this recipe"
+															>
+																only
+															</button>
+														</div>
+														<div className="flex items-center gap-2">
+															<span className="shrink-0 w-16 text-right text-xs font-mono text-zinc-500">
+																{pct}% · {draftQty > 0 ? Math.ceil(draftQty / outQty) : 0}r
+															</span>
+															<input
+																type="range"
+																value={draftQty}
+																onChange={(e) => setQtyAndRedistribute(Number.parseInt(e.target.value) || 0)}
+																min={0}
+																max={item.quantity}
+															step={outQty}
+																className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-zinc-700 accent-violet-500 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-violet-400"
+															/>
+														</div>
+														<div className="col-start-2 col-span-2 whitespace-nowrap text-xs text-zinc-500">
+															{inputTotals
+																.map((i) => `${i.total.toLocaleString()} ${i.typeName}`)
+																.join(", ")}
+														</div>
+													</div>
+												);
+											})}
+											{(() => {
+												let totalPinned = 0;
+												for (const qty of splitDraft.values()) totalPinned += qty;
+												const demand = item.quantity;
+												const diff = totalPinned - demand;
+												return (
+													<div className="flex items-center gap-3 border-t border-zinc-800 pt-2 text-xs">
+														<span className="text-zinc-400">
+															Allocated: {totalPinned.toLocaleString()} / {demand.toLocaleString()}
+														</span>
+														{diff < 0 && (
+															<span className="text-amber-400">
+																Shortfall of {Math.abs(diff).toLocaleString()} -- optimizer will allocate the rest
+															</span>
+														)}
+														{diff > 0 && (
+															<span className="text-amber-400">
+																Exceeds demand by {diff.toLocaleString()} -- surplus will be produced
+															</span>
+														)}
+													</div>
+												);
+											})()}
+											<div className="flex items-center gap-2 border-t border-zinc-800 pt-2">
+												<button
+													type="button"
+													onClick={() => saveSplitPin(item.typeId)}
+													className="rounded bg-violet-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-violet-500"
+												>
+													Apply
+												</button>
+												<button
+													type="button"
+													onClick={() => setSplitEditTypeId(null)}
+													className="rounded px-2.5 py-1 text-xs text-zinc-500 hover:text-zinc-300"
+												>
+													Cancel
+												</button>
+												<button
+													type="button"
+													onClick={() => clearSplitPin(item.typeId)}
+													className="ml-auto text-xs text-zinc-600 hover:text-zinc-400"
+												>
+													Clear override
+												</button>
+											</div>
+										</div>
 									</td>
 								</tr>
 							)}
@@ -907,7 +1256,7 @@ function IntermediateTable({
 			</tbody>
 			<tfoot>
 				<tr className="border-t border-zinc-700">
-					<td className="px-4 py-2 text-xs font-medium text-zinc-400" colSpan={5}>
+					<td className="px-4 py-2 text-xs font-medium text-zinc-400" colSpan={6}>
 						Total
 					</td>
 					<td className="px-4 py-2 text-right font-mono text-sm text-zinc-200">
@@ -935,6 +1284,8 @@ export function IndustryCalculator() {
 		salvageMaterialIds,
 		volumeMap,
 		blueprintFacilities,
+		typeGroups,
+		typeCategories,
 		isLoading,
 	} = useBlueprintData();
 
@@ -1048,24 +1399,18 @@ export function IndustryCalculator() {
 	// Stock state (managed by BomStockPanel)
 	const [stockMap, setStockMap] = useState<Map<number, number>>(new Map());
 
-	// Optimization mode state
-	const [optimizationMode, setOptimizationMode] = useState<OptimizationMode>(() =>
-		loadFromStorage<OptimizationMode>(LS_OPT_MODE_KEY, "manual"),
-	);
+	// Recipe pins for LP optimizer
 	const [recipePins, setRecipePins] = useState<RecipePin[]>(() =>
 		loadFromStorage<RecipePin[]>(LS_PINS_KEY, []),
 	);
 
-	// Persist order items, overrides, optimization mode, and recipe pins
+	// Persist order items, overrides, and recipe pins
 	useEffect(() => {
 		saveToStorage(LS_ORDER_KEY, orderItems);
 	}, [orderItems]);
 	useEffect(() => {
 		saveToStorage(LS_OVERRIDES_KEY, recipeOverrides);
 	}, [recipeOverrides]);
-	useEffect(() => {
-		saveToStorage(LS_OPT_MODE_KEY, optimizationMode);
-	}, [optimizationMode]);
 	useEffect(() => {
 		saveToStorage(LS_PINS_KEY, recipePins);
 	}, [recipePins]);
@@ -1114,7 +1459,7 @@ export function IndustryCalculator() {
 		return items;
 	}, [blueprints]);
 
-	// Resolve BOM (manual or LP optimized)
+	// Resolve BOM via LP optimizer
 	const result = useMemo<BomResult>(() => {
 		const emptyResult: BomResult = {
 			rawMaterials: [],
@@ -1137,70 +1482,95 @@ export function IndustryCalculator() {
 			defaultRecipes: filteredDefaultRecipes,
 		};
 
-		if (optimizationMode === "optimize") {
-			console.time("LP solve");
-			const t0 = performance.now();
+		console.time("LP solve");
+		const t0 = performance.now();
 
-			// Filter pins to only include blueprints present in filtered set
-			const validPins = recipePins.filter((pin) => {
+		// Convert final-item recipe overrides to exclusive pins for the LP
+		const overridePins: RecipePin[] = recipeOverrides
+			.filter((o) => {
+				const producers = filteredOutputToBlueprints.get(o.typeId);
+				return producers?.some((bp) => bp.blueprintID === o.blueprintId);
+			})
+			.map((o) => ({ typeId: o.typeId, kind: "exclusive" as const, blueprintId: o.blueprintId }));
+
+		// Filter pins to only include blueprints present in filtered set
+		const validPins = recipePins
+			.filter((pin) => {
 				const producers = filteredOutputToBlueprints.get(pin.typeId);
 				if (!producers || producers.length === 0) return false;
 				if (pin.kind === "exclusive") {
 					return producers.some((bp) => bp.blueprintID === pin.blueprintId);
 				}
+				if (pin.kind === "split") {
+					// Keep only splits whose blueprints are still available
+					return pin.splits.some((s) =>
+						producers.some((bp) => bp.blueprintID === s.blueprintId),
+					);
+				}
 				return true;
+			})
+			.map((pin) => {
+				if (pin.kind !== "split") return pin;
+				// Strip out entries referencing filtered-out blueprints
+				const producers = filteredOutputToBlueprints.get(pin.typeId) ?? [];
+				const producerIds = new Set(producers.map((bp) => bp.blueprintID));
+				const validSplits = pin.splits.filter((s) => producerIds.has(s.blueprintId));
+				if (validSplits.length === 1) {
+					return { typeId: pin.typeId, kind: "exclusive" as const, blueprintId: validSplits[0].blueprintId };
+				}
+				return { ...pin, splits: validSplits };
 			});
 
-			const lpSolution = solveLp(orderItems, bpData, validPins, stockMap);
-			const ceiled = ceilLpSolution(lpSolution);
-			const solveTimeMs = performance.now() - t0;
-			console.timeEnd("LP solve");
+		// Merge: explicit pins take precedence over recipe overrides
+		const pinTypeIds = new Set(validPins.map((p) => p.typeId));
+		const allPins = [...validPins, ...overridePins.filter((p) => !pinTypeIds.has(p.typeId))];
 
-			if (!ceiled.feasible) {
-				// Infeasible -- fall back to manual mode
-				console.warn("LP infeasible, falling back to manual BOM resolution");
-				const fallback = resolveBom(
-					orderItems,
-					bpData,
-					recipeOverrides,
-					volumeMap,
-					stockMap,
-					fullNameMap,
-				);
-				return {
-					...fallback,
-					totals: { ...fallback.totals, objectiveValue: -1, solveTimeMs },
-				};
-			}
+		const lpSolution = solveLp(orderItems, bpData, allPins, stockMap, salvageMaterialIds);
+		const ceiled = ceilLpSolution(lpSolution);
+		const solveTimeMs = performance.now() - t0;
+		console.timeEnd("LP solve");
 
-			return buildBomFromLp(
-				ceiled,
-				bpData,
+		if (!ceiled.feasible) {
+			console.warn("LP infeasible, falling back to heuristic BOM resolution");
+			const fallback = resolveBom(
 				orderItems,
+				bpData,
+				recipeOverrides,
 				volumeMap,
 				stockMap,
 				fullNameMap,
-				solveTimeMs,
 			);
+			return {
+				...fallback,
+				totals: { ...fallback.totals, objectiveValue: -1, solveTimeMs },
+			};
 		}
 
-		return resolveBom(orderItems, bpData, recipeOverrides, volumeMap, stockMap, fullNameMap);
+		return buildBomFromLp(
+			ceiled,
+			bpData,
+			orderItems,
+			volumeMap,
+			stockMap,
+			fullNameMap,
+			solveTimeMs,
+		);
 	}, [
 		orderItems,
 		filteredBlueprints,
 		filteredOutputToBlueprints,
 		filteredDefaultRecipes,
-		optimizationMode,
 		recipePins,
 		recipeOverrides,
 		volumeMap,
 		stockMap,
 		fullNameMap,
+		salvageMaterialIds,
 	]);
 
-	// Manual comparison result (only computed in optimize mode for delta display)
+	// Heuristic comparison result (for delta display)
 	const manualResult = useMemo<BomResult | null>(() => {
-		if (optimizationMode !== "optimize" || orderItems.length === 0) return null;
+		if (orderItems.length === 0) return null;
 		return resolveBom(
 			orderItems,
 			{
@@ -1214,7 +1584,6 @@ export function IndustryCalculator() {
 			fullNameMap,
 		);
 	}, [
-		optimizationMode,
 		orderItems,
 		filteredBlueprints,
 		filteredOutputToBlueprints,
@@ -1379,35 +1748,6 @@ export function IndustryCalculator() {
 						</button>
 					)}
 
-					{/* Optimization mode toggle */}
-					<div className="ml-auto flex items-center gap-1">
-						<span className="mr-1 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
-							Mode
-						</span>
-						<button
-							type="button"
-							onClick={() => setOptimizationMode("manual")}
-							className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors ${
-								optimizationMode === "manual"
-									? "bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/40"
-									: "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
-							}`}
-						>
-							Manual
-						</button>
-						<button
-							type="button"
-							onClick={() => setOptimizationMode("optimize")}
-							className={`flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] transition-colors ${
-								optimizationMode === "optimize"
-									? "bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/40"
-									: "bg-zinc-800 text-zinc-500 hover:text-zinc-300"
-							}`}
-						>
-							<Zap size={10} />
-							Optimize
-						</button>
-					</div>
 				</div>
 			</div>
 
@@ -1606,41 +1946,28 @@ export function IndustryCalculator() {
 										</div>
 									</div>
 									<div>
-										<div className="text-xs text-zinc-500">Convergence</div>
+										<div className="text-xs text-zinc-500">Optimizer</div>
 										<div className="mt-1 font-mono text-zinc-200">
-											{optimizationMode === "optimize" ? (
-												<>
-													<span className="flex items-center gap-1">
-														<Zap size={12} className="text-violet-400" />
-														LP solve
-													</span>
-													{result.totals.solveTimeMs !== undefined && (
-														<span className="text-xs text-zinc-500">
-															{result.totals.solveTimeMs.toFixed(1)}ms
-														</span>
-													)}
-												</>
-											) : (
-												<>
-													{result.totals.iterations} iteration
-													{result.totals.iterations !== 1 ? "s" : ""}
-												</>
-											)}
+											<span className="flex items-center gap-1">
+												<Zap size={12} className="text-violet-400" />
+												{result.totals.solveTimeMs !== undefined
+													? `${result.totals.solveTimeMs.toFixed(1)}ms`
+													: "--"}
+											</span>
 										</div>
 									</div>
 								</div>
 								{/* LP infeasible warning */}
-								{optimizationMode === "optimize" && result.totals.objectiveValue === -1 && (
+								{result.totals.objectiveValue === -1 && (
 									<div className="mx-4 mb-4 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
 										<AlertTriangle size={12} className="mr-1 inline" />
 										The optimizer could not find a feasible solution with the current constraints.
-										This may happen when facility filters exclude necessary blueprints. Falling back
-										to manual mode.
+										This may happen when facility filters exclude necessary blueprints or recipe
+										overrides conflict. Falling back to heuristic mode.
 									</div>
 								)}
 								{/* Optimization delta vs manual */}
-								{optimizationMode === "optimize" &&
-									manualResult &&
+								{manualResult &&
 									result.totals.objectiveValue !== -1 && (
 										<div className="mx-4 mb-4">
 											{(() => {
@@ -1654,21 +1981,21 @@ export function IndustryCalculator() {
 												if (delta > 0) {
 													return (
 														<span className="text-xs text-green-400">
-															Optimize saves {delta.toLocaleString()} raw units ({pct}%) vs manual
+															Optimizer saves {delta.toLocaleString()} raw units ({pct}%) vs default recipes
 														</span>
 													);
 												}
 												if (delta < 0) {
 													return (
 														<span className="text-xs text-amber-400">
-															Optimize uses {Math.abs(delta).toLocaleString()} more raw units (
-															{Math.abs(Number.parseFloat(pct)).toFixed(1)}%) vs manual
+															Optimizer uses {Math.abs(delta).toLocaleString()} more raw units (
+															{Math.abs(Number.parseFloat(pct)).toFixed(1)}%) vs default recipes
 														</span>
 													);
 												}
 												return (
 													<span className="text-xs text-zinc-500">
-														Optimize matches manual result
+														Optimizer matches default recipes
 													</span>
 												);
 											})()}
@@ -1687,7 +2014,11 @@ export function IndustryCalculator() {
 									) : undefined
 								}
 							>
-								<MaterialTable items={result.rawMaterials} />
+								<MaterialTable
+									items={result.rawMaterials}
+									typeGroups={typeGroups}
+									salvageMaterialIds={salvageMaterialIds}
+								/>
 							</CollapsibleSection>
 
 							{/* Intermediates */}
@@ -1697,22 +2028,13 @@ export function IndustryCalculator() {
 								collapsedSummary={summarizeItems(result.intermediates)}
 								headerRight={
 									<div className="flex items-center gap-3">
-										{optimizationMode === "optimize" && recipePins.length > 0 && (
+										{recipePins.length > 0 && (
 											<button
 												type="button"
 												onClick={() => setRecipePins([])}
 												className="text-xs text-zinc-500 hover:text-zinc-300"
 											>
-												Clear Pins
-											</button>
-										)}
-										{optimizationMode === "manual" && recipeOverrides.length > 0 && (
-											<button
-												type="button"
-												onClick={() => setRecipeOverrides([])}
-												className="text-xs text-zinc-500 hover:text-zinc-300"
-											>
-												Reset Recipes
+												Clear Overrides
 											</button>
 										)}
 										{result.intermediates.length > 0 && (
@@ -1729,9 +2051,10 @@ export function IndustryCalculator() {
 									blueprintFacilities={blueprintFacilities}
 									overrides={recipeOverrides}
 									onOverrideChange={setRecipeOverrides}
-									optimizationMode={optimizationMode}
 									recipePins={recipePins}
 									onRecipePinChange={setRecipePins}
+									typeGroups={typeGroups}
+									typeCategories={typeCategories}
 								/>
 							</CollapsibleSection>
 

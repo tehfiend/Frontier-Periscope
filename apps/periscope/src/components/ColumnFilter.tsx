@@ -103,7 +103,7 @@ export function ColumnFilter<TData>({ column, valueLabels }: ColumnFilterProps<T
 		overscan: 5,
 	});
 
-	const included = pendingIncluded ?? (currentFilter?.mode === "include" ? currentFilter.includedValues : null) ?? new Set(allValues);
+	const included = pendingIncluded ?? (currentFilter?.mode === "include" ? currentFilter.includedValues : null) ?? new Set<string>();
 	const allSelected = filteredValues.every((v) => included.has(v));
 	const noneSelected = filteredValues.every((v) => !included.has(v));
 
@@ -155,12 +155,13 @@ export function ColumnFilter<TData>({ column, valueLabels }: ColumnFilterProps<T
 				textFilterType,
 				textFilterValue,
 			} satisfies ExcelFilterValue);
-		} else if (pendingIncluded && pendingIncluded.size < allValues.length) {
+		} else if (pendingIncluded && pendingIncluded.size > 0 && pendingIncluded.size < allValues.length) {
 			column.setFilterValue({
 				mode: "include",
 				includedValues: pendingIncluded,
 			} satisfies ExcelFilterValue);
 		} else {
+			// None selected or all selected = no filter (show everything)
 			column.setFilterValue(undefined);
 		}
 		setOpen(false);
