@@ -4,8 +4,9 @@ import { ItemIcon } from "@/components/ItemIcon";
 import { useBlueprintData } from "@/hooks/useBlueprintData";
 import type { Blueprint } from "@/lib/bomTypes";
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowRight, Building2, Clock, Wrench } from "lucide-react";
-import { useMemo } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { ArrowRight, Building2, Clock, Factory, Wrench } from "lucide-react";
+import { useCallback, useMemo } from "react";
 
 interface BlueprintRow {
 	bp: Blueprint;
@@ -16,9 +17,37 @@ interface BlueprintRow {
 	primaryQty: number;
 }
 
+const LS_ORDER_KEY = "bom-order-items";
+
+interface BomOrderItemStorage {
+	typeId: number;
+	typeName: string;
+	quantity: number;
+}
+
 export function Blueprints() {
 	const { blueprintList, blueprintFacilities, typeGroups, typeCategories, isLoading } =
 		useBlueprintData();
+	const navigate = useNavigate();
+
+	const addToIndustry = useCallback(
+		(typeId: number, typeName: string) => {
+			let items: BomOrderItemStorage[] = [];
+			try {
+				const raw = localStorage.getItem(LS_ORDER_KEY);
+				if (raw) items = JSON.parse(raw) as BomOrderItemStorage[];
+			} catch { /* ignore */ }
+			const existing = items.find((i) => i.typeId === typeId);
+			if (existing) {
+				existing.quantity += 1;
+			} else {
+				items.push({ typeId, typeName, quantity: 1 });
+			}
+			localStorage.setItem(LS_ORDER_KEY, JSON.stringify(items));
+			navigate({ to: "/industry" });
+		},
+		[navigate],
+	);
 
 	const rows: BlueprintRow[] = useMemo(() => {
 		return blueprintList.map((bp) => {
@@ -43,6 +72,20 @@ export function Blueprints() {
 				filterFn: excelFilterFn,
 				cell: ({ row }) => (
 					<span className="flex items-center gap-2 font-medium text-zinc-100">
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								addToIndustry(
+									row.original.bp.primaryTypeID,
+									row.original.bp.primaryTypeName,
+								);
+							}}
+							className="rounded p-0.5 text-zinc-600 transition-colors hover:text-cyan-400"
+							title="Add to Industry Calculator"
+						>
+							<Factory size={14} />
+						</button>
 						<ItemIcon typeId={row.original.bp.primaryTypeID} size={32} />
 						{row.original.bp.primaryTypeName}
 					</span>
@@ -185,7 +228,7 @@ export function Blueprints() {
 				),
 			},
 		],
-		[],
+		[addToIndustry],
 	);
 
 	if (isLoading) {

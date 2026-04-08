@@ -125,6 +125,28 @@ export function solveLp(
 		variables[varName] = coeffs;
 	}
 
+	// 4b. Cap salvage consumption to actual stock
+	if (salvageMaterialIds != null && salvageMaterialIds.size > 0) {
+		// For each salvage material, total consumption across all blueprints <= stock
+		for (const salvageId of salvageMaterialIds) {
+			const stock = stockMap.get(salvageId) ?? 0;
+			if (stock <= 0) continue;
+			const constraintName = `salvage_cap_${salvageId}`;
+			constraints[constraintName] = { max: stock };
+			// Add coefficients for every blueprint that uses this salvage input
+			for (const bp of Object.values(blueprints)) {
+				if (excludedBpIds.has(bp.blueprintID)) continue;
+				const inp = bp.inputs.find((i) => i.typeID === salvageId);
+				if (inp) {
+					const varName = `bp_${bp.blueprintID}`;
+					if (variables[varName]) {
+						variables[varName][constraintName] = inp.quantity;
+					}
+				}
+			}
+		}
+	}
+
 	// 5. Apply pin constraints
 	for (const pin of recipePins) {
 		const producers = outputToBlueprints.get(pin.typeId);
@@ -143,30 +165,35 @@ export function solveLp(
 				}
 			}
 		} else if (pin.kind === "split") {
-			// Fix runs for each pinned blueprint, zero out others
+			// Set minimum runs for each pinned blueprint (lower bound, not exact)
 			const pinnedBpIds = new Set(pin.splits.map((s) => s.blueprintId));
+			let totalPinnedQty = 0;
 
 			for (const split of pin.splits) {
 				const bp = blueprints[String(split.blueprintId)];
 				if (!bp) continue;
 				const outputQty = bp.outputs.find((o) => o.typeID === pin.typeId)?.quantity ?? 1;
+				totalPinnedQty += split.quantity;
 				const runs = Math.ceil(split.quantity / outputQty);
 				const constraintName = `pin_${split.blueprintId}_for_${pin.typeId}`;
-				constraints[constraintName] = { equal: runs };
+				constraints[constraintName] = { min: runs };
 				const varName = `bp_${split.blueprintId}`;
 				if (variables[varName]) {
 					variables[varName][constraintName] = 1;
 				}
 			}
 
-			// Zero out non-pinned blueprints for this type
-			for (const bp of producers) {
-				if (!pinnedBpIds.has(bp.blueprintID)) {
-					const constraintName = `pin_${bp.blueprintID}_for_${pin.typeId}`;
-					constraints[constraintName] = { equal: 0 };
-					const varName = `bp_${bp.blueprintID}`;
-					if (variables[varName]) {
-						variables[varName][constraintName] = 1;
+			// Only zero out non-pinned blueprints when splits fully cover demand
+			const demand = orderDemand.get(pin.typeId) ?? 0;
+			if (totalPinnedQty >= demand) {
+				for (const bp of producers) {
+					if (!pinnedBpIds.has(bp.blueprintID)) {
+						const constraintName = `pin_${bp.blueprintID}_for_${pin.typeId}`;
+						constraints[constraintName] = { equal: 0 };
+						const varName = `bp_${bp.blueprintID}`;
+						if (variables[varName]) {
+							variables[varName][constraintName] = 1;
+						}
 					}
 				}
 			}

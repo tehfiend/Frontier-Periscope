@@ -103,7 +103,7 @@ export function ColumnFilter<TData>({ column, valueLabels }: ColumnFilterProps<T
 		overscan: 5,
 	});
 
-	const included = pendingIncluded ?? (currentFilter?.mode === "include" ? currentFilter.includedValues : null) ?? new Set<string>();
+	const included = pendingIncluded ?? (currentFilter?.mode === "include" ? currentFilter.includedValues : null) ?? new Set<string>(allValues);
 	const allSelected = filteredValues.every((v) => included.has(v));
 	const noneSelected = filteredValues.every((v) => !included.has(v));
 

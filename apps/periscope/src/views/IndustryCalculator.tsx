@@ -24,8 +24,8 @@ import {
 	ChevronUp,
 	ChevronsUpDown,
 	ClipboardCopy,
-	ClipboardList,
 	ClipboardPaste,
+	Factory,
 	Clock,
 	Minus,
 	Plus,
@@ -1532,10 +1532,28 @@ export function IndustryCalculator() {
 
 		if (!ceiled.feasible) {
 			console.warn("LP infeasible, falling back to heuristic BOM resolution");
+			// Convert all pins to recipe overrides so the fallback honors user choices
+			const pinOverrides: RecipeOverride[] = allPins.flatMap((pin) => {
+				if (pin.kind === "exclusive") {
+					return [{ typeId: pin.typeId, blueprintId: pin.blueprintId }];
+				}
+				if (pin.kind === "split" && pin.splits.length > 0) {
+					// Pick the largest split as the override
+					const best = pin.splits.reduce((a, b) => (b.quantity > a.quantity ? b : a));
+					return [{ typeId: pin.typeId, blueprintId: best.blueprintId }];
+				}
+				return [];
+			});
+			// Merge: pin overrides take precedence over recipe dropdown overrides
+			const pinTypeIds2 = new Set(pinOverrides.map((o) => o.typeId));
+			const mergedOverrides = [
+				...pinOverrides,
+				...recipeOverrides.filter((o) => !pinTypeIds2.has(o.typeId)),
+			];
 			const fallback = resolveBom(
 				orderItems,
 				bpData,
-				recipeOverrides,
+				mergedOverrides,
 				volumeMap,
 				stockMap,
 				fullNameMap,
@@ -1710,7 +1728,7 @@ export function IndustryCalculator() {
 			{/* Page header */}
 			<div className="border-b border-zinc-800 px-5 py-3">
 				<div className="flex items-center gap-2">
-					<ClipboardList size={18} className="text-violet-500" />
+					<Factory size={18} className="text-violet-500" />
 					<h1 className="text-base font-semibold text-zinc-100">Industry Calculator</h1>
 					<span className="rounded bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-400 ring-1 ring-amber-500/30">
 						Added after hackathon submission deadline, not part of contest entry
@@ -1840,7 +1858,7 @@ export function IndustryCalculator() {
 						{/* Order items table with finals data */}
 						{orderItems.length === 0 ? (
 							<div className="flex flex-col items-center justify-center gap-2 p-8 text-center">
-								<ClipboardList size={32} className="text-zinc-800" />
+								<Factory size={32} className="text-zinc-800" />
 								<p className="text-sm text-zinc-500">
 									Search above to add items to your production list.
 								</p>
@@ -1864,7 +1882,7 @@ export function IndustryCalculator() {
 					{!hasResults && orderItems.length === 0 && (
 						<div className="flex h-64 items-center justify-center">
 							<div className="text-center">
-								<ClipboardList size={48} className="mx-auto mb-3 text-zinc-800" />
+								<Factory size={48} className="mx-auto mb-3 text-zinc-800" />
 								<p className="text-sm text-zinc-500">
 									Add items to your production list to calculate materials.
 								</p>
