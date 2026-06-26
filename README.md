@@ -20,7 +20,7 @@ For on-chain features (wallet connection, transaction signing, extension deploym
 
 ## Features
 
-- **Custom Currencies & Markets.** The only project in the hackathon that lets players create their own custom currencies, and it does it entirely in the browser through in-browser Move bytecode patching. No CLI, no gas station, nothing. These tokens trade through on-chain order book markets deployed to any Smart Storage Unit. All trades use atomic escrow so items and payment move together in a single transaction, zero trust required. Markets can be open or standings-gated, controlling who can mint, trade, or place buy orders.
+- **Custom Currencies & Markets.** Create your own custom currencies entirely in the browser through in-browser Move bytecode patching. No CLI, no gas station, nothing. These tokens trade through on-chain order book markets deployed to any Smart Storage Unit. All trades use atomic escrow so items and payment move together in a single transaction, zero trust required. Markets can be open or standings-gated, controlling who can mint, trade, or place buy orders.
 - **Standings & Diplomacy.** Manage relationships with players and tribes through on-chain registries on a seven-point scale. Standings control who can access your gates, trade at your markets, and use your storage units. One diplomatic change cascades across all your Smart Assemblies.
 - **Gate Tolls & Treasuries.** Gates can charge tolls in any custom currency with configurable standing thresholds for free passage. Toll revenue routes to shared treasury wallets that support multiple admins and multi-currency balances. Collect tolls, fund operations, control spending.
 - **Private Maps.** Share structure locations on chain without exposing them publicly. Location data is encrypted with X25519 sealed boxes and keys are derived deterministically from wallet signatures, so there's no key management or local key storage at all. Only invited members can decrypt.
@@ -33,7 +33,7 @@ Eight Move smart contracts are deployed on testnet covering markets, standings, 
 
 ## Why This Exists
 
-This project started as a hackathon entry and grew into something I use every day in EVE Frontier. Built and maintained by [TehFiend](https://github.com/tehfiend).
+This project is something I use every day in EVE Frontier. Built and maintained by [TehFiend](https://github.com/tehfiend).
 
 One of the big goals here is to show EVE Frontier players who have no coding background that they CAN build tools on the Frontier blockchain. You don't need to be a professional software developer to ship something useful.
 

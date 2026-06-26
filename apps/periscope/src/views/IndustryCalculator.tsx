@@ -1730,9 +1730,6 @@ export function IndustryCalculator() {
 				<div className="flex items-center gap-2">
 					<Factory size={18} className="text-violet-500" />
 					<h1 className="text-base font-semibold text-zinc-100">Industry Calculator</h1>
-					<span className="rounded bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-400 ring-1 ring-amber-500/30">
-						Added after hackathon submission deadline, not part of contest entry
-					</span>
 				</div>
 				<div className="mt-2 flex items-center gap-3">
 					{facilityGroups.map((group) => (

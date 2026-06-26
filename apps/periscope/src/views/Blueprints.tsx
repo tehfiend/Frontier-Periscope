@@ -253,11 +253,6 @@ export function Blueprints() {
 					Blueprint Library
 				</h1>
 			}
-			afterSearch={
-				<span className="shrink-0 rounded bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-400 ring-1 ring-amber-500/30">
-					Improved after hackathon submission deadline, not part of contest entry
-				</span>
-			}
 		/>
 	);
 }

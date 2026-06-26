@@ -291,7 +291,7 @@ export function TurretPublishFlow({
 					<p className="text-xs text-amber-300">
 						This is a simplified weights-only turret configuration. Standings-based targeting
 						(friend/foe lists derived from your registry) requires shared object support for
-						turrets, which CCP has confirmed will be added after the hackathon. Once available,
+						turrets, which CCP has confirmed will be added in a future update. Once available,
 						Periscope will support full registry-driven turret targeting -- no republish needed.
 					</p>
 				</div>
