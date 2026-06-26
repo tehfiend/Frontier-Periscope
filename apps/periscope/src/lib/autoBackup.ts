@@ -1,5 +1,5 @@
-import { db } from "@/db";
 import { EXPORT_TABLES } from "./constants";
+import { serializeTables } from "./dataExport";
 
 const BACKUP_HANDLE_KEY = "backupDirHandle";
 const BACKUP_DB_NAME = "periscope-handles";
@@ -54,8 +54,8 @@ export async function requestBackupDirectory(): Promise<FileSystemDirectoryHandl
 	}
 }
 
-/** Write a backup JSON file to the stored backup directory. */
-export async function writeAutoBackup(): Promise<boolean> {
+/** Write arbitrary `data` as a JSON file (`fileName`) to the stored backup directory. */
+export async function writeBackupFile(data: unknown, fileName: string): Promise<boolean> {
 	const handle = await getBackupHandle();
 	if (!handle) return false;
 
@@ -69,21 +69,21 @@ export async function writeAutoBackup(): Promise<boolean> {
 		}
 	}
 
-	const tables: Record<string, unknown[]> = {};
-	for (const name of EXPORT_TABLES) {
-		tables[name] = await db.table(name).toArray();
-	}
-
-	const data = {
-		version: 1,
-		exportedAt: new Date().toISOString(),
-		tables,
-	};
-
-	const fileName = `periscope-auto-${new Date().toISOString().slice(0, 10)}.json`;
 	const fileHandle = await handle.getFileHandle(fileName, { create: true });
 	const writable = await fileHandle.createWritable();
 	await writable.write(JSON.stringify(data));
 	await writable.close();
 	return true;
+}
+
+/** Write a backup JSON file to the stored backup directory. */
+export async function writeAutoBackup(): Promise<boolean> {
+	const data = {
+		version: 1,
+		exportedAt: new Date().toISOString(),
+		tables: await serializeTables(EXPORT_TABLES),
+	};
+
+	const fileName = `periscope-auto-${new Date().toISOString().slice(0, 10)}.json`;
+	return writeBackupFile(data, fileName);
 }

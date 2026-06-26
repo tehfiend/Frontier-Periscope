@@ -1,7 +1,7 @@
 // Version and changelog -- pure module (no browser APIs, no app imports).
 // Imported by vite.config.ts at build time in a Node context.
 
-export const APP_VERSION = "3.26.06.26";
+export const APP_VERSION = "4.26.06.26";
 
 export interface ChangelogEntry {
 	version: string;
@@ -14,6 +14,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+	{
+		version: "4.26.06.26",
+		date: "2026-06-26",
+		highlights: "Reusable cycle-reset (archive + clear) for new EVE Frontier cycles",
+		changes: [
+			{
+				category: "added",
+				description:
+					"Add reusable cycle-reset (archive + clear) in Settings -> Danger Zone: archives cycle-bound data (characters, structures, manifest caches, standings, sonar/log history) then clears it for a fresh cycle, keeping preferences and static map data",
+			},
+		],
+	},
 	{
 		version: "3.26.06.26",
 		date: "2026-06-26",

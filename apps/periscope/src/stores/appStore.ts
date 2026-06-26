@@ -33,6 +33,7 @@ interface AppState {
 	setDefaultMapId: (id: string | null) => void;
 	setSearchQuery: (query: string) => void;
 	toggleSidebar: () => void;
+	resetCycleState: () => void;
 }
 
 // Read persisted value synchronously from localStorage as a fast cache,
@@ -89,6 +90,16 @@ export const useAppStore = create<AppState>((set) => ({
 	},
 	setSearchQuery: (query) => set({ searchQuery: query }),
 	toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+	// Reset character/map selection after a cycle clear (the underlying ids are gone).
+	resetCycleState: () => {
+		set({ activeCharacterId: "all", defaultMapId: null });
+		try {
+			localStorage.removeItem("periscope:activeCharacterId");
+			localStorage.removeItem("periscope:defaultMapId");
+		} catch {
+			// localStorage unavailable
+		}
+	},
 }));
 
 // Also hydrate from IndexedDB (authoritative) once it's ready,

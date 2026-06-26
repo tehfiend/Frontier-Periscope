@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { CHAIN_ENABLED } from "@/featureFlags";
 import { useManifestAutoSync } from "@/hooks/useManifestAutoSync";
 import { usePrivateMapAutoDecrypt } from "@/hooks/usePrivateMapAutoDecrypt";
+import { checkCycleReset } from "@/lib/cycleReset";
 import { fetchAndStoreGameTypes } from "@/lib/worldApi";
 import { useAppStore } from "@/stores/appStore";
 import { Loader2, Telescope } from "lucide-react";
@@ -53,6 +54,14 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 			const activeCharSetting = await db.settings.get("activeCharacterId");
 			if (activeCharSetting?.value) {
 				useAppStore.getState().setActiveCharacterId(activeCharSetting.value as string);
+			}
+
+			// Detect a cycle boundary and (when chain-live) archive + clear stale cycle data before
+			// the UI mounts, so it renders against post-reset data. Never blocks app load.
+			try {
+				await checkCycleReset();
+			} catch (err) {
+				console.warn("[DataInitializer] Cycle reset check failed:", err);
 			}
 
 			setReady(true);
@@ -116,6 +125,15 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 		});
 
 		setStaticDataReady(true);
+
+		// Detect a cycle boundary and (when chain-live) archive + clear stale cycle data. Never
+		// blocks app load.
+		try {
+			await checkCycleReset();
+		} catch (err) {
+			console.warn("[DataInitializer] Cycle reset check failed:", err);
+		}
+
 		setReady(true);
 
 		// Fetch game types from World API in background (non-blocking)

@@ -203,6 +203,8 @@ export interface CacheMetadataEntry {
 	version: string;
 	importedAt: string;
 	counts?: Record<string, number>;
+	/** Tenant scope for the cycle-reset stamp (key "cycleData"); see lib/cycleReset.ts. */
+	tenant?: string;
 }
 
 export interface LogOffset {

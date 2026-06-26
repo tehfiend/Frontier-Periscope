@@ -2,6 +2,7 @@ import { lookupCharacterByItemId } from "@/chain/client";
 import type { TenantId } from "@/chain/config";
 import { AddCharacterDialog } from "@/components/AddCharacterDialog";
 import { CopyAddress } from "@/components/CopyAddress";
+import { CycleResetDialog } from "@/components/CycleResetDialog";
 import { db, notDeleted } from "@/db";
 import type { CharacterRecord, CharacterSource } from "@/db/types";
 import { CHAIN_ENABLED } from "@/featureFlags";
@@ -48,8 +49,10 @@ import { useEffect, useRef, useState } from "react";
 export function Settings() {
 	const meta = useLiveQuery(() => db.cacheMetadata.get("stellarData"));
 	const typesMeta = useLiveQuery(() => db.cacheMetadata.get("gameTypes"));
+	const cycleMeta = useLiveQuery(() => db.cacheMetadata.get("cycleData"));
 	const [typesStatus, setTypesStatus] = useState<string | null>(null);
 	const [fetchingTypes, setFetchingTypes] = useState(false);
+	const [cycleDialogOpen, setCycleDialogOpen] = useState(false);
 	const characters = useLiveQuery(() => db.characters.filter(notDeleted).toArray()) ?? [];
 
 	async function clearStaticData() {
@@ -208,19 +211,45 @@ export function Settings() {
 					<Trash2 size={16} />
 					Danger Zone
 				</h2>
-				<div className="rounded-lg border border-red-900/50 bg-red-950/20 p-4">
-					<p className="mb-3 text-sm text-zinc-400">
-						Permanently delete the entire database including all intel, settings, and static data.
-					</p>
-					<button
-						type="button"
-						onClick={clearAllData}
-						className="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-900/50"
-					>
-						Delete All Data
-					</button>
+				<div className="space-y-4">
+					<div className="rounded-lg border border-red-900/50 bg-red-950/20 p-4">
+						<p className="mb-3 text-sm text-zinc-400">
+							Reset for a new EVE Frontier cycle: archive then clear cycle-bound data (characters,
+							structures, manifest caches, standings, sonar/log history) while keeping preferences
+							and static map data.
+						</p>
+						{cycleMeta && (
+							<p className="mb-3 text-xs text-zinc-600">
+								Current cycle:{" "}
+								<span className="font-mono text-zinc-500">{cycleMeta.version}</span>
+								{" -- last reset "}
+								{new Date(cycleMeta.importedAt).toLocaleDateString()}
+							</p>
+						)}
+						<button
+							type="button"
+							onClick={() => setCycleDialogOpen(true)}
+							className="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-900/50"
+						>
+							Reset for new cycle
+						</button>
+					</div>
+					<div className="rounded-lg border border-red-900/50 bg-red-950/20 p-4">
+						<p className="mb-3 text-sm text-zinc-400">
+							Permanently delete the entire database including all intel, settings, and static data.
+						</p>
+						<button
+							type="button"
+							onClick={clearAllData}
+							className="rounded-lg border border-red-800 bg-red-900/30 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-900/50"
+						>
+							Delete All Data
+						</button>
+					</div>
 				</div>
 			</section>
+
+			{cycleDialogOpen && <CycleResetDialog onClose={() => setCycleDialogOpen(false)} />}
 		</div>
 	);
 }
