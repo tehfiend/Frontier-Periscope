@@ -17,30 +17,28 @@ export const CHANGELOG: ChangelogEntry[] = [
 	{
 		version: "4.26.06.26",
 		date: "2026-06-26",
-		highlights: "Reusable cycle-reset (archive + clear) for new EVE Frontier cycles",
+		highlights:
+			"Cycle 6 (Stillness) update -- chain features temporarily disabled, refreshed static data, and a new cycle-reset tool",
 		changes: [
+			{
+				category: "changed",
+				description:
+					"Cycle 6 (Stillness) migration: temporarily disabled the chain-dependent features (Wallet, Structures, Market, Manifest, Killmails, Private Maps) while the world contracts are re-published -- the Log Analyzer, Industry Calculator, Star Map, Blueprints, and Jump Planner all keep working",
+			},
+			{
+				category: "changed",
+				description:
+					"Refreshed all Cycle 6 static game data -- items, blueprints, facilities, solar systems, and celestials -- rebuilt from the new Stillness client",
+			},
 			{
 				category: "added",
 				description:
-					"Add reusable cycle-reset (archive + clear) in Settings -> Danger Zone: archives cycle-bound data (characters, structures, manifest caches, standings, sonar/log history) then clears it for a fresh cycle, keeping preferences and static map data",
-			},
-		],
-	},
-	{
-		version: "3.26.06.26",
-		date: "2026-06-26",
-		highlights:
-			"Cycle 6 interim build -- chain features temporarily disabled, refreshed static data",
-		changes: [
-			{
-				category: "changed",
-				description:
-					"Disabled chain-dependent features for the Cycle 6 world migration (re-enabled in a later build)",
+					"Reusable cycle-reset in Settings -> Danger Zone: archives your cycle-bound data (characters, structures, manifest caches, standings, sonar/log history) to a file, then clears it for a fresh cycle while keeping preferences and static map data",
 			},
 			{
 				category: "changed",
 				description:
-					"Refreshed Cycle 6 static game data (items, blueprints, systems, celestials)",
+					"Removed the contest-entry labels from the Blueprint Library and Industry Calculator",
 			},
 		],
 	},
