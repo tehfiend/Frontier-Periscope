@@ -5,12 +5,17 @@ import { useBlueprintData } from "@/hooks/useBlueprintData";
 import type { Blueprint } from "@/lib/bomTypes";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Building2, Clock, Factory, Wrench } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { ArrowRight, Building2, Clock, Eye, Factory, Wrench } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+
+const UNAVAILABLE_TOOLTIP =
+	"Present in client data but not available in the current game build -- removed or not yet released";
 
 interface BlueprintRow {
 	bp: Blueprint;
 	facilities: string[];
+	buildable: boolean;
+	removedFacilities: string[];
 	group: string;
 	category: string;
 	totalInputQty: number;
@@ -26,9 +31,17 @@ interface BomOrderItemStorage {
 }
 
 export function Blueprints() {
-	const { blueprintList, blueprintFacilities, typeGroups, typeCategories, isLoading } =
-		useBlueprintData();
+	const {
+		blueprintList,
+		blueprintFacilities,
+		buildableBlueprintIds,
+		removedFacilitiesByBlueprint,
+		typeGroups,
+		typeCategories,
+		isLoading,
+	} = useBlueprintData();
 	const navigate = useNavigate();
+	const [showUnavailable, setShowUnavailable] = useState(false);
 
 	const addToIndustry = useCallback(
 		(typeId: number, typeName: string) => {
@@ -49,19 +62,46 @@ export function Blueprints() {
 		[navigate],
 	);
 
+	// Available/total hint derived from the full catalog (not buildableBlueprintIds.size,
+	// which could include facility-listed IDs absent from blueprints.json).
+	const availableCount = useMemo(
+		() => blueprintList.filter((bp) => buildableBlueprintIds.has(bp.blueprintID)).length,
+		[blueprintList, buildableBlueprintIds],
+	);
+
+	// Default to buildable-only; the "Show unavailable" toggle reveals the rest.
+	const visibleBlueprints = useMemo(
+		() =>
+			showUnavailable
+				? blueprintList
+				: blueprintList.filter((bp) => buildableBlueprintIds.has(bp.blueprintID)),
+		[blueprintList, buildableBlueprintIds, showUnavailable],
+	);
+
 	const rows: BlueprintRow[] = useMemo(() => {
-		return blueprintList.map((bp) => {
+		return visibleBlueprints.map((bp) => {
 			const primaryOutput = bp.outputs.find((o) => o.typeID === bp.primaryTypeID);
 			return {
 				bp,
-				facilities: blueprintFacilities.get(bp.blueprintID) ?? [],
+				// De-dup: two live facilities share the name "Mini Printer" (87119, 95302),
+				// so a blueprint runnable by both would otherwise render a duplicate badge + React key.
+				facilities: [...new Set(blueprintFacilities.get(bp.blueprintID) ?? [])],
+				buildable: buildableBlueprintIds.has(bp.blueprintID),
+				removedFacilities: removedFacilitiesByBlueprint.get(bp.blueprintID) ?? [],
 				group: typeGroups.get(bp.primaryTypeID) ?? "",
 				category: typeCategories.get(bp.primaryTypeID) ?? "",
 				totalInputQty: bp.inputs.reduce((sum, i) => sum + i.quantity, 0),
 				primaryQty: primaryOutput?.quantity ?? 1,
 			};
 		});
-	}, [blueprintList, blueprintFacilities, typeGroups, typeCategories]);
+	}, [
+		visibleBlueprints,
+		blueprintFacilities,
+		buildableBlueprintIds,
+		removedFacilitiesByBlueprint,
+		typeGroups,
+		typeCategories,
+	]);
 
 	const columns: ColumnDef<BlueprintRow, unknown>[] = useMemo(
 		() => [
@@ -70,26 +110,32 @@ export function Blueprints() {
 				accessorFn: (r) => r.bp.primaryTypeName,
 				header: "Blueprint",
 				filterFn: excelFilterFn,
-				cell: ({ row }) => (
-					<span className="flex items-center gap-2 font-medium text-zinc-100">
-						<button
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								addToIndustry(
-									row.original.bp.primaryTypeID,
-									row.original.bp.primaryTypeName,
-								);
-							}}
-							className="rounded p-0.5 text-zinc-600 transition-colors hover:text-cyan-400"
-							title="Add to Industry Calculator"
+				cell: ({ row }) => {
+					const { bp, buildable } = row.original;
+					return (
+						<span
+							className={`flex items-center gap-2 font-medium ${
+								buildable ? "text-zinc-100" : "text-zinc-500"
+							}`}
 						>
-							<Factory size={14} />
-						</button>
-						<ItemIcon typeId={row.original.bp.primaryTypeID} size={32} />
-						{row.original.bp.primaryTypeName}
-					</span>
-				),
+							{buildable && (
+								<button
+									type="button"
+									onClick={(e) => {
+										e.stopPropagation();
+										addToIndustry(bp.primaryTypeID, bp.primaryTypeName);
+									}}
+									className="rounded p-0.5 text-zinc-600 transition-colors hover:text-cyan-400"
+									title="Add to Industry Calculator"
+								>
+									<Factory size={14} />
+								</button>
+							)}
+							<ItemIcon typeId={bp.primaryTypeID} size={32} />
+							{bp.primaryTypeName}
+						</span>
+					);
+				},
 			},
 			{
 				id: "category",
@@ -209,23 +255,40 @@ export function Blueprints() {
 			},
 			{
 				id: "facilities",
-				accessorFn: (r) => r.facilities.join(", "),
+				accessorFn: (r) => (r.buildable ? r.facilities.join(", ") : "Unavailable"),
 				header: "Facilities",
 				size: 180,
 				filterFn: excelFilterFn,
-				cell: ({ row }) => (
-					<div className="flex flex-wrap gap-1.5">
-						{row.original.facilities.map((name) => (
+				cell: ({ row }) => {
+					const { facilities, buildable, removedFacilities } = row.original;
+					if (!buildable) {
+						const tooltip =
+							removedFacilities.length > 0
+								? `${UNAVAILABLE_TOOLTIP}; recipe was: ${removedFacilities.join(", ")}`
+								: UNAVAILABLE_TOOLTIP;
+						return (
 							<span
-								key={name}
-								className="inline-flex items-center gap-1 whitespace-nowrap rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
+								className="inline-flex items-center whitespace-nowrap rounded bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-400/80 ring-1 ring-amber-500/20"
+								title={tooltip}
 							>
-								<Building2 size={10} className="shrink-0 text-zinc-500" />
-								{name}
+								Unavailable
 							</span>
-						))}
-					</div>
-				),
+						);
+					}
+					return (
+						<div className="flex flex-wrap gap-1.5">
+							{facilities.map((name) => (
+								<span
+									key={name}
+									className="inline-flex items-center gap-1 whitespace-nowrap rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
+								>
+									<Building2 size={10} className="shrink-0 text-zinc-500" />
+									{name}
+								</span>
+							))}
+						</div>
+					);
+				},
 			},
 		],
 		[addToIndustry],
@@ -252,6 +315,26 @@ export function Blueprints() {
 					<Wrench size={16} className="text-violet-500" />
 					Blueprint Library
 				</h1>
+			}
+			afterSearch={
+				<div className="flex shrink-0 items-center gap-3">
+					<span className="whitespace-nowrap text-xs text-zinc-500">
+						{availableCount} available / {blueprintList.length} total
+					</span>
+					<button
+						type="button"
+						onClick={() => setShowUnavailable((v) => !v)}
+						className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs transition-colors ${
+							showUnavailable
+								? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+								: "border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+						}`}
+						title="Show blueprints present in client data but not available in the current game build"
+					>
+						<Eye size={12} />
+						Show unavailable
+					</button>
+				</div>
 			}
 		/>
 	);

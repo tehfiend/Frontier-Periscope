@@ -1279,11 +1279,11 @@ export function IndustryCalculator() {
 	const {
 		blueprints,
 		outputToBlueprints,
-		defaultRecipes,
 		rawMaterialIds,
 		salvageMaterialIds,
 		volumeMap,
 		blueprintFacilities,
+		buildableBlueprintIds,
 		typeGroups,
 		typeCategories,
 		isLoading,
@@ -1338,33 +1338,36 @@ export function IndustryCalculator() {
 		});
 	}
 
-	// Filter blueprints by selected facilities
-	const filteredBlueprints = useMemo(() => {
-		if (selectedFacilities.size === 0) return blueprints;
-		const allowedBpIds = new Set<number>();
+	// Blueprint IDs allowed by the current facility filter. When no facility is selected,
+	// default to the full buildable set (every blueprint a live/published facility can run) --
+	// NOT all blueprints -- so the solver can never propose a removed-facility (e.g. Assembler)
+	// recipe. The Industry Calculator has no display toggle; it is ALWAYS buildable-only.
+	const allowedBpIds = useMemo(() => {
+		if (selectedFacilities.size === 0) return buildableBlueprintIds;
+		const ids = new Set<number>();
 		for (const [bpId, facs] of blueprintFacilities) {
-			if (facs.some((f) => selectedFacilities.has(f))) allowedBpIds.add(bpId);
+			if (facs.some((f) => selectedFacilities.has(f))) ids.add(bpId);
 		}
+		return ids;
+	}, [blueprintFacilities, buildableBlueprintIds, selectedFacilities]);
+
+	// Filter blueprints by allowed (buildable / facility-selected) set
+	const filteredBlueprints = useMemo(() => {
 		const result: Record<string, Blueprint> = {};
 		for (const [id, bp] of Object.entries(blueprints)) {
 			if (allowedBpIds.has(bp.blueprintID)) result[id] = bp;
 		}
 		return result;
-	}, [blueprints, blueprintFacilities, selectedFacilities]);
+	}, [blueprints, allowedBpIds]);
 
 	const filteredOutputToBlueprints = useMemo(() => {
-		if (selectedFacilities.size === 0) return outputToBlueprints;
-		const allowedBpIds = new Set<number>();
-		for (const [bpId, facs] of blueprintFacilities) {
-			if (facs.some((f) => selectedFacilities.has(f))) allowedBpIds.add(bpId);
-		}
 		const map = new Map<number, Blueprint[]>();
 		for (const [typeId, bps] of outputToBlueprints) {
 			const filtered = bps.filter((bp) => allowedBpIds.has(bp.blueprintID));
 			if (filtered.length > 0) map.set(typeId, filtered);
 		}
 		return map;
-	}, [outputToBlueprints, blueprintFacilities, selectedFacilities]);
+	}, [outputToBlueprints, allowedBpIds]);
 
 	// Full name map from all blueprints (not affected by facility filter)
 	const fullNameMap = useMemo(() => {
@@ -1376,17 +1379,12 @@ export function IndustryCalculator() {
 		return names;
 	}, [blueprints]);
 
+	// Always recompute default recipes from the buildable (allowed) set -- never fall back to
+	// the global defaultRecipes, or a default could resolve to a removed-facility-only blueprint.
 	const filteredDefaultRecipes = useMemo(() => {
-		if (selectedFacilities.size === 0) return defaultRecipes;
 		const filteredRaw = findRawMaterials(filteredBlueprints);
 		return computeDefaultRecipes(filteredOutputToBlueprints, filteredRaw, salvageMaterialIds);
-	}, [
-		selectedFacilities,
-		defaultRecipes,
-		filteredBlueprints,
-		filteredOutputToBlueprints,
-		salvageMaterialIds,
-	]);
+	}, [filteredBlueprints, filteredOutputToBlueprints, salvageMaterialIds]);
 
 	// Order list state (persisted to localStorage)
 	const [orderItems, setOrderItems] = useState<BomOrderItem[]>(() =>
@@ -1427,11 +1425,14 @@ export function IndustryCalculator() {
 		}
 	}, [blueprints]); // only re-check when blueprint data loads/changes
 
-	// Producible items list (outputs only, for order list search)
+	// Producible items list (outputs only, for order list search + paste import).
+	// Gated to BUILDABLE blueprints only so Unavailable items can never be added to the
+	// calculator (Q4 Option B). An output qualifies iff a live facility can produce it.
 	const producibleItems = useMemo(() => {
 		const seen = new Set<number>();
 		const items: Array<{ typeId: number; typeName: string }> = [];
 		for (const bp of Object.values(blueprints)) {
+			if (!buildableBlueprintIds.has(bp.blueprintID)) continue;
 			for (const out of bp.outputs) {
 				if (!seen.has(out.typeID)) {
 					seen.add(out.typeID);
@@ -1441,7 +1442,7 @@ export function IndustryCalculator() {
 		}
 		items.sort((a, b) => a.typeName.localeCompare(b.typeName));
 		return items;
-	}, [blueprints]);
+	}, [blueprints, buildableBlueprintIds]);
 
 	// All blueprint-related types (inputs + outputs, for stock search)
 	const blueprintTypes = useMemo(() => {
@@ -1627,12 +1628,16 @@ export function IndustryCalculator() {
 			// Check if this "raw" item has producers in the unfiltered set
 			const producers = outputToBlueprints.get(raw.typeId);
 			if (!producers || producers.length === 0) continue;
-			// It's producible but filtered out -- find which facilities can make it
+			// It's producible but filtered out -- find which LIVE facilities can make it
 			const neededFacs = new Set<string>();
 			for (const bp of producers) {
 				const facs = blueprintFacilities.get(bp.blueprintID);
 				if (facs) for (const f of facs) neededFacs.add(f);
 			}
+			// blueprintFacilities is now published-only: an item whose only producers are
+			// removed-facility blueprints yields an empty set. Such genuinely-unbuildable
+			// items belong to the Unavailable set, not this facility-suggestion warning.
+			if (neededFacs.size === 0) continue;
 			// Only show if none of the needed facilities are currently selected
 			const hasSelected = [...neededFacs].some((f) => selectedFacilities.has(f));
 			if (!hasSelected) {

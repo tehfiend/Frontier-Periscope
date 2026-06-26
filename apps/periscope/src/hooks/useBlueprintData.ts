@@ -24,8 +24,16 @@ interface BlueprintDataResult {
 	volumeMap: Map<number, number>;
 	/** All game types sorted by name (for search) */
 	typeList: Array<{ id: number; name: string }>;
-	/** blueprintID -> list of facility names that can run it */
+	/** blueprintID -> list of LIVE (published) facility names that can run it */
 	blueprintFacilities: Map<number, string[]>;
+	/** Blueprints runnable by >= 1 published facility (buildable in the current game build) */
+	buildableBlueprintIds: Set<number>;
+	/**
+	 * For blueprints with NO live facility, the names of the removed (published=0)
+	 * facilities that used to run them -- a tooltip diagnostic only. Orphaned blueprints
+	 * (listed by no facility at all) are absent from this map.
+	 */
+	removedFacilitiesByBlueprint: Map<number, string[]>;
 	/** typeID -> group name */
 	typeGroups: Map<number, string>;
 	/** typeID -> category name */
@@ -61,8 +69,12 @@ function fetchBlueprintData(): Promise<BlueprintData | null> {
 interface StaticGameData {
 	volumeMap: Map<number, number>;
 	typeList: Array<{ id: number; name: string }>;
-	/** blueprintID -> list of facility names that can run it */
+	/** blueprintID -> list of LIVE (published) facility names that can run it */
 	blueprintFacilities: Map<number, string[]>;
+	/** Blueprints runnable by >= 1 published facility */
+	buildableBlueprintIds: Set<number>;
+	/** blueprintID (no live facility) -> names of removed facilities that used to run it */
+	removedFacilitiesByBlueprint: Map<number, string[]>;
 	/** typeID -> group name */
 	typeGroups: Map<number, string>;
 	/** typeID -> category name */
@@ -77,6 +89,8 @@ interface RawTypeEntry {
 	typeNameID: string;
 	volume: number;
 	groupID?: number;
+	/** 1 = live in the current game build, 0 = removed/not-yet-released */
+	published?: number;
 }
 interface RawFacilityEntry {
 	facilityID: number;
@@ -114,6 +128,7 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 			const typeList: Array<{ id: number; name: string }> = [];
 			const typeNames = new Map<number, string>();
 			const typeGroupIds = new Map<number, number>();
+			const publishedTypeIds = new Set<number>();
 			for (const t of Object.values(types)) {
 				if (t.volume != null) volumeMap.set(t.typeID, t.volume);
 				if (t.typeNameID) {
@@ -121,6 +136,7 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 					typeNames.set(t.typeID, t.typeNameID);
 				}
 				if (t.groupID != null) typeGroupIds.set(t.typeID, t.groupID);
+				if (t.published === 1) publishedTypeIds.add(t.typeID);
 			}
 			typeList.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -141,20 +157,49 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 				}
 			}
 
+			// Only LIVE (published) facilities can run a blueprint in the current game build.
+			// Removed facilities (published=0, e.g. the Cycle 5 Assembler/Berths) are tracked
+			// separately so the UI can explain why a blueprint is Unavailable.
 			const blueprintFacilities = new Map<number, string[]>();
+			const removedFacilitiesByBlueprint = new Map<number, string[]>();
 			for (const fac of Object.values(facilities)) {
 				const facName = typeNames.get(fac.facilityID) ?? `Facility #${fac.facilityID}`;
+				const isPublished = publishedTypeIds.has(fac.facilityID);
 				for (const bp of fac.blueprints) {
-					const existing = blueprintFacilities.get(bp.blueprintID);
-					if (existing) {
-						existing.push(facName);
+					if (isPublished) {
+						const existing = blueprintFacilities.get(bp.blueprintID);
+						if (existing) {
+							existing.push(facName);
+						} else {
+							blueprintFacilities.set(bp.blueprintID, [facName]);
+						}
 					} else {
-						blueprintFacilities.set(bp.blueprintID, [facName]);
+						const existing = removedFacilitiesByBlueprint.get(bp.blueprintID);
+						if (existing) {
+							existing.push(facName);
+						} else {
+							removedFacilitiesByBlueprint.set(bp.blueprintID, [facName]);
+						}
 					}
 				}
 			}
+			// Keep removed-facility detail only for blueprints with NO live facility:
+			// a blueprint runnable by both a live and a removed facility is buildable.
+			for (const bpId of removedFacilitiesByBlueprint.keys()) {
+				if (blueprintFacilities.has(bpId)) removedFacilitiesByBlueprint.delete(bpId);
+			}
 
-			cachedGameData = { volumeMap, typeList, blueprintFacilities, typeGroups, typeCategories };
+			const buildableBlueprintIds = new Set<number>(blueprintFacilities.keys());
+
+			cachedGameData = {
+				volumeMap,
+				typeList,
+				blueprintFacilities,
+				buildableBlueprintIds,
+				removedFacilitiesByBlueprint,
+				typeGroups,
+				typeCategories,
+			};
 			return cachedGameData;
 		})
 		.catch(() => {
@@ -163,6 +208,8 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 				volumeMap: new Map<number, number>(),
 				typeList: [],
 				blueprintFacilities: new Map<number, string[]>(),
+				buildableBlueprintIds: new Set<number>(),
+				removedFacilitiesByBlueprint: new Map<number, string[]>(),
 				typeGroups: new Map<number, string>(),
 				typeCategories: new Map<number, string>(),
 			};
@@ -225,6 +272,14 @@ export function classifyRecipePath(
 	}
 
 	return classifyBp(blueprint, new Set<number>());
+}
+
+/**
+ * Whether a blueprint can be built in the current game build, i.e. at least one
+ * published (live) facility can run it.
+ */
+export function isBuildable(blueprintID: number, buildableBlueprintIds: Set<number>): boolean {
+	return buildableBlueprintIds.has(blueprintID);
 }
 
 /**
@@ -298,6 +353,12 @@ export function useBlueprintData(): BlueprintDataResult {
 	const [blueprintFacilities, setBlueprintFacilities] = useState<Map<number, string[]>>(
 		cachedGameData?.blueprintFacilities ?? new Map(),
 	);
+	const [buildableBlueprintIds, setBuildableBlueprintIds] = useState<Set<number>>(
+		cachedGameData?.buildableBlueprintIds ?? new Set(),
+	);
+	const [removedFacilitiesByBlueprint, setRemovedFacilitiesByBlueprint] = useState<
+		Map<number, string[]>
+	>(cachedGameData?.removedFacilitiesByBlueprint ?? new Map());
 	const [typeGroups, setTypeGroups] = useState<Map<number, string>>(
 		cachedGameData?.typeGroups ?? new Map(),
 	);
@@ -314,6 +375,8 @@ export function useBlueprintData(): BlueprintDataResult {
 			setVolumeMap(gd.volumeMap);
 			setTypeList(gd.typeList);
 			setBlueprintFacilities(gd.blueprintFacilities);
+			setBuildableBlueprintIds(gd.buildableBlueprintIds);
+			setRemovedFacilitiesByBlueprint(gd.removedFacilitiesByBlueprint);
 			setTypeGroups(gd.typeGroups);
 			setTypeCategories(gd.typeCategories);
 			setIsLoading(false);
@@ -365,6 +428,8 @@ export function useBlueprintData(): BlueprintDataResult {
 		volumeMap,
 		typeList,
 		blueprintFacilities,
+		buildableBlueprintIds,
+		removedFacilitiesByBlueprint,
 		typeGroups,
 		typeCategories,
 		isLoading,
