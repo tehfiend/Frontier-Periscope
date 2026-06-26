@@ -4,7 +4,7 @@ Peer into the frontier. The only [EVE Frontier](https://evefrontier.com) tool th
 
 Frontier Periscope publishes Move smart contracts directly from the browser through in-browser bytecode patching. No CLI, no gas station, no development environment. Custom currencies trade through on-chain order book markets with atomic escrow at any Smart Storage Unit. Eight Move contracts deployed on testnet cover markets, standings, gate tolls, SSU integration, turret extensions, treasuries, encrypted private maps, and token factory. Markets, gates, and storage units are connected through the on-chain standings layer. Everything runs in your browser with no backend server, no accounts, and no trust assumptions.
 
-Currently targeting **Cycle 6** (Sui testnet). Support will be updated as future cycles release.
+Currently targeting **Cycle 5** (Sui testnet). Support will be updated as future cycles release.
 
 ## Getting Started
 

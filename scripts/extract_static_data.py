@@ -30,7 +30,7 @@ import argparse
 from pathlib import Path
 
 
-# ResFile index entries (from resfileindex.txt, Cycle 6 (Stillness) build 3412401)
+# ResFile index entries (from resfileindex.txt, Cycle 5 (Stillness) build 3412401)
 RESFILE_PATHS = {
     "starmapcache": "2e/2edadfca55978bdf_d5729972f807b4030f34a295052d8624",
     "localization_en": "2c/2c3038b3c38e91a1_abf1d5b221e256227eb913a175677f00",

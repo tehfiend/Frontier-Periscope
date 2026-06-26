@@ -11,7 +11,7 @@ import { downloadJson, serializeTables } from "./dataExport";
  * `interim:<CYCLE_VERSION>`. Bumping this only forces a reset when chain is live -- normally the
  * Settings "Reset for new cycle" button drives interim resets.
  */
-export const CYCLE_VERSION = "cycle6-interim";
+export const CYCLE_VERSION = "cycle5-interim";
 
 /** `cacheMetadata` key holding the cycle-reset stamp. */
 export const CYCLE_DATA_KEY = "cycleData";
@@ -46,7 +46,7 @@ export async function archiveCycle(stamp: string): Promise<boolean> {
 		tables: await serializeTables(CYCLE_BOUND_TABLES),
 	};
 
-	// Slugify the stamp so sentinels (e.g. "interim:cycle6-interim") and 0x ids yield a legal
+	// Slugify the stamp so sentinels (e.g. "interim:cycle5-interim") and 0x ids yield a legal
 	// filename for both the download and the File System Access getFileHandle() path.
 	const slug = stamp.replace(/[^a-z0-9]/gi, "-").slice(0, 16);
 	const fileName = `periscope-cycle-${slug}-${new Date().toISOString().slice(0, 10)}.json`;

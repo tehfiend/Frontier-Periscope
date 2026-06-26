@@ -18,17 +18,17 @@ export const CHANGELOG: ChangelogEntry[] = [
 		version: "4.26.06.26",
 		date: "2026-06-26",
 		highlights:
-			"Cycle 6 (Stillness) update -- chain features temporarily disabled, refreshed static data, and a new cycle-reset tool",
+			"Cycle 5 update -- chain features temporarily disabled, refreshed static data, and a new cycle-reset tool",
 		changes: [
 			{
 				category: "changed",
 				description:
-					"Cycle 6 (Stillness) migration: temporarily disabled the chain-dependent features (Wallet, Structures, Market, Manifest, Killmails, Private Maps) while the world contracts are re-published -- the Log Analyzer, Industry Calculator, Star Map, Blueprints, and Jump Planner all keep working",
+					"Cycle 5 migration: temporarily disabled the chain-dependent features (Wallet, Structures, Market, Manifest, Killmails, Private Maps) while the world contracts are re-published -- the Log Analyzer, Industry Calculator, Star Map, Blueprints, and Jump Planner all keep working",
 			},
 			{
 				category: "changed",
 				description:
-					"Refreshed all Cycle 6 static game data -- items, blueprints, facilities, solar systems, and celestials -- rebuilt from the new Stillness client",
+					"Refreshed all Cycle 5 static game data -- items, blueprints, facilities, solar systems, and celestials -- rebuilt from the latest game client",
 			},
 			{
 				category: "added",
