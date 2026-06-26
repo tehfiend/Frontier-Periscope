@@ -4,21 +4,10 @@
     "categoryNameID": "#System",
     "published": 0
   },
-  "23": {
-    "categoryID": 23,
-    "categoryNameID": "Starbase",
-    "iconID": 0,
+  "2160": {
+    "categoryID": 2160,
+    "categoryNameID": "Modularity",
     "published": 1
-  },
-  "46": {
-    "categoryID": 46,
-    "categoryNameID": "Orbitals",
-    "published": 1
-  },
-  "1": {
-    "categoryID": 1,
-    "categoryNameID": "Owner",
-    "published": 0
   },
   "24": {
     "categoryID": 24,
@@ -26,14 +15,24 @@
     "iconID": 0,
     "published": 1
   },
-  "2": {
-    "categoryID": 2,
-    "categoryNameID": "Celestial",
-    "published": 1
+  "1": {
+    "categoryID": 1,
+    "categoryNameID": "Owner",
+    "published": 0
   },
   "25": {
     "categoryID": 25,
     "categoryNameID": "Asteroid",
+    "published": 1
+  },
+  "49": {
+    "categoryID": 49,
+    "categoryNameID": "Placeables",
+    "published": 0
+  },
+  "2": {
+    "categoryID": 2,
+    "categoryNameID": "Celestial",
     "published": 1
   },
   "26": {
@@ -46,16 +45,16 @@
     "categoryNameID": "Station",
     "published": 0
   },
-  "49": {
-    "categoryID": 49,
-    "categoryNameID": "Placeables",
-    "published": 0
-  },
   "4": {
     "categoryID": 4,
     "categoryNameID": "Material",
     "iconID": 22,
     "published": 1
+  },
+  "29": {
+    "categoryID": 29,
+    "categoryNameID": "Abstract",
+    "published": 0
   },
   "5": {
     "categoryID": 5,
@@ -63,14 +62,19 @@
     "iconID": 33,
     "published": 1
   },
-  "2145": {
-    "categoryID": 2145,
-    "categoryNameID": "characters",
+  "53": {
+    "categoryID": 53,
+    "categoryNameID": "Effects",
     "published": 0
   },
-  "29": {
-    "categoryID": 29,
-    "categoryNameID": "Abstract",
+  "30": {
+    "categoryID": 30,
+    "categoryNameID": "Apparel",
+    "published": 1
+  },
+  "54": {
+    "categoryID": 54,
+    "categoryNameID": "Lights",
     "published": 0
   },
   "6": {
@@ -79,35 +83,10 @@
     "iconID": 1443,
     "published": 1
   },
-  "2100": {
-    "categoryID": 2100,
-    "categoryNameID": "Expert Systems",
-    "published": 1
-  },
-  "30": {
-    "categoryID": 30,
-    "categoryNameID": "Apparel",
-    "published": 1
-  },
-  "53": {
-    "categoryID": 53,
-    "categoryNameID": "Effects",
-    "published": 0
-  },
   "7": {
     "categoryID": 7,
     "categoryNameID": "Module",
     "iconID": 67,
-    "published": 1
-  },
-  "54": {
-    "categoryID": 54,
-    "categoryNameID": "Lights",
-    "published": 0
-  },
-  "8": {
-    "categoryID": 8,
-    "categoryNameID": "Charge",
     "published": 1
   },
   "32": {
@@ -115,9 +94,14 @@
     "categoryNameID": "Subsystem",
     "published": 1
   },
-  "10": {
-    "categoryID": 10,
-    "categoryNameID": "Trading",
+  "8": {
+    "categoryID": 8,
+    "categoryNameID": "Charge",
+    "published": 1
+  },
+  "2145": {
+    "categoryID": 2145,
+    "categoryNameID": "characters",
     "published": 0
   },
   "350001": {
@@ -125,15 +109,20 @@
     "categoryNameID": "Infantry",
     "published": 0
   },
-  "11": {
-    "categoryID": 11,
-    "categoryNameID": "Entity",
+  "10": {
+    "categoryID": 10,
+    "categoryNameID": "Trading",
     "published": 0
   },
   "34": {
     "categoryID": 34,
     "categoryNameID": "Ancient Relics",
     "published": 1
+  },
+  "11": {
+    "categoryID": 11,
+    "categoryNameID": "Entity",
+    "published": 0
   },
   "35": {
     "categoryID": 35,
@@ -145,20 +134,30 @@
     "categoryNameID": "Cells",
     "published": 0
   },
+  "2100": {
+    "categoryID": 2100,
+    "categoryNameID": "Expert Systems",
+    "published": 1
+  },
   "14": {
     "categoryID": 14,
     "categoryNameID": "Bonus",
     "iconID": 0,
     "published": 0
   },
-  "2107": {
-    "categoryID": 2107,
-    "categoryNameID": "Mining",
-    "published": 0
+  "39": {
+    "categoryID": 39,
+    "categoryNameID": "Infrastructure Upgrades",
+    "published": 1
   },
-  "2153": {
-    "categoryID": 2153,
-    "categoryNameID": "Shell",
+  "63": {
+    "categoryID": 63,
+    "categoryNameID": "Special Edition Assets",
+    "published": 1
+  },
+  "87": {
+    "categoryID": 87,
+    "categoryNameID": "Fighter",
     "published": 1
   },
   "16": {
@@ -167,20 +166,25 @@
     "iconID": 33,
     "published": 1
   },
-  "39": {
-    "categoryID": 39,
-    "categoryNameID": "Infrastructure Upgrades",
-    "published": 1
-  },
   "17": {
     "categoryID": 17,
     "categoryNameID": "Commodity",
     "iconID": 0,
     "published": 1
   },
-  "63": {
-    "categoryID": 63,
-    "categoryNameID": "Special Edition Assets",
+  "2153": {
+    "categoryID": 2153,
+    "categoryNameID": "Shell",
+    "published": 1
+  },
+  "41": {
+    "categoryID": 41,
+    "categoryNameID": "Planetary Industry",
+    "published": 1
+  },
+  "65": {
+    "categoryID": 65,
+    "categoryNameID": "Structure",
     "published": 1
   },
   "18": {
@@ -190,24 +194,29 @@
     "published": 1,
     "sofBuildClass": "ship"
   },
-  "41": {
-    "categoryID": 41,
-    "categoryNameID": "Planetary Industry",
-    "published": 1
-  },
-  "87": {
-    "categoryID": 87,
-    "categoryNameID": "Fighter",
-    "published": 1
-  },
   "42": {
     "categoryID": 42,
     "categoryNameID": "Planetary Resources",
     "published": 1
   },
-  "65": {
-    "categoryID": 65,
-    "categoryNameID": "Structure",
+  "66": {
+    "categoryID": 66,
+    "categoryNameID": "Structure Module",
+    "published": 1
+  },
+  "2107": {
+    "categoryID": 2107,
+    "categoryNameID": "Mining",
+    "published": 0
+  },
+  "43": {
+    "categoryID": 43,
+    "categoryNameID": "Planetary Commodities",
+    "published": 1
+  },
+  "91": {
+    "categoryID": 91,
+    "categoryNameID": "SKINs",
     "published": 1
   },
   "20": {
@@ -216,15 +225,10 @@
     "iconID": 0,
     "published": 1
   },
-  "43": {
-    "categoryID": 43,
-    "categoryNameID": "Planetary Commodities",
-    "published": 1
-  },
-  "66": {
-    "categoryID": 66,
-    "categoryNameID": "Structure Module",
-    "published": 1
+  "2156": {
+    "categoryID": 2156,
+    "categoryNameID": "Kitbash",
+    "published": 0
   },
   "22": {
     "categoryID": 22,
@@ -232,9 +236,15 @@
     "iconID": 0,
     "published": 1
   },
-  "91": {
-    "categoryID": 91,
-    "categoryNameID": "SKINs",
+  "46": {
+    "categoryID": 46,
+    "categoryNameID": "Orbitals",
+    "published": 1
+  },
+  "23": {
+    "categoryID": 23,
+    "categoryNameID": "Starbase",
+    "iconID": 0,
     "published": 1
   }
 }

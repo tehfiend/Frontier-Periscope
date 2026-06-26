@@ -30,7 +30,7 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 	}, []);
 
 	async function initialize() {
-		const STELLAR_DATA_VERSION = "2.0.0";
+		const STELLAR_DATA_VERSION = "3.0.0";
 
 		// Check if static data is already loaded and up-to-date
 		const meta = await db.cacheMetadata.get("stellarData");

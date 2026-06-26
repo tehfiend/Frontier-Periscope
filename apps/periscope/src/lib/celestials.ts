@@ -26,7 +26,7 @@ export const SUN_TYPE_ID = 45031;
  */
 type CelestialsData = Record<string, [number, number, number, number, number, number][]>;
 
-const CELESTIALS_DATA_VERSION = "1.0.0";
+const CELESTIALS_DATA_VERSION = "2.0.0";
 
 /**
  * Ensures celestial data is loaded into the Dexie `celestials` table.

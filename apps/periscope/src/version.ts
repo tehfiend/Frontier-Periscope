@@ -17,12 +17,18 @@ export const CHANGELOG: ChangelogEntry[] = [
 	{
 		version: "3.26.06.26",
 		date: "2026-06-26",
-		highlights: "Cycle 6 interim build -- chain features temporarily disabled",
+		highlights:
+			"Cycle 6 interim build -- chain features temporarily disabled, refreshed static data",
 		changes: [
 			{
 				category: "changed",
 				description:
 					"Disabled chain-dependent features for the Cycle 6 world migration (re-enabled in a later build)",
+			},
+			{
+				category: "changed",
+				description:
+					"Refreshed Cycle 6 static game data (items, blueprints, systems, celestials)",
 			},
 		],
 	},
