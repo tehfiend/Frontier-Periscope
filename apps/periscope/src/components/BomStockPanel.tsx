@@ -1,4 +1,5 @@
 import { type AssemblyInventory, fetchAssemblyInventory } from "@/chain/inventory";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
@@ -312,54 +313,56 @@ export function BomStockPanel({ onStockChange, typeList }: BomStockPanelProps) {
 
 			{open && (
 				<div className="space-y-4 px-4 pb-4">
-					{/* SSU Selector */}
-					<div>
-						<h4 className="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-400">
-							<Box size={12} />
-							SSU Inventory
-						</h4>
+					{/* SSU Selector -- on-chain inventory; hidden when chain is disabled */}
+					{CHAIN_ENABLED && (
+						<div>
+							<h4 className="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+								<Box size={12} />
+								SSU Inventory
+							</h4>
 
-						{!hasWallet ? (
-							<div className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900/30 px-3 py-3 text-xs text-zinc-500">
-								<Wallet size={14} className="text-cyan-500" />
-								Connect your wallet to load SSU inventories.
-							</div>
-						) : loadingAssemblies ? (
-							<div className="flex items-center gap-2 text-xs text-zinc-500">
-								<Loader2 size={12} className="animate-spin" />
-								Loading assemblies...
-							</div>
-						) : storageAssemblies.length === 0 ? (
-							<div className="text-xs text-zinc-600">No storage units found.</div>
-						) : (
-							<div className="space-y-1">
-								{storageAssemblies.map((a) => {
-									const label = a.name || `${a.objectId.slice(0, 8)}...${a.objectId.slice(-4)}`;
-									const checked = selectedSsuIds.includes(a.objectId);
-									return (
-										<label
-											key={a.objectId}
-											className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-zinc-800/50"
-										>
-											<input
-												type="checkbox"
-												checked={checked}
-												onChange={() => toggleSsu(a.objectId)}
-												className="rounded border-zinc-600 bg-zinc-800 text-cyan-500 focus:ring-0 focus:ring-offset-0"
-											/>
-											<span className={checked ? "text-zinc-200" : "text-zinc-400"}>{label}</span>
-										</label>
-									);
-								})}
-								{loadingInventory && (
-									<div className="flex items-center gap-2 pt-1 text-xs text-zinc-500">
-										<Loader2 size={12} className="animate-spin" />
-										Loading inventory...
-									</div>
-								)}
-							</div>
-						)}
-					</div>
+							{!hasWallet ? (
+								<div className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900/30 px-3 py-3 text-xs text-zinc-500">
+									<Wallet size={14} className="text-cyan-500" />
+									Connect your wallet to load SSU inventories.
+								</div>
+							) : loadingAssemblies ? (
+								<div className="flex items-center gap-2 text-xs text-zinc-500">
+									<Loader2 size={12} className="animate-spin" />
+									Loading assemblies...
+								</div>
+							) : storageAssemblies.length === 0 ? (
+								<div className="text-xs text-zinc-600">No storage units found.</div>
+							) : (
+								<div className="space-y-1">
+									{storageAssemblies.map((a) => {
+										const label = a.name || `${a.objectId.slice(0, 8)}...${a.objectId.slice(-4)}`;
+										const checked = selectedSsuIds.includes(a.objectId);
+										return (
+											<label
+												key={a.objectId}
+												className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-zinc-800/50"
+											>
+												<input
+													type="checkbox"
+													checked={checked}
+													onChange={() => toggleSsu(a.objectId)}
+													className="rounded border-zinc-600 bg-zinc-800 text-cyan-500 focus:ring-0 focus:ring-offset-0"
+												/>
+												<span className={checked ? "text-zinc-200" : "text-zinc-400"}>{label}</span>
+											</label>
+										);
+									})}
+									{loadingInventory && (
+										<div className="flex items-center gap-2 pt-1 text-xs text-zinc-500">
+											<Loader2 size={12} className="animate-spin" />
+											Loading inventory...
+										</div>
+									)}
+								</div>
+							)}
+						</div>
+					)}
 
 					{/* Manual Stock */}
 					<div>

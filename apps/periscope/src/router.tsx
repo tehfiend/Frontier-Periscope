@@ -1,4 +1,5 @@
 import { Layout } from "@/components/Layout";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { Assets } from "@/views/Assets";
 import { Blueprints } from "@/views/Blueprints";
 import { Deployables } from "@/views/Deployables";
@@ -141,6 +142,9 @@ const mapRoute = createRoute({
 const structuresRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/structures",
+	beforeLoad: () => {
+		if (!CHAIN_ENABLED) throw redirect({ to: "/" });
+	},
 	component: Deployables,
 });
 
@@ -179,6 +183,9 @@ const targetsRoute = createRoute({
 const killmailsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/killmails",
+	beforeLoad: () => {
+		if (!CHAIN_ENABLED) throw redirect({ to: "/" });
+	},
 	component: Killmails,
 });
 
@@ -213,6 +220,9 @@ const extensionsRoute = createRoute({
 const currenciesRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/currencies",
+	beforeLoad: () => {
+		if (!CHAIN_ENABLED) throw redirect({ to: "/" });
+	},
 	component: CurrenciesPage,
 });
 
@@ -231,18 +241,27 @@ const settingsRoute = createRoute({
 const assetsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/assets",
+	beforeLoad: () => {
+		if (!CHAIN_ENABLED) throw redirect({ to: "/" });
+	},
 	component: Assets,
 });
 
 const manifestRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/manifest",
+	beforeLoad: () => {
+		if (!CHAIN_ENABLED) throw redirect({ to: "/" });
+	},
 	component: ManifestPage,
 });
 
 const walletRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/wallet",
+	beforeLoad: () => {
+		if (!CHAIN_ENABLED) throw redirect({ to: "/" });
+	},
 	component: WalletPage,
 });
 
@@ -255,6 +274,9 @@ const jumpPlannerRoute = createRoute({
 const privateMapsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/private-maps",
+	beforeLoad: () => {
+		if (!CHAIN_ENABLED) throw redirect({ to: "/" });
+	},
 	component: PrivateMapsPage,
 });
 

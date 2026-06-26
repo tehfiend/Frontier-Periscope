@@ -28,6 +28,7 @@ import { StandingBadge } from "@/components/StandingBadge";
 import { db } from "@/db";
 import type { Contact, RegistryStanding } from "@/db/types";
 import type { ManifestRegistry } from "@/db/types";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { walletErrorMessage } from "@/lib/format";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import {
@@ -157,8 +158,12 @@ export function Standings() {
 
 	const tabs: { id: StandingsTab; label: string; icon: React.ReactNode }[] = [
 		{ id: "contacts", label: "Contacts", icon: <BookUser size={14} /> },
-		{ id: "registries", label: "Registries", icon: <Globe size={14} /> },
-		{ id: "my-registries", label: "My Registries", icon: <Star size={14} /> },
+		...(CHAIN_ENABLED
+			? [
+					{ id: "registries" as StandingsTab, label: "Registries", icon: <Globe size={14} /> },
+					{ id: "my-registries" as StandingsTab, label: "My Registries", icon: <Star size={14} /> },
+				]
+			: []),
 	];
 
 	return (

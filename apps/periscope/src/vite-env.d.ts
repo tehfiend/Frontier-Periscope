@@ -1,5 +1,12 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+	readonly VITE_CHAIN_ENABLED?: string;
+}
+interface ImportMeta {
+	readonly env: ImportMetaEnv;
+}
+
 // File System Access API (Chromium-only, not yet in standard TS DOM types)
 interface FileSystemHandlePermissionDescriptor {
 	mode?: "read" | "readwrite";

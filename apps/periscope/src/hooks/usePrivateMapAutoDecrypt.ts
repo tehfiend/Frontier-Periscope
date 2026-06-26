@@ -5,6 +5,7 @@ import {
 	decryptStoredLocations,
 } from "@/chain/manifest";
 import { db } from "@/db";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { useStoredEncryptionKey } from "@/hooks/useStoredEncryptionKey";
 import { useEffect, useRef } from "react";
 
@@ -22,6 +23,7 @@ export function usePrivateMapAutoDecrypt() {
 	const ranRef = useRef(false);
 
 	useEffect(() => {
+		if (!CHAIN_ENABLED) return;
 		if (!keyPair || ranRef.current) return;
 		ranRef.current = true;
 

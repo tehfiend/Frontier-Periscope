@@ -20,6 +20,7 @@ import type {
 	SonarEventType,
 	SonarWatchItem,
 } from "@/db/types";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import {
 	addWatchItem,
 	removeWatchItem,
@@ -406,7 +407,7 @@ function SonarTabBar({
 }) {
 	return (
 		<div className="flex border-b border-zinc-800">
-			{SONAR_TABS.map(({ id, label }) => (
+			{SONAR_TABS.filter((t) => CHAIN_ENABLED || t.id !== "chainFeed").map(({ id, label }) => (
 				<button
 					key={id}
 					type="button"
@@ -1520,13 +1521,15 @@ export function Sonar() {
 						status={localStatus}
 						onToggle={() => setLocalEnabled(!localEnabled)}
 					/>
-					<ChannelToggle
-						label="Chain"
-						channel="chain"
-						enabled={chainEnabled}
-						status={chainStatus}
-						onToggle={() => setChainEnabled(!chainEnabled)}
-					/>
+					{CHAIN_ENABLED && (
+						<ChannelToggle
+							label="Chain"
+							channel="chain"
+							enabled={chainEnabled}
+							status={chainStatus}
+							onToggle={() => setChainEnabled(!chainEnabled)}
+						/>
+					)}
 				</div>
 			</div>
 
@@ -1537,7 +1540,7 @@ export function Sonar() {
 			<div className="flex-1 overflow-hidden">
 				{activeTab === "pings" && <PingsTab />}
 				{activeTab === "logFeed" && <LogFeedTab />}
-				{activeTab === "chainFeed" && <ChainFeedTab />}
+				{CHAIN_ENABLED && activeTab === "chainFeed" && <ChainFeedTab />}
 				{activeTab === "watchlist" && <WatchlistTab />}
 			</div>
 		</div>

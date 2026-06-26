@@ -6,6 +6,7 @@ import { discoverCharacterAndAssemblies } from "@/chain/queries";
 import type { TenantId } from "@/chain/config";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/db";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveCharacter } from "./useActiveCharacter";
 
 export function useActiveTenant(): TenantId {
@@ -48,7 +49,7 @@ export function useOwnedAssemblies() {
 			if (!address) throw new Error("No Sui address available");
 			return discoverCharacterAndAssemblies(client, address, tenant);
 		},
-		enabled: !!address,
+		enabled: CHAIN_ENABLED && !!address,
 		staleTime: 60_000,
 		refetchInterval: 120_000,
 	});

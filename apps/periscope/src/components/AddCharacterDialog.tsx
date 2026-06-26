@@ -12,6 +12,7 @@ import { walletErrorMessage } from "@/lib/format";
 import { getStoredHandle, requestDirectoryAccess, verifyPermission } from "@/lib/logFileAccess";
 import { ErrorMessage } from "./ErrorMessage";
 import { useAppStore } from "@/stores/appStore";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import {
 	X,
 	Wallet,
@@ -621,7 +622,10 @@ function SearchMethod({ onClose, tenant }: { onClose: () => void; tenant: Tenant
 	const [error, setError] = useState<string | null>(null);
 	const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
-	const isAddress = query.trim().startsWith("0x");
+	// When chain is disabled, never treat input as an address -- the
+	// fetchCharacterByAddress path requires chain access. Fall through to the
+	// local name-cache search instead.
+	const isAddress = CHAIN_ENABLED && query.trim().startsWith("0x");
 
 	async function handleSearch() {
 		const q = query.trim();
@@ -966,12 +970,12 @@ const TENANT_COLORS: Record<TenantId, string> = {
 
 export function AddCharacterDialog({ open, onClose }: Props) {
 	const tenant = useActiveTenant();
-	const [method, setMethod] = useState<Method>("wallet");
+	const [method, setMethod] = useState<Method>(CHAIN_ENABLED ? "wallet" : "logs");
 
 	// Reset on open
 	useEffect(() => {
 		if (open) {
-			setMethod("wallet");
+			setMethod(CHAIN_ENABLED ? "wallet" : "logs");
 		}
 	}, [open]);
 
@@ -1001,21 +1005,23 @@ export function AddCharacterDialog({ open, onClose }: Props) {
 				</div>
 
 				<div className="flex border-b border-zinc-800">
-					{methods.map((m) => (
-						<button
-							key={m.id}
-							type="button"
-							onClick={() => setMethod(m.id)}
-							className={`flex flex-1 items-center justify-center gap-1.5 px-3 py-3 text-xs font-medium transition-colors ${
-								method === m.id
-									? "border-b-2 border-cyan-500 text-cyan-400"
-									: "text-zinc-500 hover:text-zinc-300"
-							}`}
-						>
-							<m.icon size={14} />
-							{m.label}
-						</button>
-					))}
+					{methods
+						.filter((m) => CHAIN_ENABLED || m.id !== "wallet")
+						.map((m) => (
+							<button
+								key={m.id}
+								type="button"
+								onClick={() => setMethod(m.id)}
+								className={`flex flex-1 items-center justify-center gap-1.5 px-3 py-3 text-xs font-medium transition-colors ${
+									method === m.id
+										? "border-b-2 border-cyan-500 text-cyan-400"
+										: "text-zinc-500 hover:text-zinc-300"
+								}`}
+							>
+								<m.icon size={14} />
+								{m.label}
+							</button>
+						))}
 				</div>
 
 				{/* Content */}

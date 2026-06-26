@@ -1,6 +1,7 @@
 import { fetchCharacterByAddress, searchCachedCharacters } from "@/chain/manifest";
 import { db } from "@/db";
 import type { ManifestCharacter } from "@/db/types";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -120,6 +121,14 @@ export function ContactPicker({
 		if (!isAddressQuery || lookingUp) return;
 		setLookingUp(true);
 		try {
+			// When chain is off, never fire a live chain query -- fall back to the local cache only.
+			if (!CHAIN_ENABLED) {
+				const cached = await searchCachedCharacters(query.trim(), 1);
+				if (cached.length > 0) {
+					handleSelect(cached[0]);
+				}
+				return;
+			}
 			const result = await fetchCharacterByAddress(
 				client,
 				query.trim(),

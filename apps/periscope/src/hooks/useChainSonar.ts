@@ -3,6 +3,7 @@ import { pollCharacterEvents } from "@/chain/manifest";
 import { EVENT_HANDLER_REGISTRY, type HandlerContext } from "@/chain/sonarEventHandlers";
 import { db, trimEventTables } from "@/db";
 import type { SonarEvent } from "@/db/types";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useSonarStore } from "@/stores/sonarStore";
@@ -255,6 +256,7 @@ export function useChainSonar() {
 
 	// Initialize cursors from DB on first enable
 	useEffect(() => {
+		if (!CHAIN_ENABLED) return;
 		if (!chainEnabled || cursorsReady) return;
 
 		(async () => {
@@ -273,6 +275,14 @@ export function useChainSonar() {
 	}, [chainEnabled, cursorsReady]);
 
 	useEffect(() => {
+		if (!CHAIN_ENABLED) {
+			if (intervalRef.current) {
+				clearInterval(intervalRef.current);
+				intervalRef.current = null;
+			}
+			setChainStatus("off");
+			return;
+		}
 		if (!chainEnabled || !cursorsReady) {
 			if (intervalRef.current) {
 				clearInterval(intervalRef.current);

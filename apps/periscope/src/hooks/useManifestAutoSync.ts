@@ -10,6 +10,7 @@ import {
 	syncPrivateMapIndex,
 } from "@/chain/manifest";
 import { db } from "@/db";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useEffect, useRef } from "react";
 
@@ -32,6 +33,7 @@ export function useManifestAutoSync() {
 	useEffect(() => {
 		if (ran.current) return;
 		ran.current = true;
+		if (!CHAIN_ENABLED) return;
 
 		(async () => {
 			try {

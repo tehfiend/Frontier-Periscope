@@ -1,7 +1,7 @@
 // Version and changelog -- pure module (no browser APIs, no app imports).
 // Imported by vite.config.ts at build time in a Node context.
 
-export const APP_VERSION = "3.26.04.04";
+export const APP_VERSION = "3.26.06.26";
 
 export interface ChangelogEntry {
 	version: string;
@@ -14,6 +14,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+	{
+		version: "3.26.06.26",
+		date: "2026-06-26",
+		highlights: "Cycle 6 interim build -- chain features temporarily disabled",
+		changes: [
+			{
+				category: "changed",
+				description:
+					"Disabled chain-dependent features for the Cycle 6 world migration (re-enabled in a later build)",
+			},
+		],
+	},
 	{
 		version: "3.26.04.04",
 		date: "2026-04-04",

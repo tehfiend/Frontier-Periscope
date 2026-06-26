@@ -1,4 +1,5 @@
 import { db, notDeleted } from "@/db";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { useNavigate } from "@tanstack/react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -24,16 +25,35 @@ interface SearchResult {
 	action: () => void;
 }
 
-const NAV_ITEMS: { path: string; label: string; icon: LucideIcon; keywords: string }[] = [
+const NAV_ITEMS: {
+	path: string;
+	label: string;
+	icon: LucideIcon;
+	keywords: string;
+	chain?: boolean;
+}[] = [
 	{ path: "/map", label: "Star Map", icon: Map, keywords: "systems route 3d" },
-	{ path: "/killmails", label: "Killmails", icon: Skull, keywords: "combat kills deaths" },
+	{
+		path: "/killmails",
+		label: "Killmails",
+		icon: Skull,
+		keywords: "combat kills deaths",
+		chain: true,
+	},
 	{
 		path: "/structures",
 		label: "Structures",
 		icon: Package,
 		keywords: "assemblies fuel owned deployables",
+		chain: true,
 	},
-	{ path: "/assemblies", label: "Assemblies", icon: Box, keywords: "tracked discovered" },
+	{
+		path: "/assemblies",
+		label: "Assemblies",
+		icon: Box,
+		keywords: "tracked discovered",
+		chain: true,
+	},
 	{
 		path: "/blueprints",
 		label: "Blueprint Library",
@@ -62,6 +82,10 @@ export function CommandPalette() {
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 	const navigate = useNavigate();
+
+	// Hide chain-contract-dependent pages when the chain is disabled (Cycle-6 interim build).
+	// CHAIN_ENABLED is a build-time constant, so this is computed once.
+	const navItems = useMemo(() => NAV_ITEMS.filter((i) => CHAIN_ENABLED || !i.chain), []);
 
 	// Load searchable data
 	const systems = useLiveQuery(() => db.solarSystems.toArray());
@@ -104,7 +128,7 @@ export function CommandPalette() {
 	const results = useMemo((): SearchResult[] => {
 		if (!query.trim()) {
 			// Show nav items when no query
-			return NAV_ITEMS.map((item) => ({
+			return navItems.map((item) => ({
 				id: `nav-${item.path}`,
 				category: "Pages",
 				icon: item.icon,
@@ -117,7 +141,7 @@ export function CommandPalette() {
 		const out: SearchResult[] = [];
 
 		// Nav items
-		for (const item of NAV_ITEMS) {
+		for (const item of navItems) {
 			if (item.label.toLowerCase().includes(q) || item.keywords.includes(q)) {
 				out.push({
 					id: `nav-${item.path}`,
@@ -189,7 +213,7 @@ export function CommandPalette() {
 		}
 
 		return out;
-	}, [query, systems, deployables, assemblies, go]);
+	}, [query, systems, deployables, assemblies, go, navItems]);
 
 	// Keyboard navigation
 	function onKeyDown(e: React.KeyboardEvent) {

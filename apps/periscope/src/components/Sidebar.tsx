@@ -1,3 +1,4 @@
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useAppStore } from "@/stores/appStore";
 import { useSonarStore } from "@/stores/sonarStore";
@@ -34,6 +35,8 @@ interface NavItem {
 	statusDot?: boolean;
 	/** When true, only highlight when path matches exactly (needed for "/" prefix) */
 	exact?: boolean;
+	/** When true, this item depends on chain contracts and is hidden in static-only builds */
+	chain?: boolean;
 }
 
 interface NavGroup {
@@ -46,19 +49,19 @@ const navGroups: NavGroup[] = [
 		title: "Intel",
 		items: [
 			{ to: "/sonar", icon: Radio, label: "Sonar", statusDot: true },
-			{ to: "/killmails", icon: Skull, label: "Killmails" },
+			{ to: "/killmails", icon: Skull, label: "Killmails", chain: true },
 			{ to: "/standings", icon: BookUser, label: "Standings" },
-			{ to: "/private-maps", icon: Lock, label: "Private Maps" },
-			{ to: "/manifest", icon: Database, label: "Manifest" },
+			{ to: "/private-maps", icon: Lock, label: "Private Maps", chain: true },
+			{ to: "/manifest", icon: Database, label: "Manifest", chain: true },
 		],
 	},
 	{
 		title: "Assets",
 		items: [
-			{ to: "/currencies", icon: Coins, label: "Currencies" },
-			{ to: "/wallet", icon: Wallet, label: "Wallet" },
-			{ to: "/structures", icon: Package, label: "Structures" },
-			{ to: "/assets", icon: Boxes, label: "Inventory" },
+			{ to: "/currencies", icon: Coins, label: "Currencies", chain: true },
+			{ to: "/wallet", icon: Wallet, label: "Wallet", chain: true },
+			{ to: "/structures", icon: Package, label: "Structures", chain: true },
+			{ to: "/assets", icon: Boxes, label: "Inventory", chain: true },
 		],
 	},
 	{
@@ -149,6 +152,10 @@ export function Sidebar() {
 	const toggleSidebar = useAppStore((s) => s.toggleSidebar);
 	const tenant = useActiveTenant();
 
+	const visibleGroups = navGroups
+		.map((g) => ({ ...g, items: g.items.filter((i) => CHAIN_ENABLED || !i.chain) }))
+		.filter((g) => g.items.length > 0);
+
 	return (
 		<aside
 			className={`flex h-full flex-col border-r border-zinc-800 bg-zinc-950 transition-all ${
@@ -179,16 +186,18 @@ export function Sidebar() {
 
 			{/* Character Switcher + Wallet */}
 			<CharacterSwitcher />
-			<div className="px-2 pb-2">
-				<WalletConnect />
-			</div>
+			{CHAIN_ENABLED && (
+				<div className="px-2 pb-2">
+					<WalletConnect />
+				</div>
+			)}
 
 			{/* Navigation */}
 			<nav className="flex-1 overflow-y-auto px-2 py-4">
 				<div className="mb-4">
 					<NavLink to="/" icon={LayoutDashboard} label="Dashboard" exact />
 				</div>
-				{navGroups.map((group) => (
+				{visibleGroups.map((group) => (
 					<div key={group.title} className="mb-4">
 						{!collapsed && (
 							<h3 className="mb-1 px-3 text-xs font-medium uppercase tracking-wider text-zinc-600">

@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { useManifestAutoSync } from "@/hooks/useManifestAutoSync";
 import { usePrivateMapAutoDecrypt } from "@/hooks/usePrivateMapAutoDecrypt";
 import { fetchAndStoreGameTypes } from "@/lib/worldApi";
@@ -119,7 +120,7 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 
 		// Fetch game types from World API in background (non-blocking)
 		const typesMeta = await db.cacheMetadata.get("gameTypes");
-		if (!typesMeta) {
+		if (CHAIN_ENABLED && !typesMeta) {
 			fetchAndStoreGameTypes().catch((err) =>
 				console.warn("[DataInitializer] Failed to fetch game types:", err),
 			);

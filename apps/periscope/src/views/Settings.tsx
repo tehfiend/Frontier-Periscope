@@ -4,6 +4,7 @@ import { AddCharacterDialog } from "@/components/AddCharacterDialog";
 import { CopyAddress } from "@/components/CopyAddress";
 import { db, notDeleted } from "@/db";
 import type { CharacterRecord, CharacterSource } from "@/db/types";
+import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import {
 	clearBackupHandle,
@@ -127,71 +128,73 @@ export function Settings() {
 			</section>
 
 			{/* Game Types (World API) */}
-			<section className="mt-8">
-				<h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-400">
-					<Database size={16} />
-					Game Types (World API)
-				</h2>
-				<div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-					{typesMeta ? (
-						<div className="flex items-center justify-between">
-							<div className="grid grid-cols-2 gap-2 text-sm">
-								<span className="text-zinc-500">Types</span>
-								<span className="text-zinc-300">{typesMeta.counts?.types?.toLocaleString()}</span>
-								<span className="text-zinc-500">Fetched</span>
-								<span className="text-zinc-300">
-									{new Date(typesMeta.importedAt).toLocaleDateString()}
-								</span>
+			{CHAIN_ENABLED && (
+				<section className="mt-8">
+					<h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-400">
+						<Database size={16} />
+						Game Types (World API)
+					</h2>
+					<div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+						{typesMeta ? (
+							<div className="flex items-center justify-between">
+								<div className="grid grid-cols-2 gap-2 text-sm">
+									<span className="text-zinc-500">Types</span>
+									<span className="text-zinc-300">{typesMeta.counts?.types?.toLocaleString()}</span>
+									<span className="text-zinc-500">Fetched</span>
+									<span className="text-zinc-300">
+										{new Date(typesMeta.importedAt).toLocaleDateString()}
+									</span>
+								</div>
+								<button
+									type="button"
+									disabled={fetchingTypes}
+									onClick={async () => {
+										setFetchingTypes(true);
+										setTypesStatus("Fetching...");
+										try {
+											const count = await fetchAndStoreGameTypes();
+											setTypesStatus(`Updated: ${count} types`);
+										} catch (err) {
+											setTypesStatus(`Failed: ${err}`);
+										} finally {
+											setFetchingTypes(false);
+										}
+									}}
+									className="flex items-center gap-1.5 text-xs text-zinc-500 transition-colors hover:text-cyan-400 disabled:opacity-50"
+								>
+									<RefreshCw size={12} />
+									Refresh
+								</button>
 							</div>
-							<button
-								type="button"
-								disabled={fetchingTypes}
-								onClick={async () => {
-									setFetchingTypes(true);
-									setTypesStatus("Fetching...");
-									try {
-										const count = await fetchAndStoreGameTypes();
-										setTypesStatus(`Updated: ${count} types`);
-									} catch (err) {
-										setTypesStatus(`Failed: ${err}`);
-									} finally {
-										setFetchingTypes(false);
-									}
-								}}
-								className="flex items-center gap-1.5 text-xs text-zinc-500 transition-colors hover:text-cyan-400 disabled:opacity-50"
-							>
-								<RefreshCw size={12} />
-								Refresh
-							</button>
-						</div>
-					) : (
-						<div className="flex items-center justify-between">
-							<p className="text-sm text-zinc-500">Not yet fetched from World API.</p>
-							<button
-								type="button"
-								disabled={fetchingTypes}
-								onClick={async () => {
-									setFetchingTypes(true);
-									setTypesStatus("Fetching...");
-									try {
-										const count = await fetchAndStoreGameTypes();
-										setTypesStatus(`Fetched ${count} types`);
-									} catch (err) {
-										setTypesStatus(`Failed: ${err}`);
-									} finally {
-										setFetchingTypes(false);
-									}
-								}}
-								className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
-							>
-								<Download size={12} />
-								{fetchingTypes ? "Fetching..." : "Fetch Types"}
-							</button>
-						</div>
-					)}
-					{typesStatus && <p className="text-xs text-zinc-400">{typesStatus}</p>}
-				</div>
-			</section>
+						) : (
+							<div className="flex items-center justify-between">
+								<p className="text-sm text-zinc-500">Not yet fetched from World API.</p>
+								<button
+									type="button"
+									disabled={fetchingTypes}
+									onClick={async () => {
+										setFetchingTypes(true);
+										setTypesStatus("Fetching...");
+										try {
+											const count = await fetchAndStoreGameTypes();
+											setTypesStatus(`Fetched ${count} types`);
+										} catch (err) {
+											setTypesStatus(`Failed: ${err}`);
+										} finally {
+											setFetchingTypes(false);
+										}
+									}}
+									className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+								>
+									<Download size={12} />
+									{fetchingTypes ? "Fetching..." : "Fetch Types"}
+								</button>
+							</div>
+						)}
+						{typesStatus && <p className="text-xs text-zinc-400">{typesStatus}</p>}
+					</div>
+				</section>
+			)}
 
 			{/* Backup & Restore */}
 			<BackupRestore />
@@ -516,6 +519,7 @@ function CharacterCard({ character }: { character: CharacterRecord }) {
 	}
 
 	async function handleResolveFromChain() {
+		if (!CHAIN_ENABLED) return;
 		if (!character.characterId) {
 			setResolveStatus("No character ID — chain lookup requires a game log detection first");
 			return;
@@ -649,7 +653,7 @@ function CharacterCard({ character }: { character: CharacterRecord }) {
 								</button>
 							)}
 						</div>
-						{!character.suiAddress && character.characterId && (
+						{CHAIN_ENABLED && !character.suiAddress && character.characterId && (
 							<button
 								type="button"
 								onClick={handleResolveFromChain}
