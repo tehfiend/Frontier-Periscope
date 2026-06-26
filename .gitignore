@@ -51,3 +51,15 @@ tmp/
 CLAUDE.md
 docs/plans/
 docs/dispatch-log.md
+
+# AI tooling (local config)
+.mcp.json
+.serena/
+
+# Personal scratch
+turtle-log.md
+
+# Move contract diff scratch (analysis copies pulled for comparison, not source of truth)
+docs/*.move
+docs/moves_*.txt
+docs/tree_main.txt
