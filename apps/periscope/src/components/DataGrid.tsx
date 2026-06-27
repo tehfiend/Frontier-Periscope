@@ -1,4 +1,5 @@
 import {
+	type Column,
 	type ColumnDef,
 	type ColumnFiltersState,
 	type SortingState,
@@ -11,13 +12,92 @@ import {
 	useReactTable,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Search, X } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import { ColumnFilter } from "./ColumnFilter";
+import { type ReactNode, useEffect, useState } from "react";
+import { ColumnFilter, type ExcelFilterValue } from "./ColumnFilter";
 
 // ── Re-exports for consumers ────────────────────────────────────────────────
 
 export { excelFilterFn } from "./ColumnFilter";
 export type { ColumnDef } from "@tanstack/react-table";
+
+// ── Filter-state persistence ─────────────────────────────────────────────────
+
+interface PersistedFilters {
+	global: string;
+	cols: ColumnFiltersState;
+}
+
+function loadPersistedFilters(persistKey: string | undefined): PersistedFilters | null {
+	if (!persistKey) return null;
+	try {
+		const raw = localStorage.getItem(`dg-filters:${persistKey}`);
+		if (!raw) return null;
+		// Revive Set values -- ColumnFilter multiselect stores includedValues as a Set.
+		return JSON.parse(raw, (_k, v) =>
+			v && typeof v === "object" && Array.isArray((v as { __set?: unknown }).__set)
+				? new Set((v as { __set: string[] }).__set)
+				: v,
+		) as PersistedFilters;
+	} catch {
+		return null;
+	}
+}
+
+function savePersistedFilters(persistKey: string, value: PersistedFilters): void {
+	try {
+		localStorage.setItem(
+			`dg-filters:${persistKey}`,
+			JSON.stringify(value, (_k, v) => (v instanceof Set ? { __set: Array.from(v) } : v)),
+		);
+	} catch {
+		// quota or serialization failure -- ignore
+	}
+}
+
+// ── Per-column inline search ─────────────────────────────────────────────────
+
+/** A single always-visible "contains" search input beneath a column header. */
+function ColumnSearchCell<T>({ column }: { column: Column<T, unknown> }) {
+	if (!column.getCanFilter()) {
+		return <th className="px-1.5 pb-1.5" />;
+	}
+	const filter = column.getFilterValue() as ExcelFilterValue | undefined;
+	const value = filter?.mode === "textFilter" ? (filter.textFilterValue ?? "") : "";
+	return (
+		<th className="px-1.5 pb-1.5">
+			<div className="relative">
+				<input
+					type="text"
+					value={value}
+					onChange={(e) => {
+						const v = e.target.value;
+						column.setFilterValue(
+							v
+								? ({
+										mode: "textFilter",
+										textFilterType: "contains",
+										textFilterValue: v,
+									} satisfies ExcelFilterValue)
+								: undefined,
+						);
+					}}
+					placeholder="filter"
+					className="w-full rounded border border-zinc-700/60 bg-zinc-800/60 px-2 py-1 pr-6 text-xs font-normal text-zinc-300 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+				/>
+				{value && (
+					<button
+						type="button"
+						onClick={() => column.setFilterValue(undefined)}
+						className="absolute right-1 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+						title="Clear"
+					>
+						<X size={12} />
+					</button>
+				)}
+			</div>
+		</th>
+	);
+}
 
 // ── Component ───────────────────────────────────────────────────────────────
 
@@ -40,6 +120,10 @@ interface DataGridProps<T> {
 	onExport?: (rows: T[]) => void;
 	/** Initial sorting state (e.g. [{id: "timestamp", desc: true}]). */
 	initialSorting?: SortingState;
+	/** Render an always-visible per-column "contains" search row beneath the header. */
+	columnSearch?: boolean;
+	/** When set, persist global + column filter state to localStorage under this key. */
+	persistKey?: string;
 }
 
 export function DataGrid<T>({
@@ -55,10 +139,22 @@ export function DataGrid<T>({
 	onRowClick,
 	onExport,
 	initialSorting,
+	columnSearch = false,
+	persistKey,
 }: DataGridProps<T>) {
 	const [sorting, setSorting] = useState<SortingState>(initialSorting ?? []);
-	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-	const [globalFilter, setGlobalFilter] = useState("");
+	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(
+		() => loadPersistedFilters(persistKey)?.cols ?? [],
+	);
+	const [globalFilter, setGlobalFilter] = useState(
+		() => loadPersistedFilters(persistKey)?.global ?? "",
+	);
+
+	// Persist filter state so it survives navigating away from the table and back.
+	useEffect(() => {
+		if (!persistKey) return;
+		savePersistedFilters(persistKey, { global: globalFilter, cols: columnFilters });
+	}, [persistKey, globalFilter, columnFilters]);
 
 	const table = useReactTable({
 		data,
@@ -163,6 +259,13 @@ export function DataGrid<T>({
 								})}
 							</tr>
 						))}
+						{columnSearch && (
+							<tr className="border-b border-zinc-800 bg-zinc-900/60">
+								{table.getLeafHeaders().map((header) => (
+									<ColumnSearchCell key={header.id} column={header.column} />
+								))}
+							</tr>
+						)}
 					</thead>
 					<tbody>
 						{table.getRowModel().rows.length === 0 ? (

@@ -5,6 +5,7 @@ import {
 	classifyRecipePath,
 	computeDefaultRecipes,
 	findRawMaterials,
+	isRefineryFacility,
 } from "@/hooks/useBlueprintData";
 import { type BomResult, buildBomFromLp, resolveBom } from "@/lib/bomResolver";
 import type {
@@ -16,7 +17,12 @@ import type {
 	RecipePin,
 } from "@/lib/bomTypes";
 import { buildNameLookup, parseItemList } from "@/lib/fittingParser";
-import { ceilLpSolution, solveLp } from "@/lib/lpOptimizer";
+import {
+	ceilLpSolution,
+	isIntegralAndConsistent,
+	roundSolution,
+	solveLp,
+} from "@/lib/lpOptimizer";
 import {
 	AlertTriangle,
 	ChevronDown,
@@ -40,6 +46,35 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 const LS_ORDER_KEY = "bom-order-items";
 const LS_OVERRIDES_KEY = "bom-recipe-overrides";
 const LS_PINS_KEY = "bom-recipe-pins";
+
+// LP solver tuning. The overproduction penalty breaks the equal-weight objective's
+// degeneracy and steers recipe selection toward low-waste paths; the budget caps the
+// integer branch-and-bound so the solve stays interactive on very large orders.
+const LP_OVERPRODUCTION_PENALTY = 0.1;
+const LP_SOLVE_BUDGET_MS = 1500;
+
+// Source-preference model. Cycle 6 offers many ways to source the same input, so each
+// raw-material source GROUP (Comet Ores, Salvage, Rogue Drone Components, ...) can be
+// excluded or weighted to steer which raws the optimizer draws on.
+type SourcePref = "exclude" | "avoid" | "normal" | "prefer";
+const SOURCE_PREFS: SourcePref[] = ["exclude", "avoid", "normal", "prefer"];
+const SOURCE_PREF_WEIGHT: Record<"avoid" | "normal" | "prefer", number> = {
+	prefer: 0.25,
+	normal: 1,
+	avoid: 5,
+};
+const SOURCE_PREF_LABEL: Record<SourcePref, string> = {
+	exclude: "Exclude",
+	avoid: "Avoid",
+	normal: "Normal",
+	prefer: "Prefer",
+};
+const LS_SOURCE_PREFS_KEY = "bom-source-prefs";
+// Salvage is looted, not mined -- excluded by default (still usable if you hold stock).
+const SALVAGE_SOURCE_GROUP = "Salvage";
+function defaultSourcePref(group: string): SourcePref {
+	return group === SALVAGE_SOURCE_GROUP ? "exclude" : "normal";
+}
 
 function loadFromStorage<T>(key: string, fallback: T): T {
 	try {
@@ -1043,7 +1078,7 @@ function IntermediateTable({
 												{item.splits?.map((split, idx) => {
 													const facs = blueprintFacilities.get(split.blueprintId) ?? [];
 													const facLabel = facs.length > 0 ? facs[0] : `BP #${split.blueprintId}`;
-													const isRefinery = facs.some((f) => f.includes("Refinery"));
+													const isRefinery = facs.some(isRefineryFacility);
 													const splitBp = producers.find((p) => p.blueprintID === split.blueprintId);
 													const label = isRefinery && splitBp
 														? splitBp.inputs.map((i) => i.typeName).join(", ")
@@ -1292,6 +1327,52 @@ export function IndustryCalculator() {
 	// Facility filter state
 	const [selectedFacilities, setSelectedFacilities] = useState<Set<string>>(new Set());
 
+	// Source preferences: raw-material source group -> preference (persisted).
+	const [sourcePrefs, setSourcePrefs] = useState<Record<string, SourcePref>>(() =>
+		loadFromStorage<Record<string, SourcePref>>(LS_SOURCE_PREFS_KEY, {}),
+	);
+	useEffect(() => {
+		saveToStorage(LS_SOURCE_PREFS_KEY, sourcePrefs);
+	}, [sourcePrefs]);
+
+	// Group raw materials by their source group (Comet Ores, Salvage, etc.).
+	const sourceGroups = useMemo(() => {
+		const groupToIds = new Map<string, number[]>();
+		for (const rawId of rawMaterialIds) {
+			const group = typeGroups.get(rawId) ?? "Other";
+			const arr = groupToIds.get(group);
+			if (arr) arr.push(rawId);
+			else groupToIds.set(group, [rawId]);
+		}
+		return [...groupToIds.entries()]
+			.map(([group, ids]) => ({ group, ids }))
+			.sort((a, b) => a.group.localeCompare(b.group));
+	}, [rawMaterialIds, typeGroups]);
+
+	// Derive per-raw objective weights and the hard-excluded raw set from the preferences.
+	const { rawWeights, sourceExcludedRawIds } = useMemo(() => {
+		const weights = new Map<number, number>();
+		const excluded = new Set<number>();
+		// Before group data loads, sourceGroups is empty. Keep the baseline salvage gating
+		// (group-derived, or the seed set) so the solver never runs completely ungated.
+		if (sourceGroups.length === 0) {
+			for (const id of salvageMaterialIds) excluded.add(id);
+			return { rawWeights: weights, sourceExcludedRawIds: excluded };
+		}
+		for (const { group, ids } of sourceGroups) {
+			const pref = sourcePrefs[group] ?? defaultSourcePref(group);
+			for (const id of ids) {
+				if (pref === "exclude") excluded.add(id);
+				else weights.set(id, SOURCE_PREF_WEIGHT[pref]);
+			}
+		}
+		return { rawWeights: weights, sourceExcludedRawIds: excluded };
+	}, [sourceGroups, sourcePrefs, salvageMaterialIds]);
+
+	function setSourcePref(group: string, pref: SourcePref) {
+		setSourcePrefs((prev) => ({ ...prev, [group]: pref }));
+	}
+
 	const facilityGroups = useMemo(() => {
 		const names = new Set<string>();
 		for (const facs of blueprintFacilities.values()) {
@@ -1301,8 +1382,8 @@ export function IndustryCalculator() {
 		const classify: Array<[string, string[], string[]]> = [
 			[
 				"Refineries",
-				["Field Refinery", "Refinery", "Heavy Refinery"],
-				["Field", "Standard", "Heavy"],
+				["Material Processor", "Field Refinery", "Refinery", "Heavy Refinery"],
+				["Processor", "Field", "Standard", "Heavy"],
 			],
 			[
 				"Printers",
@@ -1526,12 +1607,32 @@ export function IndustryCalculator() {
 		const pinTypeIds = new Set(validPins.map((p) => p.typeId));
 		const allPins = [...validPins, ...overridePins.filter((p) => !pinTypeIds.has(p.typeId))];
 
-		const lpSolution = solveLp(orderItems, bpData, allPins, stockMap, salvageMaterialIds);
-		const ceiled = ceilLpSolution(lpSolution);
+		// Solve as an integer program (whole runs) with a small overproduction penalty, so the
+		// result is an executable, low-waste plan. If it is infeasible or the branch-and-bound
+		// times out with a fractional/inconsistent incumbent, fall back to the continuous solve
+		// rounded up (still cone-restricted, so no unrelated junk recipes).
+		let solved = solveLp(orderItems, bpData, allPins, stockMap, sourceExcludedRawIds, {
+			integer: true,
+			penalty: LP_OVERPRODUCTION_PENALTY,
+			timeoutMs: LP_SOLVE_BUDGET_MS,
+			rawWeights,
+		});
+		if (solved.feasible && isIntegralAndConsistent(solved, bpData, orderItems, stockMap)) {
+			// Clean up solver float noise now that the runs are confirmed (near-)integral.
+			solved = roundSolution(solved);
+		} else {
+			// Integer solve infeasible, or timed out with a fractional/inconsistent incumbent --
+			// fall back to the continuous solve rounded up (still cone-restricted, so no junk).
+			const continuous = solveLp(orderItems, bpData, allPins, stockMap, sourceExcludedRawIds, {
+				penalty: LP_OVERPRODUCTION_PENALTY,
+				rawWeights,
+			});
+			solved = ceilLpSolution(continuous);
+		}
 		const solveTimeMs = performance.now() - t0;
 		console.timeEnd("LP solve");
 
-		if (!ceiled.feasible) {
+		if (!solved.feasible) {
 			console.warn("LP infeasible, falling back to heuristic BOM resolution");
 			// Convert all pins to recipe overrides so the fallback honors user choices
 			const pinOverrides: RecipeOverride[] = allPins.flatMap((pin) => {
@@ -1566,7 +1667,7 @@ export function IndustryCalculator() {
 		}
 
 		return buildBomFromLp(
-			ceiled,
+			solved,
 			bpData,
 			orderItems,
 			volumeMap,
@@ -1584,7 +1685,8 @@ export function IndustryCalculator() {
 		volumeMap,
 		stockMap,
 		fullNameMap,
-		salvageMaterialIds,
+		rawWeights,
+		sourceExcludedRawIds,
 	]);
 
 	// Heuristic comparison result (for delta display)
@@ -1774,6 +1876,69 @@ export function IndustryCalculator() {
 			<div className="flex flex-1 overflow-hidden">
 				{/* Results Panel */}
 				<div className="flex-1 overflow-y-auto p-6">
+					{/* Sources -- steer which raw materials the optimizer draws on */}
+					{sourceGroups.length > 0 && (
+						<div className="mb-4">
+							<CollapsibleSection
+								title="Sources"
+								count={sourceGroups.length}
+								defaultOpen={false}
+								collapsedSummary="control how raw materials are sourced"
+							>
+								<div className="space-y-0.5 px-4 pb-3">
+									<p className="py-1 text-xs text-zinc-500">
+										Steer how inputs are sourced. Excluded sources are only used if you hold them in
+										stock; Prefer/Avoid bias the optimizer without forbidding a source.
+									</p>
+									{sourceGroups.map(({ group, ids }) => {
+										const pref = sourcePrefs[group] ?? defaultSourcePref(group);
+										const sample = ids
+											.slice(0, 8)
+											.map((id) => fullNameMap.get(id) ?? `#${id}`)
+											.join(", ");
+										return (
+											<div key={group} className="flex items-center justify-between gap-3 py-0.5">
+												<span
+													className="truncate text-xs text-zinc-300"
+													title={`${ids.length} material${ids.length === 1 ? "" : "s"}: ${sample}`}
+												>
+													{group} <span className="text-zinc-600">({ids.length})</span>
+												</span>
+												<div className="flex shrink-0 overflow-hidden rounded border border-zinc-700">
+													{SOURCE_PREFS.map((p) => {
+														const active = pref === p;
+														const activeClass =
+															p === "exclude"
+																? "bg-red-500/20 text-red-300"
+																: p === "avoid"
+																	? "bg-amber-500/20 text-amber-300"
+																	: p === "prefer"
+																		? "bg-emerald-500/20 text-emerald-300"
+																		: "bg-zinc-700 text-zinc-100";
+														return (
+															<button
+																key={p}
+																type="button"
+																onClick={() => setSourcePref(group, p)}
+																className={`px-2 py-0.5 text-[11px] transition-colors ${
+																	active
+																		? activeClass
+																		: "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+																}`}
+															>
+																{SOURCE_PREF_LABEL[p]}
+															</button>
+														);
+													})}
+												</div>
+											</div>
+										);
+									})}
+								</div>
+							</CollapsibleSection>
+						</div>
+					)}
+
 					{/* Production List -- integrated with finals */}
 					<div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/30">
 						<div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2.5">

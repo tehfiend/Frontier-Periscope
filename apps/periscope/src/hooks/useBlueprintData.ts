@@ -1,11 +1,18 @@
 import type { Blueprint, BlueprintData } from "@/lib/bomTypes";
 import { useEffect, useMemo, useState } from "react";
 
-/** Known salvage-type leaf node typeIDs */
+/**
+ * Seed salvage-type leaf node typeIDs. The full set is derived at runtime from every
+ * type in the game-data "Salvage" group (see salvageMaterialIds below); these two are
+ * kept as a fallback in case group data fails to load.
+ */
 const SALVAGE_MATERIAL_IDS: Set<number> = new Set([
 	88764, // Salvaged Materials
 	88765, // Mummified Clone
 ]);
+
+/** Game-data group name whose members are treated as salvage (looted, not produced). */
+const SALVAGE_GROUP_NAME = "Salvage";
 
 interface BlueprintDataResult {
 	/** Raw loaded data (keyed by blueprintID) */
@@ -283,6 +290,16 @@ export function isBuildable(blueprintID: number, buildableBlueprintIds: Set<numb
 }
 
 /**
+ * Refinery-class facility names. The Cycle 6 "Material Processor" is the entry-tier
+ * refinery (reprocesses ore -> minerals) but its name lacks the "Refinery" substring,
+ * so it must be matched explicitly. Used for facility grouping and for refinery-specific
+ * display (time-per-input, input-material labels) across the Industry/Blueprint views.
+ */
+export function isRefineryFacility(facilityName: string): boolean {
+	return facilityName.includes("Refinery") || facilityName === "Material Processor";
+}
+
+/**
  * Find all typeIDs that are inputs but never outputs of any blueprint (raw/leaf nodes).
  */
 export function findRawMaterials(blueprints: Record<string, Blueprint>): Set<number> {
@@ -411,7 +428,19 @@ export function useBlueprintData(): BlueprintDataResult {
 
 	const rawMaterialIds = useMemo(() => findRawMaterials(blueprints), [blueprints]);
 
-	const salvageMaterialIds = useMemo(() => SALVAGE_MATERIAL_IDS, []);
+	// Derive the salvage set from the "Salvage" group so ALL salvage materials (e.g. Cargo
+	// Debris, Cinderwrack) are gated, not just the two hardcoded seeds. Falls back to the
+	// seed set if group data has not loaded yet.
+	const salvageMaterialIds = useMemo(() => {
+		const ids = new Set<number>(SALVAGE_MATERIAL_IDS);
+		for (const [typeId, groupName] of typeGroups) {
+			// Only LEAF raws: the "Salvage" group also contains ore-craftable items
+			// (e.g. Brace Weld, Coolant Reservoir) that must NOT be treated as salvage,
+			// or recipes consuming them get mislabeled salvage-path.
+			if (groupName === SALVAGE_GROUP_NAME && rawMaterialIds.has(typeId)) ids.add(typeId);
+		}
+		return ids;
+	}, [typeGroups, rawMaterialIds]);
 
 	const defaultRecipes = useMemo(
 		() => computeDefaultRecipes(outputToBlueprints, rawMaterialIds, salvageMaterialIds),

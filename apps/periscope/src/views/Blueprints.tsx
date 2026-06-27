@@ -1,7 +1,7 @@
 import { excelFilterFn } from "@/components/ColumnFilter";
 import { DataGrid } from "@/components/DataGrid";
 import { ItemIcon } from "@/components/ItemIcon";
-import { useBlueprintData } from "@/hooks/useBlueprintData";
+import { isRefineryFacility, useBlueprintData } from "@/hooks/useBlueprintData";
 import type { Blueprint } from "@/lib/bomTypes";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useNavigate } from "@tanstack/react-router";
@@ -237,7 +237,7 @@ export function Blueprints() {
 				enableColumnFilter: false,
 				cell: ({ row }) => {
 					const { bp, facilities, totalInputQty, primaryQty } = row.original;
-					const isRefinery = facilities.some((f) => f.includes("Refinery"));
+					const isRefinery = facilities.some(isRefineryFacility);
 					return (
 						<div className="text-right">
 							<span className="flex items-center justify-end gap-1 whitespace-nowrap text-zinc-300">
@@ -307,7 +307,9 @@ export function Blueprints() {
 			columns={columns}
 			data={rows}
 			keyFn={(r) => String(r.bp.blueprintID)}
-			searchPlaceholder="Search blueprints, materials, groups..."
+			columnSearch
+			persistKey="blueprint-library"
+			searchPlaceholder="Search all columns..."
 			emptyMessage="No blueprints found"
 			initialSorting={[{ id: "name", desc: false }]}
 			actions={

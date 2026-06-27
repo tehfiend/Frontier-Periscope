@@ -1,10 +1,11 @@
 declare module "javascript-lp-solver" {
-	interface Model {
+	export interface Model {
 		optimize: string;
 		opType: "min" | "max";
 		constraints: Record<string, { min?: number; max?: number; equal?: number }>;
 		variables: Record<string, Record<string, number>>;
 		ints?: Record<string, number>;
+		options?: { timeout?: number; tolerance?: number };
 	}
 
 	interface Solution {
