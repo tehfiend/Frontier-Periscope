@@ -156,7 +156,7 @@ Do not wait for the values to be hand-fed. They are all published by CCP. Pull t
 > **Periscope's own contracts are NOT here.** The `CONTRACT_ADDRESSES` entries (market,
 > standings, gate/turret extensions) are *tehfiend's* deployments, not CCP's. They are not in
 > EF's repos -- they must be **re-published against the new world** by us. See
-> `docs/plans/pending/25-dev-deployment.md` for the republish-vs-upgrade flow.
+> `docs/plans/active/25-dev-deployment.md` for the republish-vs-upgrade flow.
 
 ---
 
@@ -171,7 +171,7 @@ Pull these from the sources in Section 2A (do not wait to be given them):
 - [ ] New **datahub / World API base URL** for the cycle, if changed
       (`world-api-stillness.live.tech.evefrontier.com`).
 - [ ] New **per-extension contract package IDs** if Periscope's own Move contracts must be
-      republished against the new world (see `docs/plans/pending/25-dev-deployment.md` for the
+      republished against the new world (see `docs/plans/active/25-dev-deployment.md` for the
       republish-vs-upgrade model). On a fresh cycle, world-dependent contracts (`ssu_unified`,
       `turret_priority`, gate/standings extensions) usually need re-publishing.
 - [ ] Confirmed **patched client install path** and that the client has finished updating.
@@ -208,7 +208,7 @@ full coordinator/implementation session, source edits are allowed per the phase 
 ## 4. Read-first context (orientation each cycle)
 
 - `CLAUDE.md` (root), `docs/CLAUDE.md`, `~/.claude/CLAUDE.md` -- conventions + methodology.
-- `docs/plans/pending/25-dev-deployment.md` -- contract config split, republish-vs-upgrade,
+- `docs/plans/active/25-dev-deployment.md` -- contract config split, republish-vs-upgrade,
   the full `getContractAddresses` call-site map. **Most relevant existing plan.**
 - `docs/plans/archive/18-stillness-support.md` -- multi-tenant model.
 - `docs/plans/archive/23-lp-optimizer.md`, `22-bill-of-materials.md`, `docs/labor-valuation.md`
@@ -447,7 +447,7 @@ removed them).
   for Cycle 6 it equals the package id (`0x8b8a46ed...`, fresh v1 publish).
 - **Q3 -- Contracts:** Do Periscope's world-dependent Move contracts need republishing this
   cycle (against the new Stillness world)? **Likely yes** -- they are our own deployments, not in
-  EF's repos; follow `docs/plans/pending/25-dev-deployment.md`. Confirm scope (which contracts).
+  EF's repos; follow `docs/plans/active/25-dev-deployment.md`. Confirm scope (which contracts).
 - **Q4 -- Archive:** Should the prior cycle's static map/data get a public archive route, or is a
   git tag snapshot sufficient?
 - **Q5 -- Checkpoint:** Does any query need the starting checkpoint as a floor, or is it
