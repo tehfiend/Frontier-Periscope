@@ -214,12 +214,15 @@ function WalletMethod({ onClose, tenant }: { onClose: () => void; tenant: Tenant
 				account.address,
 				tenant,
 			);
-			if (!discovery.character?.name) {
+			if (!discovery.character) {
 				setError("No character found for this wallet on this server.");
 				return;
 			}
 			const { name, characterObjectId, characterItemId, tribeId } =
 				discovery.character;
+			// A C6 character can exist on-chain before its metadata name resolves;
+			// accept it and use a placeholder rather than rejecting a real character.
+			const safeName = name || "(unnamed)";
 
 			// Check tribe name from manifest
 			let tribeName: string | undefined;
@@ -236,12 +239,12 @@ function WalletMethod({ onClose, tenant }: { onClose: () => void; tenant: Tenant
 					? existing.some((c) => c.characterId === characterItemId)
 					: false) ||
 				existing.some(
-					(c) => c.characterName.toLowerCase() === name.toLowerCase(),
+					(c) => c.characterName.toLowerCase() === safeName.toLowerCase(),
 				);
 
 			setResult({
 				characterId: characterItemId,
-				characterName: name,
+				characterName: safeName,
 				suiAddress: account.address,
 				tribeId,
 				tribe: tribeName,
