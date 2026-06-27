@@ -1,7 +1,7 @@
 // Version and changelog -- pure module (no browser APIs, no app imports).
 // Imported by vite.config.ts at build time in a Node context.
 
-export const APP_VERSION = "4.26.06.26";
+export const APP_VERSION = "5.26.06.26";
 
 export interface ChangelogEntry {
 	version: string;
@@ -15,20 +15,43 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
-		version: "4.26.06.26",
+		version: "5.26.06.26",
 		date: "2026-06-26",
 		highlights:
-			"Cycle 5 update -- chain features temporarily disabled, refreshed static data, and a new cycle-reset tool",
+			"Cycle 6 chain re-enabled -- Wallet, Structures, Market, Manifest, Killmails, and Private Maps are back online against the new world, plus new Rift Intel tracking",
 		changes: [
 			{
 				category: "changed",
 				description:
-					"Cycle 5 migration: temporarily disabled the chain-dependent features (Wallet, Structures, Market, Manifest, Killmails, Private Maps) while the world contracts are re-published -- the Log Analyzer, Industry Calculator, Star Map, Blueprints, and Jump Planner all keep working",
+					"Re-enabled the chain-dependent features for the Cycle 6 world -- republished the SSU contract against the new world package and restored Wallet, Structures, Market, Manifest, Killmails, and Private Maps",
+			},
+			{
+				category: "added",
+				description:
+					"Rift Intel: newly-revealed Cycle 6 rifts now ping in Sonar and plot on the Star Map as fuchsia markers",
+			},
+			{
+				category: "fixed",
+				description:
+					"Cleared stale Cycle 5 chain data on first load so structures, manifest, and Sonar re-sync cleanly against the Cycle 6 world",
+			},
+		],
+	},
+	{
+		version: "4.26.06.26",
+		date: "2026-06-26",
+		highlights:
+			"Cycle 6 update -- chain features temporarily disabled, refreshed static data, and a new cycle-reset tool",
+		changes: [
+			{
+				category: "changed",
+				description:
+					"Cycle 6 migration: temporarily disabled the chain-dependent features (Wallet, Structures, Market, Manifest, Killmails, Private Maps) while the world contracts are re-published -- the Log Analyzer, Industry Calculator, Star Map, Blueprints, and Jump Planner all keep working",
 			},
 			{
 				category: "changed",
 				description:
-					"Refreshed all Cycle 5 static game data -- items, blueprints, facilities, solar systems, and celestials -- rebuilt from the latest game client",
+					"Refreshed all Cycle 6 static game data -- items, blueprints, facilities, solar systems, and celestials -- rebuilt from the latest game client",
 			},
 			{
 				category: "added",

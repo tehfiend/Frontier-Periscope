@@ -158,7 +158,7 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 			}
 
 			// Only LIVE (published) facilities can run a blueprint in the current game build.
-			// Removed facilities (published=0, e.g. the Cycle 5 Assembler/Berths) are tracked
+			// Removed facilities (published=0, e.g. the Assembler/Berths removed in Cycle 6) are tracked
 			// separately so the UI can explain why a blueprint is Unavailable.
 			const blueprintFacilities = new Map<number, string[]>();
 			const removedFacilitiesByBlueprint = new Map<number, string[]>();

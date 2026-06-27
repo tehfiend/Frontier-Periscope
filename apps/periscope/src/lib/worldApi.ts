@@ -3,6 +3,10 @@ import type { GameType } from "@/db/types";
 
 const BASE_URL = "https://world-api-stillness.live.tech.evefrontier.com";
 
+/** Cache version for gameTypes -- bump per cycle to force a refetch. DataInitializer compares the
+ *  stored cacheMetadata.gameTypes.version against this to decide whether to refetch. */
+export const GAME_TYPES_VERSION = "world-api-cycle6";
+
 interface WorldApiTypeResponse {
 	id: number;
 	name: string;
@@ -55,7 +59,7 @@ export async function fetchAndStoreGameTypes(): Promise<number> {
 	await db.gameTypes.bulkPut(allTypes);
 	await db.cacheMetadata.put({
 		key: "gameTypes",
-		version: "world-api-v2",
+		version: GAME_TYPES_VERSION,
 		importedAt: new Date().toISOString(),
 		counts: { types: allTypes.length },
 	});

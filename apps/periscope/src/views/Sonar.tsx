@@ -118,6 +118,9 @@ function getEventBadgeColor(eventType: string): string {
 		case "item_burned":
 		case "item_destroyed":
 			return "bg-teal-500/15 text-teal-400";
+		// Fuchsia -- rifts
+		case "rift_revealed":
+			return "bg-fuchsia-500/15 text-fuchsia-400";
 		// Default
 		default:
 			return "bg-zinc-500/15 text-zinc-400";
@@ -515,6 +518,12 @@ const PING_CATEGORIES: PingCategory[] = [
 		types: {
 			exchange_order_placed: "Exchange Order Placed",
 			exchange_order_cancelled: "Exchange Order Cancelled",
+		},
+	},
+	{
+		label: "Rifts",
+		types: {
+			rift_revealed: "Rift Revealed",
 		},
 	},
 ];

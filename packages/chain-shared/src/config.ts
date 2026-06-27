@@ -43,8 +43,8 @@ export const CONTRACT_ADDRESSES: Record<TenantId, ContractAddresses> = {
 			packageId: "0xade891ec8e8eca5f7594a16fc57ab78b8b20d62a1706218c334be8d7b59214ed",
 		},
 		ssuUnified: {
-			packageId: "0xc22771b2828db1f8ba4eb1cd7d4024bb9c0ab4c8ddbf503bbe069544b6f51505",
-			originalPackageId: "0x51c36d31b89cf1e7d3feb96ed6376f7c49b41d64419122428106ba9daed2a83f",
+			packageId: "0xdf1095374dbf3646201ad63c7271e6e82f6dc03b1600cdccf32d778aba63b606",
+			originalPackageId: "0xdf1095374dbf3646201ad63c7271e6e82f6dc03b1600cdccf32d778aba63b606",
 			previousOriginalPackageIds: [
 				"0x5f8d1a1da12b0d9a6934a0db38af1200612971380730371ac75e6d1acdb88294",
 				"0x0a6a70355f96e07417aa2e5b59c1e2ea8757c5ade5e8000bfc8daab93bfee2be",

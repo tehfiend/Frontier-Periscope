@@ -8,7 +8,7 @@ Three icon sources:
   2. graphicID -> model render icons (resfileindex.txt) -> 3D model previews
      Covers ships, deployables, structures (64/128/512px, with no-background variants)
   3. CCP CDN -- https://artifacts.evefrontier.com/types/{typeId}.png
-     (~36 deployables/fuels have CDN icons as of Cycle 5)
+     (~36 deployables/fuels have CDN icons as of Cycle 6)
 
 Usage:
   py scripts/extract_icons.py [--game-root "C:/CCP/EVE Frontier"] [--server stillness]

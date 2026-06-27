@@ -83,7 +83,7 @@ export function CommandPalette() {
 	const listRef = useRef<HTMLDivElement>(null);
 	const navigate = useNavigate();
 
-	// Hide chain-contract-dependent pages when the chain is disabled (Cycle-5 interim build).
+	// Hide chain-contract-dependent pages when the chain is disabled (Cycle-6 interim build).
 	// CHAIN_ENABLED is a build-time constant, so this is computed once.
 	const navItems = useMemo(() => NAV_ITEMS.filter((i) => CHAIN_ENABLED || !i.chain), []);
 

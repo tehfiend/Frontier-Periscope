@@ -100,7 +100,7 @@ export function App() {
 						)}
 					</main>
 					<footer className="border-t border-zinc-800/50 px-4 py-2 text-center text-xs text-zinc-700">
-						Frontier Periscope &middot; EVE Frontier Cycle 5
+						Frontier Periscope &middot; EVE Frontier Cycle 6
 					</footer>
 				</div>
 			</DAppKitProvider>

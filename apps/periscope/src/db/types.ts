@@ -491,6 +491,35 @@ export interface ManifestLocation {
 	cachedAt: string;
 }
 
+export interface RiftIntel {
+	/** On-chain rift_id (ID) -- primary key */
+	id: string;
+	/** In-game item ID from rift_key.item_id */
+	riftItemId: string;
+	/** Tenant from rift_key.tenant */
+	tenant: string;
+	/** Lifecycle status -- monotonic spawned -> revealed, never downgraded */
+	status: "spawned" | "revealed";
+	/** Hex of location_hash (vector<u8>) -- display/diagnostic only */
+	locationHash: string;
+	/** Solar system ID -- revealed only */
+	solarsystem?: number;
+	/** Raw X coordinate (string, sun-relative, supports negatives) -- revealed only */
+	x?: string;
+	/** Raw Y coordinate -- revealed only */
+	y?: string;
+	/** Raw Z coordinate -- revealed only */
+	z?: string;
+	/** Resolved nearest L-point label (e.g. "P2-L3") -- revealed only */
+	lPoint?: string;
+	/** ISO timestamp of the RiftSpawnedEvent tx */
+	spawnedAt?: string;
+	/** ISO timestamp of the RiftLocationBroadcastEvent tx */
+	revealedAt?: string;
+	/** When this entry was last cached */
+	cachedAt: string;
+}
+
 export interface ManifestMarket {
 	/** Market<T> object ID */
 	id: string;
@@ -911,7 +940,10 @@ export type SonarEventType =
 	| "access_granted"
 	// ── Exchange ────────────────────────────────────────────────────────────
 	| "exchange_order_placed"
-	| "exchange_order_cancelled";
+	| "exchange_order_cancelled"
+	// ── Rifts ─────────────────────────────────────────────────────────────────
+	| "rift_spawned"
+	| "rift_revealed";
 
 export interface SonarEvent {
 	id?: number;

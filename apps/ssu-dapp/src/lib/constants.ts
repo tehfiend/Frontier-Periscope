@@ -2,19 +2,19 @@ import { type TenantId, getContractAddresses } from "@tehfrontier/chain-shared";
 
 /** World original package IDs per tenant -- for type strings in GraphQL queries */
 export const WORLD_PACKAGE_IDS: Record<string, string> = {
-	stillness: "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c",
+	stillness: "0x8b8a46ed766fa1358ce7c5c51f6a164b13d627a63e45343f69ed0ba0446c1aa1",
 	utopia: "0xd12a70c74c1e759445d6f209b01d43d860e97fcf2ef72ccbbd00afd828043f75",
 };
 
 /** World published-at addresses per tenant -- for moveCall targets (only needed when upgraded) */
 const WORLD_PUBLISHED_AT: Record<string, string> = {
-	stillness: "0xd2fd1224f881e7a705dbc211888af11655c315f2ee0f03fe680fc3176e6e4780",
+	stillness: "0x8b8a46ed766fa1358ce7c5c51f6a164b13d627a63e45343f69ed0ba0446c1aa1",
 	utopia: "0x07e6b810c2dff6df56ea7fbad9ff32f4d84cbee53e496267515887b712924bd1",
 };
 
 /** ObjectRegistry singleton addresses per tenant */
 export const OBJECT_REGISTRY_ADDRESSES: Record<string, string> = {
-	stillness: "0x454a9aa3d37e1d08d3c9181239c1b683781e4087fbbbd48c935d54b6736fd05c",
+	stillness: "0xf6aed9361acc0d7021672b653ebe9dae45d88e11fecef01cc5434c8f60ae764f",
 	utopia: "0xc2b969a72046c47e24991d69472afb2216af9e91caf802684514f39706d7dc57",
 };
 

@@ -3,7 +3,7 @@ name = "ssu_unified"
 edition = "2024"
 
 [dependencies]
-world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "v0.0.21" }
+world = { git = "https://github.com/evefrontier/world-contracts.git", subdir = "contracts/world", rev = "d1929fad79736f6db66b74f946658807ce4704bf" }
 market = { local = "../market" }
 
 [environments]

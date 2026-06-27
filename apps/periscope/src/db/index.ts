@@ -37,6 +37,7 @@ import type {
 	PlayerIntel,
 	Region,
 	RegistryStanding,
+	RiftIntel,
 	SettingsEntry,
 	SolarSystem,
 	SonarChannelState,
@@ -135,6 +136,9 @@ class PeriscopeDB extends Dexie {
 
 	// Exchange pairs (OrderBook discovery cache)
 	manifestExchangePairs!: EntityTable<ManifestExchangePair, "id">;
+
+	// Rift Intel (Cycle 6 rift tracking -- chain-derived cache)
+	rifts!: EntityTable<RiftIntel, "id">;
 
 	constructor() {
 		super("frontier-periscope");
@@ -582,6 +586,53 @@ class PeriscopeDB extends Dexie {
 		this.version(32).stores({
 			treasuries: "id, owner, coinType",
 			manifestExchangePairs: "id, coinTypeA, coinTypeB, cachedAt",
+		});
+
+		// V33: Cycle 6 chain cutover -- one-time clear of chain-derived caches holding stale
+		// Cycle 5 data so the app re-syncs against the new world. Local / user-authored tables
+		// (characters, contacts, sonarWatchlist, logEvents/logSessions, currencies, settings) and
+		// static reference data (stellar / celestials / gameTypes, each version-guarded) are
+		// PRESERVED. Clearing sonarState resets the chain cursors; the on("ready") seed re-creates
+		// its two rows. Cycle 7+ uses the reusable cycle-reset (lib/cycleReset.ts); this is the C6
+		// bootstrap. The list is frozen inline (not CYCLE_BOUND_TABLES, which is the broader
+		// full-reset set) and guarded against dropped tables so it can never partial-crash.
+		this.version(33)
+			.stores({})
+			.upgrade(async (tx) => {
+				const chainCaches = [
+					"deployables",
+					"assemblies",
+					"extensions",
+					"structureExtensionConfigs",
+					"killmails",
+					"manifestCharacters",
+					"manifestTribes",
+					"manifestLocations",
+					"manifestMarkets",
+					"manifestRegistries",
+					"manifestExchangePairs",
+					"manifestPrivateMapIndex",
+					"manifestPrivateMaps",
+					"manifestMapLocations",
+					"manifestPrivateMapsV2",
+					"subscribedRegistries",
+					"registryStandings",
+					"treasuries",
+					"systemClaims",
+					"sonarEvents",
+					"sonarState",
+				];
+				for (const name of chainCaches) {
+					if (tx.storeNames.includes(name)) {
+						await tx.table(name).clear();
+					}
+				}
+			});
+
+		// V34: Rift Intel -- new chain-derived cache for Cycle 6 rift tracking.
+		// Fresh table, no data migration needed.
+		this.version(34).stores({
+			rifts: "id, solarsystem, tenant, status, revealedAt, cachedAt",
 		});
 	}
 }

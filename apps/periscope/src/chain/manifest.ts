@@ -19,6 +19,7 @@ import type {
 	ManifestStandingEntry,
 	ManifestStandingsList,
 	ManifestTribe,
+	RiftIntel,
 } from "@/db/types";
 import { ensureCelestialsLoaded } from "@/lib/celestials";
 import { resolveNearestLPoint } from "@/lib/lpoints";
@@ -889,6 +890,339 @@ export async function crossReferencePrivateMapLocations(): Promise<void> {
 			});
 		}
 	}
+}
+
+// ── Rift Cache (Cycle 6) ────────────────────────────────────────────────────
+
+/** Parse rift_key { item_id, tenant } off a rift event parsedJson. */
+function parseRiftKey(parsed: Record<string, unknown>): { itemId: string; tenant: string } {
+	const key = parsed.rift_key as { item_id?: string; tenant?: string } | undefined;
+	return { itemId: String(key?.item_id ?? ""), tenant: String(key?.tenant ?? "") };
+}
+
+/** Normalize an on-chain vector<u8> location_hash (array | hex string) to hex. */
+function normalizeRiftHash(raw: unknown): string {
+	if (typeof raw === "string") return raw.startsWith("0x") ? raw.slice(2) : raw;
+	if (Array.isArray(raw)) {
+		try {
+			return bytesToHex(Uint8Array.from(raw.map((b) => Number(b))));
+		} catch {
+			return "";
+		}
+	}
+	return "";
+}
+
+/**
+ * Get-before-put write for a RiftSpawnedEvent. Status is MONOTONIC: this only
+ * creates an absent row (status "spawned") or backfills a missing spawnedAt on an
+ * existing row. It NEVER overwrites an existing "revealed" row's status/coords --
+ * the spawned stream uses an independent cursor and is far larger than the
+ * broadcast stream, so a re-fetched spawned event for an already-revealed rift
+ * would otherwise downgrade the row and drop it from the Star Map, possibly
+ * permanently (the broadcast cursor may have advanced past its reveal).
+ */
+async function upsertRiftSpawned(
+	parsed: Record<string, unknown>,
+	riftId: string,
+	spawnedAt: string,
+	tenant: TenantId,
+): Promise<void> {
+	const existing = await db.rifts.get(riftId);
+	if (existing) {
+		// Never downgrade; only backfill a missing spawnedAt.
+		if (!existing.spawnedAt) {
+			await db.rifts.update(riftId, { spawnedAt });
+		}
+		return;
+	}
+	const { itemId, tenant: keyTenant } = parseRiftKey(parsed);
+	await db.rifts.put({
+		id: riftId,
+		riftItemId: itemId,
+		tenant: keyTenant || tenant,
+		status: "spawned",
+		locationHash: normalizeRiftHash(parsed.location_hash),
+		spawnedAt,
+		cachedAt: new Date().toISOString(),
+	});
+}
+
+/**
+ * Get-before-put write for a RiftLocationBroadcastEvent. Upgrades a spawned row
+ * to revealed in place (preserving spawnedAt) or creates a revealed row directly
+ * when no prior spawned row exists. Returns wasNewlyRevealed = true ONLY when the
+ * prior persisted row was absent or had status "spawned" -- this prior-status
+ * transition is the SOLE durable dedupe for the rift_revealed Sonar ping
+ * (knownDigests / txDigest reset on reload). A re-fetched broadcast for an
+ * already-"revealed" rift overwrites the same row (no duplicate) and returns
+ * false (no re-ping), independent of cursor state.
+ */
+async function upsertRiftRevealed(
+	parsed: Record<string, unknown>,
+	riftId: string,
+	revealedAt: string,
+	tenant: TenantId,
+): Promise<{ wasNewlyRevealed: boolean }> {
+	const existing = await db.rifts.get(riftId);
+	const wasNewlyRevealed = !existing || existing.status === "spawned";
+	const { itemId, tenant: keyTenant } = parseRiftKey(parsed);
+	const entry: RiftIntel = {
+		id: riftId,
+		riftItemId: itemId || existing?.riftItemId || "",
+		tenant: keyTenant || existing?.tenant || tenant,
+		status: "revealed",
+		locationHash: normalizeRiftHash(parsed.location_hash) || existing?.locationHash || "",
+		solarsystem: Number(parsed.solarsystem ?? 0),
+		x: String(parsed.x ?? "0"),
+		y: String(parsed.y ?? "0"),
+		z: String(parsed.z ?? "0"),
+		lPoint: existing?.lPoint, // recomputed by resolveRiftLPoints
+		spawnedAt: existing?.spawnedAt, // PRESERVE
+		revealedAt,
+		cachedAt: new Date().toISOString(),
+	};
+	await db.rifts.put(entry);
+	return { wasNewlyRevealed };
+}
+
+/**
+ * Resolve nearest L-point labels for revealed rifts that don't have one yet.
+ * Mirrors resolveManifestLocationLPoints, grouped by solarsystem.
+ */
+export async function resolveRiftLPoints(): Promise<void> {
+	const unresolved = await db.rifts
+		.filter((r) => r.status === "revealed" && !r.lPoint && r.solarsystem != null)
+		.toArray();
+	if (unresolved.length === 0) return;
+
+	const bySystem = new Map<number, RiftIntel[]>();
+	for (const rift of unresolved) {
+		const sys = rift.solarsystem as number;
+		const group = bySystem.get(sys);
+		if (group) {
+			group.push(rift);
+		} else {
+			bySystem.set(sys, [rift]);
+		}
+	}
+
+	await ensureCelestialsLoaded();
+
+	for (const [systemId, rifts] of bySystem) {
+		const planets = await db.celestials.where("systemId").equals(systemId).toArray();
+		if (planets.length === 0) continue;
+
+		for (const rift of rifts) {
+			const lPoint = resolveNearestLPoint(Number(rift.x), Number(rift.y), Number(rift.z), planets);
+			if (lPoint) {
+				await db.rifts.update(rift.id, { lPoint });
+			}
+		}
+	}
+}
+
+/**
+ * Incremental cursor loop shared by the rift event passes. Mirrors the cursor
+ * load / old-JSON-RPC-cursor migration / save logic in discoverLocationsFromEvents,
+ * invoking onEvent for each event in chain order.
+ */
+async function ingestRiftCursor(
+	client: SuiGraphQLClient,
+	eventType: string,
+	cursorKey: string,
+	limit: number,
+	ctx: TaskContext | undefined,
+	onEvent: (event: {
+		parsedJson: Record<string, unknown>;
+		sender: string;
+		timestampMs: string;
+	}) => Promise<void>,
+): Promise<void> {
+	const savedCursor = await db.settings.get(cursorKey);
+	let cursor: string | null = null;
+
+	// Cursor migration: detect old { txDigest, eventSeq } format and discard
+	if (savedCursor?.value) {
+		if (typeof savedCursor.value === "string") {
+			cursor = savedCursor.value;
+		} else if (
+			typeof savedCursor.value === "object" &&
+			"txDigest" in (savedCursor.value as Record<string, unknown>)
+		) {
+			console.warn("[manifest] Discarding old JSON-RPC cursor format for rifts, re-syncing...");
+			await db.settings.delete(cursorKey);
+			cursor = null;
+		}
+	}
+
+	let fetched = 0;
+	let latestCursor: string | null = null;
+
+	do {
+		if (ctx?.isCancelled()) return;
+
+		const result = await queryEventsGql(client, eventType, {
+			limit: Math.min(50, limit - fetched),
+			cursor,
+		});
+
+		for (const event of result.data) {
+			await onEvent(event);
+		}
+
+		fetched += result.data.length;
+		if (result.nextCursor) {
+			latestCursor = result.nextCursor;
+		}
+		cursor = result.hasNextPage ? result.nextCursor : null;
+	} while (cursor && fetched < limit);
+
+	// Save cursor for next incremental run
+	if (latestCursor) {
+		await db.settings.put({ key: cursorKey, value: latestCursor });
+	}
+}
+
+/**
+ * Bulk discover rifts from RiftSpawnedEvent + RiftLocationBroadcastEvent.
+ * Mirrors discoverLocationsFromEvents: incremental cursors per event type (keys
+ * manifestRiftSpawnedCursor / manifestRiftBroadcastCursor) with the old
+ * JSON-RPC cursor migration guard. Spawned rifts are indexed first as lightweight
+ * "spawned" rows; broadcasts then upgrade them to "revealed" in place. Status is
+ * monotonic (spawned -> revealed, never the reverse). Returns the number of
+ * revealed events ingested.
+ */
+export async function discoverRiftsFromEvents(
+	client: SuiGraphQLClient,
+	tenant: TenantId,
+	worldPkg: string,
+	limit = 5000,
+	ctx?: TaskContext,
+): Promise<number> {
+	const spawnedType = `${worldPkg}::rift::RiftSpawnedEvent`;
+	const broadcastType = `${worldPkg}::rift::RiftLocationBroadcastEvent`;
+	let newRevealed = 0;
+
+	try {
+		// Pass 1: spawned rifts (lightweight rows; monotonic get-before-put)
+		ctx?.setProgress("Fetching spawned rifts...");
+		await ingestRiftCursor(
+			client,
+			spawnedType,
+			`manifestRiftSpawnedCursor:${worldPkg}`,
+			limit,
+			ctx,
+			async (event) => {
+				const riftId = event.parsedJson.rift_id as string;
+				if (!riftId) return;
+				const spawnedAt = new Date(Number(event.timestampMs)).toISOString();
+				await upsertRiftSpawned(event.parsedJson, riftId, spawnedAt, tenant);
+			},
+		);
+
+		// Pass 2: revealed rifts (coords; upgrades spawned rows in place)
+		ctx?.setProgress("Fetching revealed rifts...");
+		await ingestRiftCursor(
+			client,
+			broadcastType,
+			`manifestRiftBroadcastCursor:${worldPkg}`,
+			limit,
+			ctx,
+			async (event) => {
+				const riftId = event.parsedJson.rift_id as string;
+				if (!riftId) return;
+				const revealedAt = new Date(Number(event.timestampMs)).toISOString();
+				await upsertRiftRevealed(event.parsedJson, riftId, revealedAt, tenant);
+				newRevealed++;
+			},
+		);
+
+		// Resolve L-point labels for revealed rifts
+		if (!ctx?.isCancelled()) {
+			ctx?.setProgress("Resolving rift L-point labels...");
+			await resolveRiftLPoints();
+		}
+
+		ctx?.setProgress(`Done: ${newRevealed} rifts revealed`);
+	} catch (err) {
+		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return newRevealed;
+}
+
+/**
+ * Poll for new rift events (real-time, mirrors pollCharacterEvents). One
+ * queryEventsGql per event type (limit 50). Upserts the rifts table and RETURNS
+ * the newly-revealed rifts so the caller can emit Sonar entries.
+ *
+ * The prior-status transition check in upsertRiftRevealed is the SOLE durable
+ * dedupe for the rift_revealed ping -- do NOT lean on knownDigests / txDigest.
+ * On reload the rift cursors are frequently null and broadcasts re-fetch from
+ * genesis; because rifts is keyed by rift_id, a re-fetched broadcast for an
+ * already-revealed rift overwrites the same row (no duplicate) and is NOT
+ * returned here (no re-ping).
+ */
+export async function pollRiftEvents(
+	client: SuiGraphQLClient,
+	tenant: TenantId,
+	cursors: { spawned: string | null; broadcast: string | null },
+): Promise<{
+	revealed: RiftIntel[];
+	nextSpawnedCursor: string | null;
+	nextBroadcastCursor: string | null;
+}> {
+	const worldPkg = TENANTS[tenant].worldPackageId;
+	const spawnedType = `${worldPkg}::rift::RiftSpawnedEvent`;
+	const broadcastType = `${worldPkg}::rift::RiftLocationBroadcastEvent`;
+
+	// Spawned: lightweight monotonic upsert, no emission
+	const spawnedResult = await queryEventsGql(client, spawnedType, {
+		cursor: cursors.spawned,
+		limit: 50,
+	});
+	for (const event of spawnedResult.data) {
+		const riftId = event.parsedJson.rift_id as string;
+		if (!riftId) continue;
+		const spawnedAt = new Date(Number(event.timestampMs)).toISOString();
+		await upsertRiftSpawned(event.parsedJson, riftId, spawnedAt, tenant);
+	}
+
+	// Broadcast: upgrade rows + collect newly-revealed rift ids for emission
+	const broadcastResult = await queryEventsGql(client, broadcastType, {
+		cursor: cursors.broadcast,
+		limit: 50,
+	});
+	const revealedIds: string[] = [];
+	for (const event of broadcastResult.data) {
+		const riftId = event.parsedJson.rift_id as string;
+		if (!riftId) continue;
+		const revealedAt = new Date(Number(event.timestampMs)).toISOString();
+		const { wasNewlyRevealed } = await upsertRiftRevealed(
+			event.parsedJson,
+			riftId,
+			revealedAt,
+			tenant,
+		);
+		if (wasNewlyRevealed) revealedIds.push(riftId);
+	}
+
+	// Resolve L-points for the small newly-revealed batch, then collect the rows
+	const revealed: RiftIntel[] = [];
+	if (revealedIds.length > 0) {
+		await resolveRiftLPoints();
+		for (const id of revealedIds) {
+			const row = await db.rifts.get(id);
+			if (row) revealed.push(row);
+		}
+	}
+
+	return {
+		revealed,
+		nextSpawnedCursor: spawnedResult.nextCursor,
+		nextBroadcastCursor: broadcastResult.nextCursor,
+	};
 }
 
 // ── Private Map Cache ───────────────────────────────────────────────────────

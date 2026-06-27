@@ -49,6 +49,7 @@ const DEFAULT_PING_TYPES: SonarEventType[] = [
 	"cargo_full",
 	"combat_started",
 	"combat_ended",
+	"rift_revealed",
 ];
 
 export const useSonarStore = create<SonarState>((set) => ({

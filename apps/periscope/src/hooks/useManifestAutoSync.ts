@@ -3,6 +3,7 @@ import {
 	discoverCharactersFromEvents,
 	discoverMarkets,
 	discoverRegistries,
+	discoverRiftsFromEvents,
 	discoverTribes,
 	mergePrivateMapLocationsIntoManifest,
 	syncMapLocations,
@@ -50,6 +51,18 @@ export function useManifestAutoSync() {
 						await handoffCursorToSonar(tenantId, worldPkg);
 					} catch (err) {
 						console.warn(`[manifest-sync] ${tenantId} characters:`, err);
+					}
+
+					// Rifts -- full catch-up from last cursor (Cycle 6; dormant until chain on)
+					try {
+						const revealed = await discoverRiftsFromEvents(client, tenantId, worldPkg);
+						if (revealed > 0) {
+							console.log(`[manifest-sync] ${tenantId}: ${revealed} rifts revealed`);
+						}
+						// Hand rift cursors to Chain Sonar for ongoing monitoring
+						await handoffRiftCursorsToSonar(tenantId, worldPkg);
+					} catch (err) {
+						console.warn(`[manifest-sync] ${tenantId} rifts:`, err);
 					}
 
 					// Tribes -- from World API
@@ -156,5 +169,26 @@ async function handoffCursorToSonar(tenantId: TenantId, worldPkg: string) {
 
 	const cursors = { ...(state.cursors ?? {}) } as Record<string, string>;
 	cursors[`CharacterCreated:${tenantId}`] = saved.value;
+	await db.sonarState.update("chain", { cursors });
+}
+
+/**
+ * Copy the manifest rift cursors (spawned + broadcast) to sonarState so Chain
+ * Sonar continues polling rift events from where the initial sync left off.
+ * Mirrors handoffCursorToSonar.
+ */
+async function handoffRiftCursorsToSonar(tenantId: TenantId, worldPkg: string) {
+	const state = await db.sonarState.get("chain");
+	if (!state) return;
+
+	const cursors = { ...(state.cursors ?? {}) } as Record<string, string>;
+	const spawned = await db.settings.get(`manifestRiftSpawnedCursor:${worldPkg}`);
+	const broadcast = await db.settings.get(`manifestRiftBroadcastCursor:${worldPkg}`);
+	if (spawned?.value && typeof spawned.value === "string") {
+		cursors[`RiftSpawned:${tenantId}`] = spawned.value;
+	}
+	if (broadcast?.value && typeof broadcast.value === "string") {
+		cursors[`RiftLocationBroadcast:${tenantId}`] = broadcast.value;
+	}
 	await db.sonarState.update("chain", { cursors });
 }

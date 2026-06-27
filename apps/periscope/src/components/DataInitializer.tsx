@@ -3,7 +3,7 @@ import { CHAIN_ENABLED } from "@/featureFlags";
 import { useManifestAutoSync } from "@/hooks/useManifestAutoSync";
 import { usePrivateMapAutoDecrypt } from "@/hooks/usePrivateMapAutoDecrypt";
 import { checkCycleReset } from "@/lib/cycleReset";
-import { fetchAndStoreGameTypes } from "@/lib/worldApi";
+import { GAME_TYPES_VERSION, fetchAndStoreGameTypes } from "@/lib/worldApi";
 import { useAppStore } from "@/stores/appStore";
 import { Loader2, Telescope } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -138,7 +138,8 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 
 		// Fetch game types from World API in background (non-blocking)
 		const typesMeta = await db.cacheMetadata.get("gameTypes");
-		if (CHAIN_ENABLED && !typesMeta) {
+		// Refetch when missing OR when the stored cycle version differs (forces C6 refresh).
+		if (CHAIN_ENABLED && (!typesMeta || typesMeta.version !== GAME_TYPES_VERSION)) {
 			fetchAndStoreGameTypes().catch((err) =>
 				console.warn("[DataInitializer] Failed to fetch game types:", err),
 			);

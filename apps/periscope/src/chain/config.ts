@@ -18,9 +18,9 @@ export interface TenantConfig {
 export const TENANTS = {
 	stillness: {
 		name: "Stillness",
-		worldPackageId: "0x28b497559d65ab320d9da4613bf2498d5946b2c0ae3597ccfda3072ce127448c",
-		worldPublishedAt: "0xd2fd1224f881e7a705dbc211888af11655c315f2ee0f03fe680fc3176e6e4780",
-		evePackageId: "0x2a66a89b5a735738ffa4423ac024d23571326163f324f9051557617319e59d60",
+		worldPackageId: "0x8b8a46ed766fa1358ce7c5c51f6a164b13d627a63e45343f69ed0ba0446c1aa1",
+		worldPublishedAt: "0x8b8a46ed766fa1358ce7c5c51f6a164b13d627a63e45343f69ed0ba0446c1aa1",
+		evePackageId: "0xac361aa5ceb726bd974f885c9dea9e55dc9bc98fa1f5731c5965a810707bf0b8",
 		datahubUrl: "world-api-stillness.live.tech.evefrontier.com",
 		dappUrl: "https://dapp.frontierperiscope.com/?tenant=stillness",
 		ccpDappUrl: "https://dapps.evefrontier.com",
@@ -85,6 +85,10 @@ export function getEventTypes(tenant: TenantId) {
 		// ── Location ────────────────────────────────────────────────────────
 		LocationRevealed: `${pkg}::location::LocationRevealedEvent`,
 
+		// ── Rifts (Cycle 6) ─────────────────────────────────────────────────
+		RiftSpawned: `${pkg}::rift::RiftSpawnedEvent`,
+		RiftLocationBroadcast: `${pkg}::rift::RiftLocationBroadcastEvent`,
+
 		// ── Metadata ────────────────────────────────────────────────────────
 		MetadataChanged: `${pkg}::metadata::MetadataChangedEvent`,
 
@@ -94,8 +98,8 @@ export function getEventTypes(tenant: TenantId) {
 		JumpPermitIssued: `${pkg}::gate::JumpPermitIssuedEvent`,
 
 		// ── Inventory ───────────────────────────────────────────────────────
-		ItemDeposited: `${pkg}::inventory::ItemDepositedEvent`,
-		ItemWithdrawn: `${pkg}::inventory::ItemWithdrawnEvent`,
+		ItemDeposited: `${pkg}::inventory::ItemDepositedEventV2`,
+		ItemWithdrawn: `${pkg}::inventory::ItemWithdrawnEventV2`,
 		ItemMinted: `${pkg}::inventory::ItemMintedEvent`,
 		ItemBurned: `${pkg}::inventory::ItemBurnedEvent`,
 		ItemDestroyed: `${pkg}::inventory::ItemDestroyedEvent`,
@@ -244,7 +248,7 @@ export const EXTENSION_TEMPLATES: ExtensionTemplate[] = [
 		assemblyTypes: ["storage_unit", "smart_storage_unit", "protocol_depot"],
 		hasConfig: true,
 		packageIds: {
-			stillness: "0x0a6a70355f96e07417aa2e5b59c1e2ea8757c5ade5e8000bfc8daab93bfee2be",
+			stillness: "0xdf1095374dbf3646201ad63c7271e6e82f6dc03b1600cdccf32d778aba63b606",
 			utopia: "0xd3168c9b6db1ff6671d45b056dccd62acc7fa05835eb3079bce10d70af8950ea",
 		},
 		configObjectIds: {},

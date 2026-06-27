@@ -1,5 +1,5 @@
 import { getEventTypes, getExtensionEventTypes } from "@/chain/config";
-import { pollCharacterEvents } from "@/chain/manifest";
+import { pollCharacterEvents, pollRiftEvents } from "@/chain/manifest";
 import { EVENT_HANDLER_REGISTRY, type HandlerContext } from "@/chain/sonarEventHandlers";
 import { db, trimEventTables } from "@/db";
 import type { SonarEvent } from "@/db/types";
@@ -157,6 +157,9 @@ export function useChainSonar() {
 
 			// Remove CharacterCreated -- handled separately above
 			delete allEventTypes.CharacterCreated;
+			// Remove rift events -- handled by the dedicated rift poll block below
+			delete allEventTypes.RiftSpawned;
+			delete allEventTypes.RiftLocationBroadcast;
 
 			// Build list of {key, moveEventType} pairs that have handlers,
 			// skipping categories that can't match any owned entities
@@ -219,6 +222,47 @@ export function useChainSonar() {
 					const tid = handlerCtx.charTribeMap.get(entry.characterId);
 					if (tid) entry.tribeId = tid;
 				}
+			}
+
+			// ── Manifest: Rift events (no ownership filter, global) ──
+			// Emits a rift_revealed entry into sonarEntries on the spawned/absent
+			// -> revealed transition. The prior-status transition check inside
+			// pollRiftEvents is the SOLE durable dedupe (knownDigests / txDigest
+			// reset on reload); see chain/manifest.ts.
+			try {
+				const spawnedKey = `RiftSpawned:${tenant}`;
+				const broadcastKey = `RiftLocationBroadcast:${tenant}`;
+				const riftResult = await pollRiftEvents(
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual @mysten/sui versions
+					client as any,
+					tenant,
+					{
+						spawned: cursorsRef.current[spawnedKey] ?? null,
+						broadcast: cursorsRef.current[broadcastKey] ?? null,
+					},
+				);
+				if (riftResult.nextSpawnedCursor) {
+					cursorsRef.current[spawnedKey] = riftResult.nextSpawnedCursor;
+				}
+				if (riftResult.nextBroadcastCursor) {
+					cursorsRef.current[broadcastKey] = riftResult.nextBroadcastCursor;
+				}
+				for (const rift of riftResult.revealed) {
+					const system = rift.solarsystem;
+					const sysRow = system != null ? await db.solarSystems.get(system) : undefined;
+					const systemName = sysRow?.name ?? (system != null ? String(system) : undefined);
+					const revealedAt = rift.revealedAt ?? new Date().toISOString();
+					sonarEntries.push({
+						timestamp: revealedAt,
+						source: "chain",
+						eventType: "rift_revealed",
+						systemName,
+						details: `Rift revealed in system ${systemName ?? system ?? "?"}`,
+						txDigest: `chain-rift_revealed-${revealedAt}-${rift.id}`,
+					});
+				}
+			} catch (err) {
+				console.error("[ChainSonar] Error polling rifts:", err);
 			}
 
 			// Deduplicate using in-memory txDigest cache
