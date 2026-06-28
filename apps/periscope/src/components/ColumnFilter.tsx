@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Column, FilterFn } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -22,12 +22,44 @@ export interface ExcelFilterValue {
 
 // ── Shared filter function ──────────────────────────────────────────────────
 
+/** Apply an Excel-style text predicate to a single scalar value. */
+function matchesTextFilter(rawVal: string, filter: ExcelFilterValue): boolean {
+	const cellVal = rawVal.toLowerCase();
+	const filterVal = (filter.textFilterValue ?? "").toLowerCase();
+	switch (filter.textFilterType) {
+		case "equals": return cellVal === filterVal;
+		case "notEquals": return cellVal !== filterVal;
+		case "beginsWith": return cellVal.startsWith(filterVal);
+		case "endsWith": return cellVal.endsWith(filterVal);
+		case "notContains": return !cellVal.includes(filterVal);
+		case "contains":
+		default: return cellVal.includes(filterVal);
+	}
+}
+
 // biome-ignore lint: FilterFn needs to be typed as `any` for cross-table compatibility
 export const excelFilterFn: FilterFn<any> = (row, columnId, filterValue) => {
 	const filter = filterValue as ExcelFilterValue | undefined;
 	if (!filter) return true;
 
-	const rawVal = String(row.getValue(columnId) ?? "");
+	const raw = row.getValue(columnId);
+
+	// Array-valued columns (e.g. the blueprint "Facilities" column, where one row lists several
+	// facility names) match if ANY element satisfies the filter -- this turns the funnel popover
+	// into a per-element multiselect.
+	if (Array.isArray(raw)) {
+		if (filter.mode === "include") {
+			return raw.some(
+				(v) => filter.includedValues instanceof Set && filter.includedValues.has(String(v)),
+			);
+		}
+		if (filter.mode === "textFilter" && filter.textFilterValue) {
+			return raw.some((v) => matchesTextFilter(String(v), filter));
+		}
+		return true;
+	}
+
+	const rawVal = String(raw ?? "");
 
 	// Guard `instanceof Set` -- a malformed persisted filter (e.g. includedValues revived as a
 	// plain array/object) would otherwise throw inside getFilteredRowModel and crash the render.
@@ -36,17 +68,7 @@ export const excelFilterFn: FilterFn<any> = (row, columnId, filterValue) => {
 	}
 
 	if (filter.mode === "textFilter" && filter.textFilterValue) {
-		const cellVal = rawVal.toLowerCase();
-		const filterVal = filter.textFilterValue.toLowerCase();
-		switch (filter.textFilterType) {
-			case "equals": return cellVal === filterVal;
-			case "notEquals": return cellVal !== filterVal;
-			case "beginsWith": return cellVal.startsWith(filterVal);
-			case "endsWith": return cellVal.endsWith(filterVal);
-			case "notContains": return !cellVal.includes(filterVal);
-			case "contains":
-			default: return cellVal.includes(filterVal);
-		}
+		return matchesTextFilter(rawVal, filter);
 	}
 
 	return true;

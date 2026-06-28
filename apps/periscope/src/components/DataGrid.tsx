@@ -137,12 +137,16 @@ interface DataGridProps<T> {
 	actions?: ReactNode;
 	/** Content rendered after the search box in the toolbar. */
 	afterSearch?: ReactNode;
+	/** Content pinned to the far right of the toolbar (after search / clear / export). */
+	toolbarRight?: ReactNode;
 	/** Enable global search. Default true. */
 	enableSearch?: boolean;
 	/** Currently selected row ID (optional). */
 	selectedRowId?: string;
 	/** Callback when a row is clicked (optional). */
 	onRowClick?: (rowId: string) => void;
+	/** When set, scroll the row with this ID into view. */
+	scrollToRowId?: string;
 	/** When provided, renders a download button that exports filtered rows. */
 	onExport?: (rows: T[]) => void;
 	/** Initial sorting state (e.g. [{id: "timestamp", desc: true}]). */
@@ -156,6 +160,7 @@ interface DataGridProps<T> {
 export function DataGrid<T>({
 	columns,
 	afterSearch,
+	toolbarRight,
 	data,
 	keyFn,
 	searchPlaceholder = "Search...",
@@ -164,6 +169,7 @@ export function DataGrid<T>({
 	enableSearch = true,
 	selectedRowId,
 	onRowClick,
+	scrollToRowId,
 	onExport,
 	initialSorting,
 	columnSearch = false,
@@ -205,6 +211,14 @@ export function DataGrid<T>({
 			savePersistedFilters(persistKey, latestFiltersRef.current);
 		};
 	}, [persistKey]);
+
+	// Scroll a specific row into view when scrollToRowId changes (e.g. the recents dropdown).
+	const containerRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!scrollToRowId) return;
+		const el = containerRef.current?.querySelector(`[data-row-id="${scrollToRowId}"]`);
+		el?.scrollIntoView({ block: "nearest" });
+	}, [scrollToRowId]);
 
 	const table = useReactTable({
 		data,
@@ -271,10 +285,14 @@ export function DataGrid<T>({
 						<Download size={14} />
 					</button>
 				)}
+				{toolbarRight && <div className="ml-auto flex items-center gap-3">{toolbarRight}</div>}
 			</div>
 
 			{/* Table */}
-			<div className="min-h-0 flex-1 overflow-auto rounded-lg border border-zinc-800">
+			<div
+				ref={containerRef}
+				className="min-h-0 flex-1 overflow-auto rounded-lg border border-zinc-800"
+			>
 				<table className="w-full text-sm">
 					<thead>
 						{table.getHeaderGroups().map((headerGroup) => (
@@ -334,6 +352,7 @@ export function DataGrid<T>({
 								return (
 									<tr
 										key={row.id}
+										data-row-id={row.id}
 										onClick={onRowClick ? () => onRowClick(row.id) : undefined}
 										className={`border-b border-zinc-800/30 transition-colors hover:bg-zinc-800/30 ${
 											onRowClick ? "cursor-pointer" : ""
