@@ -5971,7 +5971,7 @@
     "1520": {
       "blueprintID": 1520,
       "primaryTypeID": 95302,
-      "primaryTypeName": "Mini Printer",
+      "primaryTypeName": "Emergency Printer",
       "runTime": 10,
       "runTimeFormatted": "10s",
       "inputs": [
@@ -5984,7 +5984,7 @@
       "outputs": [
         {
           "typeID": 95302,
-          "typeName": "Mini Printer",
+          "typeName": "Emergency Printer",
           "quantity": 1
         }
       ]
@@ -6426,7 +6426,7 @@
     "1525": {
       "blueprintID": 1525,
       "primaryTypeID": 95302,
-      "primaryTypeName": "Mini Printer",
+      "primaryTypeName": "Emergency Printer",
       "runTime": 120,
       "runTimeFormatted": "2m",
       "inputs": [
@@ -6449,7 +6449,7 @@
       "outputs": [
         {
           "typeID": 95302,
-          "typeName": "Mini Printer",
+          "typeName": "Emergency Printer",
           "quantity": 1
         }
       ]

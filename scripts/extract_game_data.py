@@ -33,9 +33,24 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "apps", "periscope", "public", "data")
 
-# Files to extract (loader_name -> resfile_path from index)
-# Format: res:/staticdata/<name>.fsdbinary,<hash_prefix>/<hash_filename>,...
-RESFILE_MAP = {
+# Canonical res:/ paths from resfileindex.txt. The on-disk file is content-addressed -- its
+# hash changes every client patch -- so we resolve these to storage paths at runtime from the
+# index (see resolve_resfiles) instead of pinning hashes that silently go stale. The *_FALLBACK
+# maps are only used if the index can't be read; they reflect Cycle 6 (Stillness) build 3412401.
+# Format of an index line: res:/staticdata/<name>.fsdbinary,<hash_prefix>/<hash_filename>,<md5>,...
+RESPATH_MAP = {
+    "industry_blueprints": "res:/staticdata/industry_blueprints.fsdbinary",
+    "industry_facilities": "res:/staticdata/industry_facilities.fsdbinary",
+    "typematerials": "res:/staticdata/typematerials.fsdbinary",
+    "types": "res:/staticdata/types.fsdbinary",
+    "groups": "res:/staticdata/groups.fsdbinary",
+    "categories": "res:/staticdata/categories.fsdbinary",
+    "spacecomponentsbytype": "res:/staticdata/spacecomponentsbytype.fsdbinary",
+    "marketgroups": "res:/staticdata/marketgroups.fsdbinary",
+}
+LOCALIZATION_RESPATH = "res:/localizationfsd/localization_fsd_en-us.pickle"
+
+RESFILE_MAP_FALLBACK = {
     "industry_blueprints": "c4/c41a791d1ef13a50_2efffbba8636c084723bde32fa6d5ebe",
     "industry_facilities": "af/affb67cc07f15c0f_cb8282c2e0788419ad411a5cc5d971c5",
     "typematerials": "66/66c8b3f32a0b893b_30f6802a610d81046499d5885732ff73",
@@ -45,9 +60,12 @@ RESFILE_MAP = {
     "spacecomponentsbytype": "f2/f26def0295b69084_862d840122ab07dd8d5496b28268e398",
     "marketgroups": "5b/5be8d79bd5183137_53b3cffe28c8faf78bf8617536d60501",
 }
+LOCALIZATION_RESFILE_FALLBACK = "2c/2c3038b3c38e91a1_d241b60ad7b95cc12c7d8fa26025b846"
 
-# Localization pickle
-LOCALIZATION_RESFILE = "2c/2c3038b3c38e91a1_abf1d5b221e256227eb913a175677f00"
+# Runtime-resolved maps (populated from the index in main()); seeded with fallbacks so the
+# module stays importable/usable even before resolution runs.
+RESFILE_MAP = dict(RESFILE_MAP_FALLBACK)
+LOCALIZATION_RESFILE = LOCALIZATION_RESFILE_FALLBACK
 
 # Loader name mapping (fsdbinary name -> loader module name)
 # The convention: <name>Loader.pyd where <name> is camelCase
@@ -61,6 +79,53 @@ LOADER_MAP = {
     "spacecomponentsbytype": "spaceComponentsByTypeLoader",
     "marketgroups": "marketGroupsLoader",
 }
+
+
+# ============================================================================
+# ResFile index resolution (avoids stale pinned hashes)
+# ============================================================================
+
+def build_resfile_index(index_file):
+    """Parse resfileindex.txt into {res_path_lower: storage_path}.
+
+    Each line looks like:
+      res:/staticdata/types.fsdbinary,3c/3cc5..._2abb...,2abb...,5083816,674071
+    We only need field 0 (the res:/ path) and field 1 (the content-addressed
+    storage path relative to ResFiles/).
+    """
+    index = {}
+    try:
+        with open(index_file, "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split(",")
+                if len(parts) >= 2 and parts[0].startswith("res:/"):
+                    index[parts[0].lower()] = parts[1]
+    except OSError as e:
+        print(f"  WARNING: could not read resfile index {index_file}: {e}")
+    return index
+
+
+def resolve_resfiles(index_file):
+    """Resolve canonical res:/ paths to the client's current storage paths.
+
+    Falls back to the pinned build-3412401 hashes for any entry the index does
+    not provide, so extraction still works if the index is missing/incomplete.
+    Returns (resfile_map, localization_resfile).
+    """
+    index = build_resfile_index(index_file)
+    resolved = {}
+    for name, respath in RESPATH_MAP.items():
+        storage = index.get(respath.lower())
+        if storage is None:
+            storage = RESFILE_MAP_FALLBACK.get(name)
+            print(f"  WARNING: '{respath}' not in index; using pinned fallback hash")
+        resolved[name] = storage
+
+    loc = index.get(LOCALIZATION_RESPATH.lower())
+    if loc is None:
+        print(f"  WARNING: '{LOCALIZATION_RESPATH}' not in index; using pinned fallback")
+        loc = LOCALIZATION_RESFILE_FALLBACK
+    return resolved, loc
 
 # ============================================================================
 # FSDBinary decoder (adapted from VULTUR execute_loaders.py)
@@ -415,6 +480,16 @@ def main():
     print(f"Output:     {OUTPUT_DIR}")
     print()
 
+    # Step 0: Resolve resfile hashes from the live client index so we never read stale
+    # content (the pinned hashes go out of date on every client patch -- e.g. a renamed
+    # localization pickle once left facilities mislabeled).
+    print("[0/7] Resolving resfiles from index...")
+    global RESFILE_MAP, LOCALIZATION_RESFILE
+    RESFILE_MAP, LOCALIZATION_RESFILE = resolve_resfiles(INDEX_FILE)
+    print(f"  Index:        {INDEX_FILE}")
+    print(f"  Localization: {LOCALIZATION_RESFILE}")
+    print()
+
     # Step 1: Load localization strings
     print("[1/7] Loading localization...")
     strings = load_localization()
@@ -508,14 +583,16 @@ def main():
     }
 
     for filename in sorted(os.listdir(OUTPUT_DIR)):
-        if filename.endswith(".json") and filename != "extraction_meta.json":
+        # Skip any extraction_meta*.json -- this script and extract_static_data.py write
+        # separate meta files (gamedata vs starmap) so they no longer clobber each other.
+        if filename.endswith(".json") and not filename.startswith("extraction_meta"):
             filepath = os.path.join(OUTPUT_DIR, filename)
             meta["filesExtracted"].append({
                 "filename": filename,
                 "sizeBytes": os.path.getsize(filepath),
             })
 
-    save_json(meta, "extraction_meta.json", "metadata")
+    save_json(meta, "extraction_meta_gamedata.json", "metadata")
 
     print("=" * 70)
     print(f"Extraction complete in {elapsed:.1f}s")

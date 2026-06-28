@@ -30,20 +30,71 @@ import argparse
 from pathlib import Path
 
 
-# ResFile index entries (from resfileindex.txt, Cycle 6 (Stillness) build 3412401)
-RESFILE_PATHS = {
-    "starmapcache": "2e/2edadfca55978bdf_d5729972f807b4030f34a295052d8624",
-    "localization_en": "2c/2c3038b3c38e91a1_abf1d5b221e256227eb913a175677f00",
+# Canonical res:/ paths from resfileindex.txt. On-disk files are content-addressed (the hash
+# changes every client patch), so we resolve these to storage paths at runtime from the index
+# (see resolve_resfiles) rather than pinning hashes that silently go stale. The *_FALLBACK map
+# is only used if the index can't be read; it reflects Cycle 6 (Stillness) build 3412401.
+RESPATH_MAP = {
+    "starmapcache": "res:/staticdata/starmapcache.pickle",
+    "localization_en": "res:/localizationfsd/localization_fsd_en-us.pickle",
+    "regions_static": "res:/staticdata/regions.static",
+    "constellations_static": "res:/staticdata/constellations.static",
+    "solarsystemcontent": "res:/staticdata/solarsystemcontent.static",
+    "systems_static": "res:/staticdata/systems.static",
+    "jumps_static": "res:/staticdata/jumps.static",
+    "groups_fsdbinary": "res:/staticdata/groups.fsdbinary",
+    "categories_fsdbinary": "res:/staticdata/categories.fsdbinary",
+    "spacecomponents": "res:/staticdata/spacecomponentsbytype.fsdbinary",
+    "industry_blueprints": "res:/staticdata/industry_blueprints.fsdbinary",
+}
+
+RESFILE_PATHS_FALLBACK = {
+    "starmapcache": "2e/2edadfca55978bdf_811c3b11655830087f78227011b81f7b",
+    "localization_en": "2c/2c3038b3c38e91a1_d241b60ad7b95cc12c7d8fa26025b846",
     "regions_static": "a7/a74cde5df2632168_d938f93af1b4c143440905b105cd765d",
     "constellations_static": "f5/f5d54e32f23ee5df_750de1af66eaac9bd0bd6ba122e348ef",
     "solarsystemcontent": "33/33c83a8c56c485e6_4b6ccb8d81053220b01bc332b927e9c6",
     "systems_static": "89/893086ea542ec98f_cfbae026ecc73c50e8c96952984382c5",
-    "jumps_static": "cf/cf4829ec2741484c_5e879db3b9e0942c5591acdeaeaf8243",
+    "jumps_static": "cf/cf4829ec2741484c_a8c8a3281102c162964a04d3e1508604",
     "groups_fsdbinary": "b1/b198644fdc5397f3_f7ae142f03c1bd211532b2f5d51f4b2e",
     "categories_fsdbinary": "81/81883d3b3f883f8f_55a43a746ace8d937f8a08ce4a771711",
     "spacecomponents": "f2/f26def0295b69084_862d840122ab07dd8d5496b28268e398",
     "industry_blueprints": "c4/c41a791d1ef13a50_2efffbba8636c084723bde32fa6d5ebe",
 }
+
+# Populated from the index in main(); seeded with fallbacks so helpers work before resolution.
+RESFILE_PATHS = dict(RESFILE_PATHS_FALLBACK)
+
+
+def build_resfile_index(index_file: Path) -> dict:
+    """Parse resfileindex.txt into {res_path_lower: storage_path}."""
+    index = {}
+    try:
+        with open(index_file, "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split(",")
+                if len(parts) >= 2 and parts[0].startswith("res:/"):
+                    index[parts[0].lower()] = parts[1]
+    except OSError as e:
+        print(f"  WARNING: could not read resfile index {index_file}: {e}")
+    return index
+
+
+def resolve_resfiles(index_file: Path) -> dict:
+    """Resolve canonical res:/ paths to the client's current storage paths.
+
+    Falls back to the pinned build-3412401 hashes for any entry the index does
+    not provide, so extraction still works if the index is missing/incomplete.
+    """
+    index = build_resfile_index(index_file)
+    resolved = {}
+    for key, respath in RESPATH_MAP.items():
+        storage = index.get(respath.lower())
+        if storage is None:
+            storage = RESFILE_PATHS_FALLBACK.get(key)
+            print(f"  WARNING: '{respath}' not in index; using pinned fallback hash")
+        resolved[key] = storage
+    return resolved
 
 
 def resfile_path(resfiles_dir: Path, key: str) -> Path:
@@ -301,6 +352,14 @@ def main():
 
     t0 = time.time()
 
+    # Step 0: Resolve resfile hashes from the live client index (ResFiles/../stillness),
+    # so we never read stale content-addressed files pinned to an old build.
+    index_file = resfiles_dir.parent / "stillness" / "resfileindex.txt"
+    print(f"[0/4] Resolving resfiles from index: {index_file}")
+    global RESFILE_PATHS
+    RESFILE_PATHS = resolve_resfiles(index_file)
+    print(f"  Localization: {RESFILE_PATHS['localization_en']}")
+
     # Step 1: Load localization
     print("[1/4] Loading localization...")
     locale = load_localization(resfiles_dir)
@@ -350,7 +409,11 @@ def main():
 
     meta = {
         "version": "1.0.0",
-        "source": "EVE Frontier Client ResFiles (build 3412401)",
+        "source": "EVE Frontier Client ResFiles (resolved from resfileindex.txt)",
+        # Provenance: record the content-addressed files actually read instead of a hardcoded
+        # build number (which silently goes stale across client patches).
+        "starmapcacheResfile": RESFILE_PATHS["starmapcache"],
+        "localizationResfile": RESFILE_PATHS["localization_en"],
         "extractedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "counts": {
             "regions": len(starmap["regions"]),
@@ -361,7 +424,8 @@ def main():
         },
         "namesResolved": named,
     }
-    save_json(meta, output_dir / "extraction_meta.json", indent=True)
+    # Distinct filename so this does not clobber extract_game_data.py's metadata.
+    save_json(meta, output_dir / "extraction_meta_starmap.json", indent=True)
 
     elapsed = time.time() - t0
     print(f"\nDone in {elapsed:.1f}s! Output: {output_dir}")

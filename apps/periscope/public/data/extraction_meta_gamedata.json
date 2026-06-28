@@ -1,0 +1,64 @@
+{
+  "extractedAt": "2026-06-28T20:04:22Z",
+  "extractionTimeSeconds": 1.17,
+  "gameRoot": "C:\\CCP\\EVE Frontier",
+  "pythonVersion": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "filesExtracted": [
+    {
+      "filename": "blueprints.json",
+      "sizeBytes": 187047
+    },
+    {
+      "filename": "categories.json",
+      "sizeBytes": 4794
+    },
+    {
+      "filename": "celestials.json",
+      "sizeBytes": 6921105
+    },
+    {
+      "filename": "facilities.json",
+      "sizeBytes": 39725
+    },
+    {
+      "filename": "groups.json",
+      "sizeBytes": 335600
+    },
+    {
+      "filename": "marketgroups.json",
+      "sizeBytes": 275583
+    },
+    {
+      "filename": "spacecomponents.json",
+      "sizeBytes": 2519577
+    },
+    {
+      "filename": "stellar_constellations.json",
+      "sizeBytes": 647893
+    },
+    {
+      "filename": "stellar_jumps.json",
+      "sizeBytes": 227240
+    },
+    {
+      "filename": "stellar_labels.json",
+      "sizeBytes": 634732
+    },
+    {
+      "filename": "stellar_regions.json",
+      "sizeBytes": 311519
+    },
+    {
+      "filename": "stellar_systems.json",
+      "sizeBytes": 5122274
+    },
+    {
+      "filename": "typematerials.json",
+      "sizeBytes": 1387
+    },
+    {
+      "filename": "types.json",
+      "sizeBytes": 11659240
+    }
+  ]
+}

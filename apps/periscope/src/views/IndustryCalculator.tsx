@@ -1406,8 +1406,8 @@ export function IndustryCalculator() {
 			],
 			[
 				"Printers",
-				["Mini Printer", "Field Printer", "Printer", "Heavy Printer"],
-				["Mini", "Field", "Standard", "Heavy"],
+				["Mini Printer", "Field Printer", "Printer", "Heavy Printer", "Emergency Printer"],
+				["Mini", "Field", "Standard", "Heavy", "Emergency"],
 			],
 			["Berths", ["Mini Berth", "Berth", "Heavy Berth"], ["Mini", "Standard", "Heavy"]],
 		];

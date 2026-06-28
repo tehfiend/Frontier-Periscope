@@ -83,8 +83,9 @@ export function Blueprints() {
 			const primaryOutput = bp.outputs.find((o) => o.typeID === bp.primaryTypeID);
 			return {
 				bp,
-				// De-dup: two live facilities share the name "Mini Printer" (87119, 95302),
-				// so a blueprint runnable by both would otherwise render a duplicate badge + React key.
+				// De-dup defensively: a blueprint runnable by two facilities with the same name would
+				// otherwise render a duplicate badge + React key. (Historically 87119/95302 both read
+				// "Mini Printer"; 95302 is now "Emergency Printer", so they render as distinct badges.)
 				facilities: [...new Set(blueprintFacilities.get(bp.blueprintID) ?? [])],
 				buildable: buildableBlueprintIds.has(bp.blueprintID),
 				removedFacilities: removedFacilitiesByBlueprint.get(bp.blueprintID) ?? [],
