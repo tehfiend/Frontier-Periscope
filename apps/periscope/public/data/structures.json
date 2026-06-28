@@ -1,0 +1,926 @@
+{
+  "structures": [
+    {
+      "structureID": 88068,
+      "structureName": "Assembler",
+      "buildTime": 192,
+      "constructionSite": 91708,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 84182,
+          "typeName": "Reinforced Alloys",
+          "quantity": 20
+        },
+        {
+          "typeID": 84210,
+          "typeName": "Carbon Weave",
+          "quantity": 10
+        },
+        {
+          "typeID": 84180,
+          "typeName": "Printed Circuits",
+          "quantity": 5
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 84182,
+          "typeName": "Reinforced Alloys",
+          "quantity": 4
+        },
+        {
+          "typeID": 84210,
+          "typeName": "Carbon Weave",
+          "quantity": 2
+        },
+        {
+          "typeID": 84180,
+          "typeName": "Printed Circuits",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "structureID": 88070,
+      "structureName": "Berth",
+      "buildTime": 1440,
+      "constructionSite": 91706,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        },
+        {
+          "typeID": 89088,
+          "typeName": "Exclave Technocore",
+          "quantity": 1
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        },
+        {
+          "typeID": 89088,
+          "typeName": "Exclave Technocore",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "structureID": 93141,
+      "structureName": "Field Cairn",
+      "buildTime": 10,
+      "constructionSite": 93228,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 84180,
+          "typeName": "Printed Circuits",
+          "quantity": 2
+        }
+      ],
+      "recoveryCost": []
+    },
+    {
+      "structureID": 87162,
+      "structureName": "Field Printer",
+      "buildTime": 30,
+      "constructionSite": 91753,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 77811,
+          "typeName": "Hydrated Sulfide Matrix",
+          "quantity": 50
+        }
+      ],
+      "recoveryCost": []
+    },
+    {
+      "structureID": 87161,
+      "structureName": "Field Refinery",
+      "buildTime": 30,
+      "constructionSite": 91752,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 77800,
+          "typeName": "Feldspar Crystals",
+          "quantity": 50
+        }
+      ],
+      "recoveryCost": []
+    },
+    {
+      "structureID": 87566,
+      "structureName": "Field Storage",
+      "buildTime": 30,
+      "constructionSite": 91756,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 77800,
+          "typeName": "Feldspar Crystals",
+          "quantity": 50
+        }
+      ],
+      "recoveryCost": []
+    },
+    {
+      "structureID": 89777,
+      "structureName": "HARBINGER I",
+      "buildTime": 11520,
+      "constructionSite": 91724,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 89778,
+      "structureName": "HARBINGER II",
+      "buildTime": 11520,
+      "constructionSite": 91725,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 88071,
+      "structureName": "Heavy Berth",
+      "buildTime": 2880,
+      "constructionSite": 91707,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 130
+        },
+        {
+          "typeID": 89087,
+          "typeName": "Synod Technocore",
+          "quantity": 1
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 26
+        },
+        {
+          "typeID": 89087,
+          "typeName": "Synod Technocore",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "structureID": 84955,
+      "structureName": "Heavy Gate",
+      "buildTime": 51840,
+      "constructionSite": 91712,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4300
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 860
+        }
+      ]
+    },
+    {
+      "structureID": 87120,
+      "structureName": "Heavy Printer",
+      "buildTime": 2880,
+      "constructionSite": 91702,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 100
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ]
+    },
+    {
+      "structureID": 88064,
+      "structureName": "Heavy Refinery",
+      "buildTime": 2880,
+      "constructionSite": 91704,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 100
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ]
+    },
+    {
+      "structureID": 88094,
+      "structureName": "Heavy Shelter",
+      "buildTime": 5760,
+      "constructionSite": 91710,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 130
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 26
+        }
+      ]
+    },
+    {
+      "structureID": 77917,
+      "structureName": "Heavy Storage",
+      "buildTime": 1440,
+      "constructionSite": 91715,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 120
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 24
+        }
+      ]
+    },
+    {
+      "structureID": 92404,
+      "structureName": "Heavy Turret",
+      "buildTime": 2880,
+      "constructionSite": 92407,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 88069,
+      "structureName": "Mini Berth",
+      "buildTime": 192,
+      "constructionSite": 91705,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 84182,
+          "typeName": "Reinforced Alloys",
+          "quantity": 20
+        },
+        {
+          "typeID": 84210,
+          "typeName": "Carbon Weave",
+          "quantity": 10
+        },
+        {
+          "typeID": 84180,
+          "typeName": "Printed Circuits",
+          "quantity": 5
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 84182,
+          "typeName": "Reinforced Alloys",
+          "quantity": 4
+        },
+        {
+          "typeID": 84210,
+          "typeName": "Carbon Weave",
+          "quantity": 2
+        },
+        {
+          "typeID": 84180,
+          "typeName": "Printed Circuits",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "structureID": 88086,
+      "structureName": "Mini Gate",
+      "buildTime": 2880,
+      "constructionSite": 91711,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 430
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 86
+        }
+      ]
+    },
+    {
+      "structureID": 87119,
+      "structureName": "Mini Printer",
+      "buildTime": 48,
+      "constructionSite": 91700,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 84180,
+          "typeName": "Printed Circuits",
+          "quantity": 15
+        },
+        {
+          "typeID": 84182,
+          "typeName": "Reinforced Alloys",
+          "quantity": 15
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 84180,
+          "typeName": "Printed Circuits",
+          "quantity": 3
+        },
+        {
+          "typeID": 84182,
+          "typeName": "Reinforced Alloys",
+          "quantity": 3
+        }
+      ]
+    },
+    {
+      "structureID": 88082,
+      "structureName": "Mini Storage",
+      "buildTime": 96,
+      "constructionSite": 91713,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 77800,
+          "typeName": "Feldspar Crystals",
+          "quantity": 250
+        },
+        {
+          "typeID": 77810,
+          "typeName": "Platinum-Palladium Matrix",
+          "quantity": 250
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 77800,
+          "typeName": "Feldspar Crystals",
+          "quantity": 50
+        },
+        {
+          "typeID": 77810,
+          "typeName": "Platinum-Palladium Matrix",
+          "quantity": 50
+        }
+      ]
+    },
+    {
+      "structureID": 92279,
+      "structureName": "Mini Turret",
+      "buildTime": 720,
+      "constructionSite": 92280,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 84182,
+          "typeName": "Reinforced Alloys",
+          "quantity": 20
+        },
+        {
+          "typeID": 84210,
+          "typeName": "Carbon Weave",
+          "quantity": 20
+        },
+        {
+          "typeID": 88561,
+          "typeName": "Thermal Composites",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 84182,
+          "typeName": "Reinforced Alloys",
+          "quantity": 4
+        },
+        {
+          "typeID": 84210,
+          "typeName": "Carbon Weave",
+          "quantity": 4
+        },
+        {
+          "typeID": 88561,
+          "typeName": "Thermal Composites",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 88098,
+      "structureName": "Monolith 1",
+      "buildTime": 2880,
+      "constructionSite": 91718,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 88099,
+      "structureName": "Monolith 2",
+      "buildTime": 2880,
+      "constructionSite": 91719,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 91871,
+      "structureName": "Nest",
+      "buildTime": 2880,
+      "constructionSite": 92166,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 88092,
+      "structureName": "Network Node",
+      "buildTime": 30,
+      "constructionSite": null,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 84180,
+          "typeName": "Printed Circuits",
+          "quantity": 10
+        },
+        {
+          "typeID": 84210,
+          "typeName": "Carbon Weave",
+          "quantity": 10
+        },
+        {
+          "typeID": 88561,
+          "typeName": "Thermal Composites",
+          "quantity": 10
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 84180,
+          "typeName": "Printed Circuits",
+          "quantity": 2
+        },
+        {
+          "typeID": 84210,
+          "typeName": "Carbon Weave",
+          "quantity": 2
+        },
+        {
+          "typeID": 88561,
+          "typeName": "Thermal Composites",
+          "quantity": 2
+        }
+      ]
+    },
+    {
+      "structureID": 91978,
+      "structureName": "Nursery",
+      "buildTime": 192,
+      "constructionSite": 92165,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 88067,
+      "structureName": "Printer",
+      "buildTime": 192,
+      "constructionSite": 91701,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 89780,
+      "structureName": "RAINMAKER I",
+      "buildTime": 11520,
+      "constructionSite": 91722,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 89779,
+      "structureName": "RAINMAKER II",
+      "buildTime": 11520,
+      "constructionSite": 91723,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 88063,
+      "structureName": "Refinery",
+      "buildTime": 192,
+      "constructionSite": 91703,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 84182,
+          "typeName": "Reinforced Alloys",
+          "quantity": 15
+        },
+        {
+          "typeID": 88561,
+          "typeName": "Thermal Composites",
+          "quantity": 15
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 84182,
+          "typeName": "Reinforced Alloys",
+          "quantity": 3
+        },
+        {
+          "typeID": 88561,
+          "typeName": "Thermal Composites",
+          "quantity": 3
+        }
+      ]
+    },
+    {
+      "structureID": 87160,
+      "structureName": "Refuge",
+      "buildTime": 60,
+      "constructionSite": 91751,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 77810,
+          "typeName": "Platinum-Palladium Matrix",
+          "quantity": 50
+        }
+      ],
+      "recoveryCost": []
+    },
+    {
+      "structureID": 90184,
+      "structureName": "Relay",
+      "buildTime": 48,
+      "constructionSite": 91717,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 84180,
+          "typeName": "Printed Circuits",
+          "quantity": 6
+        },
+        {
+          "typeID": 84210,
+          "typeName": "Carbon Weave",
+          "quantity": 6
+        },
+        {
+          "typeID": 88561,
+          "typeName": "Thermal Composites",
+          "quantity": 6
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 84180,
+          "typeName": "Printed Circuits",
+          "quantity": 2
+        },
+        {
+          "typeID": 84210,
+          "typeName": "Carbon Weave",
+          "quantity": 2
+        },
+        {
+          "typeID": 88561,
+          "typeName": "Thermal Composites",
+          "quantity": 2
+        }
+      ]
+    },
+    {
+      "structureID": 89775,
+      "structureName": "SEER I",
+      "buildTime": 11520,
+      "constructionSite": 91726,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 89776,
+      "structureName": "SEER II",
+      "buildTime": 11520,
+      "constructionSite": 91727,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 88093,
+      "structureName": "Shelter",
+      "buildTime": 2880,
+      "constructionSite": 91709,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 88083,
+      "structureName": "Storage",
+      "buildTime": 192,
+      "constructionSite": 91714,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 92401,
+      "structureName": "Turret",
+      "buildTime": 1440,
+      "constructionSite": 92406,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 10
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 2
+        }
+      ]
+    },
+    {
+      "structureID": 88100,
+      "structureName": "Wall 1",
+      "buildTime": 2880,
+      "constructionSite": 91720,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "structureID": 88101,
+      "structureName": "Wall 2",
+      "buildTime": 2880,
+      "constructionSite": 91721,
+      "createOnChain": 0,
+      "inputs": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 20
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 4
+        }
+      ]
+    }
+  ],
+  "stats": {
+    "totalStructures": 38,
+    "generatedFrom": "spacecomponentsbytype.smartDeployable.constructionCost"
+  }
+}

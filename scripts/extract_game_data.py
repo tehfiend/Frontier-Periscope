@@ -449,6 +449,74 @@ def process_types(types_data):
     return types_clean
 
 
+def process_structures(space_raw, type_names):
+    """Derive deployable-structure build recipes from spacecomponentsbytype.
+
+    Deployable structures are NOT in industry_blueprints; their build recipe lives in
+    each type's smartDeployable.constructionCost. We surface them as synthetic recipes so
+    the Blueprint Library + Industry Calculator can treat them like any other product.
+    """
+    if not space_raw:
+        return None
+
+    structures = []
+    for type_id, entry in space_raw.items():
+        if not isinstance(entry, dict):
+            continue
+        smart = entry.get("smartDeployable")
+        if not isinstance(smart, dict):
+            continue
+        construction_cost = smart.get("constructionCost")
+        if not construction_cost:
+            continue
+
+        struct_id = int(type_id)
+        # "activate" is a sibling component of "smartDeployable" in the same entry.
+        activate = entry.get("activate")
+        build_time = activate.get("durationSeconds", 0) if isinstance(activate, dict) else 0
+
+        # constructionCost keys are strings -> cast to int.
+        inputs = [
+            {
+                "typeID": int(mat),
+                "typeName": type_names.get(int(mat), f"Type {mat}"),
+                "quantity": qty,
+            }
+            for mat, qty in construction_cost.items()
+        ]
+        inputs.sort(key=lambda i: i["quantity"], reverse=True)
+
+        # recoveryCost (materials to repair from broken) nests under brokenState, not directly.
+        recovery_cost = [
+            {
+                "typeID": int(mat),
+                "typeName": type_names.get(int(mat), f"Type {mat}"),
+                "quantity": qty,
+            }
+            for mat, qty in (smart.get("brokenState") or {}).get("recoveryCost", {}).items()
+        ]
+        recovery_cost.sort(key=lambda i: i["quantity"], reverse=True)
+
+        structures.append({
+            "structureID": struct_id,
+            "structureName": type_names.get(struct_id, f"Type {type_id}"),
+            "buildTime": build_time,
+            "constructionSite": smart.get("constructionSite"),
+            "createOnChain": smart.get("createOnChain", 0),
+            "inputs": inputs,
+            "recoveryCost": recovery_cost,
+        })
+
+    structures.sort(key=lambda s: s["structureName"])
+    return {
+        "structures": structures,
+        "stats": {
+            "totalStructures": len(structures),
+            "generatedFrom": "spacecomponentsbytype.smartDeployable.constructionCost",
+        },
+    }
+
+
 # ============================================================================
 # Main
 # ============================================================================
@@ -552,6 +620,13 @@ def main():
         count = len(space_raw) if isinstance(space_raw, (dict, list)) else "N/A"
         save_json(space_raw, "spacecomponents.json",
                   f"{count} type entries")
+
+        # Derive deployable-structure build recipes (smartDeployable.constructionCost),
+        # surfaced as synthetic blueprints by the Blueprint Library + Industry Calculator.
+        structures_result = process_structures(space_raw, type_names)
+        if structures_result:
+            save_json(structures_result, "structures.json",
+                      f"{structures_result['stats']['totalStructures']} structures")
     print()
 
     # Step 8: Load type materials

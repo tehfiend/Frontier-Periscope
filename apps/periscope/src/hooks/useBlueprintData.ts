@@ -1,4 +1,4 @@
-import type { Blueprint, BlueprintData } from "@/lib/bomTypes";
+import type { Blueprint, BlueprintData, BlueprintInput } from "@/lib/bomTypes";
 import { useEffect, useMemo, useState } from "react";
 
 /**
@@ -49,6 +49,76 @@ interface BlueprintDataResult {
 	isLoading: boolean;
 }
 
+/**
+ * Deployable STRUCTURES are not in industry_blueprints; their build recipe lives in
+ * spacecomponents.json under smartDeployable.constructionCost and is pre-extracted into
+ * structures.json. We surface each one as a synthetic blueprint (ID = OFFSET + structureID)
+ * so the Blueprint Library + Industry Calculator treat them like any other product. The
+ * synthetic "facility" that runs them is the in-world Smart Assembly.
+ */
+const STRUCTURE_BP_ID_OFFSET = 9_000_000;
+const STRUCTURE_FACILITY_NAME = "Smart Assembly";
+
+/** A structure build recipe as stored in structures.json. */
+interface RawStructure {
+	structureID: number;
+	structureName: string;
+	buildTime: number;
+	inputs: BlueprintInput[];
+}
+interface StructureData {
+	structures: RawStructure[];
+}
+
+// Module-level cache so multiple consumers share the same fetch
+let cachedStructures: RawStructure[] | null = null;
+let structuresPromise: Promise<RawStructure[]> | null = null;
+
+function fetchStructures(): Promise<RawStructure[]> {
+	if (cachedStructures) return Promise.resolve(cachedStructures);
+	if (structuresPromise) return structuresPromise;
+	structuresPromise = fetch("/data/structures.json")
+		.then((res) => {
+			if (!res.ok) throw new Error(`Failed to load structures: ${res.status}`);
+			return res.json() as Promise<StructureData>;
+		})
+		.then((d) => {
+			cachedStructures = d.structures ?? [];
+			return cachedStructures;
+		})
+		.catch(() => {
+			structuresPromise = null;
+			return [];
+		});
+	return structuresPromise;
+}
+
+/** Format a build time (seconds) the same way the Python extractor formats runTime. */
+function formatBuildTime(seconds: number): string {
+	if (seconds <= 0) return "instant";
+	const hours = Math.floor(seconds / 3600);
+	const minutes = Math.floor((seconds % 3600) / 60);
+	const secs = seconds % 60;
+	const parts: string[] = [];
+	if (hours) parts.push(`${hours}h`);
+	if (minutes) parts.push(`${minutes}m`);
+	if (secs) parts.push(`${secs}s`);
+	return parts.length ? parts.join(" ") : "0s";
+}
+
+/** Build a synthetic Blueprint from a structure recipe. */
+function structureToBlueprint(s: RawStructure): Blueprint {
+	return {
+		blueprintID: STRUCTURE_BP_ID_OFFSET + s.structureID,
+		primaryTypeID: s.structureID,
+		primaryTypeName: s.structureName,
+		runTime: s.buildTime,
+		runTimeFormatted: formatBuildTime(s.buildTime),
+		inputs: s.inputs,
+		outputs: [{ typeID: s.structureID, typeName: s.structureName, quantity: 1 }],
+	};
+}
+
 // Module-level cache so multiple consumers share the same fetch
 let cachedData: BlueprintData | null = null;
 let fetchPromise: Promise<BlueprintData | null> | null = null;
@@ -56,14 +126,23 @@ let fetchPromise: Promise<BlueprintData | null> | null = null;
 function fetchBlueprintData(): Promise<BlueprintData | null> {
 	if (cachedData) return Promise.resolve(cachedData);
 	if (fetchPromise) return fetchPromise;
-	fetchPromise = fetch("/data/blueprints.json")
-		.then((res) => {
+	fetchPromise = Promise.all([
+		fetch("/data/blueprints.json").then((res) => {
 			if (!res.ok) throw new Error(`Failed to load blueprints: ${res.status}`);
 			return res.json() as Promise<BlueprintData>;
-		})
-		.then((d) => {
-			cachedData = d;
-			return d;
+		}),
+		fetchStructures(),
+	])
+		.then(([d, structures]) => {
+			// Merge synthetic structure blueprints so all downstream useMemo derivations
+			// (outputToBlueprints/defaultRecipes/rawMaterialIds) include structures automatically.
+			const blueprints: Record<string, Blueprint> = { ...d.blueprints };
+			for (const s of structures) {
+				const bp = structureToBlueprint(s);
+				blueprints[String(bp.blueprintID)] = bp;
+			}
+			cachedData = { ...d, blueprints };
+			return cachedData;
 		})
 		.catch(() => {
 			fetchPromise = null;
@@ -129,8 +208,9 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 		fetch("/data/categories.json").then((r) =>
 			r.ok ? (r.json() as Promise<Record<string, RawCategoryEntry>>) : ({} as Record<string, RawCategoryEntry>),
 		),
+		fetchStructures(),
 	])
-		.then(([types, facilities, groups, categories]) => {
+		.then(([types, facilities, groups, categories, structures]) => {
 			const volumeMap = new Map<number, number>();
 			const typeList: Array<{ id: number; name: string }> = [];
 			const typeNames = new Map<number, string>();
@@ -197,6 +277,19 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 			}
 
 			const buildableBlueprintIds = new Set<number>(blueprintFacilities.keys());
+
+			// Synthetic structure blueprints run on the in-world Smart Assembly. A structure is
+			// buildable only if its underlying type is published in the current game build;
+			// otherwise it is surfaced as removed so the UI can explain the unavailability.
+			for (const s of structures) {
+				const bpId = STRUCTURE_BP_ID_OFFSET + s.structureID;
+				blueprintFacilities.set(bpId, [STRUCTURE_FACILITY_NAME]);
+				if (publishedTypeIds.has(s.structureID)) {
+					buildableBlueprintIds.add(bpId);
+				} else {
+					removedFacilitiesByBlueprint.set(bpId, [STRUCTURE_FACILITY_NAME]);
+				}
+			}
 
 			cachedGameData = {
 				volumeMap,
