@@ -215,6 +215,12 @@
       "item": "items/91969.png"
     }
   },
+  "95343": {
+    "name": "Brace Weld",
+    "icons": {
+      "item": "items/95343.png"
+    }
+  },
   "92422": {
     "name": "Brine",
     "icons": {
@@ -239,10 +245,10 @@
       "item": "items/83421.png"
     }
   },
-  "83423": {
-    "name": "Bulky Armor Plates V",
+  "83422": {
+    "name": "Bulky Armor Plates IV",
     "icons": {
-      "item": "items/83423.png"
+      "item": "items/83422.png"
     }
   },
   "82652": {
@@ -275,6 +281,12 @@
       "item": "items/91937.png"
     }
   },
+  "95325": {
+    "name": "Capacitor",
+    "icons": {
+      "item": "items/95325.png"
+    }
+  },
   "3418": {
     "name": "Capacitor Management",
     "icons": {
@@ -285,6 +297,18 @@
     "name": "Carbon Weave",
     "icons": {
       "item": "items/84210.png"
+    }
+  },
+  "95315": {
+    "name": "Cargo Container",
+    "icons": {
+      "item": "items/95315.png"
+    }
+  },
+  "99003": {
+    "name": "Cargo Debris",
+    "icons": {
+      "item": "items/99003.png"
     }
   },
   "83497": {
@@ -359,6 +383,12 @@
       "item": "items/88781.png"
     }
   },
+  "95345": {
+    "name": "Cinderwrack",
+    "icons": {
+      "item": "items/95345.png"
+    }
+  },
   "82648": {
     "name": "Coated Armor Plates II",
     "icons": {
@@ -401,10 +431,22 @@
       "item": "items/91377.png"
     }
   },
+  "95323": {
+    "name": "Command Pod",
+    "icons": {
+      "item": "items/95323.png"
+    }
+  },
   "88887": {
     "name": "Compressed Coolant ",
     "icons": {
       "item": "items/88887.png"
+    }
+  },
+  "99020": {
+    "name": "Contaminated Neuron",
+    "icons": {
+      "item": "items/99020.png"
     }
   },
   "3316": {
@@ -413,16 +455,34 @@
       "item": "items/3316.png"
     }
   },
+  "95344": {
+    "name": "Coolant Reservoir",
+    "icons": {
+      "item": "items/95344.png"
+    }
+  },
   "3363": {
     "name": "Corporation Management",
     "icons": {
       "item": "items/3363.png"
     }
   },
+  "99002": {
+    "name": "Creche Salvage A",
+    "icons": {
+      "item": "items/99002.png"
+    }
+  },
   "77484": {
     "name": "Crude Extractor",
     "icons": {
       "item": "items/77484.png"
+    }
+  },
+  "95503": {
+    "name": "Crude Extractor",
+    "icons": {
+      "item": "items/95503.png"
     }
   },
   "86681": {
@@ -461,6 +521,18 @@
       "item": "items/87599.png"
     }
   },
+  "99013": {
+    "name": "Crystalline Refuse",
+    "icons": {
+      "item": "items/99013.png"
+    }
+  },
+  "95359": {
+    "name": "Crystalline Refuse",
+    "icons": {
+      "item": "items/95359.png"
+    }
+  },
   "78451": {
     "name": "Crystallizing Core Hermetite",
     "icons": {
@@ -481,6 +553,18 @@
       "cdn": "cdn/88319.png"
     }
   },
+  "99014": {
+    "name": "Debris",
+    "icons": {
+      "item": "items/99014.png"
+    }
+  },
+  "95360": {
+    "name": "Debris",
+    "icons": {
+      "item": "items/95360.png"
+    }
+  },
   "11395": {
     "name": "Deep Core Mining",
     "icons": {
@@ -497,6 +581,12 @@
     "name": "Defiled Crude Matter",
     "icons": {
       "item": "items/89794.png"
+    }
+  },
+  "93596": {
+    "name": "Deflagration",
+    "icons": {
+      "item": "items/93596.png"
     }
   },
   "86798": {
@@ -527,6 +617,18 @@
     "name": "Dewdrop",
     "icons": {
       "item": "items/91378.png"
+    }
+  },
+  "95322": {
+    "name": "Directional Scanner",
+    "icons": {
+      "item": "items/95322.png"
+    }
+  },
+  "95285": {
+    "name": "Drained Strand",
+    "icons": {
+      "item": "items/95285.png"
     }
   },
   "83988": {
@@ -741,6 +843,18 @@
       "item": "items/78421.png"
     }
   },
+  "95326": {
+    "name": "External Thruster",
+    "icons": {
+      "item": "items/95326.png"
+    }
+  },
+  "95340": {
+    "name": "Extinguishing Salve",
+    "icons": {
+      "item": "items/95340.png"
+    }
+  },
   "86689": {
     "name": "Fabricators Keep Database Fragment",
     "icons": {
@@ -789,6 +903,12 @@
       "item": "items/77800.png"
     }
   },
+  "95342": {
+    "name": "Feral Blight",
+    "icons": {
+      "item": "items/95342.png"
+    }
+  },
   "72244": {
     "name": "Feral Data",
     "icons": {
@@ -799,6 +919,24 @@
     "name": "Feral Echo",
     "icons": {
       "item": "items/88564.png"
+    }
+  },
+  "95347": {
+    "name": "Feralized",
+    "icons": {
+      "item": "items/95347.png"
+    }
+  },
+  "92414": {
+    "name": "Fine Old Crude Matter",
+    "icons": {
+      "item": "items/92414.png"
+    }
+  },
+  "92394": {
+    "name": "Fine Young Crude Matter",
+    "icons": {
+      "item": "items/92394.png"
     }
   },
   "78450": {
@@ -823,6 +961,12 @@
     "name": "Frontier Survival Crate",
     "icons": {
       "item": "items/79216.png"
+    }
+  },
+  "95324": {
+    "name": "Fuel Bay",
+    "icons": {
+      "item": "items/95324.png"
     }
   },
   "3451": {
@@ -854,9 +998,7 @@
     "icons": {
       "item": "items/27969.png",
       "128": "renders/27969_128.png",
-      "128_nobg": "renders/27969_128_nobg.png",
-      "64": "renders/27969_64.png",
-      "64_nobg": "renders/27969_64_nobg.png"
+      "64": "renders/27969_64.png"
     }
   },
   "28009": {
@@ -864,9 +1006,7 @@
     "icons": {
       "item": "items/28009.png",
       "128": "renders/28009_128.png",
-      "128_nobg": "renders/28009_128_nobg.png",
-      "64": "renders/28009_64.png",
-      "64_nobg": "renders/28009_64_nobg.png"
+      "64": "renders/28009_64.png"
     }
   },
   "28057": {
@@ -874,9 +1014,7 @@
     "icons": {
       "item": "items/28057.png",
       "128": "renders/28057_128.png",
-      "128_nobg": "renders/28057_128_nobg.png",
-      "64": "renders/28057_64.png",
-      "64_nobg": "renders/28057_64_nobg.png"
+      "64": "renders/28057_64.png"
     }
   },
   "27977": {
@@ -884,9 +1022,7 @@
     "icons": {
       "item": "items/27977.png",
       "128": "renders/27977_128.png",
-      "128_nobg": "renders/27977_128_nobg.png",
-      "64": "renders/27977_64.png",
-      "64_nobg": "renders/27977_64_nobg.png"
+      "64": "renders/27977_64.png"
     }
   },
   "28033": {
@@ -894,9 +1030,7 @@
     "icons": {
       "item": "items/28033.png",
       "128": "renders/28033_128.png",
-      "128_nobg": "renders/28033_128_nobg.png",
-      "64": "renders/28033_64.png",
-      "64_nobg": "renders/28033_64_nobg.png"
+      "64": "renders/28033_64.png"
     }
   },
   "27939": {
@@ -904,9 +1038,7 @@
     "icons": {
       "item": "items/27939.png",
       "128": "renders/27939_128.png",
-      "128_nobg": "renders/27939_128_nobg.png",
-      "64": "renders/27939_64.png",
-      "64_nobg": "renders/27939_64_nobg.png"
+      "64": "renders/27939_64.png"
     }
   },
   "28005": {
@@ -914,9 +1046,7 @@
     "icons": {
       "item": "items/28005.png",
       "128": "renders/28005_128.png",
-      "128_nobg": "renders/28005_128_nobg.png",
-      "64": "renders/28005_64.png",
-      "64_nobg": "renders/28005_64_nobg.png"
+      "64": "renders/28005_64.png"
     }
   },
   "28053": {
@@ -924,9 +1054,7 @@
     "icons": {
       "item": "items/28053.png",
       "128": "renders/28053_128.png",
-      "128_nobg": "renders/28053_128_nobg.png",
-      "64": "renders/28053_64.png",
-      "64_nobg": "renders/28053_64_nobg.png"
+      "64": "renders/28053_64.png"
     }
   },
   "27983": {
@@ -934,9 +1062,7 @@
     "icons": {
       "item": "items/27983.png",
       "128": "renders/27983_128.png",
-      "128_nobg": "renders/27983_128_nobg.png",
-      "64": "renders/27983_64.png",
-      "64_nobg": "renders/27983_64_nobg.png"
+      "64": "renders/27983_64.png"
     }
   },
   "28029": {
@@ -944,9 +1070,7 @@
     "icons": {
       "item": "items/28029.png",
       "128": "renders/28029_128.png",
-      "128_nobg": "renders/28029_128_nobg.png",
-      "64": "renders/28029_64.png",
-      "64_nobg": "renders/28029_64_nobg.png"
+      "64": "renders/28029_64.png"
     }
   },
   "27967": {
@@ -954,9 +1078,7 @@
     "icons": {
       "item": "items/27967.png",
       "128": "renders/27967_128.png",
-      "128_nobg": "renders/27967_128_nobg.png",
-      "64": "renders/27967_64.png",
-      "64_nobg": "renders/27967_64_nobg.png"
+      "64": "renders/27967_64.png"
     }
   },
   "28007": {
@@ -964,9 +1086,7 @@
     "icons": {
       "item": "items/28007.png",
       "128": "renders/28007_128.png",
-      "128_nobg": "renders/28007_128_nobg.png",
-      "64": "renders/28007_64.png",
-      "64_nobg": "renders/28007_64_nobg.png"
+      "64": "renders/28007_64.png"
     }
   },
   "28055": {
@@ -974,9 +1094,7 @@
     "icons": {
       "item": "items/28055.png",
       "128": "renders/28055_128.png",
-      "128_nobg": "renders/28055_128_nobg.png",
-      "64": "renders/28055_64.png",
-      "64_nobg": "renders/28055_64_nobg.png"
+      "64": "renders/28055_64.png"
     }
   },
   "27975": {
@@ -984,9 +1102,7 @@
     "icons": {
       "item": "items/27975.png",
       "128": "renders/27975_128.png",
-      "128_nobg": "renders/27975_128_nobg.png",
-      "64": "renders/27975_64.png",
-      "64_nobg": "renders/27975_64_nobg.png"
+      "64": "renders/27975_64.png"
     }
   },
   "28031": {
@@ -994,9 +1110,7 @@
     "icons": {
       "item": "items/28031.png",
       "128": "renders/28031_128.png",
-      "128_nobg": "renders/28031_128_nobg.png",
-      "64": "renders/28031_64.png",
-      "64_nobg": "renders/28031_64_nobg.png"
+      "64": "renders/28031_64.png"
     }
   },
   "73047": {
@@ -1047,6 +1161,12 @@
       "item": "items/3454.png"
     }
   },
+  "95339": {
+    "name": "Homeostatic Inoculation",
+    "icons": {
+      "item": "items/95339.png"
+    }
+  },
   "90887": {
     "name": "Hop",
     "icons": {
@@ -1057,6 +1177,12 @@
     "name": "Howitzer Ammo 1 (M)",
     "icons": {
       "item": "items/82140.png"
+    }
+  },
+  "95316": {
+    "name": "Hull Repairer",
+    "icons": {
+      "item": "items/95316.png"
     }
   },
   "72960": {
@@ -1087,6 +1213,18 @@
     "name": "Ice Harvesting",
     "icons": {
       "item": "items/16281.png"
+    }
+  },
+  "99012": {
+    "name": "Industrial Waste",
+    "icons": {
+      "item": "items/99012.png"
+    }
+  },
+  "95361": {
+    "name": "Industrial Waste",
+    "icons": {
+      "item": "items/95361.png"
     }
   },
   "3380": {
@@ -1215,6 +1353,12 @@
       "item": "items/82413.png"
     }
   },
+  "95277": {
+    "name": "Knife",
+    "icons": {
+      "item": "items/95277.png"
+    }
+  },
   "83524": {
     "name": "Large Cutting Laser",
     "icons": {
@@ -1227,8 +1371,14 @@
       "item": "items/92421.png"
     }
   },
+  "95319": {
+    "name": "Leap",
+    "icons": {
+      "item": "items/95319.png"
+    }
+  },
   "77518": {
-    "name": "Lens 3X",
+    "name": "Lens 60X",
     "icons": {
       "item": "items/77518.png"
     }
@@ -1281,6 +1431,12 @@
       "item": "items/3387.png"
     }
   },
+  "95486": {
+    "name": "Material Processor",
+    "icons": {
+      "item": "items/95486.png"
+    }
+  },
   "3392": {
     "name": "Mechanics",
     "icons": {
@@ -1309,6 +1465,12 @@
     "name": "Miner Hiring Form",
     "icons": {
       "item": "items/83981.png"
+    }
+  },
+  "95302": {
+    "name": "Mini Printer",
+    "icons": {
+      "item": "items/95302.png"
     }
   },
   "3386": {
@@ -1376,9 +1538,7 @@
     "icons": {
       "item": "items/27973.png",
       "128": "renders/27973_128.png",
-      "128_nobg": "renders/27973_128_nobg.png",
-      "64": "renders/27973_64.png",
-      "64_nobg": "renders/27973_64_nobg.png"
+      "64": "renders/27973_64.png"
     }
   },
   "28015": {
@@ -1386,9 +1546,7 @@
     "icons": {
       "item": "items/28015.png",
       "128": "renders/28015_128.png",
-      "128_nobg": "renders/28015_128_nobg.png",
-      "64": "renders/28015_64.png",
-      "64_nobg": "renders/28015_64_nobg.png"
+      "64": "renders/28015_64.png"
     }
   },
   "28063": {
@@ -1396,9 +1554,7 @@
     "icons": {
       "item": "items/28063.png",
       "128": "renders/28063_128.png",
-      "128_nobg": "renders/28063_128_nobg.png",
-      "64": "renders/28063_64.png",
-      "64_nobg": "renders/28063_64_nobg.png"
+      "64": "renders/28063_64.png"
     }
   },
   "27981": {
@@ -1406,9 +1562,7 @@
     "icons": {
       "item": "items/27981.png",
       "128": "renders/27981_128.png",
-      "128_nobg": "renders/27981_128_nobg.png",
-      "64": "renders/27981_64.png",
-      "64_nobg": "renders/27981_64_nobg.png"
+      "64": "renders/27981_64.png"
     }
   },
   "28039": {
@@ -1416,9 +1570,7 @@
     "icons": {
       "item": "items/28039.png",
       "128": "renders/28039_128.png",
-      "128_nobg": "renders/28039_128_nobg.png",
-      "64": "renders/28039_64.png",
-      "64_nobg": "renders/28039_64_nobg.png"
+      "64": "renders/28039_64.png"
     }
   },
   "27941": {
@@ -1426,9 +1578,7 @@
     "icons": {
       "item": "items/27941.png",
       "128": "renders/27941_128.png",
-      "128_nobg": "renders/27941_128_nobg.png",
-      "64": "renders/27941_64.png",
-      "64_nobg": "renders/27941_64_nobg.png"
+      "64": "renders/27941_64.png"
     }
   },
   "28011": {
@@ -1436,9 +1586,7 @@
     "icons": {
       "item": "items/28011.png",
       "128": "renders/28011_128.png",
-      "128_nobg": "renders/28011_128_nobg.png",
-      "64": "renders/28011_64.png",
-      "64_nobg": "renders/28011_64_nobg.png"
+      "64": "renders/28011_64.png"
     }
   },
   "28059": {
@@ -1446,9 +1594,7 @@
     "icons": {
       "item": "items/28059.png",
       "128": "renders/28059_128.png",
-      "128_nobg": "renders/28059_128_nobg.png",
-      "64": "renders/28059_64.png",
-      "64_nobg": "renders/28059_64_nobg.png"
+      "64": "renders/28059_64.png"
     }
   },
   "27985": {
@@ -1456,9 +1602,7 @@
     "icons": {
       "item": "items/27985.png",
       "128": "renders/27985_128.png",
-      "128_nobg": "renders/27985_128_nobg.png",
-      "64": "renders/27985_64.png",
-      "64_nobg": "renders/27985_64_nobg.png"
+      "64": "renders/27985_64.png"
     }
   },
   "28035": {
@@ -1466,9 +1610,7 @@
     "icons": {
       "item": "items/28035.png",
       "128": "renders/28035_128.png",
-      "128_nobg": "renders/28035_128_nobg.png",
-      "64": "renders/28035_64.png",
-      "64_nobg": "renders/28035_64_nobg.png"
+      "64": "renders/28035_64.png"
     }
   },
   "27971": {
@@ -1476,9 +1618,7 @@
     "icons": {
       "item": "items/27971.png",
       "128": "renders/27971_128.png",
-      "128_nobg": "renders/27971_128_nobg.png",
-      "64": "renders/27971_64.png",
-      "64_nobg": "renders/27971_64_nobg.png"
+      "64": "renders/27971_64.png"
     }
   },
   "28013": {
@@ -1486,9 +1626,7 @@
     "icons": {
       "item": "items/28013.png",
       "128": "renders/28013_128.png",
-      "128_nobg": "renders/28013_128_nobg.png",
-      "64": "renders/28013_64.png",
-      "64_nobg": "renders/28013_64_nobg.png"
+      "64": "renders/28013_64.png"
     }
   },
   "28061": {
@@ -1496,9 +1634,7 @@
     "icons": {
       "item": "items/28061.png",
       "128": "renders/28061_128.png",
-      "128_nobg": "renders/28061_128_nobg.png",
-      "64": "renders/28061_64.png",
-      "64_nobg": "renders/28061_64_nobg.png"
+      "64": "renders/28061_64.png"
     }
   },
   "27979": {
@@ -1506,9 +1642,7 @@
     "icons": {
       "item": "items/27979.png",
       "128": "renders/27979_128.png",
-      "128_nobg": "renders/27979_128_nobg.png",
-      "64": "renders/27979_64.png",
-      "64_nobg": "renders/27979_64_nobg.png"
+      "64": "renders/27979_64.png"
     }
   },
   "28037": {
@@ -1516,9 +1650,7 @@
     "icons": {
       "item": "items/28037.png",
       "128": "renders/28037_128.png",
-      "128_nobg": "renders/28037_128_nobg.png",
-      "64": "renders/28037_64.png",
-      "64_nobg": "renders/28037_64_nobg.png"
+      "64": "renders/28037_64.png"
     }
   },
   "3312": {
@@ -1536,7 +1668,9 @@
   "88765": {
     "name": "Mummified Clone",
     "icons": {
-      "item": "items/88765.png"
+      "item": "items/88765.png",
+      "128": "renders/88765_128.png",
+      "64": "renders/88765_64.png"
     }
   },
   "3449": {
@@ -1556,9 +1690,7 @@
     "icons": {
       "item": "items/88092.png",
       "128": "renders/88092_128.png",
-      "128_nobg": "renders/88092_128_nobg.png",
       "64": "renders/88092_64.png",
-      "64_nobg": "renders/88092_64_nobg.png",
       "cdn": "cdn/88092.png"
     }
   },
@@ -1630,6 +1762,12 @@
       "64": "renders/29148_64.png"
     }
   },
+  "93600": {
+    "name": "On Fire",
+    "icons": {
+      "item": "items/93600.png"
+    }
+  },
   "73192": {
     "name": "Ophidian Sensor Cloak",
     "icons": {
@@ -1666,6 +1804,12 @@
       "item": "items/99001.png"
     }
   },
+  "95321": {
+    "name": "Passive Gravity Scanner",
+    "icons": {
+      "item": "items/95321.png"
+    }
+  },
   "77805": {
     "name": "Platinum-Group Veins ",
     "icons": {
@@ -1676,6 +1820,12 @@
     "name": "Platinum-Palladium Matrix",
     "icons": {
       "item": "items/77810.png"
+    }
+  },
+  "95318": {
+    "name": "Power Generator",
+    "icons": {
+      "item": "items/95318.png"
     }
   },
   "3413": {
@@ -1694,6 +1844,24 @@
     "name": "Printed Circuits",
     "icons": {
       "item": "items/84180.png"
+    }
+  },
+  "99016": {
+    "name": "Propulsion Component A",
+    "icons": {
+      "item": "items/99016.png"
+    }
+  },
+  "95320": {
+    "name": "Propulsion Engine",
+    "icons": {
+      "item": "items/95320.png"
+    }
+  },
+  "95341": {
+    "name": "Psyche Inoculation",
+    "icons": {
+      "item": "items/95341.png"
     }
   },
   "83525": {
@@ -1822,6 +1990,18 @@
       "item": "items/87375.png"
     }
   },
+  "77729": {
+    "name": "Rough Old Crude Matter",
+    "icons": {
+      "item": "items/77729.png"
+    }
+  },
+  "78434": {
+    "name": "Rough Young Crude Matter",
+    "icons": {
+      "item": "items/78434.png"
+    }
+  },
   "91968": {
     "name": "Rugged Shell",
     "icons": {
@@ -1848,6 +2028,20 @@
       "item": "items/83839.png"
     }
   },
+  "95350": {
+    "name": "Salvageable Cargo Debris",
+    "icons": {
+      "item": "items/95350.png",
+      "128": "renders/95350_128.png",
+      "64": "renders/95350_64.png"
+    }
+  },
+  "95349": {
+    "name": "Salvageable Wreckage",
+    "icons": {
+      "item": "items/95349.png"
+    }
+  },
   "88764": {
     "name": "Salvaged Materials",
     "icons": {
@@ -1858,6 +2052,18 @@
     "name": "Sediment Core Hermetite",
     "icons": {
       "item": "items/78453.png"
+    }
+  },
+  "99005": {
+    "name": "Sensor Component A",
+    "icons": {
+      "item": "items/99005.png"
+    }
+  },
+  "99015": {
+    "name": "Sensor Component B",
+    "icons": {
+      "item": "items/99015.png"
     }
   },
   "91357": {
@@ -1876,6 +2082,12 @@
     "name": "Sharpshooter",
     "icons": {
       "item": "items/3311.png"
+    }
+  },
+  "99019": {
+    "name": "Shelter Component A",
+    "icons": {
+      "item": "items/99019.png"
     }
   },
   "21059": {
@@ -1968,6 +2180,12 @@
       "item": "items/77852.png"
     }
   },
+  "95317": {
+    "name": "Small Cutting Laser",
+    "icons": {
+      "item": "items/95317.png"
+    }
+  },
   "3302": {
     "name": "Small Projectile Turret",
     "icons": {
@@ -1996,6 +2214,12 @@
     "name": "Spaceship Command",
     "icons": {
       "item": "items/3327.png"
+    }
+  },
+  "93629": {
+    "name": "Special Heat Scarf",
+    "icons": {
+      "item": "items/93629.png"
     }
   },
   "89989": {
@@ -2146,6 +2370,12 @@
     "name": "Supply Chain Management",
     "icons": {
       "item": "items/24268.png"
+    }
+  },
+  "99018": {
+    "name": "Support Component A",
+    "icons": {
+      "item": "items/99018.png"
     }
   },
   "3315": {
@@ -2310,6 +2540,12 @@
       "item": "items/78449.png"
     }
   },
+  "95284": {
+    "name": "Thrumming Strand",
+    "icons": {
+      "item": "items/95284.png"
+    }
+  },
   "82084": {
     "name": "Tier 2 Autocannon (S)",
     "icons": {
@@ -2460,6 +2696,12 @@
       "item": "items/77818.png"
     }
   },
+  "99004": {
+    "name": "Utility Component A",
+    "icons": {
+      "item": "items/99004.png"
+    }
+  },
   "86702": {
     "name": "Vault Promotional Material",
     "icons": {
@@ -2536,6 +2778,18 @@
     "name": "Water Ice",
     "icons": {
       "item": "items/78423.png"
+    }
+  },
+  "99017": {
+    "name": "Weapon Component A",
+    "icons": {
+      "item": "items/99017.png"
+    }
+  },
+  "95303": {
+    "name": "Weapon Receiver",
+    "icons": {
+      "item": "items/95303.png"
     }
   },
   "3318": {
@@ -2618,25 +2872,12 @@
       "64": "renders/88300_64.png"
     }
   },
-  "88068": {
-    "name": "Assembler",
-    "icons": {
-      "item": "items/88068.png",
-      "128": "renders/88068_128.png",
-      "128_nobg": "renders/88068_128_nobg.png",
-      "64": "renders/88068_64.png",
-      "64_nobg": "renders/88068_64_nobg.png",
-      "cdn": "cdn/88068.png"
-    }
-  },
   "91708": {
     "name": "Assembler",
     "icons": {
       "item": "items/91708.png",
       "128": "renders/91708_128.png",
-      "128_nobg": "renders/91708_128_nobg.png",
-      "64": "renders/91708_64.png",
-      "64_nobg": "renders/91708_64_nobg.png"
+      "64": "renders/91708_64.png"
     }
   },
   "88045": {
@@ -2655,33 +2896,20 @@
       "64": "renders/88044_64.png"
     }
   },
-  "88070": {
-    "name": "Berth",
-    "icons": {
-      "item": "items/88070.png",
-      "128": "renders/88070_128.png",
-      "128_nobg": "renders/88070_128_nobg.png",
-      "64": "renders/88070_64.png",
-      "64_nobg": "renders/88070_64_nobg.png",
-      "cdn": "cdn/88070.png"
-    }
-  },
-  "91706": {
-    "name": "Berth",
-    "icons": {
-      "item": "items/91706.png",
-      "128": "renders/91706_128.png",
-      "128_nobg": "renders/91706_128_nobg.png",
-      "64": "renders/91706_64.png",
-      "64_nobg": "renders/91706_64_nobg.png"
-    }
-  },
   "91107": {
     "name": "Carom",
     "icons": {
       "item": "items/91107.png",
       "128": "renders/91107_128.png",
       "64": "renders/91107_64.png"
+    }
+  },
+  "93230": {
+    "name": "Central Depot",
+    "icons": {
+      "item": "items/93230.png",
+      "128": "renders/93230_128.png",
+      "64": "renders/93230_64.png"
     }
   },
   "81611": {
@@ -2697,9 +2925,7 @@
     "icons": {
       "item": "items/30845.png",
       "128": "renders/30845_128.png",
-      "128_nobg": "renders/30845_128_nobg.png",
-      "64": "renders/30845_64.png",
-      "64_nobg": "renders/30845_64_nobg.png"
+      "64": "renders/30845_64.png"
     }
   },
   "30846": {
@@ -2707,9 +2933,7 @@
     "icons": {
       "item": "items/30846.png",
       "128": "renders/30846_128.png",
-      "128_nobg": "renders/30846_128_nobg.png",
-      "64": "renders/30846_64.png",
-      "64_nobg": "renders/30846_64_nobg.png"
+      "64": "renders/30846_64.png"
     }
   },
   "30847": {
@@ -2717,9 +2941,7 @@
     "icons": {
       "item": "items/30847.png",
       "128": "renders/30847_128.png",
-      "128_nobg": "renders/30847_128_nobg.png",
-      "64": "renders/30847_64.png",
-      "64_nobg": "renders/30847_64_nobg.png"
+      "64": "renders/30847_64.png"
     }
   },
   "30844": {
@@ -2727,9 +2949,7 @@
     "icons": {
       "item": "items/30844.png",
       "128": "renders/30844_128.png",
-      "128_nobg": "renders/30844_128_nobg.png",
-      "64": "renders/30844_64.png",
-      "64_nobg": "renders/30844_64_nobg.png"
+      "64": "renders/30844_64.png"
     }
   },
   "30848": {
@@ -2737,9 +2957,7 @@
     "icons": {
       "item": "items/30848.png",
       "128": "renders/30848_128.png",
-      "128_nobg": "renders/30848_128_nobg.png",
-      "64": "renders/30848_64.png",
-      "64_nobg": "renders/30848_64_nobg.png"
+      "64": "renders/30848_64.png"
     }
   },
   "30849": {
@@ -2747,9 +2965,7 @@
     "icons": {
       "item": "items/30849.png",
       "128": "renders/30849_128.png",
-      "128_nobg": "renders/30849_128_nobg.png",
-      "64": "renders/30849_64.png",
-      "64_nobg": "renders/30849_64_nobg.png"
+      "64": "renders/30849_64.png"
     }
   },
   "30850": {
@@ -2757,9 +2973,7 @@
     "icons": {
       "item": "items/30850.png",
       "128": "renders/30850_128.png",
-      "128_nobg": "renders/30850_128_nobg.png",
-      "64": "renders/30850_64.png",
-      "64_nobg": "renders/30850_64_nobg.png"
+      "64": "renders/30850_64.png"
     }
   },
   "30880": {
@@ -2767,9 +2981,7 @@
     "icons": {
       "item": "items/30880.png",
       "128": "renders/30880_128.png",
-      "128_nobg": "renders/30880_128_nobg.png",
-      "64": "renders/30880_64.png",
-      "64_nobg": "renders/30880_64_nobg.png"
+      "64": "renders/30880_64.png"
     }
   },
   "30860": {
@@ -2777,9 +2989,7 @@
     "icons": {
       "item": "items/30860.png",
       "128": "renders/30860_128.png",
-      "128_nobg": "renders/30860_128_nobg.png",
-      "64": "renders/30860_64.png",
-      "64_nobg": "renders/30860_64_nobg.png"
+      "64": "renders/30860_64.png"
     }
   },
   "30865": {
@@ -2787,9 +2997,7 @@
     "icons": {
       "item": "items/30865.png",
       "128": "renders/30865_128.png",
-      "128_nobg": "renders/30865_128_nobg.png",
-      "64": "renders/30865_64.png",
-      "64_nobg": "renders/30865_64_nobg.png"
+      "64": "renders/30865_64.png"
     }
   },
   "30870": {
@@ -2797,9 +3005,7 @@
     "icons": {
       "item": "items/30870.png",
       "128": "renders/30870_128.png",
-      "128_nobg": "renders/30870_128_nobg.png",
-      "64": "renders/30870_64.png",
-      "64_nobg": "renders/30870_64_nobg.png"
+      "64": "renders/30870_64.png"
     }
   },
   "30875": {
@@ -2807,9 +3013,7 @@
     "icons": {
       "item": "items/30875.png",
       "128": "renders/30875_128.png",
-      "128_nobg": "renders/30875_128_nobg.png",
-      "64": "renders/30875_64.png",
-      "64_nobg": "renders/30875_64_nobg.png"
+      "64": "renders/30875_64.png"
     }
   },
   "30851": {
@@ -2817,9 +3021,7 @@
     "icons": {
       "item": "items/30851.png",
       "128": "renders/30851_128.png",
-      "128_nobg": "renders/30851_128_nobg.png",
-      "64": "renders/30851_64.png",
-      "64_nobg": "renders/30851_64_nobg.png"
+      "64": "renders/30851_64.png"
     }
   },
   "30881": {
@@ -2827,9 +3029,7 @@
     "icons": {
       "item": "items/30881.png",
       "128": "renders/30881_128.png",
-      "128_nobg": "renders/30881_128_nobg.png",
-      "64": "renders/30881_64.png",
-      "64_nobg": "renders/30881_64_nobg.png"
+      "64": "renders/30881_64.png"
     }
   },
   "30861": {
@@ -2837,9 +3037,7 @@
     "icons": {
       "item": "items/30861.png",
       "128": "renders/30861_128.png",
-      "128_nobg": "renders/30861_128_nobg.png",
-      "64": "renders/30861_64.png",
-      "64_nobg": "renders/30861_64_nobg.png"
+      "64": "renders/30861_64.png"
     }
   },
   "30866": {
@@ -2847,9 +3045,7 @@
     "icons": {
       "item": "items/30866.png",
       "128": "renders/30866_128.png",
-      "128_nobg": "renders/30866_128_nobg.png",
-      "64": "renders/30866_64.png",
-      "64_nobg": "renders/30866_64_nobg.png"
+      "64": "renders/30866_64.png"
     }
   },
   "30871": {
@@ -2857,9 +3053,7 @@
     "icons": {
       "item": "items/30871.png",
       "128": "renders/30871_128.png",
-      "128_nobg": "renders/30871_128_nobg.png",
-      "64": "renders/30871_64.png",
-      "64_nobg": "renders/30871_64_nobg.png"
+      "64": "renders/30871_64.png"
     }
   },
   "30876": {
@@ -2867,9 +3061,7 @@
     "icons": {
       "item": "items/30876.png",
       "128": "renders/30876_128.png",
-      "128_nobg": "renders/30876_128_nobg.png",
-      "64": "renders/30876_64.png",
-      "64_nobg": "renders/30876_64_nobg.png"
+      "64": "renders/30876_64.png"
     }
   },
   "30852": {
@@ -2877,9 +3069,7 @@
     "icons": {
       "item": "items/30852.png",
       "128": "renders/30852_128.png",
-      "128_nobg": "renders/30852_128_nobg.png",
-      "64": "renders/30852_64.png",
-      "64_nobg": "renders/30852_64_nobg.png"
+      "64": "renders/30852_64.png"
     }
   },
   "30884": {
@@ -2887,9 +3077,7 @@
     "icons": {
       "item": "items/30884.png",
       "128": "renders/30884_128.png",
-      "128_nobg": "renders/30884_128_nobg.png",
-      "64": "renders/30884_64.png",
-      "64_nobg": "renders/30884_64_nobg.png"
+      "64": "renders/30884_64.png"
     }
   },
   "30862": {
@@ -2897,9 +3085,7 @@
     "icons": {
       "item": "items/30862.png",
       "128": "renders/30862_128.png",
-      "128_nobg": "renders/30862_128_nobg.png",
-      "64": "renders/30862_64.png",
-      "64_nobg": "renders/30862_64_nobg.png"
+      "64": "renders/30862_64.png"
     }
   },
   "30867": {
@@ -2907,9 +3093,7 @@
     "icons": {
       "item": "items/30867.png",
       "128": "renders/30867_128.png",
-      "128_nobg": "renders/30867_128_nobg.png",
-      "64": "renders/30867_64.png",
-      "64_nobg": "renders/30867_64_nobg.png"
+      "64": "renders/30867_64.png"
     }
   },
   "30872": {
@@ -2917,9 +3101,7 @@
     "icons": {
       "item": "items/30872.png",
       "128": "renders/30872_128.png",
-      "128_nobg": "renders/30872_128_nobg.png",
-      "64": "renders/30872_64.png",
-      "64_nobg": "renders/30872_64_nobg.png"
+      "64": "renders/30872_64.png"
     }
   },
   "30877": {
@@ -2927,9 +3109,7 @@
     "icons": {
       "item": "items/30877.png",
       "128": "renders/30877_128.png",
-      "128_nobg": "renders/30877_128_nobg.png",
-      "64": "renders/30877_64.png",
-      "64_nobg": "renders/30877_64_nobg.png"
+      "64": "renders/30877_64.png"
     }
   },
   "30853": {
@@ -2937,9 +3117,7 @@
     "icons": {
       "item": "items/30853.png",
       "128": "renders/30853_128.png",
-      "128_nobg": "renders/30853_128_nobg.png",
-      "64": "renders/30853_64.png",
-      "64_nobg": "renders/30853_64_nobg.png"
+      "64": "renders/30853_64.png"
     }
   },
   "30883": {
@@ -2947,9 +3125,7 @@
     "icons": {
       "item": "items/30883.png",
       "128": "renders/30883_128.png",
-      "128_nobg": "renders/30883_128_nobg.png",
-      "64": "renders/30883_64.png",
-      "64_nobg": "renders/30883_64_nobg.png"
+      "64": "renders/30883_64.png"
     }
   },
   "30863": {
@@ -2957,9 +3133,7 @@
     "icons": {
       "item": "items/30863.png",
       "128": "renders/30863_128.png",
-      "128_nobg": "renders/30863_128_nobg.png",
-      "64": "renders/30863_64.png",
-      "64_nobg": "renders/30863_64_nobg.png"
+      "64": "renders/30863_64.png"
     }
   },
   "30868": {
@@ -2967,9 +3141,7 @@
     "icons": {
       "item": "items/30868.png",
       "128": "renders/30868_128.png",
-      "128_nobg": "renders/30868_128_nobg.png",
-      "64": "renders/30868_64.png",
-      "64_nobg": "renders/30868_64_nobg.png"
+      "64": "renders/30868_64.png"
     }
   },
   "30873": {
@@ -2977,9 +3149,7 @@
     "icons": {
       "item": "items/30873.png",
       "128": "renders/30873_128.png",
-      "128_nobg": "renders/30873_128_nobg.png",
-      "64": "renders/30873_64.png",
-      "64_nobg": "renders/30873_64_nobg.png"
+      "64": "renders/30873_64.png"
     }
   },
   "30878": {
@@ -2987,9 +3157,7 @@
     "icons": {
       "item": "items/30878.png",
       "128": "renders/30878_128.png",
-      "128_nobg": "renders/30878_128_nobg.png",
-      "64": "renders/30878_64.png",
-      "64_nobg": "renders/30878_64_nobg.png"
+      "64": "renders/30878_64.png"
     }
   },
   "30854": {
@@ -2997,9 +3165,7 @@
     "icons": {
       "item": "items/30854.png",
       "128": "renders/30854_128.png",
-      "128_nobg": "renders/30854_128_nobg.png",
-      "64": "renders/30854_64.png",
-      "64_nobg": "renders/30854_64_nobg.png"
+      "64": "renders/30854_64.png"
     }
   },
   "30882": {
@@ -3007,9 +3173,7 @@
     "icons": {
       "item": "items/30882.png",
       "128": "renders/30882_128.png",
-      "128_nobg": "renders/30882_128_nobg.png",
-      "64": "renders/30882_64.png",
-      "64_nobg": "renders/30882_64_nobg.png"
+      "64": "renders/30882_64.png"
     }
   },
   "30864": {
@@ -3017,9 +3181,7 @@
     "icons": {
       "item": "items/30864.png",
       "128": "renders/30864_128.png",
-      "128_nobg": "renders/30864_128_nobg.png",
-      "64": "renders/30864_64.png",
-      "64_nobg": "renders/30864_64_nobg.png"
+      "64": "renders/30864_64.png"
     }
   },
   "30869": {
@@ -3027,9 +3189,7 @@
     "icons": {
       "item": "items/30869.png",
       "128": "renders/30869_128.png",
-      "128_nobg": "renders/30869_128_nobg.png",
-      "64": "renders/30869_64.png",
-      "64_nobg": "renders/30869_64_nobg.png"
+      "64": "renders/30869_64.png"
     }
   },
   "30874": {
@@ -3037,9 +3197,7 @@
     "icons": {
       "item": "items/30874.png",
       "128": "renders/30874_128.png",
-      "128_nobg": "renders/30874_128_nobg.png",
-      "64": "renders/30874_64.png",
-      "64_nobg": "renders/30874_64_nobg.png"
+      "64": "renders/30874_64.png"
     }
   },
   "30879": {
@@ -3047,9 +3205,7 @@
     "icons": {
       "item": "items/30879.png",
       "128": "renders/30879_128.png",
-      "128_nobg": "renders/30879_128_nobg.png",
-      "64": "renders/30879_64.png",
-      "64_nobg": "renders/30879_64_nobg.png"
+      "64": "renders/30879_64.png"
     }
   },
   "28356": {
@@ -3058,6 +3214,22 @@
       "item": "items/28356.png",
       "128": "renders/28356_128.png",
       "64": "renders/28356_64.png"
+    }
+  },
+  "95276": {
+    "name": "Creation",
+    "icons": {
+      "item": "items/95276.png",
+      "128": "renders/95276_128.png",
+      "64": "renders/95276_64.png"
+    }
+  },
+  "93870": {
+    "name": "Cruiser NPC",
+    "icons": {
+      "item": "items/93870.png",
+      "128": "renders/93870_128.png",
+      "64": "renders/93870_64.png"
     }
   },
   "85278": {
@@ -3073,9 +3245,7 @@
     "icons": {
       "item": "items/64883.png",
       "128": "renders/64883_128.png",
-      "128_nobg": "renders/64883_128_nobg.png",
-      "64": "renders/64883_64.png",
-      "64_nobg": "renders/64883_64_nobg.png"
+      "64": "renders/64883_64.png"
     }
   },
   "85291": {
@@ -3083,9 +3253,7 @@
     "icons": {
       "item": "items/85291.png",
       "128": "renders/85291_128.png",
-      "128_nobg": "renders/85291_128_nobg.png",
-      "64": "renders/85291_64.png",
-      "64_nobg": "renders/85291_64_nobg.png"
+      "64": "renders/85291_64.png"
     }
   },
   "35802": {
@@ -3093,9 +3261,7 @@
     "icons": {
       "item": "items/35802.png",
       "128": "renders/35802_128.png",
-      "128_nobg": "renders/35802_128_nobg.png",
-      "64": "renders/35802_64.png",
-      "64_nobg": "renders/35802_64_nobg.png"
+      "64": "renders/35802_64.png"
     }
   },
   "35799": {
@@ -3103,9 +3269,7 @@
     "icons": {
       "item": "items/35799.png",
       "128": "renders/35799_128.png",
-      "128_nobg": "renders/35799_128_nobg.png",
-      "64": "renders/35799_64.png",
-      "64_nobg": "renders/35799_64_nobg.png"
+      "64": "renders/35799_64.png"
     }
   },
   "35803": {
@@ -3113,9 +3277,7 @@
     "icons": {
       "item": "items/35803.png",
       "128": "renders/35803_128.png",
-      "128_nobg": "renders/35803_128_nobg.png",
-      "64": "renders/35803_64.png",
-      "64_nobg": "renders/35803_64_nobg.png"
+      "64": "renders/35803_64.png"
     }
   },
   "35800": {
@@ -3123,9 +3285,7 @@
     "icons": {
       "item": "items/35800.png",
       "128": "renders/35800_128.png",
-      "128_nobg": "renders/35800_128_nobg.png",
-      "64": "renders/35800_64.png",
-      "64_nobg": "renders/35800_64_nobg.png"
+      "64": "renders/35800_64.png"
     }
   },
   "35804": {
@@ -3133,9 +3293,7 @@
     "icons": {
       "item": "items/35804.png",
       "128": "renders/35804_128.png",
-      "128_nobg": "renders/35804_128_nobg.png",
-      "64": "renders/35804_64.png",
-      "64_nobg": "renders/35804_64_nobg.png"
+      "64": "renders/35804_64.png"
     }
   },
   "35801": {
@@ -3143,9 +3301,7 @@
     "icons": {
       "item": "items/35801.png",
       "128": "renders/35801_128.png",
-      "128_nobg": "renders/35801_128_nobg.png",
-      "64": "renders/35801_64.png",
-      "64_nobg": "renders/35801_64_nobg.png"
+      "64": "renders/35801_64.png"
     }
   },
   "55914": {
@@ -3153,9 +3309,7 @@
     "icons": {
       "item": "items/55914.png",
       "128": "renders/55914_128.png",
-      "128_nobg": "renders/55914_128_nobg.png",
-      "64": "renders/55914_64.png",
-      "64_nobg": "renders/55914_64_nobg.png"
+      "64": "renders/55914_64.png"
     }
   },
   "83556": {
@@ -3246,45 +3400,20 @@
       "64": "renders/85292_64.png"
     }
   },
-  "87162": {
-    "name": "Field Printer",
+  "93141": {
+    "name": "Field Cairn",
     "icons": {
-      "item": "items/87162.png",
-      "128": "renders/87162_128.png",
-      "128_nobg": "renders/87162_128_nobg.png",
-      "64": "renders/87162_64.png",
-      "64_nobg": "renders/87162_64_nobg.png",
-      "cdn": "cdn/87162.png"
+      "item": "items/93141.png",
+      "128": "renders/93141_128.png",
+      "64": "renders/93141_64.png"
     }
   },
-  "91753": {
-    "name": "Field Printer",
+  "93228": {
+    "name": "Field Cairn",
     "icons": {
-      "item": "items/91753.png",
-      "128": "renders/91753_128.png",
-      "128_nobg": "renders/91753_128_nobg.png",
-      "64": "renders/91753_64.png",
-      "64_nobg": "renders/91753_64_nobg.png"
-    }
-  },
-  "87161": {
-    "name": "Field Refinery",
-    "icons": {
-      "item": "items/87161.png",
-      "128": "renders/87161_128.png",
-      "128_nobg": "renders/87161_128_nobg.png",
-      "64": "renders/87161_64.png",
-      "64_nobg": "renders/87161_64_nobg.png"
-    }
-  },
-  "91752": {
-    "name": "Field Refinery",
-    "icons": {
-      "item": "items/91752.png",
-      "128": "renders/91752_128.png",
-      "128_nobg": "renders/91752_128_nobg.png",
-      "64": "renders/91752_64.png",
-      "64_nobg": "renders/91752_64_nobg.png"
+      "item": "items/93228.png",
+      "128": "renders/93228_128.png",
+      "64": "renders/93228_64.png"
     }
   },
   "87566": {
@@ -3292,9 +3421,7 @@
     "icons": {
       "item": "items/87566.png",
       "128": "renders/87566_128.png",
-      "128_nobg": "renders/87566_128_nobg.png",
-      "64": "renders/87566_64.png",
-      "64_nobg": "renders/87566_64_nobg.png"
+      "64": "renders/87566_64.png"
     }
   },
   "91756": {
@@ -3302,9 +3429,7 @@
     "icons": {
       "item": "items/91756.png",
       "128": "renders/91756_128.png",
-      "128_nobg": "renders/91756_128_nobg.png",
-      "64": "renders/91756_64.png",
-      "64_nobg": "renders/91756_64_nobg.png"
+      "64": "renders/91756_64.png"
     }
   },
   "89766": {
@@ -3456,9 +3581,7 @@
     "icons": {
       "item": "items/89777.png",
       "128": "renders/89777_128.png",
-      "128_nobg": "renders/89777_128_nobg.png",
-      "64": "renders/89777_64.png",
-      "64_nobg": "renders/89777_64_nobg.png"
+      "64": "renders/89777_64.png"
     }
   },
   "91724": {
@@ -3466,9 +3589,7 @@
     "icons": {
       "item": "items/91724.png",
       "128": "renders/91724_128.png",
-      "128_nobg": "renders/91724_128_nobg.png",
-      "64": "renders/91724_64.png",
-      "64_nobg": "renders/91724_64_nobg.png"
+      "64": "renders/91724_64.png"
     }
   },
   "89778": {
@@ -3476,9 +3597,7 @@
     "icons": {
       "item": "items/89778.png",
       "128": "renders/89778_128.png",
-      "128_nobg": "renders/89778_128_nobg.png",
-      "64": "renders/89778_64.png",
-      "64_nobg": "renders/89778_64_nobg.png"
+      "64": "renders/89778_64.png"
     }
   },
   "91725": {
@@ -3486,40 +3605,7 @@
     "icons": {
       "item": "items/91725.png",
       "128": "renders/91725_128.png",
-      "128_nobg": "renders/91725_128_nobg.png",
-      "64": "renders/91725_64.png",
-      "64_nobg": "renders/91725_64_nobg.png"
-    }
-  },
-  "91955": {
-    "name": "Hand-in Terminal",
-    "icons": {
-      "item": "items/91955.png",
-      "128": "renders/91955_128.png",
-      "128_nobg": "renders/91955_128_nobg.png",
-      "64": "renders/91955_64.png",
-      "64_nobg": "renders/91955_64_nobg.png"
-    }
-  },
-  "88071": {
-    "name": "Heavy Berth",
-    "icons": {
-      "item": "items/88071.png",
-      "128": "renders/88071_128.png",
-      "128_nobg": "renders/88071_128_nobg.png",
-      "64": "renders/88071_64.png",
-      "64_nobg": "renders/88071_64_nobg.png",
-      "cdn": "cdn/88071.png"
-    }
-  },
-  "91707": {
-    "name": "Heavy Berth",
-    "icons": {
-      "item": "items/91707.png",
-      "128": "renders/91707_128.png",
-      "128_nobg": "renders/91707_128_nobg.png",
-      "64": "renders/91707_64.png",
-      "64_nobg": "renders/91707_64_nobg.png"
+      "64": "renders/91725_64.png"
     }
   },
   "84955": {
@@ -3527,9 +3613,7 @@
     "icons": {
       "item": "items/84955.png",
       "128": "renders/84955_128.png",
-      "128_nobg": "renders/84955_128_nobg.png",
       "64": "renders/84955_64.png",
-      "64_nobg": "renders/84955_64_nobg.png",
       "cdn": "cdn/84955.png"
     }
   },
@@ -3538,9 +3622,7 @@
     "icons": {
       "item": "items/91712.png",
       "128": "renders/91712_128.png",
-      "128_nobg": "renders/91712_128_nobg.png",
-      "64": "renders/91712_64.png",
-      "64_nobg": "renders/91712_64_nobg.png"
+      "64": "renders/91712_64.png"
     }
   },
   "87120": {
@@ -3548,9 +3630,7 @@
     "icons": {
       "item": "items/87120.png",
       "128": "renders/87120_128.png",
-      "128_nobg": "renders/87120_128_nobg.png",
       "64": "renders/87120_64.png",
-      "64_nobg": "renders/87120_64_nobg.png",
       "cdn": "cdn/87120.png"
     }
   },
@@ -3559,9 +3639,7 @@
     "icons": {
       "item": "items/91702.png",
       "128": "renders/91702_128.png",
-      "128_nobg": "renders/91702_128_nobg.png",
-      "64": "renders/91702_64.png",
-      "64_nobg": "renders/91702_64_nobg.png"
+      "64": "renders/91702_64.png"
     }
   },
   "88064": {
@@ -3569,9 +3647,7 @@
     "icons": {
       "item": "items/88064.png",
       "128": "renders/88064_128.png",
-      "128_nobg": "renders/88064_128_nobg.png",
       "64": "renders/88064_64.png",
-      "64_nobg": "renders/88064_64_nobg.png",
       "cdn": "cdn/88064.png"
     }
   },
@@ -3580,30 +3656,7 @@
     "icons": {
       "item": "items/91704.png",
       "128": "renders/91704_128.png",
-      "128_nobg": "renders/91704_128_nobg.png",
-      "64": "renders/91704_64.png",
-      "64_nobg": "renders/91704_64_nobg.png"
-    }
-  },
-  "88094": {
-    "name": "Heavy Shelter",
-    "icons": {
-      "item": "items/88094.png",
-      "128": "renders/88094_128.png",
-      "128_nobg": "renders/88094_128_nobg.png",
-      "64": "renders/88094_64.png",
-      "64_nobg": "renders/88094_64_nobg.png",
-      "cdn": "cdn/88094.png"
-    }
-  },
-  "91710": {
-    "name": "Heavy Shelter",
-    "icons": {
-      "item": "items/91710.png",
-      "128": "renders/91710_128.png",
-      "128_nobg": "renders/91710_128_nobg.png",
-      "64": "renders/91710_64.png",
-      "64_nobg": "renders/91710_64_nobg.png"
+      "64": "renders/91704_64.png"
     }
   },
   "77917": {
@@ -3612,8 +3665,6 @@
       "item": "items/77917.png",
       "128": "renders/77917_128.png",
       "64": "renders/77917_64.png",
-      "128_nobg": "renders/77917_128_nobg.png",
-      "64_nobg": "renders/77917_64_nobg.png",
       "cdn": "cdn/77917.png"
     }
   },
@@ -3622,9 +3673,7 @@
     "icons": {
       "item": "items/91715.png",
       "128": "renders/91715_128.png",
-      "64": "renders/91715_64.png",
-      "128_nobg": "renders/91715_128_nobg.png",
-      "64_nobg": "renders/91715_64_nobg.png"
+      "64": "renders/91715_64.png"
     }
   },
   "3072": {
@@ -3632,9 +3681,7 @@
     "icons": {
       "item": "items/3072.png",
       "128": "renders/3072_128.png",
-      "128_nobg": "renders/3072_128_nobg.png",
-      "64": "renders/3072_64.png",
-      "64_nobg": "renders/3072_64_nobg.png"
+      "64": "renders/3072_64.png"
     }
   },
   "3076": {
@@ -3642,9 +3689,7 @@
     "icons": {
       "item": "items/3076.png",
       "128": "renders/3076_128.png",
-      "128_nobg": "renders/3076_128_nobg.png",
-      "64": "renders/3076_64.png",
-      "64_nobg": "renders/3076_64_nobg.png"
+      "64": "renders/3076_64.png"
     }
   },
   "83989": {
@@ -3687,14 +3732,28 @@
       "64": "renders/91292_64.png"
     }
   },
+  "99010": {
+    "name": "Leech Test Spawner",
+    "icons": {
+      "item": "items/99010.png",
+      "128": "renders/99010_128.png",
+      "64": "renders/99010_64.png"
+    }
+  },
   "53277": {
     "name": "Liminal Zirnitra Wreck",
     "icons": {
       "item": "items/53277.png",
       "128": "renders/53277_128.png",
-      "128_nobg": "renders/53277_128_nobg.png",
-      "64": "renders/53277_64.png",
-      "64_nobg": "renders/53277_64_nobg.png"
+      "64": "renders/53277_64.png"
+    }
+  },
+  "91985": {
+    "name": "Logistics Unit",
+    "icons": {
+      "item": "items/91985.png",
+      "128": "renders/91985_128.png",
+      "64": "renders/91985_64.png"
     }
   },
   "82430": {
@@ -3713,35 +3772,12 @@
       "64": "renders/81904_64.png"
     }
   },
-  "88069": {
-    "name": "Mini Berth",
-    "icons": {
-      "item": "items/88069.png",
-      "128": "renders/88069_128.png",
-      "128_nobg": "renders/88069_128_nobg.png",
-      "64": "renders/88069_64.png",
-      "64_nobg": "renders/88069_64_nobg.png",
-      "cdn": "cdn/88069.png"
-    }
-  },
-  "91705": {
-    "name": "Mini Berth",
-    "icons": {
-      "item": "items/91705.png",
-      "128": "renders/91705_128.png",
-      "128_nobg": "renders/91705_128_nobg.png",
-      "64": "renders/91705_64.png",
-      "64_nobg": "renders/91705_64_nobg.png"
-    }
-  },
   "88086": {
     "name": "Mini Gate",
     "icons": {
       "item": "items/88086.png",
       "128": "renders/88086_128.png",
-      "128_nobg": "renders/88086_128_nobg.png",
       "64": "renders/88086_64.png",
-      "64_nobg": "renders/88086_64_nobg.png",
       "cdn": "cdn/88086.png"
     }
   },
@@ -3750,9 +3786,7 @@
     "icons": {
       "item": "items/91711.png",
       "128": "renders/91711_128.png",
-      "128_nobg": "renders/91711_128_nobg.png",
-      "64": "renders/91711_64.png",
-      "64_nobg": "renders/91711_64_nobg.png"
+      "64": "renders/91711_64.png"
     }
   },
   "87119": {
@@ -3760,9 +3794,7 @@
     "icons": {
       "item": "items/87119.png",
       "128": "renders/87119_128.png",
-      "128_nobg": "renders/87119_128_nobg.png",
       "64": "renders/87119_64.png",
-      "64_nobg": "renders/87119_64_nobg.png",
       "cdn": "cdn/87119.png"
     }
   },
@@ -3771,9 +3803,7 @@
     "icons": {
       "item": "items/91700.png",
       "128": "renders/91700_128.png",
-      "128_nobg": "renders/91700_128_nobg.png",
-      "64": "renders/91700_64.png",
-      "64_nobg": "renders/91700_64_nobg.png"
+      "64": "renders/91700_64.png"
     }
   },
   "88082": {
@@ -3781,9 +3811,7 @@
     "icons": {
       "item": "items/88082.png",
       "128": "renders/88082_128.png",
-      "128_nobg": "renders/88082_128_nobg.png",
       "64": "renders/88082_64.png",
-      "64_nobg": "renders/88082_64_nobg.png",
       "cdn": "cdn/88082.png"
     }
   },
@@ -3792,9 +3820,7 @@
     "icons": {
       "item": "items/91713.png",
       "128": "renders/91713_128.png",
-      "128_nobg": "renders/91713_128_nobg.png",
-      "64": "renders/91713_64.png",
-      "64_nobg": "renders/91713_64_nobg.png"
+      "64": "renders/91713_64.png"
     }
   },
   "88098": {
@@ -3802,9 +3828,7 @@
     "icons": {
       "item": "items/88098.png",
       "128": "renders/88098_128.png",
-      "128_nobg": "renders/88098_128_nobg.png",
       "64": "renders/88098_64.png",
-      "64_nobg": "renders/88098_64_nobg.png",
       "cdn": "cdn/88098.png"
     }
   },
@@ -3813,9 +3837,7 @@
     "icons": {
       "item": "items/91718.png",
       "128": "renders/91718_128.png",
-      "128_nobg": "renders/91718_128_nobg.png",
-      "64": "renders/91718_64.png",
-      "64_nobg": "renders/91718_64_nobg.png"
+      "64": "renders/91718_64.png"
     }
   },
   "88099": {
@@ -3823,9 +3845,7 @@
     "icons": {
       "item": "items/88099.png",
       "128": "renders/88099_128.png",
-      "128_nobg": "renders/88099_128_nobg.png",
       "64": "renders/88099_64.png",
-      "64_nobg": "renders/88099_64_nobg.png",
       "cdn": "cdn/88099.png"
     }
   },
@@ -3834,9 +3854,7 @@
     "icons": {
       "item": "items/91719.png",
       "128": "renders/91719_128.png",
-      "128_nobg": "renders/91719_128_nobg.png",
-      "64": "renders/91719_64.png",
-      "64_nobg": "renders/91719_64_nobg.png"
+      "64": "renders/91719_64.png"
     }
   },
   "88390": {
@@ -3852,9 +3870,7 @@
     "icons": {
       "item": "items/91871.png",
       "128": "renders/91871_128.png",
-      "128_nobg": "renders/91871_128_nobg.png",
       "64": "renders/91871_64.png",
-      "64_nobg": "renders/91871_64_nobg.png",
       "cdn": "cdn/91871.png"
     }
   },
@@ -3863,30 +3879,7 @@
     "icons": {
       "item": "items/92166.png",
       "128": "renders/92166_128.png",
-      "128_nobg": "renders/92166_128_nobg.png",
-      "64": "renders/92166_64.png",
-      "64_nobg": "renders/92166_64_nobg.png"
-    }
-  },
-  "91978": {
-    "name": "Nursery",
-    "icons": {
-      "item": "items/91978.png",
-      "128": "renders/91978_128.png",
-      "128_nobg": "renders/91978_128_nobg.png",
-      "64": "renders/91978_64.png",
-      "64_nobg": "renders/91978_64_nobg.png",
-      "cdn": "cdn/91978.png"
-    }
-  },
-  "92165": {
-    "name": "Nursery",
-    "icons": {
-      "item": "items/92165.png",
-      "128": "renders/92165_128.png",
-      "128_nobg": "renders/92165_128_nobg.png",
-      "64": "renders/92165_64.png",
-      "64_nobg": "renders/92165_64_nobg.png"
+      "64": "renders/92166_64.png"
     }
   },
   "30391": {
@@ -3894,9 +3887,7 @@
     "icons": {
       "item": "items/30391.png",
       "128": "renders/30391_128.png",
-      "128_nobg": "renders/30391_128_nobg.png",
-      "64": "renders/30391_64.png",
-      "64_nobg": "renders/30391_64_nobg.png"
+      "64": "renders/30391_64.png"
     }
   },
   "88067": {
@@ -3904,9 +3895,7 @@
     "icons": {
       "item": "items/88067.png",
       "128": "renders/88067_128.png",
-      "128_nobg": "renders/88067_128_nobg.png",
       "64": "renders/88067_64.png",
-      "64_nobg": "renders/88067_64_nobg.png",
       "cdn": "cdn/88067.png"
     }
   },
@@ -3915,9 +3904,7 @@
     "icons": {
       "item": "items/91701.png",
       "128": "renders/91701_128.png",
-      "128_nobg": "renders/91701_128_nobg.png",
-      "64": "renders/91701_64.png",
-      "64_nobg": "renders/91701_64_nobg.png"
+      "64": "renders/91701_64.png"
     }
   },
   "89780": {
@@ -3925,9 +3912,7 @@
     "icons": {
       "item": "items/89780.png",
       "128": "renders/89780_128.png",
-      "128_nobg": "renders/89780_128_nobg.png",
-      "64": "renders/89780_64.png",
-      "64_nobg": "renders/89780_64_nobg.png"
+      "64": "renders/89780_64.png"
     }
   },
   "91722": {
@@ -3935,9 +3920,7 @@
     "icons": {
       "item": "items/91722.png",
       "128": "renders/91722_128.png",
-      "128_nobg": "renders/91722_128_nobg.png",
-      "64": "renders/91722_64.png",
-      "64_nobg": "renders/91722_64_nobg.png"
+      "64": "renders/91722_64.png"
     }
   },
   "89779": {
@@ -3945,9 +3928,7 @@
     "icons": {
       "item": "items/89779.png",
       "128": "renders/89779_128.png",
-      "128_nobg": "renders/89779_128_nobg.png",
-      "64": "renders/89779_64.png",
-      "64_nobg": "renders/89779_64_nobg.png"
+      "64": "renders/89779_64.png"
     }
   },
   "91723": {
@@ -3955,9 +3936,7 @@
     "icons": {
       "item": "items/91723.png",
       "128": "renders/91723_128.png",
-      "128_nobg": "renders/91723_128_nobg.png",
-      "64": "renders/91723_64.png",
-      "64_nobg": "renders/91723_64_nobg.png"
+      "64": "renders/91723_64.png"
     }
   },
   "87846": {
@@ -3973,9 +3952,7 @@
     "icons": {
       "item": "items/88063.png",
       "128": "renders/88063_128.png",
-      "128_nobg": "renders/88063_128_nobg.png",
       "64": "renders/88063_64.png",
-      "64_nobg": "renders/88063_64_nobg.png",
       "cdn": "cdn/88063.png"
     }
   },
@@ -3984,9 +3961,7 @@
     "icons": {
       "item": "items/91703.png",
       "128": "renders/91703_128.png",
-      "128_nobg": "renders/91703_128_nobg.png",
-      "64": "renders/91703_64.png",
-      "64_nobg": "renders/91703_64_nobg.png"
+      "64": "renders/91703_64.png"
     }
   },
   "87847": {
@@ -4002,9 +3977,7 @@
     "icons": {
       "item": "items/87160.png",
       "128": "renders/87160_128.png",
-      "128_nobg": "renders/87160_128_nobg.png",
       "64": "renders/87160_64.png",
-      "64_nobg": "renders/87160_64_nobg.png",
       "cdn": "cdn/87160.png"
     }
   },
@@ -4013,9 +3986,7 @@
     "icons": {
       "item": "items/91751.png",
       "128": "renders/91751_128.png",
-      "128_nobg": "renders/91751_128_nobg.png",
-      "64": "renders/91751_64.png",
-      "64_nobg": "renders/91751_64_nobg.png"
+      "64": "renders/91751_64.png"
     }
   },
   "87848": {
@@ -4031,9 +4002,7 @@
     "icons": {
       "item": "items/90184.png",
       "128": "renders/90184_128.png",
-      "128_nobg": "renders/90184_128_nobg.png",
       "64": "renders/90184_64.png",
-      "64_nobg": "renders/90184_64_nobg.png",
       "cdn": "cdn/90184.png"
     }
   },
@@ -4042,9 +4011,7 @@
     "icons": {
       "item": "items/91717.png",
       "128": "renders/91717_128.png",
-      "128_nobg": "renders/91717_128_nobg.png",
-      "64": "renders/91717_64.png",
-      "64_nobg": "renders/91717_64_nobg.png"
+      "64": "renders/91717_64.png"
     }
   },
   "34330": {
@@ -4055,14 +4022,20 @@
       "64": "renders/34330_64.png"
     }
   },
+  "91547": {
+    "name": "Roaming Trader Drone",
+    "icons": {
+      "item": "items/91547.png",
+      "128": "renders/91547_128.png",
+      "64": "renders/91547_64.png"
+    }
+  },
   "89775": {
     "name": "SEER I",
     "icons": {
       "item": "items/89775.png",
       "128": "renders/89775_128.png",
-      "128_nobg": "renders/89775_128_nobg.png",
-      "64": "renders/89775_64.png",
-      "64_nobg": "renders/89775_64_nobg.png"
+      "64": "renders/89775_64.png"
     }
   },
   "91726": {
@@ -4070,9 +4043,7 @@
     "icons": {
       "item": "items/91726.png",
       "128": "renders/91726_128.png",
-      "128_nobg": "renders/91726_128_nobg.png",
-      "64": "renders/91726_64.png",
-      "64_nobg": "renders/91726_64_nobg.png"
+      "64": "renders/91726_64.png"
     }
   },
   "89776": {
@@ -4080,9 +4051,7 @@
     "icons": {
       "item": "items/89776.png",
       "128": "renders/89776_128.png",
-      "128_nobg": "renders/89776_128_nobg.png",
-      "64": "renders/89776_64.png",
-      "64_nobg": "renders/89776_64_nobg.png"
+      "64": "renders/89776_64.png"
     }
   },
   "91727": {
@@ -4090,9 +4059,7 @@
     "icons": {
       "item": "items/91727.png",
       "128": "renders/91727_128.png",
-      "128_nobg": "renders/91727_128_nobg.png",
-      "64": "renders/91727_64.png",
-      "64_nobg": "renders/91727_64_nobg.png"
+      "64": "renders/91727_64.png"
     }
   },
   "3493": {
@@ -4100,9 +4067,7 @@
     "icons": {
       "item": "items/3493.png",
       "128": "renders/3493_128.png",
-      "128_nobg": "renders/3493_128_nobg.png",
-      "64": "renders/3493_64.png",
-      "64_nobg": "renders/3493_64_nobg.png"
+      "64": "renders/3493_64.png"
     }
   },
   "3494": {
@@ -4110,9 +4075,7 @@
     "icons": {
       "item": "items/3494.png",
       "128": "renders/3494_128.png",
-      "128_nobg": "renders/3494_128_nobg.png",
-      "64": "renders/3494_64.png",
-      "64_nobg": "renders/3494_64_nobg.png"
+      "64": "renders/3494_64.png"
     }
   },
   "3069": {
@@ -4120,30 +4083,7 @@
     "icons": {
       "item": "items/3069.png",
       "128": "renders/3069_128.png",
-      "128_nobg": "renders/3069_128_nobg.png",
-      "64": "renders/3069_64.png",
-      "64_nobg": "renders/3069_64_nobg.png"
-    }
-  },
-  "88093": {
-    "name": "Shelter",
-    "icons": {
-      "item": "items/88093.png",
-      "128": "renders/88093_128.png",
-      "128_nobg": "renders/88093_128_nobg.png",
-      "64": "renders/88093_64.png",
-      "64_nobg": "renders/88093_64_nobg.png",
-      "cdn": "cdn/88093.png"
-    }
-  },
-  "91709": {
-    "name": "Shelter",
-    "icons": {
-      "item": "items/91709.png",
-      "128": "renders/91709_128.png",
-      "128_nobg": "renders/91709_128_nobg.png",
-      "64": "renders/91709_64.png",
-      "64_nobg": "renders/91709_64_nobg.png"
+      "64": "renders/3069_64.png"
     }
   },
   "3495": {
@@ -4151,9 +4091,7 @@
     "icons": {
       "item": "items/3495.png",
       "128": "renders/3495_128.png",
-      "128_nobg": "renders/3495_128_nobg.png",
-      "64": "renders/3495_64.png",
-      "64_nobg": "renders/3495_64_nobg.png"
+      "64": "renders/3495_64.png"
     }
   },
   "88083": {
@@ -4161,9 +4099,7 @@
     "icons": {
       "item": "items/88083.png",
       "128": "renders/88083_128.png",
-      "128_nobg": "renders/88083_128_nobg.png",
       "64": "renders/88083_64.png",
-      "64_nobg": "renders/88083_64_nobg.png",
       "cdn": "cdn/88083.png"
     }
   },
@@ -4172,9 +4108,7 @@
     "icons": {
       "item": "items/91714.png",
       "128": "renders/91714_128.png",
-      "128_nobg": "renders/91714_128_nobg.png",
-      "64": "renders/91714_64.png",
-      "64_nobg": "renders/91714_64_nobg.png"
+      "64": "renders/91714_64.png"
     }
   },
   "91106": {
@@ -4190,9 +4124,7 @@
     "icons": {
       "item": "items/56968.png",
       "128": "renders/56968_128.png",
-      "128_nobg": "renders/56968_128_nobg.png",
-      "64": "renders/56968_64.png",
-      "64_nobg": "renders/56968_64_nobg.png"
+      "64": "renders/56968_64.png"
     }
   },
   "56057": {
@@ -4200,9 +4132,7 @@
     "icons": {
       "item": "items/56057.png",
       "128": "renders/56057_128.png",
-      "128_nobg": "renders/56057_128_nobg.png",
-      "64": "renders/56057_64.png",
-      "64_nobg": "renders/56057_64_nobg.png"
+      "64": "renders/56057_64.png"
     }
   },
   "56059": {
@@ -4210,9 +4140,7 @@
     "icons": {
       "item": "items/56059.png",
       "128": "renders/56059_128.png",
-      "128_nobg": "renders/56059_128_nobg.png",
-      "64": "renders/56059_64.png",
-      "64_nobg": "renders/56059_64_nobg.png"
+      "64": "renders/56059_64.png"
     }
   },
   "56061": {
@@ -4220,9 +4148,7 @@
     "icons": {
       "item": "items/56061.png",
       "128": "renders/56061_128.png",
-      "128_nobg": "renders/56061_128_nobg.png",
-      "64": "renders/56061_64.png",
-      "64_nobg": "renders/56061_64_nobg.png"
+      "64": "renders/56061_64.png"
     }
   },
   "56063": {
@@ -4230,9 +4156,7 @@
     "icons": {
       "item": "items/56063.png",
       "128": "renders/56063_128.png",
-      "128_nobg": "renders/56063_128_nobg.png",
-      "64": "renders/56063_64.png",
-      "64_nobg": "renders/56063_64_nobg.png"
+      "64": "renders/56063_64.png"
     }
   },
   "56969": {
@@ -4240,9 +4164,7 @@
     "icons": {
       "item": "items/56969.png",
       "128": "renders/56969_128.png",
-      "128_nobg": "renders/56969_128_nobg.png",
-      "64": "renders/56969_64.png",
-      "64_nobg": "renders/56969_64_nobg.png"
+      "64": "renders/56969_64.png"
     }
   },
   "56967": {
@@ -4250,9 +4172,7 @@
     "icons": {
       "item": "items/56967.png",
       "128": "renders/56967_128.png",
-      "128_nobg": "renders/56967_128_nobg.png",
-      "64": "renders/56967_64.png",
-      "64_nobg": "renders/56967_64_nobg.png"
+      "64": "renders/56967_64.png"
     }
   },
   "54215": {
@@ -4260,9 +4180,7 @@
     "icons": {
       "item": "items/54215.png",
       "128": "renders/54215_128.png",
-      "128_nobg": "renders/54215_128_nobg.png",
-      "64": "renders/54215_64.png",
-      "64_nobg": "renders/54215_64_nobg.png"
+      "64": "renders/54215_64.png"
     }
   },
   "81808": {
@@ -4273,14 +4191,20 @@
       "64": "renders/81808_64.png"
     }
   },
+  "91955": {
+    "name": "Terminal",
+    "icons": {
+      "item": "items/91955.png",
+      "128": "renders/91955_128.png",
+      "64": "renders/91955_64.png"
+    }
+  },
   "53025": {
     "name": "Triglavian Dreadnought Wreck",
     "icons": {
       "item": "items/53025.png",
       "128": "renders/53025_128.png",
-      "128_nobg": "renders/53025_128_nobg.png",
-      "64": "renders/53025_64.png",
-      "64_nobg": "renders/53025_64_nobg.png"
+      "64": "renders/53025_64.png"
     }
   },
   "52247": {
@@ -4288,9 +4212,7 @@
     "icons": {
       "item": "items/52247.png",
       "128": "renders/52247_128.png",
-      "128_nobg": "renders/52247_128_nobg.png",
-      "64": "renders/52247_64.png",
-      "64_nobg": "renders/52247_64_nobg.png"
+      "64": "renders/52247_64.png"
     }
   },
   "52248": {
@@ -4298,9 +4220,7 @@
     "icons": {
       "item": "items/52248.png",
       "128": "renders/52248_128.png",
-      "128_nobg": "renders/52248_128_nobg.png",
-      "64": "renders/52248_64.png",
-      "64_nobg": "renders/52248_64_nobg.png"
+      "64": "renders/52248_64.png"
     }
   },
   "52249": {
@@ -4308,26 +4228,7 @@
     "icons": {
       "item": "items/52249.png",
       "128": "renders/52249_128.png",
-      "128_nobg": "renders/52249_128_nobg.png",
-      "64": "renders/52249_64.png",
-      "64_nobg": "renders/52249_64_nobg.png"
-    }
-  },
-  "92401": {
-    "name": "Turret",
-    "icons": {
-      "item": "items/92401.png",
-      "128": "renders/92401_128.png",
-      "64": "renders/92401_64.png",
-      "cdn": "cdn/92401.png"
-    }
-  },
-  "92406": {
-    "name": "Turret",
-    "icons": {
-      "item": "items/92406.png",
-      "128": "renders/92406_128.png",
-      "64": "renders/92406_64.png"
+      "64": "renders/52249_64.png"
     }
   },
   "81609": {
@@ -4343,9 +4244,7 @@
     "icons": {
       "item": "items/88100.png",
       "128": "renders/88100_128.png",
-      "128_nobg": "renders/88100_128_nobg.png",
       "64": "renders/88100_64.png",
-      "64_nobg": "renders/88100_64_nobg.png",
       "cdn": "cdn/88100.png"
     }
   },
@@ -4354,9 +4253,7 @@
     "icons": {
       "item": "items/91720.png",
       "128": "renders/91720_128.png",
-      "128_nobg": "renders/91720_128_nobg.png",
-      "64": "renders/91720_64.png",
-      "64_nobg": "renders/91720_64_nobg.png"
+      "64": "renders/91720_64.png"
     }
   },
   "88101": {
@@ -4364,9 +4261,7 @@
     "icons": {
       "item": "items/88101.png",
       "128": "renders/88101_128.png",
-      "128_nobg": "renders/88101_128_nobg.png",
       "64": "renders/88101_64.png",
-      "64_nobg": "renders/88101_64_nobg.png",
       "cdn": "cdn/88101.png"
     }
   },
@@ -4375,9 +4270,7 @@
     "icons": {
       "item": "items/91721.png",
       "128": "renders/91721_128.png",
-      "128_nobg": "renders/91721_128_nobg.png",
-      "64": "renders/91721_64.png",
-      "64_nobg": "renders/91721_64_nobg.png"
+      "64": "renders/91721_64.png"
     }
   },
   "56998": {
@@ -4385,9 +4278,7 @@
     "icons": {
       "item": "items/56998.png",
       "128": "renders/56998_128.png",
-      "128_nobg": "renders/56998_128_nobg.png",
-      "64": "renders/56998_64.png",
-      "64_nobg": "renders/56998_64_nobg.png"
+      "64": "renders/56998_64.png"
     }
   },
   "56064": {
@@ -4395,9 +4286,7 @@
     "icons": {
       "item": "items/56064.png",
       "128": "renders/56064_128.png",
-      "128_nobg": "renders/56064_128_nobg.png",
-      "64": "renders/56064_64.png",
-      "64_nobg": "renders/56064_64_nobg.png"
+      "64": "renders/56064_64.png"
     }
   },
   "56058": {
@@ -4405,9 +4294,7 @@
     "icons": {
       "item": "items/56058.png",
       "128": "renders/56058_128.png",
-      "128_nobg": "renders/56058_128_nobg.png",
-      "64": "renders/56058_64.png",
-      "64_nobg": "renders/56058_64_nobg.png"
+      "64": "renders/56058_64.png"
     }
   },
   "56060": {
@@ -4415,9 +4302,7 @@
     "icons": {
       "item": "items/56060.png",
       "128": "renders/56060_128.png",
-      "128_nobg": "renders/56060_128_nobg.png",
-      "64": "renders/56060_64.png",
-      "64_nobg": "renders/56060_64_nobg.png"
+      "64": "renders/56060_64.png"
     }
   },
   "56062": {
@@ -4425,9 +4310,7 @@
     "icons": {
       "item": "items/56062.png",
       "128": "renders/56062_128.png",
-      "128_nobg": "renders/56062_128_nobg.png",
-      "64": "renders/56062_64.png",
-      "64_nobg": "renders/56062_64_nobg.png"
+      "64": "renders/56062_64.png"
     }
   },
   "56999": {
@@ -4435,9 +4318,7 @@
     "icons": {
       "item": "items/56999.png",
       "128": "renders/56999_128.png",
-      "128_nobg": "renders/56999_128_nobg.png",
-      "64": "renders/56999_64.png",
-      "64_nobg": "renders/56999_64_nobg.png"
+      "64": "renders/56999_64.png"
     }
   },
   "56997": {
@@ -4445,9 +4326,7 @@
     "icons": {
       "item": "items/56997.png",
       "128": "renders/56997_128.png",
-      "128_nobg": "renders/56997_128_nobg.png",
-      "64": "renders/56997_64.png",
-      "64_nobg": "renders/56997_64_nobg.png"
+      "64": "renders/56997_64.png"
     }
   },
   "87698": {
@@ -4463,9 +4342,7 @@
     "icons": {
       "item": "items/91011.png",
       "128": "renders/91011_128.png",
-      "128_nobg": "renders/91011_128_nobg.png",
-      "64": "renders/91011_64.png",
-      "64_nobg": "renders/91011_64_nobg.png"
+      "64": "renders/91011_64.png"
     }
   },
   "91368": {
@@ -4473,9 +4350,7 @@
     "icons": {
       "item": "items/91368.png",
       "128": "renders/91368_128.png",
-      "128_nobg": "renders/91368_128_nobg.png",
-      "64": "renders/91368_64.png",
-      "64_nobg": "renders/91368_64_nobg.png"
+      "64": "renders/91368_64.png"
     }
   },
   "91369": {
@@ -4483,9 +4358,7 @@
     "icons": {
       "item": "items/91369.png",
       "128": "renders/91369_128.png",
-      "128_nobg": "renders/91369_128_nobg.png",
-      "64": "renders/91369_64.png",
-      "64_nobg": "renders/91369_64_nobg.png"
+      "64": "renders/91369_64.png"
     }
   },
   "91370": {
@@ -4493,9 +4366,7 @@
     "icons": {
       "item": "items/91370.png",
       "128": "renders/91370_128.png",
-      "128_nobg": "renders/91370_128_nobg.png",
-      "64": "renders/91370_64.png",
-      "64_nobg": "renders/91370_64_nobg.png"
+      "64": "renders/91370_64.png"
     }
   },
   "91371": {
@@ -4503,9 +4374,7 @@
     "icons": {
       "item": "items/91371.png",
       "128": "renders/91371_128.png",
-      "128_nobg": "renders/91371_128_nobg.png",
-      "64": "renders/91371_64.png",
-      "64_nobg": "renders/91371_64_nobg.png"
+      "64": "renders/91371_64.png"
     }
   },
   "92524": {
@@ -4619,15 +4488,78 @@
       "item": "items/84556.png"
     }
   },
+  "87162": {
+    "name": "Type_87162",
+    "icons": {
+      "cdn": "cdn/87162.png",
+      "item": "items/87162.png"
+    }
+  },
+  "88068": {
+    "name": "Type_88068",
+    "icons": {
+      "cdn": "cdn/88068.png",
+      "item": "items/88068.png"
+    }
+  },
+  "88069": {
+    "name": "Type_88069",
+    "icons": {
+      "cdn": "cdn/88069.png",
+      "item": "items/88069.png"
+    }
+  },
+  "88070": {
+    "name": "Type_88070",
+    "icons": {
+      "cdn": "cdn/88070.png",
+      "item": "items/88070.png"
+    }
+  },
+  "88071": {
+    "name": "Type_88071",
+    "icons": {
+      "cdn": "cdn/88071.png",
+      "item": "items/88071.png"
+    }
+  },
+  "88093": {
+    "name": "Type_88093",
+    "icons": {
+      "cdn": "cdn/88093.png",
+      "item": "items/88093.png"
+    }
+  },
+  "88094": {
+    "name": "Type_88094",
+    "icons": {
+      "cdn": "cdn/88094.png",
+      "item": "items/88094.png"
+    }
+  },
+  "91978": {
+    "name": "Type_91978",
+    "icons": {
+      "cdn": "cdn/91978.png",
+      "item": "items/91978.png"
+    }
+  },
   "92279": {
-    "name": "Mini Turret",
+    "name": "Type_92279",
     "icons": {
       "cdn": "cdn/92279.png",
       "item": "items/92279.png"
     }
   },
+  "92401": {
+    "name": "Type_92401",
+    "icons": {
+      "cdn": "cdn/92401.png",
+      "item": "items/92401.png"
+    }
+  },
   "92404": {
-    "name": "Heavy Turret",
+    "name": "Type_92404",
     "icons": {
       "cdn": "cdn/92404.png",
       "item": "items/92404.png"

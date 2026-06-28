@@ -18,6 +18,7 @@ Usage:
 """
 
 import argparse
+import importlib
 import json
 import re
 import shutil
@@ -37,127 +38,21 @@ TYPES_JSON = PROJECT_ROOT / "apps/periscope/public/data/types.json"
 DEFAULT_GAME_ROOT = Path("C:/CCP/EVE Frontier")
 WORLD_API_TEMPLATE = "https://world-api-{server}.live.tech.evefrontier.com/v2/types"
 
-# Manual overrides: typeID -> res:/ path for items where the FSD has wrong iconID mappings.
-# CCP sometimes assigns legacy EVE iconIDs to Frontier items even though Frontier-specific
-# artwork exists under different iconIDs. These overrides bypass the FSD lookup entirely.
+# Manual overrides: typeID -> res:/ path for items where the iconIDsLoader still
+# resolves to a wrong/legacy iconID. CCP assigned legacy EVE iconIDs to these
+# Frontier materials even though Frontier-specific artwork exists; the loader
+# returns the legacy path verbatim, so these overrides bypass the iconID lookup
+# entirely. Checked first in extract_iconid_icons, so they take precedence over
+# both the loader mapping and the byte-scan fallback.
+#
+# NOTE: All former module/fuel/ammo/frame overrides were removed because the
+# game's iconIDsLoader.pyd now resolves them to the exact same Frontier paths
+# (verified individually against the loader output, 2026-06). Only the three
+# material entries below still need a manual override.
 ICON_OVERRIDES = {
-    # Materials with wrong FSD iconID mappings
     88234: "res:/ui/texture/icons/frontier/materials/sulfides.png",         # Troilite Sulfide Grains
     88235: "res:/ui/texture/icons/frontier/materials/feldspar.png",         # Feldspar Crystal Shards
     89259: "res:/ui/texture/icons/frontier/materials/feldspar.png",         # Silica Grains
-    # Fuels: FSD path1 is ML-*.png (mining laser), path2 is the correct fuel icon
-    88319: "res:/ui/texture/icons/Frontier/KeepPixel64/D2.png",            # D2 Fuel
-    88335: "res:/ui/texture/icons/Frontier/KeepPixel64/D1.png",            # D1 Fuel
-    # Afterburners: FSD path1 is ML-*.png, path2 is the correct engine icon
-    78506: "res:/ui/texture/icons/Frontier/KeepPixel64/kengine2.png",      # Celerity CD01
-    78507: "res:/ui/texture/icons/Frontier/KeepPixel64/kengine2.png",      # Celerity CD02
-    78508: "res:/ui/texture/icons/Frontier/KeepPixel64/kengine2.png",      # Celerity CD03
-    78504: "res:/ui/texture/icons/Frontier/KeepPixel64/kengine3.png",      # Tempo CD43
-    78510: "res:/ui/texture/icons/Frontier/KeepPixel64/kengine3.png",      # Tempo CD42
-    78511: "res:/ui/texture/icons/Frontier/KeepPixel64/kengine3.png",      # Tempo CD41
-    78490: "res:/ui/texture/icons/Frontier/KeepPixel64/kengine4.png",      # Velocity CD81
-    78502: "res:/ui/texture/icons/Frontier/KeepPixel64/kengine4.png",      # Velocity CD82
-    # Ammo charges: FSD path1 is ML-*.png, path2 is the correct charge icon
-    81658: "res:/ui/texture/icons/Frontier/KeepPixel64/p12.png",           # EM Disintegrator Charge (S)
-    82137: "res:/ui/texture/icons/Frontier/KeepPixel64/p12.png",           # EM Disintegrator Charge (M)
-    # Modules with ore/resource icons: FSD path1 is Frontier_ore/res*.png, path2 is correct
-    # -- Mining tools --
-    77484: "res:/ui/texture/icons/Frontier/KeepPixel64/miner1.png",        # Crude Extractor
-    77852: "res:/ui/texture/icons/Frontier/KeepPixel64/miner3.png",        # Small Cutting Laser
-    83525: "res:/ui/texture/icons/Frontier/KeepPixel64/miner2.png",        # Purified Moon Cutting Laser
-    83463: "res:/ui/texture/icons/Frontier/KeepPixel64/lens1.png",         # Synthetic Mining Lens
-    83895: "res:/ui/texture/icons/Frontier/KeepPixel64/lens2.png",         # Radiantium Mining Lens
-    83896: "res:/ui/texture/icons/Frontier/KeepPixel64/lens2.png",         # Gravionite Mining Lens
-    83897: "res:/ui/texture/icons/Frontier/KeepPixel64/lens2.png",         # Luminalis Mining Lens
-    83898: "res:/ui/texture/icons/Frontier/KeepPixel64/lens2.png",         # Eclipsite Mining Lens
-    # -- Coilguns --
-    81972: "res:/ui/texture/icons/Frontier/KeepPixel64/GYRO-3.png",        # Base Coilgun (S)
-    82028: "res:/ui/texture/icons/Frontier/KeepPixel64/GYRO-3.png",        # Base Coilgun (M)
-    82088: "res:/ui/texture/icons/Frontier/KeepPixel64/GYRO-3.png",        # Tier 2 Coilgun (S)
-    82089: "res:/ui/texture/icons/Frontier/KeepPixel64/GYRO-3.png",        # Tier 3 Coilgun (S)
-    82092: "res:/ui/texture/icons/Frontier/KeepPixel64/GYRO-3.png",        # Tier 2 Coilgun (M)
-    82093: "res:/ui/texture/icons/Frontier/KeepPixel64/GYRO-3.png",        # Tier 3 Coilgun (M)
-    # -- Warp/Propulsion --
-    82682: "res:/ui/texture/icons/Frontier/KeepPixel64/threader1.png",     # Warp Entangler II
-    83516: "res:/ui/texture/icons/Frontier/KeepPixel64/threader1.png",     # Warp Entangler III
-    83517: "res:/ui/texture/icons/Frontier/KeepPixel64/threader1.png",     # Warp Entangler IV
-    83518: "res:/ui/texture/icons/Frontier/KeepPixel64/threader1.png",     # Warp Entangler V
-    83519: "res:/ui/texture/icons/Frontier/KeepPixel64/threader1.png",     # Warp Entangler VI
-    81656: "res:/ui/texture/icons/Frontier/KeepPixel64/threader2.png",     # Tuho 7
-    81657: "res:/ui/texture/icons/Frontier/KeepPixel64/threader2.png",     # Xoru 7
-    82090: "res:/ui/texture/icons/Frontier/KeepPixel64/threader2.png",     # Tuho 9
-    82091: "res:/ui/texture/icons/Frontier/KeepPixel64/threader2.png",     # Tuho S
-    82094: "res:/ui/texture/icons/Frontier/KeepPixel64/threader2.png",     # Xoru 9
-    82095: "res:/ui/texture/icons/Frontier/KeepPixel64/threader2.png",     # Xoru S
-    # -- Shield modules --
-    82667: "res:/ui/texture/icons/Frontier/KeepPixel64/kshield1.png",      # Shield Restorer II
-    83458: "res:/ui/texture/icons/Frontier/KeepPixel64/kshield1.png",      # Shield Restorer III
-    82652: "res:/ui/texture/icons/Frontier/KeepPixel64/kshield2.png",      # Bulwark Shield Generator II
-    82653: "res:/ui/texture/icons/Frontier/KeepPixel64/kshield2.png",      # Attuned Shield Generator II
-    82654: "res:/ui/texture/icons/Frontier/KeepPixel64/kshield2.png",      # Reinforced Shield Generator II
-    83448: "res:/ui/texture/icons/Frontier/KeepPixel64/kshield2.png",      # Bulwark Shield Generator III
-    83449: "res:/ui/texture/icons/Frontier/KeepPixel64/kshield2.png",      # Bulwark Shield Generator IV
-    83450: "res:/ui/texture/icons/Frontier/KeepPixel64/kshield2.png",      # Attuned Shield Generator III
-    83451: "res:/ui/texture/icons/Frontier/KeepPixel64/kshield2.png",      # Attuned Shield Generator IV
-    83456: "res:/ui/texture/icons/Frontier/KeepPixel64/kshield2.png",      # Reinforced Shield Generator III
-    83457: "res:/ui/texture/icons/Frontier/KeepPixel64/kshield2.png",      # Reinforced Shield Generator IV
-    # -- Field arrays --
-    83768: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # EM Field Array II
-    83769: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # EM Field Array III
-    83770: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # EM Field Array IV
-    83772: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # Thermal Field Array II
-    83773: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # Thermal Field Array III
-    83774: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # Thermal Field Array IV
-    83777: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # Explosive Field Array II
-    83778: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # Explosive Field Array III
-    83779: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # Explosive Field Array IV
-    83782: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # Kinetic Field Array II
-    83783: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # Kinetic Field Array III
-    83784: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine3.png",     # Kinetic Field Array IV
-    # -- Stasis nets --
-    82683: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine4.png",     # Stasis Net II
-    83520: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine4.png",     # Stasis Net III
-    83521: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine4.png",     # Stasis Net IV
-    83522: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine4.png",     # Stasis Net V
-    83523: "res:/ui/texture/icons/Frontier/KeepPixel64/kturbine4.png",     # Stasis Net VI
-    # -- Hull repair --
-    72960: "res:/ui/texture/icons/Frontier/KeepPixel64/kpatcher2.png",     # Hull Repairer
-    # Cargo grids: FSD path1 is Drop64_0003_shadow.png
-    83497: "res:/ui/texture/icons/Frontier/KeepPixel64/khold1.png",        # Cargo Grid II
-    83498: "res:/ui/texture/icons/Frontier/KeepPixel64/khold1.png",        # Cargo Grid III
-    83499: "res:/ui/texture/icons/Frontier/KeepPixel64/khold1.png",        # Cargo Grid IV
-    83500: "res:/ui/texture/icons/Frontier/KeepPixel64/khold1.png",        # Cargo Grid V
-    83501: "res:/ui/texture/icons/Frontier/KeepPixel64/khold1.png",        # Cargo Grid VI
-    # Armor modules: FSD path1 is Drop64_* icons
-    83441: "res:/ui/texture/icons/Frontier/KeepPixel64/khold3.png",        # Adaptive Nanitic Armor Weave II
-    83442: "res:/ui/texture/icons/Frontier/KeepPixel64/khold3.png",        # Adaptive Nanitic Armor Weave III
-    83443: "res:/ui/texture/icons/Frontier/KeepPixel64/khold3.png",        # Adaptive Nanitic Armor Weave IV
-    83613: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Thermal-electro Nanitic Brace II
-    83614: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Thermal-electro Nanitic Brace III
-    83615: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Thermal-electro Nanitic Brace IV
-    83618: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Explonetic-electro Nanitic Brace II
-    83619: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Explonetic-electro Nanitic Brace III
-    83620: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Explonetic-electro Nanitic Brace IV
-    83623: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Explo-electro Nanitic Brace II
-    83624: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Explo-electro Nanitic Brace III
-    83625: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Explo-electro Nanitic Brace IV
-    83628: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Thermalnetic Nanitic Brace II
-    83629: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Thermalnetic Nanitic Brace III
-    83630: "res:/ui/texture/icons/Frontier/KeepPixel64/khold2.png",        # Thermalnetic Nanitic Brace IV
-    # Nanite sequencers: FSD path1 is Crude1.png
-    82410: "res:/ui/texture/icons/Frontier/KeepPixel64/ksys1a.png",        # Explosive Nanite Sequencer
-    82411: "res:/ui/texture/icons/Frontier/KeepPixel64/ksys1a.png",        # EM Nanite Sequencer
-    82412: "res:/ui/texture/icons/Frontier/KeepPixel64/ksys1a.png",        # Thermal Nanite Sequencer
-    82413: "res:/ui/texture/icons/Frontier/KeepPixel64/ksys1a.png",        # Kinetic Nanite Sequencer
-    # Program/Protocol frames: FSD has kclone/khold pixel art, correct icons are Drop64 faction renders
-    78415: "res:/ui/texture/icons/Frontier/Drop64_0007_siege.png",          # Siege Protocol Frame (unpub)
-    78416: "res:/ui/texture/icons/Frontier/Drop64_0006_apocalypse.png",     # Apocalypse Protocol Frame
-    78417: "res:/ui/texture/icons/Frontier/Drop64_0005_bastion.png",        # Bastion Program Frame
-    78418: "res:/ui/texture/icons/Frontier/Drop64_0004_nomad.png",          # Nomad Program Frame
-    78419: "res:/ui/texture/icons/Frontier/Drop64_0003_shadow.png",         # Shadow Protocol Frame (unpub)
-    78420: "res:/ui/texture/icons/Frontier/Drop64_0002_archangel.png",      # Archangel Protocol Frame
-    78421: "res:/ui/texture/icons/Frontier/Drop64_0001_exterminata.png",    # Exterminata Protocol Frame
-    78422: "res:/ui/texture/icons/Frontier/Drop64_0000_equilibrium.png",    # Equilibrium Program Frame
 }
 
 
@@ -198,6 +93,70 @@ def build_resfile_lookup(game_root, server):
             lookup[res_path.lower()] = str(resfile_abs)
 
     return lookup
+
+
+def decode_iconids_via_loader(game_root, server):
+    """Decode iconids.fsdbinary with the game's own iconIDsLoader.pyd.
+
+    Returns {int(iconID): iconFile_str} -- the EXACT iconID -> res:/ path mapping
+    the client uses. This is the PRIMARY iconID resolution source; the regex
+    byte-scan (parse_iconids_fsd + map_iconids_to_paths) is kept only as a
+    fallback for any iconIDs the loader does not provide.
+
+    Mirrors the loader pattern in extract_game_data.py. Requires py -3.12 to match
+    the client's python312.dll. On any failure, returns {} so the caller falls
+    back to the byte-scan.
+    """
+    bin64 = game_root / server / "bin64"
+    if not bin64.is_dir():
+        print(f"  WARNING: bin64 not found ({bin64}); skipping loader")
+        return {}
+    if str(bin64) not in sys.path:
+        sys.path.insert(0, str(bin64))
+
+    # Resolve the iconids.fsdbinary storage path from resfileindex.txt:
+    #   res:/staticdata/iconids.fsdbinary,<storage>,...  -> ResFiles/<storage>
+    index_path = game_root / server / "resfileindex.txt"
+    storage = None
+    try:
+        with open(index_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.lower().startswith("res:/staticdata/iconids.fsdbinary"):
+                    parts = line.strip().split(",")
+                    if len(parts) >= 2:
+                        storage = parts[1]
+                    break
+    except OSError as e:
+        print(f"  WARNING: could not read {index_path}: {e}")
+        return {}
+
+    if not storage:
+        print("  WARNING: iconids.fsdbinary entry not found in resfileindex.txt")
+        return {}
+
+    full_path = game_root / "ResFiles" / storage
+    if not full_path.exists():
+        print(f"  WARNING: iconids storage file not found ({full_path})")
+        return {}
+
+    try:
+        loader = importlib.import_module("iconIDsLoader")
+        raw = loader.load(str(full_path))
+    except Exception as e:
+        print(f"  WARNING: iconIDsLoader failed ({type(e).__name__}: {e}); "
+              "using byte-scan only")
+        return {}
+
+    mapping = {}
+    for icon_id, record in raw.items():
+        try:
+            icon_file = record["iconFile"]
+        except Exception:
+            icon_file = getattr(record, "iconFile", None)
+        if icon_file:
+            mapping[int(icon_id)] = str(icon_file)
+
+    return mapping
 
 
 def parse_iconids_fsd(game_root, server, resfile_lookup):
@@ -434,7 +393,12 @@ def extract_graphicid_icons(items, icon_map, output_dir, sizes, include_no_bg):
 
 
 def fetch_cdn_icons(output_dir, server="stillness"):
-    """Fetch icon URLs from the World API and download from CDN."""
+    """Fetch icon URLs from the World API and download from CDN.
+
+    If the World API is unreachable (e.g. offline / DNS failure), fall back to the
+    CDN icons already present in output_dir/cdn so a previously extracted CDN set
+    is preserved instead of being dropped from the manifest.
+    """
     print("\nFetching World API for CDN icon URLs...")
     base_url = WORLD_API_TEMPLATE.format(server=server)
     items = []
@@ -482,6 +446,21 @@ def fetch_cdn_icons(output_dir, server="stillness"):
         except Exception as e:
             print(f"  FAIL: {name} ({type_id}) -- {e}")
 
+    # Fallback: if the World API gave us nothing (e.g. the host is unreachable),
+    # reuse any CDN icons already extracted to disk so we don't silently drop them.
+    if not cdn_map:
+        cdn_dir = output_dir / "cdn"
+        if cdn_dir.is_dir():
+            for png in sorted(cdn_dir.glob("*.png")):
+                try:
+                    type_id = int(png.stem)
+                except ValueError:
+                    continue
+                cdn_map[type_id] = f"cdn/{png.name}"
+            if cdn_map:
+                print(f"  World API unreachable; reused {len(cdn_map)} CDN icons "
+                      f"already present in {cdn_dir}")
+
     return cdn_map
 
 
@@ -502,8 +481,9 @@ def main():
                         help="Also download icons from CCP CDN")
     parser.add_argument("--manifest", action="store_true",
                         help="Write manifest.json mapping typeID -> icon paths")
-    parser.add_argument("--include-types", type=Path, default=None,
-                        help="JSON file with extra typeIDs to include (array of ints or {id: name})")
+    parser.add_argument("--include-types", type=Path, default=SCRIPT_DIR / "extra_type_ids.json",
+                        help="JSON file with extra typeIDs to include (array of ints or {id: name}). "
+                             "Defaults to scripts/extra_type_ids.json; pass a different path to override.")
     args = parser.parse_args()
 
     sizes = {int(s) for s in args.sizes.split(",")}
@@ -542,10 +522,24 @@ def main():
     print(f"Resfile entries: {len(resfile_lookup)}")
 
     # --- Source 1: iconID -> FSD path -> item/resource icons ---
-    print("\nParsing iconids.fsdbinary...")
+    # Primary: decode iconids.fsdbinary with the game's own loader (exact mapping).
+    print("\nDecoding iconids.fsdbinary via iconIDsLoader (primary)...")
+    loader_map = decode_iconids_via_loader(game_root, server)
+    print(f"Loader iconID mappings: {len(loader_map)}")
+
+    # Fallback: regex byte-scan, used only for iconIDs the loader does not provide.
+    print("Parsing iconids.fsdbinary (byte-scan fallback)...")
     fsd_data, fsd_paths = parse_iconids_fsd(game_root, server, resfile_lookup)
-    icon_to_respath = map_iconids_to_paths(items, fsd_data, fsd_paths)
-    print(f"iconID -> path mappings: {len(icon_to_respath)}")
+    byte_scan_map = map_iconids_to_paths(items, fsd_data, fsd_paths)
+    print(f"Byte-scan iconID mappings: {len(byte_scan_map)}")
+
+    # Merge: byte-scan first, then loader overwrites -> loader takes precedence,
+    # byte-scan survives only for iconIDs the loader lacks.
+    icon_to_respath = dict(byte_scan_map)
+    icon_to_respath.update(loader_map)
+    fallback_only = set(byte_scan_map) - set(loader_map)
+    print(f"iconID -> path mappings: {len(icon_to_respath)} "
+          f"({len(loader_map)} loader, {len(fallback_only)} byte-scan fallback)")
 
     print("\nExtracting item icons (iconID)...")
     item_extracted, item_missing = extract_iconid_icons(items, icon_to_respath, resfile_lookup, output_dir)
