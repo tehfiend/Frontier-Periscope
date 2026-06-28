@@ -13,6 +13,7 @@ import {
 	requestBackupDirectory,
 	writeAutoBackup,
 } from "@/lib/autoBackup";
+import { cycleDataKey } from "@/lib/cycleReset";
 import { exportData, importData } from "@/lib/dataExport";
 import { getStoredHandle, requestDirectoryAccess } from "@/lib/logFileAccess";
 import { fetchAndStoreGameTypes } from "@/lib/worldApi";
@@ -49,7 +50,13 @@ import { useEffect, useRef, useState } from "react";
 export function Settings() {
 	const meta = useLiveQuery(() => db.cacheMetadata.get("stellarData"));
 	const typesMeta = useLiveQuery(() => db.cacheMetadata.get("gameTypes"));
-	const cycleMeta = useLiveQuery(() => db.cacheMetadata.get("cycleData"));
+	// Cycle stamp is keyed per tenant (cycleData:<tenant>); resolve the active tenant inside the
+	// live query so this stays reactive to both the tenant setting and the cacheMetadata row.
+	const cycleMeta = useLiveQuery(async () => {
+		const tenantSetting = await db.settings.get("tenant");
+		const activeTenant = (tenantSetting?.value as TenantId) ?? "stillness";
+		return db.cacheMetadata.get(cycleDataKey(activeTenant));
+	});
 	const [typesStatus, setTypesStatus] = useState<string | null>(null);
 	const [fetchingTypes, setFetchingTypes] = useState(false);
 	const [cycleDialogOpen, setCycleDialogOpen] = useState(false);

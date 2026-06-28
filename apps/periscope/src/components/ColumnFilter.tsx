@@ -29,7 +29,9 @@ export const excelFilterFn: FilterFn<any> = (row, columnId, filterValue) => {
 
 	const rawVal = String(row.getValue(columnId) ?? "");
 
-	if (filter.mode === "include" && filter.includedValues) {
+	// Guard `instanceof Set` -- a malformed persisted filter (e.g. includedValues revived as a
+	// plain array/object) would otherwise throw inside getFilteredRowModel and crash the render.
+	if (filter.mode === "include" && filter.includedValues instanceof Set) {
 		return filter.includedValues.has(rawVal);
 	}
 

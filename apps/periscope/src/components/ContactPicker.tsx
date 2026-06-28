@@ -35,6 +35,7 @@ export function ContactPicker({
 	const [loading, setLoading] = useState(false);
 	const [open, setOpen] = useState(false);
 	const [lookingUp, setLookingUp] = useState(false);
+	const [statusMessage, setStatusMessage] = useState<string | null>(null);
 	const [highlightIndex, setHighlightIndex] = useState(0);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -81,6 +82,7 @@ export function ContactPicker({
 	const handleQueryChange = useCallback(
 		(value: string) => {
 			setQuery(value);
+			setStatusMessage(null);
 			if (debounceRef.current) clearTimeout(debounceRef.current);
 			debounceRef.current = setTimeout(() => doSearch(value), 200);
 		},
@@ -111,6 +113,7 @@ export function ContactPicker({
 			setQuery("");
 			setResults([]);
 			setOpen(false);
+			setStatusMessage(null);
 		},
 		[onSelect],
 	);
@@ -120,12 +123,15 @@ export function ContactPicker({
 	const handleLookup = useCallback(async () => {
 		if (!isAddressQuery || lookingUp) return;
 		setLookingUp(true);
+		setStatusMessage(null);
 		try {
 			// When chain is off, never fire a live chain query -- fall back to the local cache only.
 			if (!CHAIN_ENABLED) {
 				const cached = await searchCachedCharacters(query.trim(), 1);
 				if (cached.length > 0) {
 					handleSelect(cached[0]);
+				} else {
+					setStatusMessage("Address not found in local cache");
 				}
 				return;
 			}
@@ -136,6 +142,8 @@ export function ContactPicker({
 			);
 			if (result) {
 				handleSelect(result);
+			} else {
+				setStatusMessage("Address not found on chain");
 			}
 		} finally {
 			setLookingUp(false);
@@ -190,6 +198,8 @@ export function ContactPicker({
 					/>
 				)}
 			</div>
+
+			{statusMessage && <p className="mt-1 px-1 text-xs text-amber-400">{statusMessage}</p>}
 
 			{open && (
 				<div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">

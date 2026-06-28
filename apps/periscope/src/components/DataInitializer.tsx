@@ -20,11 +20,13 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 	const setStaticDataReady = useAppStore((s) => s.setStaticDataReady);
 	const setProfileConfigured = useAppStore((s) => s.setProfileConfigured);
 
-	// Auto-sync manifest characters for all tenants (background, non-blocking)
-	useManifestAutoSync();
+	// Auto-sync manifest characters for all tenants (background, non-blocking). Gated on `ready` so
+	// it never writes cycle-bound tables before the cycle-reset check (which may clear them) resolves.
+	useManifestAutoSync(ready);
 
-	// Auto-decrypt private map locations when wallet connects
-	usePrivateMapAutoDecrypt();
+	// Auto-decrypt private map locations when wallet connects. Gated on `ready` for the same reason --
+	// the cycle-reset check must complete before any cycle-bound table is touched.
+	usePrivateMapAutoDecrypt(ready);
 
 	useEffect(() => {
 		initialize();

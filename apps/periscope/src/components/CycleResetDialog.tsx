@@ -31,7 +31,8 @@ export function CycleResetDialog({ onClose }: CycleResetDialogProps) {
 		setIsRunning(true);
 		setError(null);
 		try {
-			await resetForNewCycle({ archive });
+			// Attended/manual path: a gesture-driven download is an acceptable best-effort archive.
+			await resetForNewCycle({ archive, unattended: false });
 			window.location.reload();
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
@@ -39,12 +40,19 @@ export function CycleResetDialog({ onClose }: CycleResetDialogProps) {
 		}
 	}
 
+	// Dismissal (backdrop click, Escape, X) is a no-op while a reset is in flight -- a clear is
+	// running and tearing down the dialog mid-operation would hide its progress/errors.
+	function handleDismiss() {
+		if (isRunning) return;
+		onClose();
+	}
+
 	return (
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-			onClick={onClose}
+			onClick={handleDismiss}
 			onKeyDown={(e) => {
-				if (e.key === "Escape") onClose();
+				if (e.key === "Escape") handleDismiss();
 			}}
 		>
 			<div
@@ -58,7 +66,11 @@ export function CycleResetDialog({ onClose }: CycleResetDialogProps) {
 						<AlertTriangle size={18} className="text-red-500" />
 						Reset for new cycle
 					</h2>
-					<button type="button" onClick={onClose} className="text-zinc-500 hover:text-zinc-300">
+					<button
+						type="button"
+						onClick={handleDismiss}
+						className="text-zinc-500 hover:text-zinc-300"
+					>
 						<X size={18} />
 					</button>
 				</div>
@@ -118,7 +130,7 @@ export function CycleResetDialog({ onClose }: CycleResetDialogProps) {
 					<div className="flex gap-3">
 						<button
 							type="button"
-							onClick={onClose}
+							onClick={handleDismiss}
 							disabled={isRunning}
 							className="flex-1 rounded-lg border border-zinc-700 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100 disabled:opacity-50"
 						>

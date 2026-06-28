@@ -77,6 +77,11 @@ export function StarMap() {
 		[rifts, selectedRiftId],
 	);
 
+	// Hide the rift detail panel when rift markers are toggled off.
+	useEffect(() => {
+		if (!showRifts) setSelectedRiftId(null);
+	}, [showRifts]);
+
 	const handleSearch = useCallback(
 		(query: string) => {
 			setSearchQuery(query);
@@ -299,15 +304,17 @@ export function StarMap() {
 									</dd>
 								</div>
 							)}
-							<div className="flex justify-between gap-2">
-								<dt>Coords</dt>
-								<dd
-									className="truncate font-mono text-zinc-500"
-									title={`${selectedRift.x}, ${selectedRift.y}, ${selectedRift.z}`}
-								>
-									{selectedRift.x}, {selectedRift.y}, {selectedRift.z}
-								</dd>
-							</div>
+							{selectedRift.x != null && (
+								<div className="flex justify-between gap-2">
+									<dt>Coords</dt>
+									<dd
+										className="truncate font-mono text-zinc-500"
+										title={`${selectedRift.x}, ${selectedRift.y}, ${selectedRift.z}`}
+									>
+										{selectedRift.x}, {selectedRift.y}, {selectedRift.z}
+									</dd>
+								</div>
+							)}
 						</dl>
 					</div>
 				)}

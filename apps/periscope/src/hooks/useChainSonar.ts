@@ -182,7 +182,10 @@ export function useChainSonar() {
 				const batch = pollTasks.slice(i, i + CONCURRENCY);
 				const results = await Promise.allSettled(
 					batch.map(async ({ key, moveEventType }) => {
-						const cursor = cursorsRef.current[key] ?? null;
+						// Namespace cursors by tenant -- opaque GraphQL cursors are tied to a
+						// tenant's event stream and must not be reused across a tenant switch.
+						const cursorKey = `${key}:${tenant}`;
+						const cursor = cursorsRef.current[cursorKey] ?? null;
 						const handler = EVENT_HANDLER_REGISTRY[key];
 
 						// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual @mysten/sui versions
@@ -198,7 +201,7 @@ export function useChainSonar() {
 						}
 
 						if (result.nextCursor) {
-							cursorsRef.current[key] = result.nextCursor;
+							cursorsRef.current[cursorKey] = result.nextCursor;
 						}
 
 						return entries;

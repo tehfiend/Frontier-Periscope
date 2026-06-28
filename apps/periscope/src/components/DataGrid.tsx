@@ -12,8 +12,8 @@ import {
 	useReactTable,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Search, X } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
-import { ColumnFilter, type ExcelFilterValue } from "./ColumnFilter";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { ColumnFilter, excelFilterFn, type ExcelFilterValue } from "./ColumnFilter";
 
 // ── Re-exports for consumers ────────────────────────────────────────────────
 
@@ -58,10 +58,35 @@ function savePersistedFilters(persistKey: string, value: PersistedFilters): void
 
 /** A single always-visible "contains" search input beneath a column header. */
 function ColumnSearchCell<T>({ column }: { column: Column<T, unknown> }) {
-	if (!column.getCanFilter()) {
+	// Only render a text input for columns that actually use excelFilterFn. Writing an
+	// ExcelFilterValue object into a column with the default/auto filterFn would stringify to
+	// "[object Object]" and filter out every row.
+	if (!column.getCanFilter() || column.columnDef.filterFn !== excelFilterFn) {
 		return <th className="px-1.5 pb-1.5" />;
 	}
+	// Derive a readable name for accessible labels (the header is usually a string).
+	const columnName =
+		typeof column.columnDef.header === "string" ? column.columnDef.header : column.id;
 	const filter = column.getFilterValue() as ExcelFilterValue | undefined;
+
+	// A funnel (multiselect) include filter owns the column -- surface its state with a disabled
+	// input instead of a blank box so typing here can't silently clobber the active filter.
+	if (filter?.mode === "include") {
+		const count = filter.includedValues instanceof Set ? filter.includedValues.size : 0;
+		return (
+			<th className="px-1.5 pb-1.5">
+				<input
+					type="text"
+					disabled
+					value=""
+					placeholder={count > 0 ? `filtered via funnel (${count})` : "filtered via funnel"}
+					aria-label={`Filter ${columnName}`}
+					className="w-full cursor-not-allowed rounded border border-zinc-700/60 bg-zinc-800/30 px-2 py-1 text-xs font-normal italic text-zinc-500 placeholder:text-zinc-500 focus:outline-none"
+				/>
+			</th>
+		);
+	}
+
 	const value = filter?.mode === "textFilter" ? (filter.textFilterValue ?? "") : "";
 	return (
 		<th className="px-1.5 pb-1.5">
@@ -82,12 +107,14 @@ function ColumnSearchCell<T>({ column }: { column: Column<T, unknown> }) {
 						);
 					}}
 					placeholder="filter"
+					aria-label={`Filter ${columnName}`}
 					className="w-full rounded border border-zinc-700/60 bg-zinc-800/60 px-2 py-1 pr-6 text-xs font-normal text-zinc-300 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
 				/>
 				{value && (
 					<button
 						type="button"
 						onClick={() => column.setFilterValue(undefined)}
+						aria-label="Clear filter"
 						className="absolute right-1 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
 						title="Clear"
 					>
@@ -143,18 +170,41 @@ export function DataGrid<T>({
 	persistKey,
 }: DataGridProps<T>) {
 	const [sorting, setSorting] = useState<SortingState>(initialSorting ?? []);
+	// Load persisted filter state once (lazy) so we don't re-read localStorage on every render.
+	const [persisted] = useState(() => loadPersistedFilters(persistKey));
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(
-		() => loadPersistedFilters(persistKey)?.cols ?? [],
+		() => persisted?.cols ?? [],
 	);
-	const [globalFilter, setGlobalFilter] = useState(
-		() => loadPersistedFilters(persistKey)?.global ?? "",
-	);
+	const [globalFilter, setGlobalFilter] = useState(() => persisted?.global ?? "");
 
-	// Persist filter state so it survives navigating away from the table and back.
+	// Keep the latest filter state in a ref so the unmount flush below can read current values
+	// without re-subscribing the effect on every change.
+	const latestFiltersRef = useRef<PersistedFilters>({ global: globalFilter, cols: columnFilters });
+	latestFiltersRef.current = { global: globalFilter, cols: columnFilters };
+
+	// Persist filter state so it survives navigating away from the table and back. Skip the
+	// initial run (state was just hydrated) and debounce writes so we don't hit localStorage on
+	// every keystroke.
+	const hasMountedRef = useRef(false);
 	useEffect(() => {
 		if (!persistKey) return;
-		savePersistedFilters(persistKey, { global: globalFilter, cols: columnFilters });
+		if (!hasMountedRef.current) {
+			hasMountedRef.current = true;
+			return;
+		}
+		const handle = setTimeout(() => {
+			savePersistedFilters(persistKey, { global: globalFilter, cols: columnFilters });
+		}, 200);
+		return () => clearTimeout(handle);
 	}, [persistKey, globalFilter, columnFilters]);
+
+	// Flush the latest state on unmount so a pending debounced write isn't lost.
+	useEffect(() => {
+		if (!persistKey) return;
+		return () => {
+			savePersistedFilters(persistKey, latestFiltersRef.current);
+		};
+	}, [persistKey]);
 
 	const table = useReactTable({
 		data,
@@ -192,6 +242,7 @@ export function DataGrid<T>({
 							<button
 								type="button"
 								onClick={() => setGlobalFilter("")}
+								aria-label="Clear search"
 								className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
 							>
 								<X size={14} />

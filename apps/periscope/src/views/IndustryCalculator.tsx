@@ -76,10 +76,17 @@ function defaultSourcePref(group: string): SourcePref {
 	return group === SALVAGE_SOURCE_GROUP ? "exclude" : "normal";
 }
 
-function loadFromStorage<T>(key: string, fallback: T): T {
+function loadFromStorage<T>(
+	key: string,
+	fallback: T,
+	validate?: (parsed: unknown) => boolean,
+): T {
 	try {
 		const raw = localStorage.getItem(key);
-		return raw ? (JSON.parse(raw) as T) : fallback;
+		if (!raw) return fallback;
+		const parsed = JSON.parse(raw) as unknown;
+		if (validate && !validate(parsed)) return fallback;
+		return parsed as T;
 	} catch {
 		return fallback;
 	}
@@ -1329,7 +1336,11 @@ export function IndustryCalculator() {
 
 	// Source preferences: raw-material source group -> preference (persisted).
 	const [sourcePrefs, setSourcePrefs] = useState<Record<string, SourcePref>>(() =>
-		loadFromStorage<Record<string, SourcePref>>(LS_SOURCE_PREFS_KEY, {}),
+		loadFromStorage<Record<string, SourcePref>>(
+			LS_SOURCE_PREFS_KEY,
+			{},
+			(v) => typeof v === "object" && v !== null && !Array.isArray(v),
+		),
 	);
 	useEffect(() => {
 		saveToStorage(LS_SOURCE_PREFS_KEY, sourcePrefs);
@@ -1469,10 +1480,10 @@ export function IndustryCalculator() {
 
 	// Order list state (persisted to localStorage)
 	const [orderItems, setOrderItems] = useState<BomOrderItem[]>(() =>
-		loadFromStorage<BomOrderItem[]>(LS_ORDER_KEY, []),
+		loadFromStorage<BomOrderItem[]>(LS_ORDER_KEY, [], Array.isArray),
 	);
 	const [recipeOverrides, setRecipeOverrides] = useState<RecipeOverride[]>(() =>
-		loadFromStorage<RecipeOverride[]>(LS_OVERRIDES_KEY, []),
+		loadFromStorage<RecipeOverride[]>(LS_OVERRIDES_KEY, [], Array.isArray),
 	);
 
 	// Stock state (managed by BomStockPanel)
@@ -1480,7 +1491,7 @@ export function IndustryCalculator() {
 
 	// Recipe pins for LP optimizer
 	const [recipePins, setRecipePins] = useState<RecipePin[]>(() =>
-		loadFromStorage<RecipePin[]>(LS_PINS_KEY, []),
+		loadFromStorage<RecipePin[]>(LS_PINS_KEY, [], Array.isArray),
 	);
 
 	// Persist order items, overrides, and recipe pins
@@ -1564,7 +1575,6 @@ export function IndustryCalculator() {
 			defaultRecipes: filteredDefaultRecipes,
 		};
 
-		console.time("LP solve");
 		const t0 = performance.now();
 
 		// Convert final-item recipe overrides to exclusive pins for the LP
@@ -1630,10 +1640,11 @@ export function IndustryCalculator() {
 			solved = ceilLpSolution(continuous);
 		}
 		const solveTimeMs = performance.now() - t0;
-		console.timeEnd("LP solve");
 
-		if (!solved.feasible) {
-			console.warn("LP infeasible, falling back to heuristic BOM resolution");
+		if (!solved.feasible || !isIntegralAndConsistent(solved, bpData, orderItems, stockMap)) {
+			if (import.meta.env.DEV) {
+				console.warn("LP infeasible, falling back to heuristic BOM resolution");
+			}
 			// Convert all pins to recipe overrides so the fallback honors user choices
 			const pinOverrides: RecipeOverride[] = allPins.flatMap((pin) => {
 				if (pin.kind === "exclusive") {
@@ -2275,12 +2286,6 @@ function summarizeSurplus(items: BomSurplus[]): string {
 	const totalQty = items.reduce((s, i) => s + i.quantity, 0);
 	const totalVol = items.reduce((s, i) => (i.volume < 0 ? s : s + i.volume), 0);
 	return `${totalQty.toLocaleString()} units · ${totalVol.toLocaleString(undefined, { maximumFractionDigits: 1 })} m³`;
-}
-
-function formatTimePerUnit(seconds: number): string {
-	if (seconds < 1) return `${(seconds * 1000).toFixed(0)}ms`;
-	if (seconds < 60) return `${seconds.toFixed(1)}s`;
-	return formatTime(Math.round(seconds));
 }
 
 function formatTime(seconds: number): string {

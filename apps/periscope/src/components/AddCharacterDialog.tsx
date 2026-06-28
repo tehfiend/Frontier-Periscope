@@ -63,6 +63,13 @@ const methods: { id: Method; label: string; icon: typeof Wallet }[] = [
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Placeholder used when a character exists on-chain before its metadata name
+ * resolves. This is a non-identifying sentinel, so it MUST NOT participate in
+ * name-based dedupe -- otherwise distinct unnamed characters collide.
+ */
+const UNNAMED = "(unnamed)";
+
 /** Format YYYYMMDD log date string for display */
 function formatLogDate(dateStr: string): string {
 	if (dateStr.length !== 8) return dateStr;
@@ -153,13 +160,20 @@ async function addCharacter(char: DiscoveredChar, tenant?: string): Promise<stri
 		}
 	}
 
-	// Check by name (including soft-deleted)
-	const byName = await db.characters
-		.filter(
-			(c) =>
-				c.characterName.toLowerCase() === resolved.characterName.toLowerCase(),
-		)
-		.first();
+	// Check by name (including soft-deleted). Skip unnamed records: the
+	// "(unnamed)" sentinel collides across distinct name-unresolved characters,
+	// so each must insert -- dedupe for them relies on the characterId /
+	// manifestId checks above instead.
+	const resolvedName = resolved.characterName;
+	const byName =
+		resolvedName && resolvedName !== UNNAMED
+			? await db.characters
+					.filter(
+						(c) =>
+							c.characterName.toLowerCase() === resolvedName.toLowerCase(),
+					)
+					.first()
+			: undefined;
 	if (byName) {
 		await db.characters.update(byName.id, {
 			characterId: resolved.characterId || byName.characterId,
@@ -222,7 +236,7 @@ function WalletMethod({ onClose, tenant }: { onClose: () => void; tenant: Tenant
 				discovery.character;
 			// A C6 character can exist on-chain before its metadata name resolves;
 			// accept it and use a placeholder rather than rejecting a real character.
-			const safeName = name || "(unnamed)";
+			const safeName = name || UNNAMED;
 
 			// Check tribe name from manifest
 			let tribeName: string | undefined;
@@ -238,9 +252,12 @@ function WalletMethod({ onClose, tenant }: { onClose: () => void; tenant: Tenant
 				(characterItemId
 					? existing.some((c) => c.characterId === characterItemId)
 					: false) ||
-				existing.some(
-					(c) => c.characterName.toLowerCase() === safeName.toLowerCase(),
-				);
+				// Skip the name match for unnamed characters: the sentinel collides
+				// across distinct name-unresolved C6 characters.
+				(safeName !== UNNAMED &&
+					existing.some(
+						(c) => c.characterName.toLowerCase() === safeName.toLowerCase(),
+					));
 
 			setResult({
 				characterId: characterItemId,
@@ -657,7 +674,7 @@ function SearchMethod({ onClose, tenant }: { onClose: () => void; tenant: Tenant
 					);
 					setAddressResult({
 						characterId: char.characterItemId,
-						characterName: char.name || "(unnamed)",
+						characterName: char.name || UNNAMED,
 						suiAddress: char.suiAddress,
 						tribeId: char.tribeId,
 						tribe: tribeName,
@@ -712,7 +729,7 @@ function SearchMethod({ onClose, tenant }: { onClose: () => void; tenant: Tenant
 		}
 		const id = await addCharacter({
 			characterId: m.characterItemId,
-			characterName: m.name || "(unnamed)",
+			characterName: m.name || UNNAMED,
 			suiAddress: m.suiAddress,
 			tribeId: m.tribeId,
 			tribe: tribeName,
@@ -800,7 +817,7 @@ function SearchMethod({ onClose, tenant }: { onClose: () => void; tenant: Tenant
 							>
 								<div className="min-w-0 flex-1">
 									<p className="truncate text-sm text-zinc-200">
-										{m.name || "(unnamed)"}
+										{m.name || UNNAMED}
 									</p>
 									<p className="truncate text-xs text-zinc-600">
 										{m.suiAddress.slice(0, 10)}...

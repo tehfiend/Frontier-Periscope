@@ -198,11 +198,13 @@ export function Blueprints() {
 						<div className="flex flex-col gap-1">
 							{bp.outputs.map((output) => {
 								const isPrimary = output.typeID === bp.primaryTypeID;
-								const perInput = output.quantity / totalInputQty;
+								const perInput = totalInputQty > 0 ? output.quantity / totalInputQty : null;
 								const ratioStr =
-									perInput >= 1
-										? `1:${perInput % 1 === 0 ? perInput.toFixed(0) : perInput.toFixed(1)}`
-										: `1:${perInput.toFixed(2)}`;
+									perInput == null
+										? "--"
+										: perInput >= 1
+											? `1:${perInput % 1 === 0 ? perInput.toFixed(0) : perInput.toFixed(1)}`
+											: `1:${perInput.toFixed(2)}`;
 								return (
 									<span
 										key={output.typeID}
@@ -246,8 +248,12 @@ export function Blueprints() {
 							</span>
 							<div className="mt-0.5 whitespace-nowrap text-xs text-zinc-500">
 								{isRefinery
-									? `${formatTimePerUnit(bp.runTime, totalInputQty)}/in`
-									: `${formatTimePerUnit(bp.runTime, primaryQty)}/out`}
+									? totalInputQty > 0
+										? `${formatTimePerUnit(bp.runTime, totalInputQty)}/in`
+										: "--"
+									: primaryQty > 0
+										? `${formatTimePerUnit(bp.runTime, primaryQty)}/out`
+										: "--"}
 							</div>
 						</div>
 					);

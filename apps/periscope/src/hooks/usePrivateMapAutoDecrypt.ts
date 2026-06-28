@@ -18,11 +18,14 @@ import { useEffect, useRef } from "react";
  * gap so locations are decrypted at the app level -- not just when the
  * user navigates to the Private Maps page.
  */
-export function usePrivateMapAutoDecrypt() {
+export function usePrivateMapAutoDecrypt(ready: boolean) {
 	const { keyPair } = useStoredEncryptionKey();
 	const ranRef = useRef(false);
 
 	useEffect(() => {
+		// Wait for the cycle-reset check (DataInitializer) to resolve before decrypting into
+		// cycle-bound tables, so a reset cannot wipe rows we just wrote.
+		if (!ready) return;
 		if (!CHAIN_ENABLED) return;
 		if (!keyPair || ranRef.current) return;
 		ranRef.current = true;
@@ -62,5 +65,5 @@ export function usePrivateMapAutoDecrypt() {
 				}
 			}
 		})();
-	}, [keyPair]);
+	}, [keyPair, ready]);
 }

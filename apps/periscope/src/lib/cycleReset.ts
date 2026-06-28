@@ -22,6 +22,15 @@ async function getActiveTenant(): Promise<TenantId> {
 }
 
 /**
+ * Per-tenant `cacheMetadata` key for the cycle-reset stamp. Scoping the stamp by tenant means a
+ * stillness cycle boundary is never missed because the single stored stamp happened to be utopia's
+ * (and vice versa) -- each tenant tracks its own last-seen cycle independently.
+ */
+export function cycleDataKey(tenant: TenantId): string {
+	return `${CYCLE_DATA_KEY}:${tenant}`;
+}
+
+/**
  * The cycle identity the local data belongs to: the active tenant's `worldPackageId` when chain is
  * live (changes once per cycle on a fresh world publish), else the interim sentinel.
  */
@@ -32,12 +41,25 @@ export async function getCurrentCycleStamp(): Promise<string> {
 	return `interim:${CYCLE_VERSION}`;
 }
 
+/** Outcome of an {@link archiveCycle} attempt. */
+export interface ArchiveResult {
+	/** The attempt did not error -- a backup-dir write succeeded, or a download was triggered. */
+	ok: boolean;
+	/**
+	 * The archive was VERIFIABLY persisted to disk (a backup-dir write whose completion we awaited).
+	 * A browser download cannot be confirmed (it may be silently blocked outside a user gesture), so
+	 * the download fallback is `ok` but never `verified`.
+	 */
+	verified: boolean;
+}
+
 /**
  * Archive the cycle-bound tables to a JSON file -- written to the configured backup directory if
- * one is set, otherwise downloaded. Recoverable via the existing Import Backup path. Returns
- * whether the archive was actually written.
+ * one is set, otherwise downloaded. Recoverable via the existing Import Backup path. Returns both
+ * whether the attempt succeeded (`ok`) and whether the copy was VERIFIABLY persisted (`verified`);
+ * only the backup-dir write is verifiable, the download fallback is best-effort.
  */
-export async function archiveCycle(stamp: string): Promise<boolean> {
+export async function archiveCycle(stamp: string): Promise<ArchiveResult> {
 	const data = {
 		version: 1 as const,
 		exportedAt: new Date().toISOString(),
@@ -53,10 +75,11 @@ export async function archiveCycle(stamp: string): Promise<boolean> {
 
 	const handle = await getBackupHandle();
 	if (handle) {
-		return writeBackupFile(data, fileName);
+		const ok = await writeBackupFile(data, fileName);
+		return { ok, verified: ok };
 	}
 	downloadJson(data, fileName);
-	return true;
+	return { ok: true, verified: false };
 }
 
 /**
@@ -66,46 +89,76 @@ export async function archiveCycle(stamp: string): Promise<boolean> {
  */
 export async function clearCycleData(): Promise<void> {
 	const live = new Set(db.tables.map((t) => t.name));
-	await Promise.all(
-		CYCLE_BOUND_TABLES.filter((t) => live.has(t)).map((t) => db.table(t).clear()),
-	);
+	const clearable = CYCLE_BOUND_TABLES.filter((t) => live.has(t));
 
-	// sonarState is NOT a cycle-bound table; overwrite its two cursor rows back to a clean state
-	// (mirrors the db/index.ts on("ready") seed, which only fires on a fresh open).
-	await db.sonarState.bulkPut([
-		{ channel: "local", enabled: true, status: "off" },
-		{ channel: "chain", enabled: true, status: "off" },
-	]);
+	// Atomic: the table clears + sonar cursor reseed + settings cleanup run in ONE rw transaction so
+	// a mid-sequence failure rolls the whole set back rather than leaving a partially-cleared DB.
+	// sonarState and settings join the scope (cursor reseed + stale pointer deletes). The zustand
+	// resetCycleState() below is in-memory only and stays outside the DB transaction.
+	await db.transaction("rw", [...clearable, "sonarState", "settings"], async () => {
+		await Promise.all(clearable.map((t) => db.table(t).clear()));
 
-	// The active character / default map now point at deleted ids.
-	await db.settings.bulkDelete(["activeCharacterId", "defaultMapId"]);
+		// sonarState is NOT a cycle-bound table; overwrite its two cursor rows back to a clean state
+		// (mirrors the db/index.ts on("ready") seed, which only fires on a fresh open).
+		await db.sonarState.bulkPut([
+			{ channel: "local", enabled: true, status: "off" },
+			{ channel: "chain", enabled: true, status: "off" },
+		]);
+
+		// The active character / default map now point at deleted ids.
+		await db.settings.bulkDelete(["activeCharacterId", "defaultMapId"]);
+	});
+
 	useAppStore.getState().resetCycleState();
 }
 
 /**
  * Full operational reset: (optionally) archive -> clear -> stamp the new cycle. Aborts before
  * clearing if an archive was requested and failed, so we never clear without a recoverable copy.
- * The new stamp is written only after a successful clear.
+ * The new (per-tenant) stamp is written only after a successful clear.
+ *
+ * `unattended` distinguishes the auto path (checkCycleReset, fires on a real cycle change) from the
+ * attended manual dialog. On the unattended path a browser download cannot be confirmed and is
+ * often blocked outside a user gesture, so without a configured backup-dir handle there is NO
+ * verifiable archive -- we refuse to clear and return "skipped", leaving the data and the old stamp
+ * intact so the boundary is retried (or the user runs the manual reset). The attended path keeps the
+ * gesture-driven download as a best-effort archive and is allowed to clear.
  */
-export async function resetForNewCycle(opts: { archive: boolean }): Promise<void> {
+export async function resetForNewCycle(opts: {
+	archive: boolean;
+	unattended: boolean;
+}): Promise<"reset" | "skipped"> {
 	const stamp = await getCurrentCycleStamp();
 	const tenant = await getActiveTenant();
 
 	if (opts.archive) {
-		const ok = await archiveCycle(stamp);
-		if (!ok) {
+		// Unattended + no backup-dir handle => only an unverifiable download is possible. Do not fire
+		// it and do not clear: abort so the cycle boundary is retried with a verifiable target later.
+		const handle = await getBackupHandle();
+		if (opts.unattended && !handle) {
+			return "skipped";
+		}
+
+		const result = await archiveCycle(stamp);
+		if (!result.ok) {
 			throw new Error("Cycle archive failed; aborting reset to avoid data loss.");
+		}
+		// Defensive: the unattended path must never clear behind an unverifiable (download) archive.
+		if (opts.unattended && !result.verified) {
+			return "skipped";
 		}
 	}
 
 	await clearCycleData();
 
 	await db.cacheMetadata.put({
-		key: CYCLE_DATA_KEY,
+		key: cycleDataKey(tenant),
 		version: stamp,
 		tenant,
 		importedAt: new Date().toISOString(),
 	});
+
+	return "reset";
 }
 
 /**
@@ -115,15 +168,15 @@ export async function resetForNewCycle(opts: { archive: boolean }): Promise<void
  * `worldPackageId` without being a cycle boundary) and the interim->chain-live hop (owned by Plan
  * 28's V33) are adopted, not cleared.
  */
-export async function checkCycleReset(): Promise<"adopted" | "reset" | "noop"> {
-	const meta = await db.cacheMetadata.get(CYCLE_DATA_KEY);
-	const current = await getCurrentCycleStamp();
+export async function checkCycleReset(): Promise<"adopted" | "reset" | "noop" | "skipped"> {
 	const tenant = await getActiveTenant();
+	const meta = await db.cacheMetadata.get(cycleDataKey(tenant));
+	const current = await getCurrentCycleStamp();
 
 	// First run: adopt the current stamp. The mechanism never clears data it has not stamped.
 	if (!meta) {
 		await db.cacheMetadata.put({
-			key: CYCLE_DATA_KEY,
+			key: cycleDataKey(tenant),
 			version: current,
 			tenant,
 			importedAt: new Date().toISOString(),
@@ -136,13 +189,16 @@ export async function checkCycleReset(): Promise<"adopted" | "reset" | "noop"> {
 	const sameTenant = meta.tenant === tenant;
 	const bothReal = meta.version.startsWith("0x") && current.startsWith("0x");
 	if (CHAIN_ENABLED && sameTenant && bothReal) {
-		await resetForNewCycle({ archive: true });
-		return "reset";
+		// Auto path: unattended. If the reset is skipped (no verifiable archive), do NOT stamp the
+		// new cycle -- leave the old stamp so the boundary is detected again on the next load (or the
+		// user can run the manual reset, which allows a best-effort download archive).
+		const outcome = await resetForNewCycle({ archive: true, unattended: true });
+		return outcome === "reset" ? "reset" : "skipped";
 	}
 
 	// Otherwise re-stamp (adopt) without clearing.
 	await db.cacheMetadata.put({
-		key: CYCLE_DATA_KEY,
+		key: cycleDataKey(tenant),
 		version: current,
 		tenant,
 		importedAt: new Date().toISOString(),

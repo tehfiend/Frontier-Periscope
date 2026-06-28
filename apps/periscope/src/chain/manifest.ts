@@ -1248,7 +1248,9 @@ export async function syncPrivateMapsForUser(
 ): Promise<number> {
 	const addresses = getContractAddresses(tenant);
 	const packageId = addresses.privateMap?.packageId;
-	console.log("[syncPrivateMaps] tenant:", tenant, "packageId:", packageId, "user:", userAddress);
+	if (import.meta.env.DEV) {
+		console.log("[syncPrivateMaps] tenant:", tenant, "packageId:", packageId, "user:", userAddress);
+	}
 	if (!packageId) return 0;
 
 	let newCount = 0;
@@ -1256,7 +1258,9 @@ export async function syncPrivateMapsForUser(
 	try {
 		ctx?.setProgress("Discovering map invites...");
 		const invites = await queryMapInvitesForUser(client, packageId, userAddress);
-		console.log("[syncPrivateMaps] found", invites.length, "invites:", invites);
+		if (import.meta.env.DEV) {
+			console.log("[syncPrivateMaps] found", invites.length, "invites:", invites);
+		}
 
 		for (const invite of invites) {
 			if (ctx?.isCancelled()) break;
@@ -1265,7 +1269,9 @@ export async function syncPrivateMapsForUser(
 
 			// Fetch map details
 			const mapInfo = await queryPrivateMap(client, invite.mapId);
-			console.log("[syncPrivateMaps] map info for", invite.mapId, ":", mapInfo);
+			if (import.meta.env.DEV) {
+				console.log("[syncPrivateMaps] map info for", invite.mapId, ":", mapInfo);
+			}
 			if (!mapInfo) continue;
 
 			const entry: ManifestPrivateMap = {
@@ -1282,10 +1288,14 @@ export async function syncPrivateMapsForUser(
 
 			await db.manifestPrivateMaps.put(entry);
 			newCount++;
-			console.log("[syncPrivateMaps] cached map:", entry.name, entry.id, "tenant:", tenant);
+			if (import.meta.env.DEV) {
+				console.log("[syncPrivateMaps] cached map:", entry.name, entry.id, "tenant:", tenant);
+			}
 		}
 
-		console.log("[syncPrivateMaps] synced", newCount, "maps");
+		if (import.meta.env.DEV) {
+			console.log("[syncPrivateMaps] synced", newCount, "maps");
+		}
 	} catch (err) {
 		console.error("[syncPrivateMaps] error:", err);
 		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -1306,30 +1316,36 @@ export async function decryptMapKeys(
 	const maps = await db.manifestPrivateMaps.where("tenant").equals(tenant).toArray();
 
 	for (const map of maps) {
-		console.log(
-			"[decryptMapKeys]",
-			map.name,
-			"hasDecrypted:",
-			!!map.decryptedMapKey,
-			"hasEncrypted:",
-			!!map.encryptedMapKey,
-		);
+		if (import.meta.env.DEV) {
+			console.log(
+				"[decryptMapKeys]",
+				map.name,
+				"hasDecrypted:",
+				!!map.decryptedMapKey,
+				"hasEncrypted:",
+				!!map.encryptedMapKey,
+			);
+		}
 		if (map.decryptedMapKey || !map.encryptedMapKey) continue;
 
 		try {
 			const encryptedKeyBytes = hexToBytes(map.encryptedMapKey);
-			console.log(
-				"[decryptMapKeys] decrypting",
-				map.name,
-				"encryptedLen:",
-				encryptedKeyBytes.length,
-			);
+			if (import.meta.env.DEV) {
+				console.log(
+					"[decryptMapKeys] decrypting",
+					map.name,
+					"encryptedLen:",
+					encryptedKeyBytes.length,
+				);
+			}
 			const decryptedKey = unsealWithKey(
 				encryptedKeyBytes,
 				walletKeyPair.publicKey,
 				walletKeyPair.secretKey,
 			);
-			console.log("[decryptMapKeys] success:", map.name);
+			if (import.meta.env.DEV) {
+				console.log("[decryptMapKeys] success:", map.name);
+			}
 
 			await db.manifestPrivateMaps.update(map.id, {
 				decryptedMapKey: bytesToHex(decryptedKey),
@@ -1535,14 +1551,16 @@ export async function syncStandingsListsForUser(
 ): Promise<number> {
 	const addresses = getContractAddresses(tenant);
 	const packageId = addresses.standings?.packageId;
-	console.log(
-		"[syncStandingsLists] tenant:",
-		tenant,
-		"packageId:",
-		packageId,
-		"user:",
-		userAddress,
-	);
+	if (import.meta.env.DEV) {
+		console.log(
+			"[syncStandingsLists] tenant:",
+			tenant,
+			"packageId:",
+			packageId,
+			"user:",
+			userAddress,
+		);
+	}
 	if (!packageId) return 0;
 
 	let newCount = 0;
@@ -1550,7 +1568,9 @@ export async function syncStandingsListsForUser(
 	try {
 		ctx?.setProgress("Discovering standings invites...");
 		const invites = await queryStandingsInvitesForUser(client, userAddress, packageId);
-		console.log("[syncStandingsLists] found", invites.length, "invites");
+		if (import.meta.env.DEV) {
+			console.log("[syncStandingsLists] found", invites.length, "invites");
+		}
 
 		for (const invite of invites) {
 			if (ctx?.isCancelled()) break;
@@ -1559,7 +1579,9 @@ export async function syncStandingsListsForUser(
 
 			// Fetch list details
 			const listInfo = await queryStandingsList(client, invite.listId);
-			console.log("[syncStandingsLists] list info for", invite.listId, ":", listInfo);
+			if (import.meta.env.DEV) {
+				console.log("[syncStandingsLists] list info for", invite.listId, ":", listInfo);
+			}
 			if (!listInfo) continue;
 
 			const isEditor = listInfo.creator === userAddress || listInfo.editors.includes(userAddress);
@@ -1581,10 +1603,14 @@ export async function syncStandingsListsForUser(
 
 			await db.manifestStandingsLists.put(entry);
 			newCount++;
-			console.log("[syncStandingsLists] cached list:", entry.name, entry.id, "tenant:", tenant);
+			if (import.meta.env.DEV) {
+				console.log("[syncStandingsLists] cached list:", entry.name, entry.id, "tenant:", tenant);
+			}
 		}
 
-		console.log("[syncStandingsLists] synced", newCount, "lists");
+		if (import.meta.env.DEV) {
+			console.log("[syncStandingsLists] synced", newCount, "lists");
+		}
 	} catch (err) {
 		console.error("[syncStandingsLists] error:", err);
 		ctx?.setProgress(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -1605,30 +1631,36 @@ export async function decryptStandingsKeys(
 	const lists = await db.manifestStandingsLists.where("tenant").equals(tenant).toArray();
 
 	for (const list of lists) {
-		console.log(
-			"[decryptStandingsKeys]",
-			list.name,
-			"hasDecrypted:",
-			!!list.decryptedListKey,
-			"hasEncrypted:",
-			!!list.encryptedListKey,
-		);
+		if (import.meta.env.DEV) {
+			console.log(
+				"[decryptStandingsKeys]",
+				list.name,
+				"hasDecrypted:",
+				!!list.decryptedListKey,
+				"hasEncrypted:",
+				!!list.encryptedListKey,
+			);
+		}
 		if (list.decryptedListKey || !list.encryptedListKey) continue;
 
 		try {
 			const encryptedKeyBytes = hexToBytes(list.encryptedListKey);
-			console.log(
-				"[decryptStandingsKeys] decrypting",
-				list.name,
-				"encryptedLen:",
-				encryptedKeyBytes.length,
-			);
+			if (import.meta.env.DEV) {
+				console.log(
+					"[decryptStandingsKeys] decrypting",
+					list.name,
+					"encryptedLen:",
+					encryptedKeyBytes.length,
+				);
+			}
 			const decryptedKey = unsealWithKey(
 				encryptedKeyBytes,
 				walletKeyPair.publicKey,
 				walletKeyPair.secretKey,
 			);
-			console.log("[decryptStandingsKeys] success:", list.name);
+			if (import.meta.env.DEV) {
+				console.log("[decryptStandingsKeys] success:", list.name);
+			}
 
 			await db.manifestStandingsLists.update(list.id, {
 				decryptedListKey: bytesToHex(decryptedKey),
@@ -1665,17 +1697,21 @@ export async function syncStandingEntries(
 
 		const listPublicKey = hexToBytes(listInfo.publicKey);
 		const listSecretKey = hexToBytes(decryptedListKey);
-		console.log(
-			"[syncStandingEntries] listId:",
-			listId,
-			"pubKeyLen:",
-			listPublicKey.length,
-			"secKeyLen:",
-			listSecretKey.length,
-		);
+		if (import.meta.env.DEV) {
+			console.log(
+				"[syncStandingEntries] listId:",
+				listId,
+				"pubKeyLen:",
+				listPublicKey.length,
+				"secKeyLen:",
+				listSecretKey.length,
+			);
+		}
 
 		const rawEntries = await queryStandingEntries(client, listId);
-		console.log("[syncStandingEntries] found", rawEntries.length, "raw entries");
+		if (import.meta.env.DEV) {
+			console.log("[syncStandingEntries] found", rawEntries.length, "raw entries");
+		}
 
 		// Clear existing entries for this list and replace with fresh data
 		const existingEntries = await db.manifestStandingEntries
@@ -1693,15 +1729,19 @@ export async function syncStandingEntries(
 
 			try {
 				const encryptedBytes = hexToBytes(raw.encryptedData);
-				console.log(
-					"[syncStandingEntries] decrypting entry",
-					raw.entryId,
-					"encryptedLen:",
-					encryptedBytes.length,
-				);
+				if (import.meta.env.DEV) {
+					console.log(
+						"[syncStandingEntries] decrypting entry",
+						raw.entryId,
+						"encryptedLen:",
+						encryptedBytes.length,
+					);
+				}
 				const plaintext = unsealWithKey(encryptedBytes, listPublicKey, listSecretKey);
 				const data = decodeStandingData(plaintext);
-				console.log("[syncStandingEntries] decrypted:", data);
+				if (import.meta.env.DEV) {
+					console.log("[syncStandingEntries] decrypted:", data);
+				}
 
 				const entry: ManifestStandingEntry = {
 					id: compositeId,
@@ -2193,6 +2233,12 @@ export async function mergePrivateMapLocationsIntoManifest(tenant: TenantId): Pr
 		const existing = await db.manifestLocations.get(loc.structureId);
 		if (existing) continue;
 
+		// Guard against missing/NaN/invalid addedAtMs -- new Date(NaN).toISOString()
+		// throws RangeError and would abort the entire merge for one bad row.
+		const revealedAt = Number.isFinite(loc.addedAtMs)
+			? new Date(loc.addedAtMs).toISOString()
+			: now;
+
 		const entry: ManifestLocation = {
 			id: loc.structureId,
 			assemblyItemId: "",
@@ -2205,7 +2251,7 @@ export async function mergePrivateMapLocationsIntoManifest(tenant: TenantId): Pr
 			lPoint: `P${loc.planet}-L${loc.lPoint}`,
 			tenant: loc.tenant,
 			source: "private-map",
-			revealedAt: new Date(loc.addedAtMs).toISOString(),
+			revealedAt,
 			cachedAt: now,
 		};
 

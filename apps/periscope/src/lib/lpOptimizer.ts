@@ -123,12 +123,6 @@ export function solveLp(
 		excludedBpIds,
 	);
 
-	// Build pin lookup: typeId -> RecipePin
-	const pinByType = new Map<number, RecipePin>();
-	for (const pin of recipePins) {
-		pinByType.set(pin.typeId, pin);
-	}
-
 	// Build LP model
 	const constraints: Record<string, { min?: number; max?: number; equal?: number }> = {};
 	const variables: Record<string, Record<string, number>> = {};
@@ -164,10 +158,12 @@ export function solveLp(
 	// 3. Add excess variables for raw materials (objective targets, optionally weighted)
 	for (const rawId of rawTypeIds) {
 		if (!coneTypes.has(rawId)) continue;
-		// Clamp to >= 0: a negative weight would reward unbounded excess (unbounded LP).
-		const weight = Math.max(0, opts.rawWeights?.get(rawId) ?? 1);
+		// Require a finite, positive weight: a negative weight would reward unbounded excess
+		// (unbounded LP) and NaN/0 would poison the objective. Fall back to the default 1.
+		const rawWeight = opts.rawWeights?.get(rawId) ?? 1;
+		const safeWeight = Number.isFinite(rawWeight) && rawWeight > 0 ? rawWeight : 1;
 		variables[`excess_${rawId}`] = {
-			objective: weight,
+			objective: safeWeight,
 			[`raw_${rawId}`]: 1,
 		};
 	}
@@ -230,8 +226,8 @@ export function solveLp(
 			const stock = stockMap.get(salvageId) ?? 0;
 			if (stock <= 0) continue;
 			const constraintName = `salvage_cap_${salvageId}`;
-			constraints[constraintName] = { max: stock };
-			// Add coefficients for every blueprint that uses this salvage input
+			// Add coefficients for every in-cone blueprint that uses this salvage input
+			let hasConsumer = false;
 			for (const bp of Object.values(blueprints)) {
 				if (excludedBpIds.has(bp.blueprintID)) continue;
 				const inp = bp.inputs.find((i) => i.typeID === salvageId);
@@ -239,13 +235,34 @@ export function solveLp(
 					const varName = `bp_${bp.blueprintID}`;
 					if (variables[varName]) {
 						variables[varName][constraintName] = inp.quantity;
+						hasConsumer = true;
 					}
 				}
+			}
+			// Only emit the cap when an in-cone blueprint actually consumes this salvage id;
+			// otherwise the constraint is harmless but pointless.
+			if (hasConsumer) {
+				constraints[constraintName] = { max: stock };
 			}
 		}
 	}
 
 	// 5. Apply pin constraints
+	// Track blueprint variables that carry a min-run/forced constraint from a split pin. A
+	// co-product blueprint can be force-run by one type's split pin while another type's
+	// exclusive pin (or fully-covered split) tries to zero that same blueprint, yielding
+	// contradictory `bp >= n` and `bp = 0` -- which makes the WHOLE LP infeasible. The
+	// pre-pass below collects every force-run blueprint up front (independent of pin order),
+	// so the zeroing loops skip them and two individually-valid pins can coexist.
+	const forcedBpVars = new Set<string>();
+	for (const pin of recipePins) {
+		if (pin.kind !== "split") continue;
+		for (const split of pin.splits) {
+			if (!blueprints[String(split.blueprintId)]) continue;
+			const varName = `bp_${split.blueprintId}`;
+			if (variables[varName]) forcedBpVars.add(varName);
+		}
+	}
 	for (const pin of recipePins) {
 		const producers = outputToBlueprints.get(pin.typeId);
 		if (!producers || producers.length === 0) continue;
@@ -257,9 +274,12 @@ export function solveLp(
 			// Zero out all non-pinned blueprints that produce this type
 			for (const bp of producers) {
 				if (bp.blueprintID !== pin.blueprintId) {
+					const varName = `bp_${bp.blueprintID}`;
+					// Skip blueprints already forced to run by another type's pin; zeroing them
+					// here would contradict that min-run and make the whole LP infeasible.
+					if (forcedBpVars.has(varName)) continue;
 					const constraintName = `pin_${bp.blueprintID}_for_${pin.typeId}`;
 					constraints[constraintName] = { equal: 0 };
-					const varName = `bp_${bp.blueprintID}`;
 					if (variables[varName]) {
 						variables[varName][constraintName] = 1;
 					}
@@ -283,6 +303,8 @@ export function solveLp(
 				const constraintName = `pin_${split.blueprintId}_for_${pin.typeId}`;
 				constraints[constraintName] = { min: runs };
 				variables[varName][constraintName] = 1;
+				// Remember this blueprint is force-run so a later pin won't zero it.
+				forcedBpVars.add(varName);
 			}
 
 			// Only zero out non-pinned blueprints when splits fully cover demand
@@ -290,9 +312,12 @@ export function solveLp(
 			if (totalPinnedQty >= demand) {
 				for (const bp of producers) {
 					if (!pinnedBpIds.has(bp.blueprintID)) {
+						const varName = `bp_${bp.blueprintID}`;
+						// Skip blueprints already forced to run by another type's pin; zeroing
+						// them here would contradict that min-run and make the LP infeasible.
+						if (forcedBpVars.has(varName)) continue;
 						const constraintName = `pin_${bp.blueprintID}_for_${pin.typeId}`;
 						constraints[constraintName] = { equal: 0 };
-						const varName = `bp_${bp.blueprintID}`;
 						if (variables[varName]) {
 							variables[varName][constraintName] = 1;
 						}

@@ -27,11 +27,14 @@ import { useEffect, useRef } from "react";
  * Ongoing real-time monitoring is handled by Chain Sonar (useChainSonar),
  * which polls CharacterCreatedEvent every 15s for the active tenant.
  */
-export function useManifestAutoSync() {
+export function useManifestAutoSync(ready: boolean) {
 	const client = useSuiClient();
 	const ran = useRef(false);
 
 	useEffect(() => {
+		// Wait for the cycle-reset check (DataInitializer) to resolve before touching cycle-bound
+		// tables -- guarding BEFORE the run-once latch so a not-ready render does not consume it.
+		if (!ready) return;
 		if (ran.current) return;
 		ran.current = true;
 		if (!CHAIN_ENABLED) return;
@@ -153,7 +156,7 @@ export function useManifestAutoSync() {
 				console.warn("[manifest-sync] Failed:", err);
 			}
 		})();
-	}, [client]);
+	}, [client, ready]);
 }
 
 /**
