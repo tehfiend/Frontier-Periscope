@@ -56,6 +56,26 @@ export const CHANGELOG: ChangelogEntry[] = [
 					"Adding a character by wallet no longer fails when the character's on-chain name has not resolved yet",
 			},
 			{
+				category: "added",
+				description:
+					"Added Source Preferences to the Industry Calculator so you can steer where your materials come from. Set each material group to Exclude, Avoid, Normal, or Prefer and the optimizer works around your choices.",
+			},
+			{
+				category: "added",
+				description:
+					"The Blueprint Library now has a search box on every column, and the old search is clearly labeled as the global one that searches everything. Your searches stick around when you come back, and each one has its own clear button.",
+			},
+			{
+				category: "added",
+				description:
+					"Added a recipe column to the production list so you can see how each item gets made at a glance.",
+			},
+			{
+				category: "fixed",
+				description:
+					"Fixed the Industry Calculator so it stops showing surplus materials that don't make sense. It now only gives you plans you can actually build, and the raw material list always adds up.",
+			},
+			{
 				category: "changed",
 				description:
 					"Removed the contest-entry labels from the Blueprint Library and Industry Calculator",
