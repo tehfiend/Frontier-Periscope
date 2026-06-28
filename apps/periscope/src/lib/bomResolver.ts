@@ -23,6 +23,14 @@ export interface BomResult {
 		iterations: number;
 		objectiveValue?: number;
 		solveTimeMs?: number;
+		/** True when the plan had to relax a source exclusion (e.g. Salvage) to be buildable. */
+		usedExcludedSources?: boolean;
+		/**
+		 * True when the optimizer fell back to heuristic recipes because a feasible plan exists
+		 * but the integer/ceil solve could not finalize within the time budget (large/complex
+		 * order), as opposed to the order being genuinely unbuildable.
+		 */
+		optimizerTimedOut?: boolean;
 	};
 }
 

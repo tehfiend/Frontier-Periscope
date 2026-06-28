@@ -52,16 +52,24 @@ const LS_PINS_KEY = "bom-recipe-pins";
 // integer branch-and-bound so the solve stays interactive on very large orders.
 const LP_OVERPRODUCTION_PENALTY = 0.1;
 const LP_SOLVE_BUDGET_MS = 1500;
+// When the order is infeasible under the active source exclusions (an item REQUIRES an excluded
+// material with no alternative), the optimizer relaxes the exclusions and re-solves, weighting the
+// previously-excluded materials this heavily so they stay a last resort -- used only where unavoidable.
+const LP_EXCLUDED_RELAX_WEIGHT = 1000;
 
 // Source-preference model. Cycle 6 offers many ways to source the same input, so each
 // raw-material source GROUP (Comet Ores, Salvage, Rogue Drone Components, ...) can be
 // excluded or weighted to steer which raws the optimizer draws on.
 type SourcePref = "exclude" | "avoid" | "normal" | "prefer";
 const SOURCE_PREFS: SourcePref[] = ["exclude", "avoid", "normal", "prefer"];
+// "avoid" must outweigh the efficiency edge that multi-output salvage recipes have over the
+// dedicated single-output route. At weight 5 the optimizer still chose salvage reprocessing for
+// e.g. Reinforced Alloys (10 salvage -> 6 RA + co-products beats the ore route on raw count);
+// 50 reliably flips it to ore while still using salvage when a recipe has no alternative.
 const SOURCE_PREF_WEIGHT: Record<"avoid" | "normal" | "prefer", number> = {
 	prefer: 0.25,
 	normal: 1,
-	avoid: 5,
+	avoid: 50,
 };
 const SOURCE_PREF_LABEL: Record<SourcePref, string> = {
 	exclude: "Exclude",
@@ -1618,30 +1626,61 @@ export function IndustryCalculator() {
 		const allPins = [...validPins, ...overridePins.filter((p) => !pinTypeIds.has(p.typeId))];
 
 		// Solve as an integer program (whole runs) with a small overproduction penalty, so the
-		// result is an executable, low-waste plan. If it is infeasible or the branch-and-bound
-		// times out with a fractional/inconsistent incumbent, fall back to the continuous solve
-		// rounded up (still cone-restricted, so no unrelated junk recipes).
-		let solved = solveLp(orderItems, bpData, allPins, stockMap, sourceExcludedRawIds, {
-			integer: true,
-			penalty: LP_OVERPRODUCTION_PENALTY,
-			timeoutMs: LP_SOLVE_BUDGET_MS,
-			rawWeights,
-		});
-		if (solved.feasible && isIntegralAndConsistent(solved, bpData, orderItems, stockMap)) {
-			// Clean up solver float noise now that the runs are confirmed (near-)integral.
-			solved = roundSolution(solved);
-		} else {
+		// result is an executable, low-waste plan. attemptSolve returns the consistency-validated
+		// solution for a given exclusion set + raw weights: integer first, then a continuous+ceil
+		// fallback for timeouts. `usable` is true only when the result is feasible AND every
+		// producible type balances, so an under-counted ceil plan never ships.
+		const attemptSolve = (excluded: Set<number>, weights: Map<number, number>) => {
+			let sol = solveLp(orderItems, bpData, allPins, stockMap, excluded, {
+				integer: true,
+				penalty: LP_OVERPRODUCTION_PENALTY,
+				timeoutMs: LP_SOLVE_BUDGET_MS,
+				rawWeights: weights,
+			});
+			if (sol.feasible && isIntegralAndConsistent(sol, bpData, orderItems, stockMap)) {
+				// Clean up solver float noise now that the runs are confirmed (near-)integral.
+				return { sol: roundSolution(sol), usable: true };
+			}
 			// Integer solve infeasible, or timed out with a fractional/inconsistent incumbent --
 			// fall back to the continuous solve rounded up (still cone-restricted, so no junk).
-			const continuous = solveLp(orderItems, bpData, allPins, stockMap, sourceExcludedRawIds, {
-				penalty: LP_OVERPRODUCTION_PENALTY,
-				rawWeights,
-			});
-			solved = ceilLpSolution(continuous);
+			sol = ceilLpSolution(
+				solveLp(orderItems, bpData, allPins, stockMap, excluded, {
+					penalty: LP_OVERPRODUCTION_PENALTY,
+					rawWeights: weights,
+				}),
+			);
+			return {
+				sol,
+				usable: sol.feasible && isIntegralAndConsistent(sol, bpData, orderItems, stockMap),
+			};
+		};
+
+		// Pass 1: honor the source exclusions (Salvage is excluded by default). This keeps optional
+		// salvage out of plans that have an alternative (e.g. Reinforced Alloys resolves to ore).
+		let { sol: solved, usable } = attemptSolve(sourceExcludedRawIds, rawWeights);
+		// Track whether a feasible plan exists at all (vs. a timeout that couldn't be finalized) so
+		// the fallback message can tell the user the difference.
+		let lpFeasible = solved.feasible;
+
+		// Pass 2: if the order is infeasible under the exclusions, some item REQUIRES an excluded
+		// material with no alternative recipe (e.g. the Cycle 6 Mini Printer needs salvage-derived
+		// inputs). Relax the exclusions and re-solve, weighting the previously-excluded materials
+		// heavily so the plan uses the minimum salvage it cannot avoid rather than failing outright.
+		let usedExcludedSources = false;
+		if (!usable && sourceExcludedRawIds.size > 0) {
+			const relaxedWeights = new Map(rawWeights);
+			for (const id of sourceExcludedRawIds) relaxedWeights.set(id, LP_EXCLUDED_RELAX_WEIGHT);
+			const relaxed = attemptSolve(new Set<number>(), relaxedWeights);
+			lpFeasible = lpFeasible || relaxed.sol.feasible;
+			if (relaxed.usable) {
+				solved = relaxed.sol;
+				usable = true;
+				usedExcludedSources = true;
+			}
 		}
 		const solveTimeMs = performance.now() - t0;
 
-		if (!solved.feasible || !isIntegralAndConsistent(solved, bpData, orderItems, stockMap)) {
+		if (!usable) {
 			if (import.meta.env.DEV) {
 				console.warn("LP infeasible, falling back to heuristic BOM resolution");
 			}
@@ -1673,11 +1712,18 @@ export function IndustryCalculator() {
 			);
 			return {
 				...fallback,
-				totals: { ...fallback.totals, objectiveValue: -1, solveTimeMs },
+				totals: {
+					...fallback.totals,
+					objectiveValue: -1,
+					solveTimeMs,
+					// A feasible LP existed but couldn't be finalized in time -> it's a large/complex
+					// order, not a genuinely unbuildable one.
+					optimizerTimedOut: lpFeasible,
+				},
 			};
 		}
 
-		return buildBomFromLp(
+		const bom = buildBomFromLp(
 			solved,
 			bpData,
 			orderItems,
@@ -1686,6 +1732,9 @@ export function IndustryCalculator() {
 			fullNameMap,
 			solveTimeMs,
 		);
+		return usedExcludedSources
+			? { ...bom, totals: { ...bom.totals, usedExcludedSources: true } }
+			: bom;
 	}, [
 		orderItems,
 		filteredBlueprints,
@@ -1897,10 +1946,24 @@ export function IndustryCalculator() {
 								collapsedSummary="control how raw materials are sourced"
 							>
 								<div className="space-y-0.5 px-4 pb-3">
-									<p className="py-1 text-xs text-zinc-500">
-										Steer how inputs are sourced. Excluded sources are only used if you hold them in
-										stock; Prefer/Avoid bias the optimizer without forbidding a source.
-									</p>
+									<div className="flex items-start justify-between gap-3 py-1">
+										<p className="text-xs text-zinc-500">
+											Steer how inputs are sourced. Salvage is excluded by default (it's looted, not
+											mined) but is still added automatically when a recipe has no other route. Avoid
+											keeps a source out unless it's the only option; Prefer biases toward it. Setting
+											everything to Normal lets the optimizer reprocess salvage, which can produce
+											surplus co-products.
+										</p>
+										{Object.keys(sourcePrefs).length > 0 && (
+											<button
+												type="button"
+												onClick={() => setSourcePrefs({})}
+												className="shrink-0 text-xs text-zinc-500 hover:text-zinc-300"
+											>
+												Reset
+											</button>
+										)}
+									</div>
 									{sourceGroups.map(({ group, ids }) => {
 										const pref = sourcePrefs[group] ?? defaultSourcePref(group);
 										const sample = ids
@@ -2153,15 +2216,32 @@ export function IndustryCalculator() {
 										</div>
 									</div>
 								</div>
-								{/* LP infeasible warning */}
-								{result.totals.objectiveValue === -1 && (
+								{/* The plan needed a material the active Sources settings exclude (e.g. Salvage), so the optimizer relaxed the exclusion and included it. */}
+								{result.totals.usedExcludedSources && (
 									<div className="mx-4 mb-4 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
 										<AlertTriangle size={12} className="mr-1 inline" />
-										The optimizer could not find a feasible solution with the current constraints.
-										This may happen when facility filters exclude necessary blueprints or recipe
-										overrides conflict. Falling back to heuristic mode.
+										Some items can't be built without an excluded source (for example Salvage), so
+										those materials are included in the plan. Use the Sources panel above to change how
+										they are sourced.
 									</div>
 								)}
+								{/* Heuristic fallback notice -- distinguish "too big to optimize" from "can't build" */}
+								{result.totals.objectiveValue === -1 &&
+									(result.totals.optimizerTimedOut ? (
+										<div className="mx-4 mb-4 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
+											<AlertTriangle size={12} className="mr-1 inline" />
+											This order is large or complex, so the optimizer is showing a standard-recipe
+											plan instead of a fully optimized one. The materials below are correct. For a
+											tighter plan, build it in smaller batches or set fewer sources to Normal.
+										</div>
+									) : (
+										<div className="mx-4 mb-4 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
+											<AlertTriangle size={12} className="mr-1 inline" />
+											The optimizer could not find a buildable plan. This usually means the selected
+											facilities exclude a required blueprint, a recipe override conflicts, or a needed
+											material is unavailable. Showing standard recipes instead.
+										</div>
+									))}
 								{/* Optimization delta vs manual */}
 								{manualResult &&
 									result.totals.objectiveValue !== -1 && (
