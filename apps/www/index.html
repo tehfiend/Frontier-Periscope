@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<meta name="description" content="The only EVE Frontier tool that lets players create custom currencies and use them as a real medium of exchange. In-browser Move bytecode patching, on-chain order book markets with atomic escrow, standings-gated diplomacy, gate tolls, shared treasuries, encrypted maps, real-time monitoring, 3D star map. Eight Move contracts. Zero backend." />
+		<meta name="description" content="Frontier Periscope is an organizational toolkit for EVE Frontier. It covers custom currencies and on-chain markets, standings-based access control, gate tolls and shared treasuries, encrypted location sharing, real-time monitoring of the chain and your game logs, and a 3D star map with route planning. It runs entirely in your browser." />
 		<meta name="keywords" content="EVE Frontier, EVE Frontier tools, EVE Frontier market, EVE Frontier currency, EVE Frontier mining, EVE Frontier DPS tracker, EVE Frontier standings, EVE Frontier map, Sui blockchain game, Smart Storage Unit, SSU dApp" />
 		<meta name="author" content="tehfiend" />
 		<meta name="theme-color" content="#09090b" />
@@ -15,7 +15,7 @@
 		<meta property="og:type" content="website" />
 		<meta property="og:url" content="https://frontierperiscope.com/" />
 		<meta property="og:title" content="Frontier Periscope -- Organizational Toolkit for EVE Frontier" />
-		<meta property="og:description" content="The only EVE Frontier tool where players create custom currencies and use them as real money. In-browser Move bytecode patching, on-chain order books with atomic escrow, standings-gated diplomacy across eight deployed Move contracts. Zero backend." />
+		<meta property="og:description" content="Frontier Periscope is an organizational toolkit for EVE Frontier. Custom currencies and on-chain markets, standings-based access control, gate tolls, shared treasuries, encrypted maps, and real-time monitoring, all running in your browser." />
 		<meta property="og:image" content="https://frontierperiscope.com/screenshots/currencies.png" />
 		<meta property="og:image:width" content="1920" />
 		<meta property="og:image:height" content="1080" />
@@ -24,7 +24,7 @@
 		<!-- Twitter Card -->
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:title" content="Frontier Periscope -- Organizational Toolkit for EVE Frontier" />
-		<meta name="twitter:description" content="The only EVE Frontier tool where players create custom currencies and use them as real money. In-browser Move bytecode patching, on-chain order books with atomic escrow, standings-gated diplomacy across eight Move contracts. Zero backend." />
+		<meta name="twitter:description" content="Frontier Periscope is an organizational toolkit for EVE Frontier. Custom currencies and on-chain markets, standings-based access control, gate tolls, shared treasuries, encrypted maps, and real-time monitoring, all running in your browser." />
 		<meta name="twitter:image" content="https://frontierperiscope.com/screenshots/currencies.png" />
 
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -37,7 +37,7 @@
 			"@type": "WebApplication",
 			"name": "Frontier Periscope",
 			"url": "https://app.frontierperiscope.com",
-			"description": "The only EVE Frontier tool that lets players create custom currencies and use them as a real medium of exchange. In-browser Move bytecode patching, on-chain order book markets with atomic escrow, standings-gated diplomacy, gate tolls, shared treasuries, and encrypted maps. Eight Move contracts deployed on testnet. Zero backend.",
+			"description": "Frontier Periscope is an organizational toolkit for EVE Frontier. It provides custom currencies and on-chain order book markets with escrow, standings-based access control, gate tolls, shared treasuries, and encrypted private maps, built on eight Move contracts deployed on Sui testnet. It runs in your browser and stores data locally.",
 			"applicationCategory": "GameApplication",
 			"operatingSystem": "Web Browser",
 			"browserRequirements": "Chrome or Edge",
@@ -71,7 +71,7 @@
 				"Smart contract extension deployment"
 			],
 			"screenshot": "https://frontierperiscope.com/screenshots/currencies.png",
-			"softwareVersion": "3.26.04.04",
+			"softwareVersion": "4.26.06.26",
 			"license": "https://github.com/tehfiend/Frontier-Periscope/blob/main/LICENSE"
 		}
 		</script>
@@ -92,12 +92,12 @@
 					</h1>
 				</div>
 				<p class="max-w-xl text-lg text-zinc-400">
-					The only
+					An organizational toolkit for
 					<a href="https://evefrontier.com" class="text-zinc-300 underline decoration-zinc-700 hover:text-cyan-400 hover:decoration-cyan-400/50 transition-colors">EVE Frontier</a>
-					tool that lets players create custom currencies and use them as a real medium of exchange. Mint tokens, run markets, charge tolls, fund treasuries, and control access through on-chain diplomacy. Eight Move smart contracts. Zero backend.
+					players. It brings custom currencies, on-chain markets, standings-based access control, gate tolls, shared treasuries, and encrypted maps together in one place, alongside real-time monitoring and a 3D star map. Everything runs in your browser and communicates directly with the chain.
 				</p>
 				<p class="max-w-lg text-sm text-zinc-500">
-					In-browser Move bytecode patching. On-chain order books with atomic escrow. Standings-gated markets, gates, and storage units. The only project where custom tokens actually circulate as money.
+					Publish a currency, open a market, set tolls, and gate access by standing, all without leaving the app. The sections below explain how each part works.
 				</p>
 			</div>
 
@@ -123,42 +123,8 @@
 
 		</section>
 
-		<!-- What Sets Periscope Apart -->
-		<section class="border-t border-zinc-800 px-6 py-10">
-			<div class="mx-auto max-w-5xl">
-				<h2 class="mb-4 text-center text-3xl font-bold">What Sets Periscope Apart</h2>
-				<p class="mb-8 text-center text-sm text-zinc-500">On-chain features no other EVE Frontier tool has.</p>
-				<div class="grid gap-6 sm:grid-cols-2">
-					<!-- Differentiator 1 -->
-					<div class="rounded-lg border border-cyan-900/50 bg-cyan-950/20 p-6">
-						<div class="mb-3 text-xs font-semibold uppercase tracking-wider text-cyan-400">Only in Periscope</div>
-						<h3 class="mb-2 text-base font-semibold text-zinc-200">Custom Currencies as Real Money</h3>
-						<p class="text-sm text-zinc-400">The only project where players actually create custom tokens and use them as real money. Mint a currency, list items priced in it, and let players buy it on the exchange or earn it by selling ore. Charge gate tolls in it. Fund a treasury with it. Back it with provable escrow reserves. These aren't tokens sitting in a wallet. They circulate.</p>
-					</div>
-					<!-- Differentiator 2 -->
-					<div class="rounded-lg border border-cyan-900/50 bg-cyan-950/20 p-6">
-						<div class="mb-3 text-xs font-semibold uppercase tracking-wider text-cyan-400">Only in Periscope</div>
-						<h3 class="mb-2 text-base font-semibold text-zinc-200">In-Browser Move Bytecode Patching</h3>
-						<p class="text-sm text-zinc-400">Publish Move smart contracts directly from the browser. No CLI, no gas station, no development environment. Periscope patches Move bytecode at the binary level and submits the publish transaction on chain. Custom currencies, market extensions, and toll configs, all deployed without ever leaving the app. No other project in the ecosystem does this.</p>
-					</div>
-					<!-- Differentiator 3 -->
-					<div class="rounded-lg border border-cyan-900/50 bg-cyan-950/20 p-6">
-						<div class="mb-3 text-xs font-semibold uppercase tracking-wider text-cyan-400">Eight Contracts, One Standings Layer</div>
-						<h3 class="mb-2 text-base font-semibold text-zinc-200">Integrated On-Chain Governance</h3>
-						<p class="text-sm text-zinc-400">Eight Move contracts deployed on testnet: markets, standings, gate tolls, and SSU access are connected through a single on-chain diplomacy layer. Turret extensions, treasuries, encrypted private maps, and token factory round out the stack. One standings change cascades across every Smart Assembly you own. A civilization stack, not a collection of disconnected contracts.</p>
-					</div>
-					<!-- Differentiator 4 -->
-					<div class="rounded-lg border border-cyan-900/50 bg-cyan-950/20 p-6">
-						<div class="mb-3 text-xs font-semibold uppercase tracking-wider text-cyan-400">Atomic Escrow, Zero Trust</div>
-						<h3 class="mb-2 text-base font-semibold text-zinc-200">On-Chain Order Book Markets</h3>
-						<p class="text-sm text-zinc-400">Every trade executes through atomic escrow on Sui. Items and payment move together in a single transaction. No middleman, no counterparty risk. Deploy a market to any SSU and gate access with standings so only allies can trade. Buy orders, sell orders, and currency exchange all on-chain.</p>
-					</div>
-				</div>
-			</div>
-		</section>
-
 		<!-- Features -->
-		<section class="mx-auto max-w-5xl px-6 py-10">
+		<section class="mx-auto max-w-5xl border-t border-zinc-800 px-6 py-10">
 			<h2 class="mb-4 text-center text-3xl font-bold">Features</h2>
 			<p class="mb-8 text-center text-sm text-zinc-500">Eight Move smart contracts on Sui testnet: markets, standings, gate tolls, SSU integration, turret extensions, treasuries, encrypted private maps, and token factory.</p>
 			<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -168,7 +134,7 @@
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>
 					</div>
 					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Custom Currencies &amp; Markets</h3>
-					<p class="text-xs text-zinc-500">Create tokens via in-browser Move bytecode patching. Trade through on-chain order book markets at any SSU with atomic escrow. Players buy your currency on the exchange, earn it by selling ore, or receive it as gate toll revenue. The only project where custom tokens circulate as money.</p>
+					<p class="text-xs text-zinc-500">Create tokens with in-browser Move bytecode patching and trade them through on-chain order book markets at any SSU, with escrow on every fill. Players buy your currency on the exchange, earn it by selling ore, or receive it as gate toll revenue.</p>
 				</div>
 				<!-- Standings & Diplomacy -->
 				<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
@@ -224,7 +190,7 @@
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg>
 					</div>
 					<h3 class="mb-1 text-sm font-semibold text-zinc-200">Killmails</h3>
-					<p class="text-xs text-zinc-500">Combat event tracking and threat assessment across the cluster.</p>
+					<p class="text-xs text-zinc-500">Combat event tracking. Browse recent killmails by victim, attacker, system, and ship type.</p>
 				</div>
 			</div>
 		</section>
@@ -234,7 +200,7 @@
 			<div class="mx-auto max-w-5xl">
 				<h2 class="mb-4 text-center text-3xl font-bold">Build a Player-Run Economy</h2>
 				<p class="mb-8 mx-auto max-w-2xl text-center text-sm text-zinc-400">
-					A tribe, a coalition, or a loose network of solo players in the same region can create a custom currency, pay miners for raw materials through buy orders, and sell manufactured goods and ships priced in that same currency. Standings control who can trade. Encrypted maps keep infrastructure hidden from enemies. The full economic loop, from ore in the ground to ships on the market, runs on-chain through atomic escrow with zero trust required.
+					A tribe, a coalition, or a loose network of solo players in the same region can create a custom currency, pay miners for raw materials through buy orders, and sell manufactured goods and ships priced in that same currency. Standings control who can trade. Encrypted maps keep infrastructure hidden from enemies. Mining and manufacturing happen in-game, while the buy and sell orders that move materials and goods between players settle on chain through atomic escrow.
 				</p>
 
 				<div class="space-y-12">
@@ -258,7 +224,7 @@
 							<div class="mb-2 inline-block rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-400">Step 2</div>
 							<h3 class="mb-2 text-lg font-semibold text-zinc-200">Put Currency Into Circulation</h3>
 							<p class="text-sm text-zinc-400">
-								Post buy orders at your Smart Storage Unit offering your custom currency for ore, minerals, salvage, or any raw material your operation needs. Miners browse your open orders, haul the materials to your SSU, and fill the order. Payment and delivery happen atomically in one transaction. The miner receives your currency and the materials land in your inventory at the same time. No trust required, no middleman. The miner now holds your currency and you have the raw materials you need. This is the primary way currency enters circulation: players earn it by supplying your operation. They can also acquire it by trading SUI on the peer-to-peer exchange, but buy orders are how you build a working supply chain.
+								Post buy orders at your Smart Storage Unit offering your custom currency for ore, minerals, salvage, or any raw material your operation needs. Miners browse your open orders, haul the materials to your SSU, and fill the order. Payment and delivery happen atomically in one transaction, so the miner receives your currency and the materials land in your inventory at the same moment. This is the primary way currency enters circulation: players earn it by supplying your operation. They can also acquire it by trading SUI on the peer-to-peer exchange, but buy orders are how you build a working supply chain.
 							</p>
 						</div>
 						<div class="w-full max-w-md shrink-0">
@@ -423,16 +389,16 @@
 			<div class="mx-auto max-w-2xl text-center">
 				<h2 class="mb-4 text-3xl font-bold">Fully Client-Side</h2>
 				<p class="mb-8 text-zinc-400">
-					No backend. No accounts. No tracking. Periscope runs entirely in your browser. Data stays in local IndexedDB and talks directly to public Sui and EVE Frontier endpoints. No server to maintain, no hosting costs, and no single point of failure.
+					No backend, no accounts, and no tracking. Periscope runs entirely in your browser. Data stays in local IndexedDB, and the app reads directly from public Sui and EVE Frontier endpoints. There is no server in the request path, so your data stays on your machine.
 				</p>
 				<div class="grid gap-4 text-left sm:grid-cols-4">
 					<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-center">
 						<p class="text-2xl font-bold text-cyan-400">8</p>
-						<p class="text-xs text-zinc-500">Move contracts deployed</p>
+						<p class="text-xs text-zinc-500">Move contracts on Sui testnet</p>
 					</div>
 					<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-center">
 						<p class="text-2xl font-bold text-cyan-400">0</p>
-						<p class="text-xs text-zinc-500">Backend servers</p>
+						<p class="text-xs text-zinc-500">Servers or sign-ups</p>
 					</div>
 					<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-center">
 						<p class="text-2xl font-bold text-cyan-400">2</p>
@@ -440,7 +406,7 @@
 					</div>
 					<div class="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-center">
 						<p class="text-2xl font-bold text-cyan-400">100%</p>
-						<p class="text-xs text-zinc-500">Your data stays local</p>
+						<p class="text-xs text-zinc-500">Client-side</p>
 					</div>
 				</div>
 			</div>
