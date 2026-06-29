@@ -30,6 +30,21 @@ export type ParsedEvent = {
 	| { type: "info"; message: string }
 	| { type: "hint"; message: string }
 	| { type: "question"; message: string }
+	// Cycle 6 capture (plan 37) -- new events use only the whitelisted message/target fields
+	| { type: "self_destruct"; message: string }
+	| { type: "aggression_lock"; message: string }
+	| { type: "warp_blocked"; message: string }
+	| { type: "placement_fail"; message: string }
+	| { type: "mining_interrupted"; message: string }
+	| { type: "target_out_of_range"; target: string; message: string }
+	| { type: "module_failed"; message: string }
+	| { type: "disruption"; message: string }
+	| { type: "sightline_obscured"; message: string }
+	| { type: "fleet_invite"; message: string }
+	| { type: "cancel_construction"; message: string }
+	| { type: "conversation_invite"; message: string }
+	| { type: "warning"; message: string }
+	| { type: "none"; message: string }
 	| { type: "system_change"; systemName: string }
 	| { type: "chat"; speaker: string; channel: string; message: string; systemName?: string }
 );
@@ -53,6 +68,30 @@ const DISMANTLE_RE = /dismantle the structure|Dismantling this facility/i;
 // SYS-type patterns (mining feedback)
 const ASTEROID_DEPLETED_RE = /a pale shadow of its former glory/;
 const CARGO_FULL_RE = /cargo hold is full/i;
+
+// ── Cycle 6 capture patterns (plan 37) ──────────────────────────────────────
+const SELF_DESTRUCT_RE = /self-destruct|self-destructs/i;
+const AGGRESSION_LOCK_RE = /denies you permission to jump.*acts of aggression/i;
+const WARP_BLOCKED_RE = /preventing your warp and\/or jump drive from responding/i;
+// The broad "too close to" arm is intentionally tolerant -- a known false-positive risk.
+const PLACEMENT_FAIL_RE =
+	/cannot deploy .+ within|too close to .+|too far away, you need to be within|must have built .+ before being able to build/i;
+// Mining-module variant only. Game misspells "transfering" (one r) -- match verbatim.
+// The warp/jump "External factors" variant is captured separately as warp_blocked.
+const MINING_RANGE_RE = /deactivates without transfering ore|beyond its mining range/i;
+const DISRUPTION_RE = /Severe ongoing disruption prevents this action/i;
+// Presence flag only -- the game emits the literal name "Unknown"; do not capture the name.
+const SIGHTLINE_RE = /^Sightline of .+ to you is obscured/;
+const CONVO_INVITE_RE = /is inviting you to a conversation/i;
+const FLEET_INVITE_RE = /wants you to join their fleet/i;
+const CANCEL_CONSTRUCTION_RE = /cancel the construction/i;
+// Charge quantity is emitted with a decimal (e.g. "requires 40.0 units of charge") -- match
+// integer or decimal so the dominant cap-charge variant of G11 is captured, not just PowerGrid.
+const MODULE_FAIL_RE =
+	/requires \d+(?:\.\d+)? units of charge\. The capacitor has only|Insufficient PowerGrid to run this module/i;
+// Captures the ship-type name. "It must be within N km" is distinct from PLACEMENT_FAIL_RE's
+// "you need to be within N meters". Format unverified for cycle 6 -- see runbook (plan 37 Phase 4).
+const TARGET_RANGE_RE = /^The target (.+?) is too far away\. It must be within/;
 
 const HEADER_LISTENER_RE = /^\s+Listener:\s+(.+)/;
 const HEADER_SESSION_RE = /^\s+Session Started:\s+(.+)/;
@@ -159,6 +198,11 @@ export function parseEntries(text: string): ParsedEvent[] {
 					});
 					break;
 				}
+				// Sightline obscured -- presence/intel flag (no markup on these lines)
+				if (SIGHTLINE_RE.test(message)) {
+					events.push({ timestamp, raw, type: "sightline_obscured", message });
+					break;
+				}
 				break;
 			}
 			case "notify": {
@@ -187,6 +231,41 @@ export function parseEntries(text: string): ParsedEvent[] {
 					events.push({ timestamp, raw, type: "build_fail", message: stripped });
 					break;
 				}
+				if (WARP_BLOCKED_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "warp_blocked", message: stripped });
+					break;
+				}
+				if (AGGRESSION_LOCK_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "aggression_lock", message: stripped });
+					break;
+				}
+				if (SELF_DESTRUCT_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "self_destruct", message: stripped });
+					break;
+				}
+				if (PLACEMENT_FAIL_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "placement_fail", message: stripped });
+					break;
+				}
+				if (MINING_RANGE_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "mining_interrupted", message: stripped });
+					break;
+				}
+				const targetRange = stripped.match(TARGET_RANGE_RE);
+				if (targetRange) {
+					events.push({
+						timestamp,
+						raw,
+						type: "target_out_of_range",
+						target: targetRange[1],
+						message: stripped,
+					});
+					break;
+				}
+				if (MODULE_FAIL_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "module_failed", message: stripped });
+					break;
+				}
 				events.push({ timestamp, raw, type: "notify", message: stripped });
 				break;
 			}
@@ -194,6 +273,10 @@ export function parseEntries(text: string): ParsedEvent[] {
 				const stripped = stripMarkup(message);
 				if (CARGO_FULL_RE.test(stripped)) {
 					events.push({ timestamp, raw, type: "cargo_full", message: stripped });
+					break;
+				}
+				if (DISRUPTION_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "disruption", message: stripped });
 					break;
 				}
 				events.push({ timestamp, raw, type: "info", message: stripped });
@@ -209,6 +292,10 @@ export function parseEntries(text: string): ParsedEvent[] {
 					events.push({ timestamp, raw, type: "build_fail", message: stripped });
 					break;
 				}
+				if (PLACEMENT_FAIL_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "placement_fail", message: stripped });
+					break;
+				}
 				events.push({ timestamp, raw, type: "hint", message: stripped });
 				break;
 			}
@@ -218,7 +305,33 @@ export function parseEntries(text: string): ParsedEvent[] {
 					events.push({ timestamp, raw, type: "dismantle", message: stripped });
 					break;
 				}
+				if (CANCEL_CONSTRUCTION_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "cancel_construction", message: stripped });
+					break;
+				}
+				if (FLEET_INVITE_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "fleet_invite", message: stripped });
+					break;
+				}
 				events.push({ timestamp, raw, type: "question", message: stripped });
+				break;
+			}
+			case "warning": {
+				const stripped = stripMarkup(message);
+				if (SELF_DESTRUCT_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "self_destruct", message: stripped });
+					break;
+				}
+				events.push({ timestamp, raw, type: "warning", message: stripped });
+				break;
+			}
+			case "None": {
+				const stripped = stripMarkup(message);
+				if (CONVO_INVITE_RE.test(stripped)) {
+					events.push({ timestamp, raw, type: "conversation_invite", message: stripped });
+					break;
+				}
+				events.push({ timestamp, raw, type: "none", message: stripped });
 				break;
 			}
 			case "SYS": {

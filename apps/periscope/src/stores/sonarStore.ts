@@ -49,6 +49,9 @@ const DEFAULT_PING_TYPES: SonarEventType[] = [
 	"cargo_full",
 	"combat_started",
 	"combat_ended",
+	// PvP safety signals -- inbound tackle and own gate-lock state (plan 37)
+	"warp_blocked",
+	"aggression_lock",
 	"rift_revealed",
 ];
 
@@ -134,9 +137,17 @@ function persistPingSettings(types: Set<SonarEventType>) {
 // Uses set() directly to avoid round-trip DB writes from the action methods (ISSUE-03).
 Promise.all([
 	db.sonarState.toArray(),
-	db.settings.bulkGet(["sonarPingTypes", "sonarPingAudio", "sonarPingNotify", "sonarUseEveTime"]),
+	db.settings.bulkGet([
+		"sonarPingTypes",
+		"sonarPingAudio",
+		"sonarPingNotify",
+		"sonarUseEveTime",
+		"sonarPingDefaultsV2",
+	]),
 ])
-	.then(([states, [pingTypesEntry, pingAudioEntry, pingNotifyEntry, eveTimeEntry]]) => {
+	.then(([states, settings]) => {
+		const [pingTypesEntry, pingAudioEntry, pingNotifyEntry, eveTimeEntry, defaultsV2Entry] =
+			settings;
 		const patch: Partial<SonarState> = {};
 
 		for (const s of states) {
@@ -149,8 +160,20 @@ Promise.all([
 			}
 		}
 
-		// Restore ping event types
-		if (pingTypesEntry?.value) {
+		// One-time ping-defaults reset (plan 37): a persisted sonarPingTypes array fully
+		// replaces the defaults on load, so new safety pings (warp_blocked/aggression_lock)
+		// would never reach already-customized installs. On first run with this flag unset,
+		// discard the persisted set so everyone re-derives the current DEFAULT_PING_TYPES,
+		// then mark the flag. Prior ping customizations are discarded once -- acceptable here.
+		if (defaultsV2Entry?.value !== true) {
+			db.settings
+				.delete("sonarPingTypes")
+				.catch((e) => console.error("[sonarStore] DB persist failed:", e));
+			db.settings
+				.put({ key: "sonarPingDefaultsV2", value: true })
+				.catch((e) => console.error("[sonarStore] DB persist failed:", e));
+			// Leave patch.pingEventTypes unset -> store keeps new Set(DEFAULT_PING_TYPES).
+		} else if (pingTypesEntry?.value) {
 			try {
 				const arr = JSON.parse(pingTypesEntry.value as string) as SonarEventType[];
 				patch.pingEventTypes = new Set(arr);

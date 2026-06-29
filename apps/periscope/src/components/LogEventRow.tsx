@@ -17,6 +17,21 @@ export const EVENT_COLORS: Record<string, string> = {
 	dismantle: "text-orange-300",
 	system_change: "text-indigo-400",
 	chat: "text-emerald-400",
+	// Cycle 6 capture (plan 37)
+	self_destruct: "text-red-400",
+	aggression_lock: "text-red-400",
+	warp_blocked: "text-red-400",
+	target_out_of_range: "text-red-400",
+	sightline_obscured: "text-red-400",
+	mining_interrupted: "text-amber-400",
+	module_failed: "text-orange-400",
+	disruption: "text-orange-400",
+	warning: "text-orange-400",
+	placement_fail: "text-zinc-400",
+	fleet_invite: "text-blue-400",
+	conversation_invite: "text-blue-400",
+	cancel_construction: "text-yellow-400",
+	none: "text-zinc-500",
 };
 
 export const EVENT_LABELS: Record<string, string> = {
@@ -35,6 +50,21 @@ export const EVENT_LABELS: Record<string, string> = {
 	dismantle: "DISM",
 	system_change: "JUMP",
 	chat: "CHAT",
+	// Cycle 6 capture (plan 37)
+	self_destruct: "SDEST",
+	aggression_lock: "AGGRO",
+	warp_blocked: "TACKLE",
+	target_out_of_range: "RANGE",
+	sightline_obscured: "SIGHT",
+	mining_interrupted: "MRANGE",
+	module_failed: "MODULE",
+	disruption: "DISRPT",
+	warning: "WARN",
+	placement_fail: "PLACE",
+	fleet_invite: "FLEET",
+	conversation_invite: "CONVO",
+	cancel_construction: "CANCEL",
+	none: "MISC",
 };
 
 export function LogEventRow({ event }: { event: LogEvent }) {

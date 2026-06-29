@@ -18,7 +18,7 @@ export const CHANGELOG: ChangelogEntry[] = [
 		version: "4.26.06.26",
 		date: "2026-06-26",
 		highlights:
-			"Cycle 6 update -- chain features updated for the new world, refreshed static data, new Rift Intel tracking, and a cycle-reset tool",
+			"Cycle 6 update -- chain features updated for the new world, refreshed static data, new Rift Intel tracking, a cycle-reset tool, and Sonar that reads more from your logs with new dashboard graphs",
 		changes: [
 			{
 				category: "changed",
@@ -79,6 +79,31 @@ export const CHANGELOG: ChangelogEntry[] = [
 				category: "changed",
 				description:
 					"Removed the contest-entry labels from the Blueprint Library and Industry Calculator",
+			},
+			{
+				category: "added",
+				description:
+					"Sonar now reads a lot more from your game logs. It catches inbound tackle and warp-jam warnings, stargate aggression locks, self-destruct messages, fleet and conversation invites, deployable placement fails, capacitor and power grid module failures, action-disruption warnings, obscured sightlines, and out-of-range targets. The tackle and aggression-lock warnings ping by default since they are safety signals.",
+			},
+			{
+				category: "added",
+				description:
+					"Mining run summaries now tell you why a run ended, whether your cargo filled up, the asteroid was depleted, or you drifted out of mining range. You see it in both the Sonar feed and the Mining tab.",
+			},
+			{
+				category: "added",
+				description:
+					"The Sonar dashboard now has live charts for your mining rate, damage dealt, and damage received over time, so you can watch the trend instead of just the current number. The combat charts show a simple no recent activity note when nothing has happened lately.",
+			},
+			{
+				category: "changed",
+				description:
+					"Combat session summaries now show hit counts next to the damage and DPS numbers.",
+			},
+			{
+				category: "fixed",
+				description:
+					"Sonar no longer drops pings when a burst of events comes in all at once.",
 			},
 		],
 	},

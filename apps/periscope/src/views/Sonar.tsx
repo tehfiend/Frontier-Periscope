@@ -3,6 +3,7 @@ import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { GrantAccessView } from "@/components/GrantAccessView";
 import { LogEventRow } from "@/components/LogEventRow";
 import { StatCard } from "@/components/StatCard";
+import { TimeSeriesChart } from "@/components/TimeSeriesChart";
 import {
 	ChatTab,
 	CombatTab,
@@ -14,6 +15,7 @@ import {
 } from "@/components/log-analyzer";
 import { db } from "@/db";
 import type {
+	LogEventType,
 	ManifestTribe,
 	SonarChannelStatus,
 	SonarEvent,
@@ -27,6 +29,7 @@ import {
 	updateWatchItem,
 	useWatchlistFilter,
 } from "@/hooks/useSonarWatchlist";
+import { useChartSeries } from "@/hooks/useChartSeries";
 import { requestDirectoryAccess } from "@/lib/logFileAccess";
 import { type LogActiveTab, useLogStore } from "@/stores/logStore";
 import { useSonarStore } from "@/stores/sonarStore";
@@ -121,6 +124,25 @@ function getEventBadgeColor(eventType: string): string {
 		// Fuchsia -- rifts
 		case "rift_revealed":
 			return "bg-fuchsia-500/15 text-fuchsia-400";
+		// ── Cycle 6 capture (plan 37) ──
+		// Red -- PvP / threat
+		case "self_destruct":
+		case "aggression_lock":
+		case "warp_blocked":
+		case "sightline_obscured":
+		case "target_out_of_range":
+			return "bg-red-500/15 text-red-400";
+		// Orange -- operational failure
+		case "module_failed":
+		case "disruption":
+			return "bg-orange-500/15 text-orange-400";
+		// Blue -- social
+		case "fleet_invite":
+		case "conversation_invite":
+			return "bg-blue-500/15 text-blue-400";
+		// Zinc -- placement
+		case "placement_fail":
+			return "bg-zinc-500/15 text-zinc-400";
 		// Default
 		default:
 			return "bg-zinc-500/15 text-zinc-400";
@@ -465,6 +487,20 @@ const PING_CATEGORIES: PingCategory[] = [
 			killmail: "Killmail",
 			combat_started: "Combat Started",
 			combat_ended: "Combat Ended",
+			warp_blocked: "Tackle (Warp Blocked)",
+			aggression_lock: "Aggression Lock",
+			self_destruct: "Self-Destruct",
+			sightline_obscured: "Sightline Obscured",
+			target_out_of_range: "Target Out of Range",
+			module_failed: "Module Failed",
+			disruption: "Disruption",
+		},
+	},
+	{
+		label: "Social",
+		types: {
+			fleet_invite: "Fleet Invite",
+			conversation_invite: "Conversation Invite",
 		},
 	},
 	{
@@ -501,6 +537,7 @@ const PING_CATEGORIES: PingCategory[] = [
 			extension_authorized: "Extension Authorized",
 			extension_removed: "Extension Removed",
 			extension_revoked: "Extension Revoked",
+			placement_fail: "Placement Failed",
 		},
 	},
 	{
@@ -659,6 +696,53 @@ function LocationCard({ locations }: { locations: LocationEntry[] }) {
 				</div>
 			)}
 		</div>
+	);
+}
+
+// ── Dashboard Time-Series Charts ─────────────────────────────────────────────
+
+const MINING_BIN_MS = 60_000; // 60s -- one bin per minute (~30 mining ticks)
+const MINING_WINDOW_MS = 30 * 60_000; // 30 min
+const DPS_BIN_MS = 10_000; // 10s -- smooth (5s aliases the 2s tick cadence)
+const DPS_WINDOW_MS = 5 * 60_000; // 5 min
+
+/** One dashboard chart: binned time series + per-chart empty-state. */
+function DashboardChart({
+	title,
+	type,
+	binMs,
+	windowMs,
+	color,
+	unit,
+	emptyLabel,
+}: {
+	title: string;
+	type: LogEventType;
+	binMs: number;
+	windowMs: number;
+	color: string;
+	unit: string;
+	emptyLabel: string;
+}) {
+	const { series, isEmpty } = useChartSeries(type, binMs, windowMs);
+	if (isEmpty) {
+		return (
+			<div className="flex flex-col rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+				<p className="mb-2 text-xs text-zinc-500">{title}</p>
+				<div className="flex flex-1 items-center justify-center py-8 text-xs text-zinc-600">
+					{emptyLabel}
+				</div>
+			</div>
+		);
+	}
+	return (
+		<TimeSeriesChart
+			data={series}
+			label={title}
+			color={color}
+			unit={unit}
+			showSeconds={binMs < 60_000}
+		/>
 	);
 }
 
@@ -863,6 +947,37 @@ function PingsTab() {
 						/>
 					</>
 				)}
+			</div>
+
+			{/* Time-series charts (fixed per-chart windows) */}
+			<div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+				<DashboardChart
+					title="Mining Rate (units/min)"
+					type="mining"
+					binMs={MINING_BIN_MS}
+					windowMs={MINING_WINDOW_MS}
+					color="#fbbf24"
+					unit="u/min"
+					emptyLabel="No mining in the last 30 min"
+				/>
+				<DashboardChart
+					title="DPS Dealt"
+					type="combat_dealt"
+					binMs={DPS_BIN_MS}
+					windowMs={DPS_WINDOW_MS}
+					color="#22d3ee"
+					unit="dmg/s"
+					emptyLabel="No combat in the last 5 min"
+				/>
+				<DashboardChart
+					title="DPS Received"
+					type="combat_received"
+					binMs={DPS_BIN_MS}
+					windowMs={DPS_WINDOW_MS}
+					color="#f87171"
+					unit="dmg/s"
+					emptyLabel="No combat in the last 5 min"
+				/>
 			</div>
 
 			{/* Settings toggle */}

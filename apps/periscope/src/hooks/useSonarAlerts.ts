@@ -3,7 +3,7 @@ import type { SonarEvent } from "@/db/types";
 import { useLogStore } from "@/stores/logStore";
 import { useSonarStore } from "@/stores/sonarStore";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Watches for new sonar events matching the user's ping preferences and
@@ -74,59 +74,64 @@ export function useSonarAlerts() {
 	const pingAudioEnabled = useSonarStore((s) => s.pingAudioEnabled);
 	const pingNotifyEnabled = useSonarStore((s) => s.pingNotifyEnabled);
 	const reimporting = useLogStore((s) => s.reimporting);
-	// Initialize HWM to -1 (sentinel) synchronously so we never alert
-	// on events that arrive before the async DB query resolves
-	const hwmRef = useRef<number>(-1);
+	// High-water mark: null until initialized from the DB, so we never alert on the historical
+	// events present at mount.
+	const [hwm, setHwm] = useState<number | null>(null);
 
-	// Initialize high-water-mark from the max existing sonarEvents.id on mount
-	// so we don't alert on historical events
+	// Initialize the HWM from the max existing sonarEvents.id on mount.
 	useEffect(() => {
 		db.sonarEvents
 			.orderBy("id")
 			.reverse()
 			.first()
-			.then((latest) => {
-				// Only update if still at sentinel -- don't regress if events arrived
-				if (hwmRef.current === -1) {
-					hwmRef.current = latest?.id ?? 0;
-				}
-			});
+			.then((latest) => setHwm((prev) => (prev == null ? (latest?.id ?? 0) : prev)));
 	}, []);
 
-	// Watch sonar events table for changes
-	const latestEvents = useLiveQuery(
-		() => db.sonarEvents.orderBy("id").reverse().limit(20).toArray(),
-		[],
+	// All sonar events above the HWM. Mirrors useLocalSonar's above(hwm) rather than a fixed
+	// limit(20): a burst poll that bulk-adds many events at once must not silently drop the older
+	// pings. While hwm is null the query yields nothing; the [hwm] dependency re-subscribes once
+	// it initializes and again each time the HWM advances.
+	const newEvents = useLiveQuery(
+		() =>
+			hwm == null
+				? Promise.resolve([] as SonarEvent[])
+				: db.sonarEvents.where("id").above(hwm).toArray(),
+		[hwm],
 	);
 
 	useEffect(() => {
-		if (!latestEvents || latestEvents.length === 0) return;
-		if (hwmRef.current === -1) return; // HWM not initialized from DB yet
-		if (reimporting) {
-			// Suppress alerts during log reimport -- just advance the HWM
-			const maxId = latestEvents.reduce((max, e) => Math.max(max, e.id ?? 0), 0);
-			if (maxId > hwmRef.current) hwmRef.current = maxId;
-			return;
-		}
+		if (hwm == null || !newEvents || newEvents.length === 0) return;
+		// Re-filter defensively: after we advance the HWM this effect re-runs once with the
+		// still-stale newEvents before the query re-resolves -- dropping already-counted events
+		// here prevents double-alerting.
+		const fresh = newEvents.filter((e) => (e.id ?? 0) > hwm);
+		if (fresh.length === 0) return;
+
+		// Always advance the HWM so processed events are never reconsidered, even when alerting
+		// is suppressed (reimport) or disabled.
+		const maxId = fresh.reduce((max, e) => Math.max(max, e.id ?? 0), 0);
+		setHwm(maxId);
+
+		if (reimporting) return; // Suppress alerts during log reimport
 		if (pingEventTypes.size === 0) return;
 		if (!pingAudioEnabled && !pingNotifyEnabled) return;
 
-		const typeSet = new Set<string>(pingEventTypes);
-		const newPings = latestEvents.filter(
-			(e) => (e.id ?? 0) > (hwmRef.current ?? 0) && typeSet.has(e.eventType),
-		);
-
+		// Sort newest-first: above(hwm) returns ascending, but the audio-priority fallback and the
+		// slice(0,3) notification cap should surface the most recent pings (the old limit(20) query
+		// was newest-first).
+		const newPings = fresh
+			.filter((e) => pingEventTypes.has(e.eventType))
+			.sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
 		if (newPings.length === 0) return;
-
-		// Update high-water-mark
-		const maxId = latestEvents.reduce((max, e) => Math.max(max, e.id ?? 0), 0);
-		hwmRef.current = maxId;
 
 		// Play audio alert -- pick the highest-priority event for the sound
 		if (pingAudioEnabled) {
-			const priority = newPings.find((e) =>
-				e.eventType === "combat_started" && e.details?.startsWith("Under attack"),
-			) ?? newPings.find((e) => e.eventType === "cargo_full") ?? newPings[0];
+			const priority =
+				newPings.find(
+					(e) => e.eventType === "combat_started" && e.details?.startsWith("Under attack"),
+				) ??
+				newPings.find((e) => e.eventType === "cargo_full") ??
+				newPings[0];
 			playEventSound(priority);
 		}
 
@@ -142,5 +147,5 @@ export function useSonarAlerts() {
 				});
 			}
 		}
-	}, [latestEvents, pingEventTypes, pingAudioEnabled, pingNotifyEnabled, reimporting]);
+	}, [newEvents, hwm, pingEventTypes, pingAudioEnabled, pingNotifyEnabled, reimporting]);
 }

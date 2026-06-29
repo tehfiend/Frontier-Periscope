@@ -7,6 +7,23 @@ import { useLiveQuery } from "dexie-react-hooks";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+const MINING_GAP_MS = 30_000;
+
+/** Why a mining run ended, reconciled against real log events (matches useLocalSonar). */
+type MiningEndReason = "full" | "depleted" | "range";
+
+const MINING_REASON_FROM_TYPE: Record<string, MiningEndReason> = {
+	cargo_full: "full",
+	asteroid_depleted: "depleted",
+	mining_interrupted: "range",
+};
+
+const MINING_REASON_BADGE: Record<MiningEndReason, { label: string; className: string }> = {
+	full: { label: "Cargo Full", className: "text-orange-500" },
+	depleted: { label: "Depleted", className: "text-amber-500" },
+	range: { label: "Out of Range", className: "text-zinc-400" },
+};
+
 interface MiningRun {
 	ore: string;
 	total: number;
@@ -15,10 +32,27 @@ interface MiningRun {
 	endTime: string;
 	durationMs: number;
 	ratePerMin: number;
-	cargoFull: boolean;
+	reason?: MiningEndReason;
 }
 
-function computeMiningRuns(events: LogEvent[]): MiningRun[] {
+/** Find the reason event nearest a run's end, within +/- the gap window. Mirrors
+ * useLocalSonar.consumeMiningReason (same window, nearest-wins) so the tab and the sonar feed
+ * resolve the same reason instead of the tab also claiming mid-run events. */
+function findRunEndReason(reasonEvents: LogEvent[], endTime: string): MiningEndReason | undefined {
+	const endMs = new Date(endTime).getTime();
+	let best: { dist: number; reason: MiningEndReason } | undefined;
+	for (const e of reasonEvents) {
+		const reason = MINING_REASON_FROM_TYPE[e.type];
+		if (!reason) continue;
+		const dist = Math.abs(new Date(e.timestamp).getTime() - endMs);
+		if (dist <= MINING_GAP_MS && (!best || dist < best.dist)) {
+			best = { dist, reason };
+		}
+	}
+	return best?.reason;
+}
+
+function computeMiningRuns(events: LogEvent[], reasonEvents: LogEvent[]): MiningRun[] {
 	if (events.length === 0) return [];
 
 	const sorted = [...events].sort(
@@ -34,17 +68,13 @@ function computeMiningRuns(events: LogEvent[]): MiningRun[] {
 				? new Date(sorted[i].timestamp).getTime() - new Date(sorted[i - 1].timestamp).getTime()
 				: Number.POSITIVE_INFINITY;
 
-		if (gap > 30_000) {
+		if (gap > MINING_GAP_MS) {
 			const runEvents = sorted.slice(runStart, i);
 			const total = runEvents.reduce((s, e) => s + (e.amount ?? 0), 0);
 			const startTime = runEvents[0].timestamp;
 			const endTime = runEvents[runEvents.length - 1].timestamp;
 			const durationMs = new Date(endTime).getTime() - new Date(startTime).getTime();
 			const durationMin = Math.max(durationMs / 60_000, 1 / 60);
-
-			const lastAmount = runEvents[runEvents.length - 1].amount ?? 0;
-			const avgAmount = total / runEvents.length;
-			const cargoFull = lastAmount < avgAmount * 0.5 && runEvents.length > 2;
 
 			runs.push({
 				ore: runEvents[0].ore ?? "Unknown",
@@ -54,7 +84,7 @@ function computeMiningRuns(events: LogEvent[]): MiningRun[] {
 				endTime,
 				durationMs,
 				ratePerMin: total / durationMin,
-				cargoFull,
+				reason: findRunEndReason(reasonEvents, endTime),
 			});
 			runStart = i;
 		}
@@ -76,6 +106,24 @@ export function MiningTab() {
 				: [],
 		[activeSessionId],
 	);
+
+	// Run-end reason events (cargo full / asteroid depleted / out of range), reconciled against
+	// each run's end instead of the old "last cycle was small" heuristic.
+	const reasonEvents = useLiveQuery(async () => {
+		if (!activeSessionId) return [];
+		const [full, depleted, interrupted] = await Promise.all([
+			db.logEvents.where("[sessionId+type]").equals([activeSessionId, "cargo_full"]).toArray(),
+			db.logEvents
+				.where("[sessionId+type]")
+				.equals([activeSessionId, "asteroid_depleted"])
+				.toArray(),
+			db.logEvents
+				.where("[sessionId+type]")
+				.equals([activeSessionId, "mining_interrupted"])
+				.toArray(),
+		]);
+		return [...full, ...depleted, ...interrupted];
+	}, [activeSessionId]);
 
 	// Filter out if active session doesn't belong to selected character
 	if (characterSessionIds && activeSessionId && !characterSessionIds.has(activeSessionId)) {
@@ -111,7 +159,7 @@ export function MiningTab() {
 	}
 
 	const totalMined = miningEvents.reduce((sum, e) => sum + (e.amount ?? 0), 0);
-	const runs = computeMiningRuns(miningEvents);
+	const runs = computeMiningRuns(miningEvents, reasonEvents ?? []);
 
 	return (
 		<div className="space-y-4">
@@ -193,7 +241,11 @@ export function MiningTab() {
 								</span>
 								<span>{formatDuration(run.durationMs)}</span>
 								<span className="text-amber-400/70">{Math.round(run.ratePerMin)}/min</span>
-								{run.cargoFull && <span className="text-orange-500">Full</span>}
+								{run.reason && (
+									<span className={MINING_REASON_BADGE[run.reason].className}>
+										{MINING_REASON_BADGE[run.reason].label}
+									</span>
+								)}
 							</div>
 						</div>
 					))}

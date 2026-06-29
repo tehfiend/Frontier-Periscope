@@ -33,7 +33,36 @@ const MINING_GAP_MS = 30_000;
 const COMBAT_GAP_MS = 60_000;
 
 const COMBAT_TYPES = new Set(["combat_dealt", "combat_received", "miss_dealt", "miss_received"]);
-const ALERT_TYPES = new Set(["asteroid_depleted", "cargo_full"]);
+// Pass-through log types surfaced directly as sonar events (details = message).
+const ALERT_TYPES = new Set([
+	"asteroid_depleted",
+	"cargo_full",
+	// Cycle 6 capture (plan 37)
+	"self_destruct",
+	"aggression_lock",
+	"warp_blocked",
+	"placement_fail",
+	"fleet_invite",
+	"conversation_invite",
+	"sightline_obscured",
+	"disruption",
+	"target_out_of_range",
+	"module_failed",
+]);
+
+/** Why a mining run ended, derived from nearby log events. */
+type MiningEndReason = "range" | "full" | "depleted";
+const MINING_END_REASON_LABEL: Record<MiningEndReason, string> = {
+	range: "out of range",
+	full: "cargo full",
+	depleted: "asteroid depleted",
+};
+/** Log event types that explain why a mining run ended, mapped to a reason. */
+const MINING_REASON_BY_TYPE: Record<string, MiningEndReason> = {
+	mining_interrupted: "range",
+	cargo_full: "full",
+	asteroid_depleted: "depleted",
+};
 
 interface MiningTracker {
 	active: boolean;
@@ -63,6 +92,10 @@ interface CombatTracker {
 interface ActivityState {
 	mining: Map<string, MiningTracker>;
 	combat: Map<string, CombatTracker>;
+	/** Pending mining-end reason hints per session. A queue (not a single slot) so a batch that
+	 * spans multiple runs per session -- the norm on first load / catch-up / reimport -- can
+	 * attribute each run its own contemporaneous reason. */
+	reasonHints: Map<string, { reason: MiningEndReason; ts: string }[]>;
 }
 
 function formatDuration(ms: number): string {
@@ -73,8 +106,77 @@ function formatDuration(ms: number): string {
 	return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
 }
 
-function tsMs(ts: string): number {
+export function tsMs(ts: string): number {
 	return new Date(ts).getTime();
+}
+
+// ── Run-end event builders (single source of truth for mining/combat end) ────
+
+function buildMiningEnded(
+	t: MiningTracker,
+	sessionId: string,
+	reason?: MiningEndReason,
+): Omit<SonarEvent, "id"> {
+	const duration = tsMs(t.lastEventTimestamp) - tsMs(t.startTimestamp);
+	const reasonSuffix = reason ? ` -- ${MINING_END_REASON_LABEL[reason]}` : "";
+	return {
+		timestamp: t.lastEventTimestamp,
+		source: "local",
+		eventType: "mining_ended",
+		characterName: t.characterName,
+		characterId: t.characterId,
+		sessionId,
+		typeName: t.ore,
+		quantity: t.totalAmount,
+		details: `Mined ${t.totalAmount.toLocaleString("en-US")} ${t.ore} in ${t.cycles} cycles (${formatDuration(duration)})${reasonSuffix}`,
+	};
+}
+
+function buildCombatEnded(t: CombatTracker, sessionId: string): Omit<SonarEvent, "id"> {
+	const targetList = Array.from(t.targets);
+	return {
+		timestamp: t.lastEventTimestamp,
+		source: "local",
+		eventType: "combat_ended",
+		characterName: t.characterName,
+		characterId: t.characterId,
+		sessionId,
+		typeName: targetList[0],
+		quantity: t.totalDamageDealt,
+		details: combatEndedDetails(t),
+	};
+}
+
+/** Consume the mining-end reason hint nearest a run's end (within the gap window). Drops the
+ * consumed hint and any stale hints at/before the run end; keeps strictly-future hints for
+ * later runs in the same batch. */
+function consumeMiningReason(
+	reasonHints: Map<string, { reason: MiningEndReason; ts: string }[]>,
+	sessionId: string,
+	runEndTs: string,
+): MiningEndReason | undefined {
+	const list = reasonHints.get(sessionId);
+	if (!list || list.length === 0) return undefined;
+	const endMs = tsMs(runEndTs);
+
+	// Pick the hint closest to this run's end, within +/- the gap window.
+	let bestIdx = -1;
+	let bestDist = Number.POSITIVE_INFINITY;
+	for (let i = 0; i < list.length; i++) {
+		const dist = Math.abs(tsMs(list[i].ts) - endMs);
+		if (dist <= MINING_GAP_MS && dist < bestDist) {
+			bestDist = dist;
+			bestIdx = i;
+		}
+	}
+
+	// Keep only strictly-future hints (they belong to later runs); drop the consumed hint and any
+	// stale ones at/before this run end so the queue cannot grow unbounded or leak forward.
+	const remaining = list.filter((h, i) => i !== bestIdx && tsMs(h.ts) > endMs);
+	if (remaining.length > 0) reasonHints.set(sessionId, remaining);
+	else reasonHints.delete(sessionId);
+
+	return bestIdx >= 0 ? list[bestIdx].reason : undefined;
 }
 
 // ── Mining gap detection ────────────────────────────────────────────────────
@@ -85,6 +187,7 @@ function processMiningEvents(
 	sessionId: string,
 	charName: string | undefined,
 	charId: string | undefined,
+	reasonHints: Map<string, { reason: MiningEndReason; ts: string }[]>,
 ): { tracker: MiningTracker | undefined; sonarEvents: Omit<SonarEvent, "id">[] } {
 	const sonar: Omit<SonarEvent, "id">[] = [];
 	const sorted = events.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
@@ -131,18 +234,8 @@ function processMiningEvents(
 			const gap = tsMs(e.timestamp) - tsMs(t.lastEventTimestamp);
 			if (gap > MINING_GAP_MS) {
 				// End previous run
-				const duration = tsMs(t.lastEventTimestamp) - tsMs(t.startTimestamp);
-				sonar.push({
-					timestamp: t.lastEventTimestamp,
-					source: "local",
-					eventType: "mining_ended",
-					characterName: t.characterName,
-					characterId: t.characterId,
-					sessionId,
-					typeName: t.ore,
-					quantity: t.totalAmount,
-					details: `Mined ${t.totalAmount.toLocaleString("en-US")} ${t.ore} in ${t.cycles} cycles (${formatDuration(duration)})`,
-				});
+				const reason = consumeMiningReason(reasonHints, sessionId, t.lastEventTimestamp);
+				sonar.push(buildMiningEnded(t, sessionId, reason));
 				// Start new run
 				t = {
 					active: true,
@@ -187,7 +280,7 @@ function combatEndedDetails(t: CombatTracker): string {
 			: `${targetList[0]} (+${targetList.length - 1} more)`;
 	const dpsDealt = Math.round(t.totalDamageDealt / durationSec);
 	const dpsRecv = Math.round(t.totalDamageRecv / durationSec);
-	return `Dealt ${t.totalDamageDealt.toLocaleString("en-US")} (${dpsDealt.toLocaleString("en-US")} DPS) / Recv ${t.totalDamageRecv.toLocaleString("en-US")} (${dpsRecv.toLocaleString("en-US")} DPS) vs ${targetSummary} (${formatDuration(duration)})`;
+	return `Dealt ${t.totalDamageDealt.toLocaleString("en-US")} (${dpsDealt.toLocaleString("en-US")} DPS, ${t.hitsDealt} hits) / Recv ${t.totalDamageRecv.toLocaleString("en-US")} (${dpsRecv.toLocaleString("en-US")} DPS, ${t.hitsRecv} hits) vs ${targetSummary} (${formatDuration(duration)})`;
 }
 
 // ── Combat gap detection ────────────────────────────────────────────────────
@@ -244,18 +337,7 @@ function processCombatEvents(
 			const gap = tsMs(e.timestamp) - tsMs(t.lastEventTimestamp);
 			if (gap > COMBAT_GAP_MS) {
 				// End previous engagement
-				const targetList = Array.from(t.targets);
-				sonar.push({
-					timestamp: t.lastEventTimestamp,
-					source: "local",
-					eventType: "combat_ended",
-					characterName: t.characterName,
-					characterId: t.characterId,
-					sessionId,
-					typeName: targetList[0],
-					quantity: t.totalDamageDealt,
-					details: combatEndedDetails(t),
-				});
+				sonar.push(buildCombatEnded(t, sessionId));
 				// Start new engagement
 				t = {
 					active: true,
@@ -304,52 +386,36 @@ function processCombatEvents(
 
 // ── Stale check helpers ─────────────────────────────────────────────────────
 
-function checkStaleMining(
+/** Emit mining_ended for any active run idle past the gap. `skip` excludes sessions that
+ * already had their gaps handled inline this poll. */
+function emitStaleMining(
 	state: ActivityState,
 	now: number,
+	skip?: Set<string>,
 ): Omit<SonarEvent, "id">[] {
 	const sonar: Omit<SonarEvent, "id">[] = [];
 	for (const [sessionId, t] of state.mining) {
-		if (!t.active) continue;
+		if (!t.active || skip?.has(sessionId)) continue;
 		if (now - tsMs(t.lastEventTimestamp) > MINING_GAP_MS) {
-			const duration = tsMs(t.lastEventTimestamp) - tsMs(t.startTimestamp);
-			sonar.push({
-				timestamp: t.lastEventTimestamp,
-				source: "local",
-				eventType: "mining_ended",
-				characterName: t.characterName,
-				characterId: t.characterId,
-				sessionId,
-				typeName: t.ore,
-				quantity: t.totalAmount,
-				details: `Mined ${t.totalAmount.toLocaleString("en-US")} ${t.ore} in ${t.cycles} cycles (${formatDuration(duration)})`,
-			});
+			const reason = consumeMiningReason(state.reasonHints, sessionId, t.lastEventTimestamp);
+			sonar.push(buildMiningEnded(t, sessionId, reason));
 			t.active = false;
 		}
 	}
 	return sonar;
 }
 
-function checkStaleCombat(
+/** Emit combat_ended for any active engagement idle past the gap. */
+function emitStaleCombat(
 	state: ActivityState,
 	now: number,
+	skip?: Set<string>,
 ): Omit<SonarEvent, "id">[] {
 	const sonar: Omit<SonarEvent, "id">[] = [];
 	for (const [sessionId, t] of state.combat) {
-		if (!t.active) continue;
+		if (!t.active || skip?.has(sessionId)) continue;
 		if (now - tsMs(t.lastEventTimestamp) > COMBAT_GAP_MS) {
-			const targetList = Array.from(t.targets);
-			sonar.push({
-				timestamp: t.lastEventTimestamp,
-				source: "local",
-				eventType: "combat_ended",
-				characterName: t.characterName,
-				characterId: t.characterId,
-				sessionId,
-				typeName: targetList[0],
-				quantity: t.totalDamageDealt,
-				details: combatEndedDetails(t),
-			});
+			sonar.push(buildCombatEnded(t, sessionId));
 			t.active = false;
 		}
 	}
@@ -382,6 +448,7 @@ export function useLocalSonar() {
 	const activityRef = useRef<ActivityState>({
 		mining: new Map(),
 		combat: new Map(),
+		reasonHints: new Map(),
 	});
 
 	const poll = useCallback(async () => {
@@ -396,7 +463,7 @@ export function useLocalSonar() {
 				lastResetGen.current = resetGeneration;
 				hwmRef.current = 0;
 				hwmInitialized.current = false;
-				activityRef.current = { mining: new Map(), combat: new Map() };
+				activityRef.current = { mining: new Map(), combat: new Map(), reasonHints: new Map() };
 				needsBackfill.current = true;
 			}
 
@@ -466,8 +533,8 @@ export function useLocalSonar() {
 				// No new events -- check for stale active runs/engagements
 				const now = Date.now();
 				const staleSonar = [
-					...checkStaleMining(activityRef.current, now),
-					...checkStaleCombat(activityRef.current, now),
+					...emitStaleMining(activityRef.current, now),
+					...emitStaleCombat(activityRef.current, now),
 				];
 				if (staleSonar.length > 0) {
 					await db.sonarEvents.bulkAdd(staleSonar);
@@ -487,6 +554,16 @@ export function useLocalSonar() {
 				else if (e.type === "mining") miningEvents.push(e);
 				else if (COMBAT_TYPES.has(e.type)) combatEvents.push(e);
 				else if (ALERT_TYPES.has(e.type)) alertEvents.push(e);
+			}
+
+			// Register mining-end reason hints from this batch. Consumed when a run ends
+			// (gap detected inline or via the stale check), even on a later poll.
+			for (const e of newLogEvents) {
+				const reason = MINING_REASON_BY_TYPE[e.type];
+				if (!reason) continue;
+				const list = activityRef.current.reasonHints.get(e.sessionId) ?? [];
+				list.push({ reason, ts: e.timestamp });
+				activityRef.current.reasonHints.set(e.sessionId, list);
 			}
 
 			// Build session lookup
@@ -550,6 +627,7 @@ export function useLocalSonar() {
 					sessionId,
 					characterName,
 					characterId,
+					activityRef.current.reasonHints,
 				);
 				if (result.tracker) {
 					activityRef.current.mining.set(sessionId, result.tracker);
@@ -588,7 +666,7 @@ export function useLocalSonar() {
 				allSonarEvents.push({
 					timestamp: e.timestamp,
 					source: "local",
-					eventType: e.type as "asteroid_depleted" | "cargo_full",
+					eventType: e.type as SonarEvent["eventType"],
 					characterName,
 					characterId,
 					sessionId: e.sessionId,
@@ -598,42 +676,10 @@ export function useLocalSonar() {
 
 			// ── Stale checks for sessions with no new events this poll ──────────
 			const now = Date.now();
-			for (const [sessionId, t] of activityRef.current.mining) {
-				if (!t.active || activeMiningSessionsThisPoll.has(sessionId)) continue;
-				if (now - tsMs(t.lastEventTimestamp) > MINING_GAP_MS) {
-					const duration = tsMs(t.lastEventTimestamp) - tsMs(t.startTimestamp);
-					allSonarEvents.push({
-						timestamp: t.lastEventTimestamp,
-						source: "local",
-						eventType: "mining_ended",
-						characterName: t.characterName,
-						characterId: t.characterId,
-						sessionId,
-						typeName: t.ore,
-						quantity: t.totalAmount,
-						details: `Mined ${t.totalAmount.toLocaleString("en-US")} ${t.ore} in ${t.cycles} cycles (${formatDuration(duration)})`,
-					});
-					t.active = false;
-				}
-			}
-			for (const [sessionId, t] of activityRef.current.combat) {
-				if (!t.active || activeCombatSessionsThisPoll.has(sessionId)) continue;
-				if (now - tsMs(t.lastEventTimestamp) > COMBAT_GAP_MS) {
-					const targetList = Array.from(t.targets);
-					allSonarEvents.push({
-						timestamp: t.lastEventTimestamp,
-						source: "local",
-						eventType: "combat_ended",
-						characterName: t.characterName,
-						characterId: t.characterId,
-						sessionId,
-						typeName: targetList[0],
-						quantity: t.totalDamageDealt,
-						details: combatEndedDetails(t),
-					});
-					t.active = false;
-				}
-			}
+			allSonarEvents.push(
+				...emitStaleMining(activityRef.current, now, activeMiningSessionsThisPoll),
+				...emitStaleCombat(activityRef.current, now, activeCombatSessionsThisPoll),
+			);
 
 			// ── Persist sonar events ────────────────────────────────────────────
 			if (allSonarEvents.length > 0) {
