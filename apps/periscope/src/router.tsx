@@ -28,8 +28,8 @@ const LazyStandings = lazy(() =>
 const LazyDashboard = lazy(() =>
 	import("@/views/Dashboard").then((m) => ({ default: m.Dashboard })),
 );
-const LazyIndustryCalculator = lazy(() =>
-	import("@/views/IndustryCalculator").then((m) => ({ default: m.IndustryCalculator })),
+const LazyBuildQueue = lazy(() =>
+	import("@/views/BuildQueue").then((m) => ({ default: m.BuildQueue })),
 );
 const LazyReleaseNotes = lazy(() =>
 	import("@/views/ReleaseNotes").then((m) => ({ default: m.ReleaseNotes })),
@@ -107,10 +107,10 @@ function DashboardPage() {
 	);
 }
 
-function IndustryCalculatorPage() {
+function BuildQueuePage() {
 	return (
 		<Suspense fallback={<LoadingFallback />}>
-			<LazyIndustryCalculator />
+			<LazyBuildQueue />
 		</Suspense>
 	);
 }
@@ -286,10 +286,10 @@ const standingsRoute = createRoute({
 	component: StandingsPage,
 });
 
-const bomRoute = createRoute({
+const industryRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/industry",
-	component: IndustryCalculatorPage,
+	component: BuildQueuePage,
 });
 
 const workersRoute = createRoute({
@@ -314,7 +314,7 @@ const routeTree = rootRoute.addChildren([
 	targetsRoute,
 	killmailsRoute,
 	blueprintsRoute,
-	bomRoute,
+	industryRoute,
 	logsRoute,
 	sonarRoute,
 	extensionsRoute,

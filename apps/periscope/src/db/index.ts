@@ -49,6 +49,7 @@ import type {
 	TradeNodeRecord,
 	TreasuryRecord,
 } from "./types";
+import type { BuildQueue } from "@/lib/buildQueueTypes";
 
 class PeriscopeDB extends Dexie {
 	// Static data (NOT encrypted)
@@ -139,6 +140,9 @@ class PeriscopeDB extends Dexie {
 
 	// Rift Intel (Cycle 6 rift tracking -- chain-derived cache)
 	rifts!: EntityTable<RiftIntel, "id">;
+
+	// Build Queue (plan 36) -- named, ordered industry build queues
+	buildQueues!: EntityTable<BuildQueue, "id">;
 
 	constructor() {
 		super("frontier-periscope");
@@ -633,6 +637,12 @@ class PeriscopeDB extends Dexie {
 		// Fresh table, no data migration needed.
 		this.version(34).stores({
 			rifts: "id, solarsystem, tenant, status, revealedAt, cachedAt",
+		});
+
+		// V35: Build Queue -- named, ordered industry build queues (plan 36).
+		// Fresh table, no data migration needed.
+		this.version(35).stores({
+			buildQueues: "id, name, updatedAt",
 		});
 	}
 }

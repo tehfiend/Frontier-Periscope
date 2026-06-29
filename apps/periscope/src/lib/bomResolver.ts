@@ -15,6 +15,13 @@ export interface BomResult {
 	intermediates: BomLineItem[];
 	finals: BomLineItem[];
 	surplus: BomSurplus[];
+	/**
+	 * Per-type quantity drawn from `stockMap` to satisfy this BOM (additive report-back, plan 36
+	 * Phase 4). Lets the queue resolver decrement its carry-forward pool by exactly what each step
+	 * consumed from stock. Sum of `BomLineItem.stockQty` across all tiers for each type. Undefined
+	 * is treated as "nothing consumed" by older callers, so this is backward-compatible.
+	 */
+	stockConsumed?: Map<number, number>;
 	totals: {
 		rawVolume: number;
 		intermediateVolume: number;
@@ -342,6 +349,8 @@ export function resolveBom(
 	// Uses a mutable pool so shared stock is allocated once across tiers.
 	// Finals are built first so direct orders get stock priority.
 	const stockPool = new Map(stockMap);
+	// Per-type stock drawn down across all tiers (additive report-back; see BomResult.stockConsumed).
+	const stockConsumed = new Map<number, number>();
 
 	function buildLineItem(
 		typeId: number,
@@ -354,6 +363,9 @@ export function resolveBom(
 		const remaining = stockPool.get(typeId) ?? 0;
 		const allocated = Math.min(remaining, quantity);
 		stockPool.set(typeId, remaining - allocated);
+		if (allocated > 0) {
+			stockConsumed.set(typeId, (stockConsumed.get(typeId) ?? 0) + allocated);
+		}
 		const bpId =
 			tier !== "raw" ? findBlueprintFor(typeId, lookup, overrides)?.blueprintID : undefined;
 
@@ -401,6 +413,7 @@ export function resolveBom(
 		intermediates,
 		finals,
 		surplus,
+		stockConsumed,
 		totals: {
 			rawVolume,
 			intermediateVolume,
@@ -555,6 +568,8 @@ export function buildBomFromLp(
 
 	// Build line items with stock allocation (finals first for priority)
 	const stockPool = new Map(stockMap);
+	// Per-type stock drawn down across all tiers (additive report-back; see BomResult.stockConsumed).
+	const stockConsumed = new Map<number, number>();
 
 	function buildLpLineItem(
 		typeId: number,
@@ -567,6 +582,9 @@ export function buildBomFromLp(
 		const remaining = stockPool.get(typeId) ?? 0;
 		const allocated = Math.min(remaining, quantity);
 		stockPool.set(typeId, remaining - allocated);
+		if (allocated > 0) {
+			stockConsumed.set(typeId, (stockConsumed.get(typeId) ?? 0) + allocated);
+		}
 
 		// Determine primary blueprint and splits
 		const splits = typeSplits.get(typeId) ?? [];
@@ -627,6 +645,7 @@ export function buildBomFromLp(
 		intermediates,
 		finals,
 		surplus,
+		stockConsumed,
 		totals: {
 			rawVolume,
 			intermediateVolume,

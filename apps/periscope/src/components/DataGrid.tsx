@@ -2,6 +2,7 @@ import {
 	type Column,
 	type ColumnDef,
 	type ColumnFiltersState,
+	type RowData,
 	type SortingState,
 	flexRender,
 	getCoreRowModel,
@@ -12,8 +13,18 @@ import {
 	useReactTable,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Search, X } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ColumnFilter, excelFilterFn, type ExcelFilterValue } from "./ColumnFilter";
+
+// Opt-in per-column filter UI. `multiselect` renders a dropdown checklist of the column's faceted
+// values (used for the Facilities column) instead of the default text "contains" box.
+declare module "@tanstack/react-table" {
+	// biome-ignore lint/correctness/noUnusedVariables: augmentation must match the base signature
+	interface ColumnMeta<TData extends RowData, TValue> {
+		filterVariant?: "multiselect";
+	}
+}
 
 // ── Re-exports for consumers ────────────────────────────────────────────────
 
@@ -56,6 +67,122 @@ function savePersistedFilters(persistKey: string, value: PersistedFilters): void
 
 // ── Per-column inline search ─────────────────────────────────────────────────
 
+/**
+ * Always-visible dropdown checklist of a column's faceted values, applied as an "include" filter.
+ * Used for `meta.filterVariant === "multiselect"` columns (e.g. Facilities). No selection = no
+ * filter (all rows); selecting a subset narrows to rows whose value is in the set.
+ */
+function ColumnMultiSelectCell<T>({ column }: { column: Column<T, unknown> }) {
+	const [open, setOpen] = useState(false);
+	const btnRef = useRef<HTMLButtonElement>(null);
+	const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+
+	const facets = column.getFacetedUniqueValues();
+	const allValues = useMemo(
+		() =>
+			Array.from(facets.keys())
+				.map((v) => String(v))
+				.sort(),
+		[facets],
+	);
+	const filter = column.getFilterValue() as ExcelFilterValue | undefined;
+	const selected =
+		filter?.mode === "include" && filter.includedValues instanceof Set ? filter.includedValues : null;
+	const isActive = selected != null;
+	const columnName =
+		typeof column.columnDef.header === "string" ? column.columnDef.header : column.id;
+
+	function apply(next: Set<string>) {
+		if (next.size === 0 || next.size === allValues.length) {
+			column.setFilterValue(undefined);
+		} else {
+			column.setFilterValue({ mode: "include", includedValues: next } satisfies ExcelFilterValue);
+		}
+	}
+	function toggle(v: string) {
+		const base = new Set(selected ?? allValues);
+		if (base.has(v)) base.delete(v);
+		else base.add(v);
+		apply(base);
+	}
+	function openMenu() {
+		const r = btnRef.current?.getBoundingClientRect();
+		if (r) setPos({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 200) });
+		setOpen(true);
+	}
+
+	return (
+		<th className="px-1.5 pb-1.5">
+			<button
+				ref={btnRef}
+				type="button"
+				onClick={openMenu}
+				aria-label={`Filter ${columnName}`}
+				className={`flex w-full items-center justify-between gap-1 rounded border px-2 py-1 text-xs font-normal ${
+					isActive
+						? "border-cyan-500/60 bg-cyan-500/10 text-cyan-300"
+						: "border-zinc-700/60 bg-zinc-800/60 text-zinc-400 hover:text-zinc-200"
+				}`}
+			>
+				<span className="truncate">{isActive ? `${selected.size} selected` : "All"}</span>
+				<ChevronDown size={12} className="shrink-0" />
+			</button>
+			{open &&
+				createPortal(
+					<>
+						<button
+							type="button"
+							aria-label="Close menu"
+							className="fixed inset-0 z-40 cursor-default"
+							onClick={() => setOpen(false)}
+						/>
+						<div
+							className="fixed z-50 max-h-64 overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-xl"
+							style={{ top: pos.top, left: pos.left, width: pos.width }}
+						>
+							<div className="flex items-center justify-between border-b border-zinc-800 px-2 py-1">
+								<button
+									type="button"
+									onClick={() => column.setFilterValue(undefined)}
+									className="text-xs text-zinc-400 hover:text-cyan-400"
+								>
+									Select all
+								</button>
+								{isActive && (
+									<button
+										type="button"
+										onClick={() => column.setFilterValue(undefined)}
+										className="text-xs text-zinc-500 hover:text-red-400"
+									>
+										Clear
+									</button>
+								)}
+							</div>
+							{allValues.map((v) => {
+								const checked = selected ? selected.has(v) : true;
+								return (
+									<label
+										key={v}
+										className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs hover:bg-zinc-800"
+									>
+										<input
+											type="checkbox"
+											checked={checked}
+											onChange={() => toggle(v)}
+											className="accent-cyan-500"
+										/>
+										<span className="truncate text-zinc-300">{v || "(blank)"}</span>
+									</label>
+								);
+							})}
+						</div>
+					</>,
+					document.body,
+				)}
+		</th>
+	);
+}
+
 /** A single always-visible "contains" search input beneath a column header. */
 function ColumnSearchCell<T>({ column }: { column: Column<T, unknown> }) {
 	// Only render a text input for columns that actually use excelFilterFn. Writing an
@@ -63,6 +190,10 @@ function ColumnSearchCell<T>({ column }: { column: Column<T, unknown> }) {
 	// "[object Object]" and filter out every row.
 	if (!column.getCanFilter() || column.columnDef.filterFn !== excelFilterFn) {
 		return <th className="px-1.5 pb-1.5" />;
+	}
+	// Opt-in dropdown checklist (e.g. Facilities) instead of the text box.
+	if (column.columnDef.meta?.filterVariant === "multiselect") {
+		return <ColumnMultiSelectCell column={column} />;
 	}
 	// Derive a readable name for accessible labels (the header is usually a string).
 	const columnName =
@@ -79,9 +210,13 @@ function ColumnSearchCell<T>({ column }: { column: Column<T, unknown> }) {
 					type="text"
 					disabled
 					value=""
-					placeholder={count > 0 ? `filtered via funnel (${count})` : "filtered via funnel"}
+					placeholder={count > 0 ? `${count} selected` : "filtered"}
 					aria-label={`Filter ${columnName}`}
-					className="w-full cursor-not-allowed rounded border border-zinc-700/60 bg-zinc-800/30 px-2 py-1 text-xs font-normal italic text-zinc-500 placeholder:text-zinc-500 focus:outline-none"
+					className={`w-full cursor-not-allowed rounded border px-2 py-1 text-xs font-normal italic placeholder:text-zinc-500 focus:outline-none ${
+						count > 0
+							? "border-cyan-500/60 bg-cyan-500/10 text-cyan-300 placeholder:text-cyan-300/70"
+							: "border-zinc-700/60 bg-zinc-800/30 text-zinc-500"
+					}`}
 				/>
 			</th>
 		);
@@ -108,7 +243,11 @@ function ColumnSearchCell<T>({ column }: { column: Column<T, unknown> }) {
 					}}
 					placeholder="filter"
 					aria-label={`Filter ${columnName}`}
-					className="w-full rounded border border-zinc-700/60 bg-zinc-800/60 px-2 py-1 pr-6 text-xs font-normal text-zinc-300 placeholder:text-zinc-600 focus:border-cyan-500 focus:outline-none"
+					className={`w-full rounded border px-2 py-1 pr-6 text-xs font-normal placeholder:text-zinc-600 focus:outline-none ${
+						value
+							? "border-cyan-500/60 bg-cyan-500/10 text-cyan-300"
+							: "border-zinc-700/60 bg-zinc-800/60 text-zinc-300 focus:border-cyan-500"
+					}`}
 				/>
 				{value && (
 					<button
@@ -269,7 +408,7 @@ export function DataGrid<T>({
 					<button
 						type="button"
 						onClick={() => setColumnFilters([])}
-						className="flex shrink-0 items-center gap-1 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+						className="flex shrink-0 items-center gap-1 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-300 hover:bg-cyan-500/20"
 					>
 						<X size={12} />
 						Clear {columnFilters.length} filter{columnFilters.length > 1 ? "s" : ""}
@@ -299,10 +438,13 @@ export function DataGrid<T>({
 							<tr key={headerGroup.id} className="border-b border-zinc-800 bg-zinc-900/80">
 								{headerGroup.headers.map((header) => {
 									const hasSize = header.column.columnDef.size != null;
+									const isFiltered = header.column.getIsFiltered();
 									return (
 									<th
 										key={header.id}
-										className={`px-1.5 py-1.5 text-left font-medium text-zinc-400 ${hasSize ? "whitespace-nowrap" : "w-full"}`}
+										className={`px-1.5 py-1.5 text-left font-medium ${hasSize ? "whitespace-nowrap" : "w-full"} ${
+											isFiltered ? "bg-cyan-500/10 text-cyan-300" : "text-zinc-400"
+										}`}
 									>
 										{header.isPlaceholder ? null : (
 											<div className="flex items-center gap-1">

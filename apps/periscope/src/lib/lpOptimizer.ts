@@ -19,6 +19,20 @@ export interface LpSolveOptions {
 	timeoutMs?: number;
 	/** Per-raw-material objective weight (default 1 for every raw). Lets the UI steer sourcing. */
 	rawWeights?: Map<number, number>;
+	/**
+	 * Per-blueprint objective weight (default 0). Added to a producer's objective coefficient so a
+	 * small positive value softly de-prioritizes that producer relative to its alternatives -- this is
+	 * how an either/or recipe lock's `prefer` is expressed (preferred producer keeps weight 0, its
+	 * alternatives get a positive bump). Keep values >= 0: a negative weight would reward running the
+	 * blueprint and could drive overproduction or an unbounded objective.
+	 */
+	bpWeights?: Map<number, number>;
+	/**
+	 * Blueprint IDs to remove from the model entirely (hard recipe exclusion), e.g. an either/or
+	 * recipe lock's `exclude` list. Merged with the salvage-gating exclusions before the demand cone
+	 * is computed, so excluded producers never enter the model.
+	 */
+	excludeBpIds?: Set<number>;
 }
 
 // ── Demand cone ──────────────────────────────────────────────────────────────
@@ -116,6 +130,12 @@ export function solveLp(
 		}
 	}
 
+	// Hard recipe exclusion (additive): drop these producer blueprints entirely, e.g. an
+	// either/or recipe lock's `exclude` list. Merged here so the demand cone also omits them.
+	if (opts.excludeBpIds) {
+		for (const id of opts.excludeBpIds) excludedBpIds.add(id);
+	}
+
 	// Restrict the model to the demand cone of the order (see computeDemandCone).
 	const { bpIds: coneBpIds, coneTypes } = computeDemandCone(
 		orderItems,
@@ -192,7 +212,10 @@ export function solveLp(
 		if (excludedBpIds.has(bp.blueprintID)) continue;
 		if (!coneBpIds.has(bp.blueprintID)) continue;
 		const varName = `bp_${bp.blueprintID}`;
-		const coeffs: Record<string, number> = { objective: 0 };
+		// Per-blueprint objective weight (additive, default 0). A small positive weight softly
+		// de-prioritizes this producer so the optimizer prefers a lower-weighted alternative -- the
+		// way an either/or recipe lock's `prefer` is expressed. See LpSolveOptions.bpWeights.
+		const coeffs: Record<string, number> = { objective: opts.bpWeights?.get(bp.blueprintID) ?? 0 };
 
 		// Outputs contribute positively to demand (and overproduction) constraints
 		for (const out of bp.outputs) {
@@ -286,10 +309,15 @@ export function solveLp(
 				}
 			}
 		} else if (pin.kind === "split") {
-			// Set minimum runs for each pinned blueprint (lower bound, not exact)
-			const pinnedBpIds = new Set(pin.splits.map((s) => s.blueprintId));
-			let totalPinnedQty = 0;
-
+			// Split pins use per-blueprint min-run LOWER BOUNDS only -- they never zero the non-pinned
+			// producers. Split pins are authored on producible INTERMEDIATES, which are never in
+			// orderItems, so orderDemand for the pinned type is 0; a "splits fully cover demand" test
+			// would therefore be true for EVERY intermediate split and wrongly force ALL production onto
+			// the pinned blueprints (wrong BOM, spurious infeasibility). Lower bounds alone are correct
+			// both ways: a FULL split's min-runs already meet demand and the overproduction penalty stops
+			// the solver adding runs on a non-pinned line, while a SHORTFALL split (user pins partial
+			// amounts) correctly lets the optimizer fill the remainder across all producers. Exclusive
+			// pins still zero the alternatives (above).
 			for (const split of pin.splits) {
 				const bp = blueprints[String(split.blueprintId)];
 				if (!bp) continue;
@@ -298,31 +326,12 @@ export function solveLp(
 				// variable makes the WHOLE model infeasible (orphan 0 >= runs).
 				if (!variables[varName]) continue;
 				const outputQty = bp.outputs.find((o) => o.typeID === pin.typeId)?.quantity ?? 1;
-				totalPinnedQty += split.quantity;
 				const runs = Math.ceil(split.quantity / outputQty);
 				const constraintName = `pin_${split.blueprintId}_for_${pin.typeId}`;
 				constraints[constraintName] = { min: runs };
 				variables[varName][constraintName] = 1;
 				// Remember this blueprint is force-run so a later pin won't zero it.
 				forcedBpVars.add(varName);
-			}
-
-			// Only zero out non-pinned blueprints when splits fully cover demand
-			const demand = orderDemand.get(pin.typeId) ?? 0;
-			if (totalPinnedQty >= demand) {
-				for (const bp of producers) {
-					if (!pinnedBpIds.has(bp.blueprintID)) {
-						const varName = `bp_${bp.blueprintID}`;
-						// Skip blueprints already forced to run by another type's pin; zeroing
-						// them here would contradict that min-run and make the LP infeasible.
-						if (forcedBpVars.has(varName)) continue;
-						const constraintName = `pin_${bp.blueprintID}_for_${pin.typeId}`;
-						constraints[constraintName] = { equal: 0 };
-						if (variables[varName]) {
-							variables[varName][constraintName] = 1;
-						}
-					}
-				}
 			}
 		}
 	}

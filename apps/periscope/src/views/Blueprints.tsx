@@ -1,9 +1,17 @@
 import { excelFilterFn, type ExcelFilterValue } from "@/components/ColumnFilter";
 import { DataGrid } from "@/components/DataGrid";
 import { ItemIcon } from "@/components/ItemIcon";
+import { db } from "@/db";
 import { isRefineryFacility, useBlueprintData } from "@/hooks/useBlueprintData";
 import type { Blueprint } from "@/lib/bomTypes";
-import type { ColumnDef } from "@tanstack/react-table";
+import {
+	addJob,
+	addStep,
+	createQueue,
+	getActiveQueueId,
+	setActiveQueue,
+} from "@/stores/buildQueueStore";
+import type { ColumnDef, Table } from "@tanstack/react-table";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowRight, Building2, Clock, Eye, Factory, Wrench } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
@@ -24,17 +32,10 @@ interface BlueprintRow {
 	isRefinery: boolean;
 }
 
-const LS_ORDER_KEY = "bom-order-items";
 const LS_RECENT_KEY = "blueprint-library:recent";
 const RECENT_CAP = 10;
 
-interface BomOrderItemStorage {
-	typeId: number;
-	typeName: string;
-	quantity: number;
-}
-
-/** Load the most-recently-selected blueprint IDs (most recent first). */
+/** Load the blueprint IDs most recently added to the calculator (most recent first). */
 function loadRecentBlueprints(): number[] {
 	try {
 		const raw = localStorage.getItem(LS_RECENT_KEY);
@@ -66,8 +67,13 @@ export function Blueprints() {
 	const [recent, setRecent] = useState<number[]>(loadRecentBlueprints);
 	const [selectedBpId, setSelectedBpId] = useState<number | null>(() => recent[0] ?? null);
 
+	// Highlight + scroll to a blueprint row. Does NOT touch recents -- the recents dropdown only
+	// lists blueprints actually added to the calculator (see addToIndustry/recordRecent).
 	const selectBlueprint = useCallback((bpId: number) => {
 		setSelectedBpId(bpId);
+	}, []);
+
+	const recordRecent = useCallback((bpId: number) => {
 		setRecent((prev) => {
 			const next = [bpId, ...prev.filter((id) => id !== bpId)].slice(0, RECENT_CAP);
 			try {
@@ -79,23 +85,26 @@ export function Blueprints() {
 		});
 	}, []);
 
+	// Append the picked blueprint as a job on the active Build Queue's current (last) step. The
+	// store increments runs if that blueprint is already queued in the step. Ensures an active queue
+	// and at least one step exist first, then navigates to the queue. (Replaces the old
+	// bom-order-items localStorage write -- plan 36 Phase 5.)
 	const addToIndustry = useCallback(
-		(typeId: number, typeName: string) => {
-			let items: BomOrderItemStorage[] = [];
-			try {
-				const raw = localStorage.getItem(LS_ORDER_KEY);
-				if (raw) items = JSON.parse(raw) as BomOrderItemStorage[];
-			} catch { /* ignore */ }
-			const existing = items.find((i) => i.typeId === typeId);
-			if (existing) {
-				existing.quantity += 1;
-			} else {
-				items.push({ typeId, typeName, quantity: 1 });
+		async (bpId: number) => {
+			let activeId = await getActiveQueueId();
+			let queue = activeId ? await db.buildQueues.get(activeId) : undefined;
+			if (!queue) {
+				queue = await createQueue("My Build Queue");
+				activeId = queue.id;
+				await setActiveQueue(activeId);
 			}
-			localStorage.setItem(LS_ORDER_KEY, JSON.stringify(items));
+			let stepId = queue.steps[queue.steps.length - 1]?.id;
+			if (!stepId) stepId = await addStep(queue.id);
+			await addJob(queue.id, stepId, { blueprintId: bpId, runs: 1 });
+			recordRecent(bpId);
 			navigate({ to: "/industry" });
 		},
-		[navigate],
+		[navigate, recordRecent],
 	);
 
 	// Available/total hint derived from the full catalog (not buildableBlueprintIds.size,
@@ -162,12 +171,13 @@ export function Blueprints() {
 									type="button"
 									onClick={(e) => {
 										e.stopPropagation();
-										addToIndustry(bp.primaryTypeID, bp.primaryTypeName);
+										addToIndustry(bp.blueprintID);
 									}}
-									className="rounded p-0.5 text-zinc-600 transition-colors hover:text-cyan-400"
+									className="flex shrink-0 items-center gap-1 rounded-md border border-zinc-600 bg-zinc-800 px-1.5 py-1 text-[11px] font-medium text-zinc-300 shadow-sm transition-colors hover:border-cyan-500/60 hover:bg-cyan-500/15 hover:text-cyan-300"
 									title="Add to Industry Calculator"
 								>
-									<Factory size={14} />
+									<Factory size={12} />
+									Add
 								</button>
 							)}
 							<ItemIcon typeId={bp.primaryTypeID} size={32} />
@@ -237,11 +247,13 @@ export function Blueprints() {
 				accessorFn: (r) => r.bp.inputs.map((i) => i.typeName).join(", "),
 				header: "Inputs",
 				filterFn: excelFilterFn,
-				cell: ({ row }) => {
-					const { bp, isRefinery } = row.original;
+				cell: ({ row, table }) => {
+					const { bp, isRefinery, primaryQty } = row.original;
 					// A single-input recipe run in a refinery is a reprocessing job; cue its input with
 					// the same green palette used for a blueprint's primary output.
 					const isRefining = bp.inputs.length === 1 && isRefinery;
+					// Manufacturing: the single output is the solo unit; express each input per 1 output.
+					const showRatio = !isRefinery && primaryQty > 0;
 					const spanClass = `flex items-center gap-1.5 whitespace-nowrap ${
 						isRefining ? "font-medium text-green-300" : "text-zinc-300"
 					}`;
@@ -249,27 +261,52 @@ export function Blueprints() {
 					return (
 						<div className="flex flex-col gap-1">
 							{bp.inputs.map((input) => {
-								const producerBpId = defaultRecipes.get(input.typeID);
-								return producerBpId != null ? (
+								// Clicking an input "sources" it: filter the Outputs column to every recipe that
+								// produces it. Truly-raw materials (no producer) get a "raw" tag instead, since
+								// filtering for their producers would return nothing.
+								const hasProducer = defaultRecipes.has(input.typeID);
+								return hasProducer ? (
 									<button
 										key={input.typeID}
 										type="button"
 										onClick={(e) => {
 											e.stopPropagation();
-											selectBlueprint(producerBpId);
+											showProducers(table, input.typeName);
 										}}
 										className={`${spanClass} text-left hover:text-cyan-400`}
-										title={`View ${input.typeName} blueprint`}
+										title={`Show recipes that produce ${input.typeName}`}
 									>
 										<ItemIcon typeId={input.typeID} size={20} />
 										<span className={qtyClass}>{input.quantity.toLocaleString()}</span>{" "}
 										{input.typeName}
+										{showRatio && (
+											<span
+												className="ml-2 font-mono text-xs text-zinc-500"
+												title="input per 1 output"
+											>
+												{`${formatRatio(input.quantity / primaryQty)}:1`}
+											</span>
+										)}
 									</button>
 								) : (
 									<span key={input.typeID} className={spanClass}>
 										<ItemIcon typeId={input.typeID} size={20} />
 										<span className={qtyClass}>{input.quantity.toLocaleString()}</span>{" "}
 										{input.typeName}
+										<span
+											className="ml-1.5 rounded bg-zinc-800 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500"
+											title="Raw material -- not produced by any recipe (mine, loot, or buy)"
+										>
+											raw
+										</span>
+										{showRatio && (
+											<span
+												className="ml-2 font-mono text-xs text-zinc-500"
+												title="input per 1 output"
+											>
+												{`${formatRatio(input.quantity / primaryQty)}:1`}
+											</span>
+										)}
 									</span>
 								);
 							})}
@@ -287,26 +324,37 @@ export function Blueprints() {
 			},
 			{
 				id: "outputs",
-				accessorFn: (r) => r.bp.outputs.map((o) => o.typeName).join(", "),
+				// Array-valued so an exact per-output "include" filter (set by clicking an input)
+				// matches only recipes that actually produce that material -- not "Packaged" / "Batched"
+				// name variants that merely contain it. Manual text search still works (matches any output).
+				accessorFn: (r) => r.bp.outputs.map((o) => o.typeName),
+				sortingFn: (a, b) =>
+					a.original.bp.outputs
+						.map((o) => o.typeName)
+						.join(", ")
+						.localeCompare(b.original.bp.outputs.map((o) => o.typeName).join(", ")),
 				header: "Outputs",
 				filterFn: excelFilterFn,
-				cell: ({ row }) => {
-					const { bp, totalInputQty } = row.original;
+				cell: ({ row, table }) => {
+					const { bp, isRefinery } = row.original;
+					// Refinery recipes have a single input (the solo unit); express each output per 1 input.
+					const inputBasis = bp.inputs.length === 1 ? bp.inputs[0].quantity : 0;
 					return (
 						<div className="flex flex-col gap-1">
 							{bp.outputs.map((output) => {
 								const isPrimary = output.typeID === bp.primaryTypeID;
-								const perInput = totalInputQty > 0 ? output.quantity / totalInputQty : null;
-								const ratioStr =
-									perInput == null
-										? "--"
-										: perInput >= 1
-											? `1:${perInput % 1 === 0 ? perInput.toFixed(0) : perInput.toFixed(1)}`
-											: `1:${perInput.toFixed(2)}`;
+								const perInput =
+									isRefinery && inputBasis > 0 ? output.quantity / inputBasis : null;
 								return (
-									<span
+									<button
 										key={output.typeID}
-										className={`flex items-center gap-1.5 whitespace-nowrap ${
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											showProducers(table, output.typeName);
+										}}
+										title={`Show recipes that produce ${output.typeName}`}
+										className={`flex items-center gap-1.5 whitespace-nowrap text-left hover:text-cyan-400 ${
 											isPrimary ? "font-medium text-green-300" : "text-zinc-400"
 										}`}
 									>
@@ -317,12 +365,15 @@ export function Blueprints() {
 											{output.quantity.toLocaleString()}
 										</span>{" "}
 										{output.typeName}
-										<span
-											className={`ml-2 font-mono text-xs ${isPrimary ? "text-green-400/70" : "text-zinc-500"}`}
-										>
-											{ratioStr}
-										</span>
-									</span>
+										{perInput != null && (
+											<span
+												className={`ml-2 font-mono text-xs ${isPrimary ? "text-green-400/70" : "text-zinc-500"}`}
+												title="output per 1 input"
+											>
+												{`1:${formatRatio(perInput)}`}
+											</span>
+										)}
+									</button>
 								);
 							})}
 						</div>
@@ -369,6 +420,7 @@ export function Blueprints() {
 				size: 180,
 				enableSorting: false,
 				filterFn: excelFilterFn,
+				meta: { filterVariant: "multiselect" },
 				cell: ({ row }) => {
 					const { facilities, buildable, removedFacilities } = row.original;
 					if (!buildable) {
@@ -401,7 +453,7 @@ export function Blueprints() {
 				},
 			},
 		],
-		[addToIndustry, defaultRecipes, selectBlueprint],
+		[addToIndustry, defaultRecipes],
 	);
 
 	if (isLoading) {
@@ -469,6 +521,27 @@ export function Blueprints() {
 			}
 		/>
 	);
+}
+
+/**
+ * "Source" a material: reset every other filter (column + global search) so the result isn't
+ * narrowed by a pre-existing filter, then narrow the table to recipes whose output is exactly
+ * `typeName`. Used by clicking an input or an output.
+ */
+function showProducers(table: Table<BlueprintRow>, typeName: string) {
+	table.setGlobalFilter("");
+	table.setColumnFilters([
+		{
+			id: "outputs",
+			value: { mode: "include", includedValues: new Set([typeName]) } satisfies ExcelFilterValue,
+		},
+	]);
+}
+
+/** Format a per-unit ratio: whole numbers exact, >=1 to one decimal, otherwise two decimals. */
+function formatRatio(value: number): string {
+	if (value % 1 === 0) return value.toFixed(0);
+	return value >= 1 ? value.toFixed(1) : value.toFixed(2);
 }
 
 function formatTimePerUnit(batchSeconds: number, primaryQty: number): string {
