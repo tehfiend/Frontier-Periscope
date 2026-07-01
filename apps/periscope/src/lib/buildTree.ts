@@ -250,16 +250,20 @@ export function buildBatchTree(batch: BuildTreeBatch, data: BuildTreeData): Buil
 		if (buildItem) emittedBuildTypes.add(typeId);
 
 		const rawLike = isRawLike(typeId, data);
-		const tier: BuildTreeNode["tier"] = rootBlueprint ? "final" : rawLike ? "raw" : "intermediate";
+		// A Job's own target can itself be a raw/gatherable material (e.g. a byproduct-masked ore
+		// forced raw by Plan 42) -- treat it like any other raw leaf so its have/still is allocated
+		// and counted in the reconciliation, rather than silently dropping its demand to zero.
+		const tier: BuildTreeNode["tier"] = rawLike ? "raw" : rootBlueprint ? "final" : "intermediate";
 		const isGatherableLeaf = rawLike;
 		const selectedBlueprint = rawLike
 			? undefined
 			: getSelectedBlueprint(typeId, data, line ?? buildItem, rootBlueprint);
 		const splits = sortedSplits(line?.splits ?? buildItem?.splits);
 		const producers = data.outputToBlueprints.get(typeId) ?? [];
-		const allocation = rootBlueprint
-			? { have: 0, still: 0, stockShownElsewhere: false, sourceBatchIds: undefined }
-			: allocateForType(typeId, needPerEdge, allocationStates);
+		const allocation =
+			rootBlueprint && !rawLike
+				? { have: 0, still: 0, stockShownElsewhere: false, sourceBatchIds: undefined }
+				: allocateForType(typeId, needPerEdge, allocationStates);
 		const { volume, volumeMissing } = volumeFor(typeId, needPerEdge, data);
 		const nodeName = nameForType(typeId, typeName ?? line?.typeName ?? buildItem?.typeName, data);
 		const sourceGroup = data.typeGroups.get(typeId);
