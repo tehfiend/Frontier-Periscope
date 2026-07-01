@@ -433,7 +433,7 @@ export function DataGrid<T>({
 				className="min-h-0 flex-1 overflow-auto rounded-lg border border-zinc-800"
 			>
 				<table className="w-full text-sm">
-					<thead>
+					<thead className="sticky top-0 z-10">
 						{table.getHeaderGroups().map((headerGroup) => (
 							<tr key={headerGroup.id} className="border-b border-zinc-800 bg-zinc-900/80">
 								{headerGroup.headers.map((header) => {

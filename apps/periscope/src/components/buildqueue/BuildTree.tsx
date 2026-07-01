@@ -33,7 +33,7 @@ import {
 	setBatchSourceLock,
 	setRecipeLock,
 } from "@/stores/buildQueueStore";
-import { ChevronDown, ChevronRight, GitFork } from "lucide-react";
+import { ChevronDown, ChevronRight, GitFork, Wrench } from "lucide-react";
 import { Fragment, memo, useMemo, useState } from "react";
 
 interface BuildTreeProps {
@@ -223,6 +223,10 @@ const TreeRow = memo(function TreeRow({
 	const canShowRecipe = node.tier !== "raw" && chosenBp != null;
 	const canInlineChange = node.tier !== "final" && producers.length > 1;
 	const reprocessableRaw = node.tier === "raw" && producers.length > 0;
+	// Facility choice is independent of recipe choice -- the SAME blueprint can often run at more than
+	// one facility type, so this is informational (which facilities work), not a selectable control.
+	// Surfaced even for "final" (Target) nodes, whose recipe itself is locked to the authored Job.
+	const facilityNames = chosenBp ? (data.blueprintFacilities.get(chosenBp.blueprintID) ?? []) : [];
 
 	const sourceLock = batchSourceLocks?.find((lock) => lock.typeId === node.typeId);
 	function handleSourcesChange(sources: ContainerSourceConfig | undefined) {
@@ -330,6 +334,16 @@ const TreeRow = memo(function TreeRow({
 							</span>
 						) : (
 							<span className="text-xs text-zinc-600">--</span>
+						)}
+
+						{facilityNames.length > 0 && (
+							<span
+								className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300"
+								title={`This build can run at any of: ${facilityNames.join(", ")}. Facility ownership is not checked and batch order is manual.`}
+							>
+								<Wrench size={10} />
+								needs {facilityNames.join(" or ")}
+							</span>
 						)}
 
 						{hasAlternatives && node.tier !== "final" && (

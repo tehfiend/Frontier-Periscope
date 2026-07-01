@@ -180,10 +180,10 @@ export function JobRow({
 			{facilityNames.length > 0 && (
 				<span
 					className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300"
-					title={`This build needs facility ${facilityNames.join(", ")}. Facility ownership is not checked and batch order is manual.`}
+					title={`This build can run at any of: ${facilityNames.join(", ")}. Facility ownership is not checked and batch order is manual.`}
 				>
 					<Wrench size={10} />
-					needs {facilityNames[0]}
+					needs {facilityNames.join(" or ")}
 				</span>
 			)}
 
