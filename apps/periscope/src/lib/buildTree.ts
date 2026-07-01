@@ -223,7 +223,11 @@ function assertReconciled(roots: BuildTreeNode[], reconcileLines: Map<number, Fl
 		}
 	}
 	if (errors.length > 0) {
-		throw new Error(`Build tree reconciliation failed:\n${errors.join("\n")}`);
+		// A best-effort dev sanity check, not a runtime guarantee -- the tree is a local, path-based
+		// reconstruction of what the LP solved globally, and known gaps remain (e.g. cross-batch /
+		// split recipe edges). Warn loudly instead of throwing so a display-accounting mismatch never
+		// crashes the Build Queue UI; the flat BOM tables remain the source of truth regardless.
+		console.error(`Build tree reconciliation mismatch:\n${errors.join("\n")}`);
 	}
 }
 
@@ -269,12 +273,18 @@ export function buildBatchTree(batch: BuildTreeBatch, data: BuildTreeData): Buil
 		const sourceGroup = data.typeGroups.get(typeId);
 
 		let children: BuildTreeNode[] = [];
+		// A producible child can need recursion even when its type isn't in `batch.build` -- e.g. an
+		// intermediate that's ALSO an authored Job's own primary output gets merged out of
+		// `batch.build` (see bomToDisplayLists' provenance merge), but still needs its own recipe
+		// expanded when a DIFFERENT job/recipe consumes it as an ingredient here. Any non-raw child
+		// reached via a real recursive call already carries genuine demand from its parent, so gating
+		// on `buildItem`/`rootBlueprint` presence is unnecessary and was silently truncating that
+		// subtree (dropping nested demand, e.g. for a byproduct-masked raw leaf several levels down).
 		const canRecurse =
 			!rawLike &&
 			selectedBlueprint != null &&
 			!ancestorTypes.has(typeId) &&
-			ancestorTypes.size < MAX_TREE_DEPTH &&
-			(rootBlueprint != null || buildItem != null);
+			ancestorTypes.size < MAX_TREE_DEPTH;
 
 		if (canRecurse) {
 			const nextAncestors = new Set(ancestorTypes);
