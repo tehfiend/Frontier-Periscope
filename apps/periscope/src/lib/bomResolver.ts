@@ -519,17 +519,21 @@ export function buildBomFromLp(
 	const intermediateTotals = new Map<number, number>();
 	const finalTotals = new Map<number, number>();
 
-	// Raw material totals: sum of consumed for each raw type
-	for (const rawId of rawTypeIds) {
-		const consumed = totalConsumed.get(rawId) ?? 0;
-		if (consumed > 0) rawTotals.set(rawId, consumed);
-	}
-
-	// Handle directly ordered raw materials (non-producible)
+	// Raw material totals: consumed by recipes + directly ordered raw demand, minus any raw-credit
+	// outputs from pinned/stock-driven reprocessing recipes.
+	const directRawDemand = new Map<number, number>();
 	for (const item of orderItems) {
 		if (!outputToBlueprints.has(item.typeId) || gatherableLeafIds?.has(item.typeId)) {
-			rawTotals.set(item.typeId, (rawTotals.get(item.typeId) ?? 0) + item.quantity);
+			directRawDemand.set(item.typeId, (directRawDemand.get(item.typeId) ?? 0) + item.quantity);
+			rawTypeIds.add(item.typeId);
 		}
+	}
+	for (const rawId of rawTypeIds) {
+		const consumed = totalConsumed.get(rawId) ?? 0;
+		const directDemand = directRawDemand.get(rawId) ?? 0;
+		const producedCredit = totalProduced.get(rawId) ?? 0;
+		const gatherQty = consumed + directDemand - producedCredit;
+		if (gatherQty > 0) rawTotals.set(rawId, gatherQty);
 	}
 
 	// Producible types: classify as final or intermediate
@@ -599,11 +603,11 @@ export function buildBomFromLp(
 		let blueprintId: number | undefined;
 		let itemSplits: ProductionSplit[] | undefined;
 
-		if (tier !== "raw" && splits.length > 0) {
+		if (splits.length > 0) {
 			// Sort by runs descending to pick primary
 			const sorted = [...splits].sort((a, b) => b.runs - a.runs);
 			blueprintId = sorted[0].blueprintId;
-			if (sorted.length > 1) {
+			if (tier === "raw" || sorted.length > 1) {
 				itemSplits = sorted;
 			}
 		}

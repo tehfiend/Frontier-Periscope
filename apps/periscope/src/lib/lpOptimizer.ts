@@ -179,8 +179,9 @@ export function solveLp(
 	// 2. Add raw material constraints (cone only)
 	for (const rawId of rawTypeIds) {
 		if (!coneTypes.has(rawId)) continue;
+		const demandQty = orderDemand.get(rawId) ?? 0;
 		const stock = stockMap.get(rawId) ?? 0;
-		constraints[`raw_${rawId}`] = { min: -stock };
+		constraints[`raw_${rawId}`] = { min: demandQty - stock };
 	}
 
 	// 3. Add excess variables for raw materials (objective targets, optionally weighted)

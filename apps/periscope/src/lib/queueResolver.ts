@@ -696,6 +696,13 @@ interface DefaultPinCandidate {
 	producers: Blueprint[];
 }
 
+interface StockPinCandidate {
+	typeId: number;
+	defaultBpId?: number;
+	producers: Blueprint[];
+	rawDefault: boolean;
+}
+
 function defaultPinCandidates(
 	orderItems: BomOrderItem[],
 	ctx: QueueResolveContext,
@@ -738,6 +745,40 @@ export function buildDefaultPins(
 			blueprintId: defaultBpId,
 		}),
 	);
+}
+
+function pinnedBlueprintIds(pins: RecipePin[]): Set<number> {
+	const ids = new Set<number>();
+	for (const pin of pins) {
+		if (pin.kind === "exclusive") {
+			ids.add(pin.blueprintId);
+		} else {
+			for (const split of pin.splits) ids.add(split.blueprintId);
+		}
+	}
+	return ids;
+}
+
+function rawOnlyProducerExcludes(ctx: QueueResolveContext, pins: RecipePin[]): Set<number> {
+	const pinned = pinnedBlueprintIds(pins);
+	const excludes = new Set<number>();
+	for (const bp of Object.values(ctx.blueprints)) {
+		if (pinned.has(bp.blueprintID)) continue;
+		if (bp.outputs.length === 0) continue;
+		if (bp.outputs.every((out) => ctx.rawMaterialIds.has(out.typeID))) {
+			excludes.add(bp.blueprintID);
+		}
+	}
+	return excludes;
+}
+
+function withRawOnlyProducerExcludes(
+	steering: LockSteering,
+	ctx: QueueResolveContext,
+): LockSteering {
+	const excludeBpIds = new Set(steering.excludeBpIds);
+	for (const bpId of rawOnlyProducerExcludes(ctx, steering.pins)) excludeBpIds.add(bpId);
+	return { ...steering, excludeBpIds };
 }
 
 function outputQuantity(bp: Blueprint, typeId: number): number {
@@ -795,31 +836,53 @@ function buildStockDrivenPins(
 	typeDemand: Map<number, number>,
 	firstRawConsumption: Map<number, number>,
 ): { pins: RecipePin[]; stockCaps: Map<number, number> } {
-	const { candidates, coneBpIds } = defaultPinCandidates(orderItems, ctx, mergedLocks, steering);
+	const { candidates: defaultCandidates, coneBpIds, coneTypes } = defaultPinCandidates(
+		orderItems,
+		ctx,
+		mergedLocks,
+		steering,
+	);
+	const pinnedTypes = new Set(steering.pins.map((pin) => pin.typeId));
+	const candidates: StockPinCandidate[] = defaultCandidates.map((candidate) => ({
+		...candidate,
+		rawDefault: false,
+	}));
+	for (const typeId of coneTypes) {
+		if (!ctx.gatherableLeafIds.has(typeId)) continue;
+		if (lockSteersType(typeId, mergedLocks) || pinnedTypes.has(typeId)) continue;
+		const producers = ctx.outputToBlueprints.get(typeId);
+		if (!producers || producers.length === 0) continue;
+		candidates.push({ typeId, producers, rawDefault: true });
+	}
 	const pins: RecipePin[] = [];
 	const stockCaps = new Map<number, number>();
 
 	for (const candidate of candidates) {
 		const demand = typeDemand.get(candidate.typeId) ?? 0;
 		if (demand <= 0) {
-			pins.push({
-				typeId: candidate.typeId,
-				kind: "exclusive",
-				blueprintId: candidate.defaultBpId,
-			});
+			if (!candidate.rawDefault && candidate.defaultBpId != null) {
+				pins.push({
+					typeId: candidate.typeId,
+					kind: "exclusive",
+					blueprintId: candidate.defaultBpId,
+				});
+			}
 			continue;
 		}
 
-		const defaultBp = ctx.blueprints[String(candidate.defaultBpId)];
-		if (!defaultBp) {
+		const defaultBp =
+			candidate.defaultBpId != null ? ctx.blueprints[String(candidate.defaultBpId)] : undefined;
+		if (!candidate.rawDefault && (candidate.defaultBpId == null || !defaultBp)) {
+			const defaultBpId = candidate.defaultBpId;
+			if (defaultBpId == null) continue;
 			pins.push({
 				typeId: candidate.typeId,
 				kind: "exclusive",
-				blueprintId: candidate.defaultBpId,
+				blueprintId: defaultBpId,
 			});
 			continue;
 		}
-		const defaultInputIds = new Set(defaultBp.inputs.map((inp) => inp.typeID));
+		const defaultInputIds = new Set(defaultBp?.inputs.map((inp) => inp.typeID) ?? []);
 		let best:
 			| {
 					bp: Blueprint;
@@ -875,11 +938,13 @@ function buildStockDrivenPins(
 		}
 
 		if (!best) {
-			pins.push({
-				typeId: candidate.typeId,
-				kind: "exclusive",
-				blueprintId: candidate.defaultBpId,
-			});
+			if (!candidate.rawDefault && candidate.defaultBpId != null) {
+				pins.push({
+					typeId: candidate.typeId,
+					kind: "exclusive",
+					blueprintId: candidate.defaultBpId,
+				});
+			}
 			continue;
 		}
 
@@ -889,7 +954,9 @@ function buildStockDrivenPins(
 		}
 		const remainder = Math.max(0, demand - best.stockSupported);
 		const splits = [{ blueprintId: best.bp.blueprintID, quantity: best.stockSupported }];
-		if (remainder > 0) splits.push({ blueprintId: candidate.defaultBpId, quantity: remainder });
+		if (!candidate.rawDefault && candidate.defaultBpId != null && remainder > 0) {
+			splits.push({ blueprintId: candidate.defaultBpId, quantity: remainder });
+		}
 		pins.push({ typeId: candidate.typeId, kind: "split", splits });
 	}
 
@@ -1016,11 +1083,12 @@ function solveDemandWithDefaults(
 		excludeBpIds: steering.excludeBpIds,
 		bpWeights: steering.bpWeights,
 	};
+	const primarySolveSteering = withRawOnlyProducerExcludes(primarySteering, ctx);
 	const first = solveDemand(
 		orderItems,
 		bpData,
 		pool,
-		primarySteering,
+		primarySolveSteering,
 		volumeMap,
 		nameMap,
 		ctx.gatherableLeafIds,
@@ -1052,11 +1120,12 @@ function solveDemandWithDefaults(
 		excludeBpIds: steering.excludeBpIds,
 		bpWeights: steering.bpWeights,
 	};
+	const stockSolveSteering = withRawOnlyProducerExcludes(stockSteering, ctx);
 	return solveDemand(
 		orderItems,
 		bpData,
 		pool,
-		stockSteering,
+		stockSolveSteering,
 		volumeMap,
 		nameMap,
 		ctx.gatherableLeafIds,
