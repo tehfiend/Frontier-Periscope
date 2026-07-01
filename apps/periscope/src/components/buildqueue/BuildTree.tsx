@@ -22,6 +22,9 @@ import type {
 } from "@/lib/buildQueueTypes";
 import type { BuildTreeBatch, BuildTreeNode } from "@/lib/buildTree";
 import { buildBatchTree } from "@/lib/buildTree";
+import type { LandscapeData, LandscapeMaterialSource } from "@/lib/landscapeData";
+import { useLandscapeData } from "@/lib/landscapeData";
+import { nearestSourceSites } from "@/lib/proximity";
 import { mergeLocks } from "@/lib/queueResolver";
 import type { ContainerOption } from "@/lib/sourcingPlan";
 import {
@@ -44,6 +47,8 @@ interface BuildTreeProps {
 	containerJumps?: Map<string, number | undefined>;
 	batchSourceLocks?: SourceLockEntry[];
 	phaseLabelForBatchIds?: (batchIds: string[]) => string;
+	sourceSystemId?: number | null;
+	systemNames?: Map<number, string>;
 }
 
 function formatQty(value: number): string {
@@ -76,6 +81,77 @@ function SplitSummary({ node, data }: { node: BuildTreeNode; data: QueueBlueprin
 	return <div className="mt-1 text-[11px] text-zinc-500">{pieces.join(", ")}</div>;
 }
 
+function formatJumpLabel(jumps: number | undefined): string {
+	if (jumps == null) return "unreachable";
+	return `${jumps} jump${jumps === 1 ? "" : "s"}`;
+}
+
+function systemLabel(systemId: number, systemNames?: Map<number, string>): string {
+	return systemNames?.get(systemId) ?? `#${systemId}`;
+}
+
+function RawSourceDetail({
+	node,
+	sourceSystemId,
+	systemNames,
+	landscapeData,
+}: {
+	node: BuildTreeNode;
+	sourceSystemId?: number | null;
+	systemNames?: Map<number, string>;
+	landscapeData: LandscapeData | null;
+}) {
+	const sourceTypeId = node.siteSourceTypeId ?? node.typeId;
+	const source: LandscapeMaterialSource | undefined = landscapeData?.materials.get(sourceTypeId);
+	const nearest = useMemo(
+		() =>
+			sourceSystemId != null && source
+				? nearestSourceSites(sourceSystemId, [source.typeId])[0]
+				: undefined,
+		[sourceSystemId, source],
+	);
+
+	if (!source) {
+		return <span className="text-[11px] text-zinc-600">source unknown</span>;
+	}
+
+	if (source.tier === "tier3") {
+		return <span className="text-[11px] text-zinc-600">source unknown</span>;
+	}
+
+	if (source.tier === "tier2") {
+		const target = nearest
+			? `${systemLabel(nearest.systemId, systemNames)} · ${formatJumpLabel(nearest.jumps)}`
+			: sourceSystemId == null
+				? "set build location for nearest sites"
+				: "no reachable source system";
+		return (
+			<span className="text-[11px] text-amber-300/70" title={source.caveat ?? source.label}>
+				{source.label}: {target}
+			</span>
+		);
+	}
+
+	const target = nearest
+		? `${systemLabel(nearest.systemId, systemNames)} · ${formatJumpLabel(nearest.jumps)}`
+		: sourceSystemId == null
+			? "set build location for nearest sites"
+			: "no reachable source system";
+	const ecosystems = nearest?.ecosystems
+		.slice(0, 2)
+		.map((e) => e.name)
+		.join(", ");
+	const tags = nearest?.gradeTags.slice(0, 2).join(", ");
+	const detail = [ecosystems, tags].filter(Boolean).join(" · ");
+
+	return (
+		<span className="text-[11px] text-zinc-400" title={source.label}>
+			Nearest: {target}
+			{detail ? ` · ${detail}` : ""}
+		</span>
+	);
+}
+
 function writeExclusiveLock(
 	queueId: string,
 	batchId: string | null | undefined,
@@ -103,6 +179,9 @@ interface TreeRowProps {
 	containerJumps?: Map<string, number | undefined>;
 	batchSourceLocks?: SourceLockEntry[];
 	phaseLabelForBatchIds?: (batchIds: string[]) => string;
+	sourceSystemId?: number | null;
+	systemNames?: Map<number, string>;
+	landscapeData: LandscapeData | null;
 	collapsedPaths: Set<string>;
 	toggleCollapsed: (path: string) => void;
 	detailPaths: Set<string>;
@@ -122,6 +201,9 @@ const TreeRow = memo(function TreeRow({
 	containerJumps,
 	batchSourceLocks,
 	phaseLabelForBatchIds,
+	sourceSystemId,
+	systemNames,
+	landscapeData,
 	collapsedPaths,
 	toggleCollapsed,
 	detailPaths,
@@ -210,11 +292,19 @@ const TreeRow = memo(function TreeRow({
 				<td className="px-4 py-2">
 					<div className="flex flex-wrap items-center gap-2">
 						{node.tier === "raw" ? (
-							<span
-								className="truncate text-xs text-zinc-500"
-								title={`Source: ${node.sourceGroup ?? "Other"}`}
-							>
-								Source: {node.sourceGroup ?? "Other"}
+							<span className="flex min-w-0 flex-col">
+								<span
+									className="truncate text-xs text-zinc-500"
+									title={`Source: ${node.sourceGroup ?? "Other"}`}
+								>
+									Source: {node.sourceGroup ?? "Other"}
+								</span>
+								<RawSourceDetail
+									node={node}
+									sourceSystemId={sourceSystemId}
+									systemNames={systemNames}
+									landscapeData={landscapeData}
+								/>
 							</span>
 						) : canInlineChange ? (
 							<RecipeDropdown
@@ -338,6 +428,9 @@ const TreeRow = memo(function TreeRow({
 						containerJumps={containerJumps}
 						batchSourceLocks={batchSourceLocks}
 						phaseLabelForBatchIds={phaseLabelForBatchIds}
+						sourceSystemId={sourceSystemId}
+						systemNames={systemNames}
+						landscapeData={landscapeData}
 						collapsedPaths={collapsedPaths}
 						toggleCollapsed={toggleCollapsed}
 						detailPaths={detailPaths}
@@ -359,9 +452,12 @@ export function BuildTree({
 	containerJumps,
 	batchSourceLocks,
 	phaseLabelForBatchIds,
+	sourceSystemId,
+	systemNames,
 }: BuildTreeProps) {
 	const nodes = useMemo(() => buildBatchTree(batch, data), [batch, data]);
 	const mergedLocks = useMemo(() => mergeLocks(queueLocks, batchLocks), [queueLocks, batchLocks]);
+	const landscapeData = useLandscapeData();
 	const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(() => new Set());
 	const [detailPaths, setDetailPaths] = useState<Set<string>>(() => new Set());
 
@@ -415,6 +511,9 @@ export function BuildTree({
 						containerJumps={containerJumps}
 						batchSourceLocks={batchSourceLocks}
 						phaseLabelForBatchIds={phaseLabelForBatchIds}
+						sourceSystemId={sourceSystemId}
+						systemNames={systemNames}
+						landscapeData={landscapeData}
 						collapsedPaths={collapsedPaths}
 						toggleCollapsed={toggleCollapsed}
 						detailPaths={detailPaths}

@@ -1,4 +1,5 @@
 import type { Blueprint, BlueprintData, BlueprintInput } from "@/lib/bomTypes";
+import { loadGatherableNodeIds } from "@/lib/landscapeData";
 import { useEffect, useMemo, useState } from "react";
 
 /**
@@ -233,8 +234,9 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 				: ({} as Record<string, RawCategoryEntry>),
 		),
 		fetchStructures(),
+		loadGatherableNodeIds(),
 	])
-		.then(([types, facilities, groups, categories, structures]) => {
+		.then(([types, facilities, groups, categories, structures, landscapeGatherableIds]) => {
 			const volumeMap = new Map<number, number>();
 			const typeList: Array<{ id: number; name: string }> = [];
 			const typeNames = new Map<number, string>();
@@ -259,7 +261,7 @@ function fetchStaticGameData(): Promise<StaticGameData> {
 
 			const typeGroups = new Map<number, string>();
 			const typeCategories = new Map<number, string>();
-			const gatherableLeafIds = new Set<number>();
+			const gatherableLeafIds = new Set<number>(landscapeGatherableIds);
 			for (const [typeId, groupId] of typeGroupIds) {
 				const group = groupMap.get(groupId);
 				if (group) {

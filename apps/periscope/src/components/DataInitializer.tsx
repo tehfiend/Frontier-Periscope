@@ -3,12 +3,13 @@ import { CHAIN_ENABLED } from "@/featureFlags";
 import { useManifestAutoSync } from "@/hooks/useManifestAutoSync";
 import { usePrivateMapAutoDecrypt } from "@/hooks/usePrivateMapAutoDecrypt";
 import { checkCycleReset } from "@/lib/cycleReset";
+import { loadLandscapeData } from "@/lib/landscapeData";
 import { GAME_TYPES_VERSION, fetchAndStoreGameTypes } from "@/lib/worldApi";
 import { useAppStore } from "@/stores/appStore";
 import { Loader2, Telescope } from "lucide-react";
 import { useEffect, useState } from "react";
 
-const STELLAR_DATA_VERSION = "3.0.0";
+const STELLAR_DATA_VERSION = "3.1.0";
 
 export function DataInitializer({ children }: { children: React.ReactNode }) {
 	const [ready, setReady] = useState(false);
@@ -65,6 +66,7 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 		// Background: ensure the star-map dataset is present/current. Deferred off the startup
 		// critical path; see docs/plans/deferred/34-starmap-data-refresh.md.
 		void loadStellarData();
+		void loadLandscapeData();
 
 		// Background: fetch game types from World API (non-blocking)
 		const typesMeta = await db.cacheMetadata.get("gameTypes");

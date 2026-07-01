@@ -70,6 +70,8 @@ interface BatchCardProps {
 	containerJumps?: Map<string, number | undefined>;
 	/** Solar systems for the per-batch location picker (plan 41 B4 -- reuses the queue SystemSearch). */
 	systems: SolarSystem[];
+	/** Solar system id -> display name for source-site details. */
+	systemNames?: Map<number, string>;
 	/** Per-unit item volume (m3) by typeId -- with haulJumps, costs this batch's sourcing-plan haul (B4). */
 	volumeMap: Map<number, number>;
 	/** Gate-jumps from THIS batch's location (else the queue) to each container, for the haul readout. */
@@ -92,6 +94,7 @@ export function BatchCard({
 	containerLabels,
 	containerJumps,
 	systems,
+	systemNames,
 	volumeMap,
 	haulJumps,
 }: BatchCardProps) {
@@ -100,6 +103,7 @@ export function BatchCard({
 	const prevBatchId = index > 0 ? batches[index - 1]?.id : undefined;
 	// Queue location this batch inherits when it sets none -- shown as the location picker's placeholder.
 	const inheritedSystemId = queue.location?.systemId;
+	const effectiveSystemId = batch.location?.systemId ?? inheritedSystemId ?? null;
 	const inheritedSystemName =
 		inheritedSystemId != null
 			? (systems.find((s) => s.id === inheritedSystemId)?.name ?? `#${inheritedSystemId}`)
@@ -336,6 +340,8 @@ export function BatchCard({
 								batchSourceLocks={batch.sourceLocks}
 								volumeMap={volumeMap}
 								haulJumps={haulJumps}
+								sourceSystemId={effectiveSystemId}
+								systemNames={systemNames}
 							/>
 						</div>
 					)}

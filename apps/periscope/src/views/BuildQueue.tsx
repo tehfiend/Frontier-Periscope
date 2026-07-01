@@ -251,6 +251,10 @@ export function BuildQueue() {
 	const fieldUnits = useLiveQuery(() => db.fieldStorageUnits.toArray(), []);
 	const solarSystems = useLiveQuery(() => db.solarSystems.toArray(), []) ?? [];
 	const jumps = useLiveQuery(() => db.jumps.toArray(), []);
+	const systemNames = useMemo(
+		() => new Map(solarSystems.map((system) => [system.id, system.name ?? `#${system.id}`])),
+		[solarSystems],
+	);
 
 	// Static gate graph (db.jumps) for container distance ranking (plan 39 Phase 5). Built once per data
 	// load; null until the jump table is available.
@@ -872,6 +876,8 @@ export function BuildQueue() {
 										queueId={activeQueue.id}
 										batchId={null}
 										queueLocks={activeQueue.recipeLocks}
+										sourceSystemId={queueSystemId}
+										systemNames={systemNames}
 									/>
 								</PlanSubsection>
 							)}
@@ -993,6 +999,7 @@ export function BuildQueue() {
 										containerLabels={baseContainerLabels}
 										containerJumps={containerJumps}
 										systems={solarSystems}
+										systemNames={systemNames}
 										volumeMap={volumeMap}
 										haulJumps={haulJumpsByBatch.get(batch.id)}
 									/>

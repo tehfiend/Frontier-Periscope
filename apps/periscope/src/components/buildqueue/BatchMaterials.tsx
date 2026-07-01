@@ -45,6 +45,10 @@ interface BatchMaterialsProps {
 	volumeMap?: Map<number, number>;
 	/** Gate-jumps from THIS batch's location (else the queue) to each container, for the haul readout. */
 	haulJumps?: Map<string, number | undefined>;
+	/** Effective source-site origin: batch location when set, else queue location. */
+	sourceSystemId?: number | null;
+	/** Solar system id -> display name for source-site details. */
+	systemNames?: Map<number, string>;
 }
 
 function Subsection({
@@ -84,6 +88,8 @@ export function BatchMaterials({
 	batchSourceLocks,
 	volumeMap,
 	haulJumps,
+	sourceSystemId,
+	systemNames,
 }: BatchMaterialsProps) {
 	// EFFECTIVE locks (batch overrides queue per type) so the open-choice hint reflects batch-level steers.
 	const mergedLocks = mergeLocks(recipeLocks, batchLocks);
@@ -163,6 +169,8 @@ export function BatchMaterials({
 						containerJumps={containerJumps}
 						batchSourceLocks={batchSourceLocks}
 						phaseLabelForBatchIds={phaseLabelForBatchIds}
+						sourceSystemId={sourceSystemId}
+						systemNames={systemNames}
 					/>
 				</Subsection>
 			)}

@@ -31,6 +31,7 @@ export interface BuildTreeNode {
 	volume: number;
 	volumeMissing: boolean;
 	isGatherableLeaf: boolean;
+	siteSourceTypeId?: number;
 	sourceGroup?: string;
 	sourceBatchIds?: string[];
 	stockShownElsewhere: boolean;
@@ -321,6 +322,7 @@ export function buildBatchTree(batch: BuildTreeBatch, data: BuildTreeData): Buil
 			volume,
 			volumeMissing,
 			isGatherableLeaf,
+			siteSourceTypeId: tier === "raw" ? typeId : undefined,
 			sourceGroup,
 			sourceBatchIds: allocation.sourceBatchIds,
 			stockShownElsewhere: allocation.stockShownElsewhere,

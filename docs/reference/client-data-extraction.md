@@ -14,7 +14,14 @@ Two categories of data are extracted:
 | Category | Script | Output | What Changes Between Cycles |
 |----------|--------|--------|-----------------------------|
 | Static data | `scripts/extract_static_data.py` | `apps/periscope/public/data/*.json` | New item types, groups, blueprints, celestials |
+| Landscape source data | `scripts/extract_landscape.py` | `apps/periscope/public/data/{gatherable_nodes,material_sources,system_resources,extraction_meta_landscape}.json` | Site/resource ecosystem mapping, harvestable node IDs, system state |
 | Item icons | `scripts/extract_icons.py` | `apps/periscope/public/icons/` | New/updated item art, CDN icon availability |
+
+> **Cycle 6 landscape / site / resource data** (the warp-to sites filling each system, what ore/salvage
+> spawns at them, and the NPC/dormant gate network) lives in additional client static files
+> (`landscape`/`ecosystem`/`dungeons`/`systemstate` fsdbinary). It is client-static-only -- not on chain,
+> not exposed by any API (the old REST World API host is dead). Full findings + the raw-material -> site
+> mapping are in **`reference/landscape-site-data.md`**; the extractor shipped with Plan 40.
 
 ---
 
@@ -40,6 +47,33 @@ C:\CCP\EVE Frontier\
   index_stillness.txt
   index_utopia.txt
 ```
+
+---
+
+## Landscape / Source-Site Extraction
+
+`scripts/extract_landscape.py` mirrors the static/game-data extractor toolchain: it runs under
+`py -3.12`, inserts `C:\CCP\EVE Frontier\stillness\bin64` for the client `.pyd` loaders, resolves all
+`res:/staticdata/...` inputs from the live `stillness/resfileindex.txt`, decodes cfsd dict/list values,
+and resolves `*NameID` fields through `localization_fsd_en-us.pickle`.
+
+Run it after the starmap/static refresh when the client build changes:
+
+```bash
+py -3.12 scripts/extract_landscape.py
+```
+
+Outputs in `apps/periscope/public/data/`:
+
+| File | Contents |
+|------|----------|
+| `gatherable_nodes.json` | Authoritative harvestable node typeId set from dungeon objects, unioned with the required byproduct-masked ore IDs `77800`, `78446`, and `78448`. |
+| `material_sources.json` | Per material typeId: tier (`tier1` mineable/salvage, `tier2` rogue-drone site hint, `tier3` unknown), source label/caveat, source ecosystem IDs, and source system count. |
+| `system_resources.json` | Compact per-system inverse index. Rows use bitmasks over `materialTypeIds`, `ecosystemIds`, and `tagLegend` to keep the bundle small. |
+| `extraction_meta_landscape.json` | Build number, resfile provenance, counts, ore-group-hop validation, required byproduct-node status, and unmapped raws. |
+
+The emitted indexes are aggregate "where to look" data, not per-site rows and not yield estimates.
+Tier 2 rogue-drone components are intentionally caveated because no static loot/drop table exists.
 
 ---
 
@@ -270,7 +304,11 @@ When a new cycle launches with updated game client:
    ```bash
    py scripts/extract_static_data.py
    ```
-3. **Delete old icons** and re-run icon extraction:
+3. **Re-run landscape/source-site extraction**:
+   ```bash
+   py -3.12 scripts/extract_landscape.py
+   ```
+4. **Delete old icons** and re-run icon extraction:
    ```bash
    rm -rf apps/periscope/public/icons/items
    rm -rf apps/periscope/public/icons/renders
@@ -278,15 +316,15 @@ When a new cycle launches with updated game client:
    py scripts/extract_icons.py --sizes 64,128 --no-background --cdn --manifest \
      --include-types scripts/extra_type_ids.json
    ```
-4. **Verify coverage** -- check the summary output. If new items are missing:
+5. **Verify coverage** -- check the summary output. If new items are missing:
    - New iconIDs may need the FSD parsing heuristic adjusted
    - New graphicIDs just need a fresh resfileindex parse (automatic)
    - Check if more items now have CDN `iconUrl` values
-5. **Diff the manifest** to see what changed:
+6. **Diff the manifest** to see what changed:
    ```bash
    git diff apps/periscope/public/icons/manifest.json
    ```
-6. **Commit** the updated icons and manifest
+7. **Commit** the updated icons and manifest
 
 ### What Can Break Between Cycles
 

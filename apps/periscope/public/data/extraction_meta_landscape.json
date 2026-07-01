@@ -1,0 +1,248 @@
+{
+  "version": "1.0.0",
+  "source": "EVE Frontier client static data",
+  "build": "3417713",
+  "server": "stillness",
+  "extractedAt": "2026-07-01T15:06:10Z",
+  "extractionTimeSeconds": 6.49,
+  "resfiles": {
+    "landscape": "39/39d10bff4aa7aff2_582ba73f6f0ae981c1894dfb28817e64",
+    "ecosystem": "14/1491b012e145b6b1_7ca438dfa8ba4d6337d6f5bcfc3c71f0",
+    "dungeons": "f4/f4992887a8a2937e_b68aeef1b43cade33bd79c493f6a1264",
+    "systemstate": "ad/add2717bcc42e31f_ec715c7a10794c7fd913c9e92f079382",
+    "types": "3c/3cc5bf8ff5e9099a_ed8047a445f2400b40e597c6c9658cb0",
+    "groups": "b1/b198644fdc5397f3_f7ae142f03c1bd211532b2f5d51f4b2e",
+    "categories": "81/81883d3b3f883f8f_55a43a746ace8d937f8a08ce4a771711",
+    "industry_blueprints": "c4/c41a791d1ef13a50_ade73e8ee81dcd6914f77990fa7abed6",
+    "spacecomponentsbytype": "f2/f26def0295b69084_862d840122ab07dd8d5496b28268e398",
+    "typematerials": "66/66c8b3f32a0b893b_30f6802a610d81046499d5885732ff73"
+  },
+  "counts": {
+    "landscapeSystems": 23736,
+    "systemsWithResources": 23736,
+    "sites": 113253,
+    "ecosystems": 20,
+    "dungeons": 313,
+    "rawLeafMaterials": 34,
+    "materialSourceRecords": 37,
+    "gatherableNodeTypeIds": 39,
+    "tier1": 21,
+    "tier2": 5,
+    "tier3": 11,
+    "unmapped": 16,
+    "typematerialEntries": 5
+  },
+  "requiredByproductNodes": {
+    "expectedTypeIds": [
+      77800,
+      78446,
+      78448
+    ],
+    "present": [
+      77800,
+      78446,
+      78448
+    ],
+    "directRoomObjectTypeIds": [
+      77800
+    ],
+    "viaValidatedOreGroupParent": [
+      78446,
+      78448
+    ]
+  },
+  "oreGroupHopValidation": [
+    {
+      "materialTypeId": 77810,
+      "materialName": "Platinum-Palladium Matrix",
+      "oreGroup": "Slag Ores",
+      "parentTypeId": 91375,
+      "parentName": "Slag",
+      "status": "validated"
+    },
+    {
+      "materialTypeId": 77811,
+      "materialName": "Hydrated Sulfide Matrix",
+      "oreGroup": "Comet Ores",
+      "parentTypeId": 91377,
+      "parentName": "Comet",
+      "status": "validated"
+    },
+    {
+      "materialTypeId": 78426,
+      "materialName": "Iridosmine Nodules",
+      "oreGroup": "Ingot Ores",
+      "parentTypeId": 91376,
+      "parentName": "Ingot",
+      "status": "validated"
+    },
+    {
+      "materialTypeId": 78446,
+      "materialName": "Methane Ice Shards",
+      "oreGroup": "Dewdrop Ores",
+      "parentTypeId": 91378,
+      "parentName": "Dewdrop",
+      "status": "validated"
+    },
+    {
+      "materialTypeId": 78447,
+      "materialName": "Primitive Kerogen Matrix",
+      "oreGroup": "Ember Ores",
+      "parentTypeId": 91379,
+      "parentName": "Ember",
+      "status": "validated"
+    },
+    {
+      "materialTypeId": 78448,
+      "materialName": "Aromatic Carbon Veins",
+      "oreGroup": "Glint Ores",
+      "parentTypeId": 91380,
+      "parentName": "Glint",
+      "status": "validated"
+    },
+    {
+      "materialTypeId": 78449,
+      "materialName": "Tholin Nodules",
+      "oreGroup": "Soot Ores",
+      "parentTypeId": 91381,
+      "parentName": "Soot",
+      "status": "validated"
+    }
+  ],
+  "unmappedRaws": [
+    {
+      "typeId": 83899,
+      "typeName": "Catalytic Dust",
+      "groupName": "Rogue Drone Components",
+      "tier": "tier2",
+      "label": "found in sites with rogue drones",
+      "reason": "Static data identifies rogue-drone site types, but no loot/drop table attributes this component to a specific NPC."
+    },
+    {
+      "typeId": 83893,
+      "typeName": "Eclipsite",
+      "groupName": "Rogue Drone Components",
+      "tier": "tier2",
+      "label": "found in sites with rogue drones",
+      "reason": "Static data identifies rogue-drone site types, but no loot/drop table attributes this component to a specific NPC."
+    },
+    {
+      "typeId": 83891,
+      "typeName": "Gravionite",
+      "groupName": "Rogue Drone Components",
+      "tier": "tier2",
+      "label": "found in sites with rogue drones",
+      "reason": "Static data identifies rogue-drone site types, but no loot/drop table attributes this component to a specific NPC."
+    },
+    {
+      "typeId": 83892,
+      "typeName": "Luminalis",
+      "groupName": "Rogue Drone Components",
+      "tier": "tier2",
+      "label": "found in sites with rogue drones",
+      "reason": "Static data identifies rogue-drone site types, but no loot/drop table attributes this component to a specific NPC."
+    },
+    {
+      "typeId": 83894,
+      "typeName": "Radiantium",
+      "groupName": "Rogue Drone Components",
+      "tier": "tier2",
+      "label": "found in sites with rogue drones",
+      "reason": "Static data identifies rogue-drone site types, but no loot/drop table attributes this component to a specific NPC."
+    },
+    {
+      "typeId": 89989,
+      "typeName": "Stack Slice 31F",
+      "groupName": "Miscellaneous",
+      "tier": "tier3",
+      "label": "source unknown",
+      "reason": "No landscape/source-site mapping in static data."
+    },
+    {
+      "typeId": 89986,
+      "typeName": "Stack Slice 31P",
+      "groupName": "Miscellaneous",
+      "tier": "tier3",
+      "label": "source unknown",
+      "reason": "No landscape/source-site mapping in static data."
+    },
+    {
+      "typeId": 89988,
+      "typeName": "Stack Slice 31Q",
+      "groupName": "Miscellaneous",
+      "tier": "tier3",
+      "label": "source unknown",
+      "reason": "No landscape/source-site mapping in static data."
+    },
+    {
+      "typeId": 89987,
+      "typeName": "Stack Slice 31V",
+      "groupName": "Miscellaneous",
+      "tier": "tier3",
+      "label": "source unknown",
+      "reason": "No landscape/source-site mapping in static data."
+    },
+    {
+      "typeId": 89984,
+      "typeName": "Stack Slice 5C0",
+      "groupName": "Miscellaneous",
+      "tier": "tier3",
+      "label": "source unknown",
+      "reason": "No landscape/source-site mapping in static data."
+    },
+    {
+      "typeId": 89985,
+      "typeName": "Stack Slice 5C1",
+      "groupName": "Miscellaneous",
+      "tier": "tier3",
+      "label": "source unknown",
+      "reason": "No landscape/source-site mapping in static data."
+    },
+    {
+      "typeId": 89983,
+      "typeName": "Stack Slice 5DE",
+      "groupName": "Miscellaneous",
+      "tier": "tier3",
+      "label": "source unknown",
+      "reason": "No landscape/source-site mapping in static data."
+    },
+    {
+      "typeId": 89982,
+      "typeName": "Stack Slice 5DK",
+      "groupName": "Miscellaneous",
+      "tier": "tier3",
+      "label": "source unknown",
+      "reason": "No landscape/source-site mapping in static data."
+    },
+    {
+      "typeId": 89981,
+      "typeName": "Stack Slice 5DW",
+      "groupName": "Miscellaneous",
+      "tier": "tier3",
+      "label": "source unknown",
+      "reason": "No landscape/source-site mapping in static data."
+    },
+    {
+      "typeId": 89980,
+      "typeName": "Stack Slice 5DZ",
+      "groupName": "Miscellaneous",
+      "tier": "tier3",
+      "label": "source unknown",
+      "reason": "No landscape/source-site mapping in static data."
+    },
+    {
+      "typeId": 89087,
+      "typeName": "Synod Technocore",
+      "groupName": "Manufacturing Component",
+      "tier": "tier3",
+      "label": "source unknown",
+      "reason": "No landscape/source-site mapping in static data."
+    }
+  ],
+  "notes": [
+    "Tier 1 is mineable/salvage-site mapped.",
+    "Tier 2 identifies rogue-drone site types only; no static loot/drop table exists.",
+    "Tier 3 is not landscape-sourced or has no validated static source.",
+    "System rows are aggregate source-system summaries, not per-site records."
+  ]
+}

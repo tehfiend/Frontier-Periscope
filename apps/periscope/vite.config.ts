@@ -1,8 +1,8 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
-import { resolve } from "path";
 import { APP_VERSION } from "./src/version";
 
 export default defineConfig({
@@ -28,7 +28,12 @@ export default defineConfig({
 				icons: [
 					{ src: "/icons/icon-192.svg", sizes: "192x192", type: "image/svg+xml" },
 					{ src: "/icons/icon-512.svg", sizes: "512x512", type: "image/svg+xml" },
-					{ src: "/icons/icon-512.svg", sizes: "512x512", type: "image/svg+xml", purpose: "maskable" },
+					{
+						src: "/icons/icon-512.svg",
+						sizes: "512x512",
+						type: "image/svg+xml",
+						purpose: "maskable",
+					},
 				],
 				shortcuts: [
 					{ name: "Star Map", url: "/map", description: "3D star map with route planner" },
@@ -45,7 +50,7 @@ export default defineConfig({
 						urlPattern: /\/data\/.*\.json$/,
 						handler: "CacheFirst",
 						options: {
-							cacheName: "static-data-cycle6",
+							cacheName: "static-data-cycle6-plan40",
 							expiration: { maxAgeSeconds: 7 * 24 * 60 * 60 },
 						},
 					},
@@ -78,7 +83,8 @@ export default defineConfig({
 						id.includes("node_modules/dexie") ||
 						id.includes("node_modules/zustand") ||
 						id.includes("node_modules/lucide-react")
-					) return "vendor";
+					)
+						return "vendor";
 				},
 			},
 		},
