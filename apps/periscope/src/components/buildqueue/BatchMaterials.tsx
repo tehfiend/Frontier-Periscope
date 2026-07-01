@@ -7,8 +7,8 @@
 // optimizer-DERIVED intermediates (authored Target jobs live in the batch card's job rows).
 
 import { ItemIcon } from "@/components/ItemIcon";
+import { BuildTree } from "@/components/buildqueue/BuildTree";
 import { DepositsTable, projectBatchDeposits } from "@/components/buildqueue/DepositsTable";
-import { BuildChoiceTable, RawSourceTable } from "@/components/buildqueue/InputDrillDown";
 import { SourcingPlanTable } from "@/components/buildqueue/SourcingPlanTable";
 import {
 	type QueueBlueprintData,
@@ -90,7 +90,7 @@ export function BatchMaterials({
 	const openChoiceCount = batchOpenChoiceCount(batch, mergedLocks);
 	const buildHint =
 		openChoiceCount > 0
-			? `${openChoiceCount} choice${openChoiceCount === 1 ? "" : "s"} to make`
+			? `${openChoiceCount} default choice${openChoiceCount === 1 ? "" : "s"} shown; click to change`
 			: undefined;
 
 	// Deposits projection (plan 41 B0): where this batch's outputs land (effective outputDest cascade).
@@ -106,6 +106,26 @@ export function BatchMaterials({
 		!globalMode && activeQueue && rawBatch
 			? projectBatchDeposits(batch, activeQueue, rawBatch)
 			: [];
+	const phaseLabelForBatchIds = (batchIds: string[]): string => {
+		const indexes = batchIds
+			.map((id) => activeQueue?.batches.findIndex((b) => b.id === id) ?? -1)
+			.filter((index) => index >= 0)
+			.map((index) => index + 1);
+		if (indexes.length === 0) return "earlier phase";
+		if (indexes.length === 1) return `phase ${indexes[0]}`;
+		return `phases ${indexes.join(", ")}`;
+	};
+	const surplusConsumersByType = new Map<number, string>();
+	for (const surplus of batch.surplus) {
+		const consumerIds = new Set<string>();
+		for (const deposit of batch.deposits) {
+			if (deposit.typeId !== surplus.typeId) continue;
+			for (const id of deposit.consumerBatchIds ?? []) consumerIds.add(id);
+		}
+		if (consumerIds.size > 0) {
+			surplusConsumersByType.set(surplus.typeId, phaseLabelForBatchIds([...consumerIds]));
+		}
+	}
 
 	const hasSourcingPlan = (sourcingPlan?.length ?? 0) > 0;
 	const hasAnything =
@@ -130,9 +150,20 @@ export function BatchMaterials({
 
 	return (
 		<div className="space-y-3 px-4 pb-4">
-			{batch.gather.length > 0 && (
-				<Subsection title="Gather (raw materials)" count={batch.gather.length}>
-					<RawSourceTable items={batch.gather} typeGroups={data.typeGroups} />
+			{(batch.gather.length > 0 || batch.build.length > 0 || batch.fromUpstream.length > 0) && (
+				<Subsection title="Build path" count={batch.jobs.length} hint={buildHint}>
+					<BuildTree
+						batch={batch}
+						data={data}
+						queueId={queueId}
+						batchId={batch.batchId}
+						queueLocks={recipeLocks}
+						batchLocks={batchLocks}
+						containers={containers}
+						containerJumps={containerJumps}
+						batchSourceLocks={batchSourceLocks}
+						phaseLabelForBatchIds={phaseLabelForBatchIds}
+					/>
 				</Subsection>
 			)}
 
@@ -161,26 +192,6 @@ export function BatchMaterials({
 				</Subsection>
 			)}
 
-			{batch.build.length > 0 && (
-				<Subsection
-					title="Build (derived intermediates)"
-					count={batch.build.length}
-					hint={buildHint}
-				>
-					<BuildChoiceTable
-						items={batch.build}
-						data={data}
-						queueId={queueId}
-						batchId={batch.batchId}
-						queueLocks={recipeLocks}
-						batchLocks={batchLocks}
-						containers={containers}
-						containerJumps={containerJumps}
-						batchSourceLocks={batchSourceLocks}
-					/>
-				</Subsection>
-			)}
-
 			{batch.fromUpstream.length > 0 && (
 				<Subsection title="From upstream (earlier batches)" count={batch.fromUpstream.length}>
 					<table className="w-full text-sm">
@@ -198,6 +209,11 @@ export function BatchMaterials({
 										<span className="flex items-center gap-2">
 											<ItemIcon typeId={item.typeId} />
 											{item.typeName}
+											{item.sourceBatchIds && item.sourceBatchIds.length > 0 && (
+												<span className="shrink-0 rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] text-cyan-300">
+													from {phaseLabelForBatchIds(item.sourceBatchIds)}
+												</span>
+											)}
 										</span>
 									</td>
 									<td className="px-4 py-2 text-right font-mono text-cyan-400">
@@ -219,7 +235,7 @@ export function BatchMaterials({
 					count={batch.surplus.length}
 					hint="available to later batches"
 				>
-					<SurplusTable items={batch.surplus} />
+					<SurplusTable items={batch.surplus} consumerLabelsByType={surplusConsumersByType} />
 				</Subsection>
 			)}
 		</div>

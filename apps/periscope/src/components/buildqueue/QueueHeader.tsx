@@ -21,7 +21,7 @@ import { GitFork } from "lucide-react";
 interface QueueHeaderProps {
 	queue: BuildQueue;
 	queues: BuildQueue[];
-	/** Distinct producible inputs across the queue with an open either/or choice (still on auto). */
+	/** Distinct producible inputs across the queue showing a changeable deterministic default. */
 	openChoiceCount?: number;
 	/** Solar systems for the location picker (plan 39 Phase 5 -- reuses the Phase 2 SystemSearch). */
 	systems: SolarSystem[];
@@ -179,10 +179,10 @@ export function QueueHeader({ queue, queues, openChoiceCount = 0, systems }: Que
 						{openChoiceCount > 0 && (
 							<span
 								className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300"
-								title="Producible inputs with more than one recipe still on the optimizer's auto pick -- expand a batch to choose"
+								title="Producible inputs with more than one recipe are showing the deterministic default -- click a build-path row to change"
 							>
 								<GitFork size={11} />
-								{openChoiceCount} choice{openChoiceCount === 1 ? "" : "s"}
+								{openChoiceCount} default{openChoiceCount === 1 ? "" : "s"}
 							</span>
 						)}
 					</div>

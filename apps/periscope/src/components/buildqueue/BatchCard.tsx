@@ -180,10 +180,10 @@ export function BatchCard({
 					{openChoices > 0 && (
 						<span
 							className="flex items-center gap-1 text-amber-400"
-							title="Producible inputs with more than one recipe still on the optimizer's auto pick -- expand the batch to choose"
+							title="Producible inputs with more than one recipe are showing the deterministic default -- expand the batch to change them"
 						>
 							<GitFork size={11} />
-							{openChoices} choice{openChoices === 1 ? "" : "s"}
+							{openChoices} default{openChoices === 1 ? "" : "s"}
 						</span>
 					)}
 					{result && !result.feasible && (

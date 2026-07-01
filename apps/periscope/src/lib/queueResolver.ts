@@ -111,6 +111,8 @@ export interface FromUpstreamItem {
 	quantity: number;
 	/** m3 (-1 when the type's volume is unknown). */
 	volume: number;
+	/** Earlier batches whose deposited output contributed to this draw, FIFO by execution order. */
+	sourceBatchIds?: string[];
 }
 
 /**
@@ -134,6 +136,8 @@ export interface DepositRecord {
 	typeName: string;
 	dest: ContainerRef;
 	qty: number;
+	/** Later batches that consumed some of this deposited output. Informational only. */
+	consumerBatchIds?: string[];
 }
 
 /**
@@ -142,6 +146,14 @@ export interface DepositRecord {
  * so the solver stays frozen / anonymous and Option B is purely an attribution layer over Option A.
  */
 export type ContainerPool = Map<string, Map<number, number>>;
+
+interface ProvenanceLedgerEntry {
+	batchId: string;
+	remaining: number;
+	record: DepositRecord;
+}
+
+type ProvenanceLedger = Map<number, ProvenanceLedgerEntry[]>;
 
 /**
  * The reserved terminal deposit bucket (plan 41, decision Q1a). Un-routed outputs land here; it sits at
@@ -648,6 +660,55 @@ export function allocate(
 	return { allocations, fromStock };
 }
 
+function appendUnique(list: string[] | undefined, value: string): string[] {
+	if (!list) return [value];
+	return list.includes(value) ? list : [...list, value];
+}
+
+function addDepositProvenance(
+	ledger: ProvenanceLedger,
+	batchId: string,
+	typeId: number,
+	qty: number,
+	record: DepositRecord,
+) {
+	if (qty <= 0) return;
+	let entries = ledger.get(typeId);
+	if (!entries) {
+		entries = [];
+		ledger.set(typeId, entries);
+	}
+	entries.push({ batchId, remaining: qty, record });
+}
+
+function consumeDepositProvenance(
+	ledger: ProvenanceLedger,
+	consumerBatchId: string,
+	typeId: number,
+	qty: number,
+): string[] | undefined {
+	if (qty <= 0) return undefined;
+	const entries = ledger.get(typeId);
+	if (!entries || entries.length === 0) return undefined;
+
+	const sourceBatchIds: string[] = [];
+	let remaining = qty;
+	while (remaining > 0 && entries.length > 0) {
+		const entry = entries[0];
+		const take = Math.min(entry.remaining, remaining);
+		if (take > 0) {
+			if (!sourceBatchIds.includes(entry.batchId)) sourceBatchIds.push(entry.batchId);
+			entry.record.consumerBatchIds = appendUnique(entry.record.consumerBatchIds, consumerBatchId);
+			entry.remaining -= take;
+			remaining -= take;
+		}
+		if (entry.remaining <= 0) entries.shift();
+		else break;
+	}
+
+	return sourceBatchIds.length > 0 ? sourceBatchIds : undefined;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function buildNameMap(blueprints: Record<string, Blueprint>): Map<number, string> {
@@ -836,12 +897,11 @@ function buildStockDrivenPins(
 	typeDemand: Map<number, number>,
 	firstRawConsumption: Map<number, number>,
 ): { pins: RecipePin[]; stockCaps: Map<number, number> } {
-	const { candidates: defaultCandidates, coneBpIds, coneTypes } = defaultPinCandidates(
-		orderItems,
-		ctx,
-		mergedLocks,
-		steering,
-	);
+	const {
+		candidates: defaultCandidates,
+		coneBpIds,
+		coneTypes,
+	} = defaultPinCandidates(orderItems, ctx, mergedLocks, steering);
 	const pinnedTypes = new Set(steering.pins.map((pin) => pin.typeId));
 	const candidates: StockPinCandidate[] = defaultCandidates.map((candidate) => ({
 		...candidate,
@@ -1151,6 +1211,7 @@ function bomToDisplayLists(
 	volumeMap: Map<number, number>,
 	nameMap: Map<number, string>,
 	authoredProductTypeIds: Set<number>,
+	sourceBatchIdsByType?: Map<number, string[]>,
 ): { gather: BomLineItem[]; build: BatchBuildItem[]; fromUpstream: FromUpstreamItem[] } {
 	const gather = bom.rawMaterials;
 	// Provenance merge (plan 39, decision 5): an intermediate the optimizer builds whose type is ALSO
@@ -1185,6 +1246,7 @@ function bomToDisplayLists(
 			typeName: nameMap.get(typeId) ?? `Type ${typeId}`,
 			quantity: qty,
 			volume: unitVol !== undefined ? qty * unitVol : -1,
+			sourceBatchIds: sourceBatchIdsByType?.get(typeId),
 		});
 	}
 	fromUpstream.sort((a, b) => a.typeName.localeCompare(b.typeName));
@@ -1272,9 +1334,19 @@ export function resolveQueue(
 	let totalRawVolume = 0;
 	let totalVolume = 0;
 	let allFeasible = true;
+	const provenanceLedger: ProvenanceLedger = new Map();
 
 	for (const batch of queue.batches) {
-		const batchResult = resolveBatch(batch, queue, bpData, ctx, pool, breakdown, nameMap);
+		const batchResult = resolveBatch(
+			batch,
+			queue,
+			bpData,
+			ctx,
+			pool,
+			breakdown,
+			nameMap,
+			provenanceLedger,
+		);
 		batches.push(batchResult);
 		totalTime += batchResult.time;
 		totalRawVolume += batchResult.rawVolume;
@@ -1314,6 +1386,7 @@ function resolveBatch(
 	pool: ContainerPool,
 	breakdown: StockBreakdown,
 	nameMap: Map<number, string>,
+	provenanceLedger: ProvenanceLedger,
 ): BatchResult {
 	// 1. Resolve jobs -> demand (sum of inputs), jobOutputs (sum of outputs), job run time. Each
 	// authored job becomes a "Target" JobResult keyed by its stable Job.id (the Phase 4 override key).
@@ -1409,6 +1482,13 @@ function resolveBatch(
 		usedExcludedSources = solved.usedExcludedSources;
 	}
 
+	const stockConsumed = bom.stockConsumed ?? new Map<number, number>();
+	const sourceBatchIdsByType = new Map<number, string[]>();
+	for (const [typeId, drawn] of stockConsumed) {
+		const sourceBatchIds = consumeDepositProvenance(provenanceLedger, batch.id, typeId, drawn);
+		if (sourceBatchIds) sourceBatchIdsByType.set(typeId, sourceBatchIds);
+	}
+
 	// 4. Build the batch's display lists from the BOM (gather / build / fromUpstream; D4 guard inside).
 	// Derived intermediates that coincide with an authored Target job's output merge away here.
 	const { gather, build, fromUpstream } = bomToDisplayLists(
@@ -1417,6 +1497,7 @@ function resolveBatch(
 		ctx.volumeMap,
 		nameMap,
 		authoredProductTypeIds,
+		sourceBatchIdsByType,
 	);
 
 	// 5. Advance the container-keyed carry-forward pool (plan 41 B1). FLATTENED, this reproduces the old
@@ -1425,8 +1506,6 @@ function resolveBatch(
 	// the LP (which only ever saw flatPool above) solves identically to Option A whether or not any
 	// outputDest is set. stockConsumed never exceeds the pool total (it is allocated from it), so each
 	// per-container draw sums to exactly `drawn` and the flattened result is `before_total - drawn`.
-	const stockConsumed = bom.stockConsumed ?? new Map<number, number>();
-
 	// 5a. DRAW. Pull stockConsumed from the source containers (priority cascade + spillover), then drain
 	// any remainder from the Unassigned bucket (cross-queue stock / un-routed prior deposits) so the pool
 	// fully reflects the consumption. Only the named-container portion is RECORDED (the Unassigned draw is
@@ -1489,8 +1568,13 @@ function resolveBatch(
 		bucket.set(typeId, (bucket.get(typeId) ?? 0) + qty);
 		const accKey = `${typeId}|${destKey}`;
 		const existing = depositAcc.get(accKey);
-		if (existing) existing.qty += qty;
-		else depositAcc.set(accKey, { typeId, typeName, dest, qty });
+		let record = existing;
+		if (record) record.qty += qty;
+		else {
+			record = { typeId, typeName, dest, qty };
+			depositAcc.set(accKey, record);
+		}
+		addDepositProvenance(provenanceLedger, batch.id, typeId, qty, record);
 	};
 
 	const deductRemaining = new Map(internalUse);

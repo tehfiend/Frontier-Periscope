@@ -40,7 +40,7 @@ import {
 } from "@/stores/buildQueueStore";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Scissors, Trash2 } from "lucide-react";
+import { GripVertical, Scissors, Trash2, Wrench } from "lucide-react";
 
 interface JobRowProps {
 	queueId: string;
@@ -78,6 +78,7 @@ export function JobRow({
 	const producers = productTypeId != null ? (data.outputToBlueprints.get(productTypeId) ?? []) : [];
 	const hasMultiple = producers.length > 1;
 	const units = job.runs * outputPerRun(bp);
+	const facilityNames = bp ? (data.blueprintFacilities.get(bp.blueprintID) ?? []) : [];
 
 	// Sortable: stable id within the DndContext (blueprintId is unique within a batch, so this never
 	// collides across batches). data lets BuildQueue resolve the move on drag end without a closure.
@@ -174,6 +175,16 @@ export function JobRow({
 						{getFacilityLabel(bp, data.blueprintFacilities)}
 					</span>
 				)
+			)}
+
+			{facilityNames.length > 0 && (
+				<span
+					className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300"
+					title={`This build needs facility ${facilityNames.join(", ")}. Facility ownership is not checked and batch order is manual.`}
+				>
+					<Wrench size={10} />
+					needs {facilityNames[0]}
+				</span>
 			)}
 
 			<RowSourceControl

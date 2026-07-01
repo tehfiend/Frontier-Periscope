@@ -13,12 +13,12 @@
 import { BomStockPanel, type SsuInventory } from "@/components/BomStockPanel";
 import { ItemIcon } from "@/components/ItemIcon";
 import { BatchCard } from "@/components/buildqueue/BatchCard";
+import { BuildTree } from "@/components/buildqueue/BuildTree";
 import {
 	type DepositRow,
 	DepositsTable,
 	depositRowsFromRecords,
 } from "@/components/buildqueue/DepositsTable";
-import { BuildChoiceTable, RawSourceTable } from "@/components/buildqueue/InputDrillDown";
 import { QueueHeader } from "@/components/buildqueue/QueueHeader";
 import { ScratchPadPanel } from "@/components/buildqueue/ScratchPadPanel";
 import { SourceOverridesPanel } from "@/components/buildqueue/SourceOverridesPanel";
@@ -43,6 +43,7 @@ import {
 } from "@/hooks/useBlueprintData";
 import type { Blueprint } from "@/lib/bomTypes";
 import type { Batch, BuildQueue as BuildQueueModel, ContainerRef } from "@/lib/buildQueueTypes";
+import type { BuildTreeBatch } from "@/lib/buildTree";
 import {
 	buildGateGraph,
 	containerJumpDistances,
@@ -429,6 +430,7 @@ export function BuildQueue() {
 			rawMaterialIds,
 			gatherableLeafIds,
 			salvageMaterialIds,
+			volumeMap,
 			blueprintFacilities,
 			typeGroups,
 			producibleItems,
@@ -440,6 +442,7 @@ export function BuildQueue() {
 			rawMaterialIds,
 			gatherableLeafIds,
 			salvageMaterialIds,
+			volumeMap,
 			blueprintFacilities,
 			typeGroups,
 			producibleItems,
@@ -559,6 +562,16 @@ export function BuildQueue() {
 		}
 		return queueOpenChoiceCount(resolved.batches, activeQueue.recipeLocks);
 	}, [resolved, activeQueue]);
+
+	const globalTreeBatch = useMemo<BuildTreeBatch | null>(() => {
+		if (!resolved?.global) return null;
+		return {
+			jobs: resolved.batches.flatMap((batch) => batch.jobs),
+			gather: resolved.global.gather,
+			build: resolved.global.build,
+			fromUpstream: resolved.global.fromUpstream,
+		};
+	}, [resolved]);
 
 	const batchRefs = useMemo<BatchRef[]>(
 		() =>
@@ -848,11 +861,20 @@ export function BuildQueue() {
 							</div>
 						</div>
 
-						{globalPlan.gather.length > 0 && (
-							<PlanSubsection title="Gather (raw materials)" count={globalPlan.gather.length}>
-								<RawSourceTable items={globalPlan.gather} typeGroups={data.typeGroups} />
-							</PlanSubsection>
-						)}
+						{globalTreeBatch &&
+							(globalPlan.gather.length > 0 ||
+								globalPlan.build.length > 0 ||
+								globalPlan.fromUpstream.length > 0) && (
+								<PlanSubsection title="Build path" count={globalTreeBatch.jobs.length}>
+									<BuildTree
+										batch={globalTreeBatch}
+										data={data}
+										queueId={activeQueue.id}
+										batchId={null}
+										queueLocks={activeQueue.recipeLocks}
+									/>
+								</PlanSubsection>
+							)}
 
 						{sourcingPlan?.global && sourcingPlan.global.length > 0 && (
 							<PlanSubsection
@@ -864,17 +886,6 @@ export function BuildQueue() {
 									containerLabels={baseContainerLabels}
 									volumeMap={volumeMap}
 									haulJumps={containerJumps}
-								/>
-							</PlanSubsection>
-						)}
-
-						{globalPlan.build.length > 0 && (
-							<PlanSubsection title="Build (derived intermediates)" count={globalPlan.build.length}>
-								<BuildChoiceTable
-									items={globalPlan.build}
-									data={data}
-									queueId={activeQueue.id}
-									queueLocks={activeQueue.recipeLocks}
 								/>
 							</PlanSubsection>
 						)}

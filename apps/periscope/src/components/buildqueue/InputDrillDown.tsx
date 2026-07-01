@@ -28,11 +28,11 @@ import { Fragment, useState } from "react";
 
 // ── Shared cell helpers (consistent Need / Have / Still Need / Volume formatting) ──
 
-function NeedCell({ value }: { value: number }) {
+export function NeedCell({ value }: { value: number }) {
 	return <td className="px-4 py-2 text-right font-mono text-zinc-400">{value.toLocaleString()}</td>;
 }
 
-function HaveCell({ value }: { value: number }) {
+export function HaveCell({ value }: { value: number }) {
 	return (
 		<td className="px-4 py-2 text-right font-mono text-cyan-400">
 			{value > 0 ? value.toLocaleString() : "--"}
@@ -40,7 +40,7 @@ function HaveCell({ value }: { value: number }) {
 	);
 }
 
-function StillNeedCell({ value }: { value: number }) {
+export function StillNeedCell({ value }: { value: number }) {
 	return (
 		<td
 			className={`px-4 py-2 text-right font-mono ${
@@ -52,7 +52,7 @@ function StillNeedCell({ value }: { value: number }) {
 	);
 }
 
-function VolumeCell({ item }: { item: BomLineItem }) {
+export function VolumeCell({ item }: { item: Pick<BomLineItem, "volume" | "volumeMissing"> }) {
 	return (
 		<td className="px-4 py-2 text-right">
 			{item.volumeMissing ? (

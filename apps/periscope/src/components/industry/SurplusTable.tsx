@@ -6,9 +6,10 @@ import { AlertTriangle } from "lucide-react";
 
 export interface SurplusTableProps {
 	items: BomSurplus[];
+	consumerLabelsByType?: Map<number, string>;
 }
 
-export function SurplusTable({ items }: SurplusTableProps) {
+export function SurplusTable({ items, consumerLabelsByType }: SurplusTableProps) {
 	if (items.length === 0) {
 		return <div className="px-4 py-3 text-xs text-zinc-600">No surplus co-products</div>;
 	}
@@ -31,6 +32,11 @@ export function SurplusTable({ items }: SurplusTableProps) {
 							<span className="flex items-center gap-2">
 								<ItemIcon typeId={item.typeId} />
 								{item.typeName}
+								{consumerLabelsByType?.get(item.typeId) && (
+									<span className="shrink-0 rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] text-cyan-300">
+										used by {consumerLabelsByType.get(item.typeId)}
+									</span>
+								)}
 							</span>
 						</td>
 						<td className="px-4 py-2 text-xs text-zinc-500">{item.source ?? "--"}</td>

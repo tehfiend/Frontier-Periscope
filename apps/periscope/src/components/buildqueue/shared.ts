@@ -23,6 +23,8 @@ export interface QueueBlueprintData {
 	gatherableLeafIds: Set<number>;
 	/** Salvage leaf typeIDs (full set) -- material source labels. */
 	salvageMaterialIds: Set<number>;
+	/** Per-unit item volume by typeID. */
+	volumeMap: Map<number, number>;
 	/** blueprintID -> live facility names (for the facility label in the recipe dropdown). */
 	blueprintFacilities: Map<number, string[]>;
 	/** typeID -> source group name (for the gather material-table source column). */
@@ -80,11 +82,11 @@ export function resolveBlueprintForProduct(
 	return data.defaultRecipes.get(typeId) ?? data.outputToBlueprints.get(typeId)?.[0]?.blueprintID;
 }
 
-// ── Either/or "open choice" accounting ────────────────────────────────────────
-// A producible input is an "open choice" when more than one recipe can build it AND the user has
-// NOT steered it yet -- so it is still on the optimizer's auto pick. These power the "N choices"
-// indicators that tell early-game users a decision is available without hunting for it. (These count
-// optimizer-DERIVED build rows; authored Target jobs are not part of the open-choice tally.)
+// ── Default-choice accounting ─────────────────────────────────────────────────
+// A producible input is counted when more than one recipe can build it AND the user has NOT steered it
+// yet. The plan is still decided by deterministic defaults; these counts only advertise that the
+// visible default can be clicked and changed. (These count optimizer-DERIVED build rows; authored
+// Target jobs are not part of the tally.)
 
 /**
  * True when a recipe lock actively steers a type -- it pins a recipe, prefers one, or eliminates
@@ -97,14 +99,14 @@ export function isRecipeSteered(typeId: number, recipeLocks: RecipeLockEntry[]):
 	return entry.pin != null || (entry.prefer?.length ?? 0) > 0 || (entry.exclude?.length ?? 0) > 0;
 }
 
-/** Producible inputs in a batch with >1 recipe that are still on the optimizer's auto pick. */
+/** Producible inputs in a batch with >1 recipe that are still showing the deterministic default. */
 export function batchOpenChoiceCount(batch: BatchResult, recipeLocks: RecipeLockEntry[]): number {
 	return batch.build.filter(
 		(b) => b.alternativeBlueprintIds.length > 1 && !isRecipeSteered(b.typeId, recipeLocks),
 	).length;
 }
 
-/** Distinct producible typeIDs across all batches that are still open either/or choices. */
+/** Distinct producible typeIDs across all batches that are still showing the deterministic default. */
 export function queueOpenChoiceCount(
 	batches: BatchResult[],
 	recipeLocks: RecipeLockEntry[],
