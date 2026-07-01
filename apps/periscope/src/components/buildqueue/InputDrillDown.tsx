@@ -1,24 +1,28 @@
 // Input drill-down tables -- plan 36 (industry-build-queue), Phase 7 + F2 + D9.
-// The interactive material lists inside a step's materials summary:
+// The interactive material lists inside a batch's materials summary:
 //   - BuildChoiceTable: producible inputs. Each row shows the chosen-recipe chip (via
 //     formatOptionLabel) -- or a "Split" chip when a split pin is set -- and, when more than one
 //     recipe can build it, an "either/or" badge that expands to RecipeAlternatives (lock / prefer /
-//     eliminate / split, scoped to this step or the whole queue -- see RecipeAlternatives + SplitEditor).
-//   - RawSourceTable: raw / leaf inputs. Each row shows its source group with an inline
-//     prefer/avoid/exclude control (RawSourceControl) that writes queue.sourcePrefs by GROUP -- so it
-//     steers that whole source group across every step, not just this row (D9: label/tooltip say so).
+//     eliminate / split, scoped to this batch or the whole queue -- see RecipeAlternatives + SplitEditor).
+//   - RawSourceTable: raw / leaf inputs. Each row shows its source group read-only.
 // Each row keeps the Need / Have / Still Need / Volume columns so the numbers read at a glance.
 
 import { ItemIcon } from "@/components/ItemIcon";
-import { RawSourceControl } from "@/components/buildqueue/RawSourceControl";
+import { OutputDestControl } from "@/components/buildqueue/OutputDestControl";
 import { RecipeAlternatives } from "@/components/buildqueue/RecipeAlternatives";
+import { RowSourceControl } from "@/components/buildqueue/RowSourceControl";
 import { type QueueBlueprintData, isRecipeSteered } from "@/components/buildqueue/shared";
 import { formatOptionLabel, getFacilityLabel } from "@/components/industry/RecipeDropdown";
 import type { BomLineItem } from "@/lib/bomTypes";
-import type { RecipeLockEntry } from "@/lib/buildQueueTypes";
-import { type StepBuildItem, mergeLocks } from "@/lib/queueResolver";
-import { type SourcePref, defaultSourcePref } from "@/lib/sourcePrefs";
-import { setSourcePref } from "@/stores/buildQueueStore";
+import type {
+	ContainerRef,
+	ContainerSourceConfig,
+	RecipeLockEntry,
+	SourceLockEntry,
+} from "@/lib/buildQueueTypes";
+import { type BatchBuildItem, mergeLocks } from "@/lib/queueResolver";
+import type { ContainerOption } from "@/lib/sourcingPlan";
+import { clearBatchSourceLock, setBatchSourceLock } from "@/stores/buildQueueStore";
 import { AlertTriangle, ChevronDown, ChevronRight, GitFork } from "lucide-react";
 import { Fragment, useState } from "react";
 
@@ -71,30 +75,39 @@ function VolumeCell({ item }: { item: BomLineItem }) {
 // ── Build (producible) choices ─────────────────────────────────────────────────
 
 interface BuildChoiceTableProps {
-	items: StepBuildItem[];
+	items: BatchBuildItem[];
 	data: QueueBlueprintData;
 	queueId: string;
-	/** The step these intermediates belong to (for the per-step recipe-lock scope -- F2). */
-	stepId?: string;
+	/** The batch these intermediates belong to (for the per-batch recipe-lock scope -- F2). */
+	batchId?: string;
 	/** Queue-global recipe locks (the default scope). */
 	queueLocks: RecipeLockEntry[];
-	/** Per-step recipe locks for this step, if any (override the queue locks per type -- mergeLocks). */
-	stepLocks?: RecipeLockEntry[];
+	/** Per-batch recipe locks for this batch, if any (override the queue locks per type -- mergeLocks). */
+	batchLocks?: RecipeLockEntry[];
+	/** Selectable containers for the per-row sourcing override (Phase 4b -- Derived key = typeId). */
+	containers?: ContainerOption[];
+	/** Gate-jump distance per container (containerRefKey -> jumps) for the source-priority badges. */
+	containerJumps?: Map<string, number | undefined>;
+	/** This batch's per-typeId source locks (cascade layer 4 -- the finest grain for Derived rows). */
+	batchSourceLocks?: SourceLockEntry[];
 }
 
 export function BuildChoiceTable({
 	items,
 	data,
 	queueId,
-	stepId,
+	batchId,
 	queueLocks,
-	stepLocks,
+	batchLocks,
+	containers,
+	containerJumps,
+	batchSourceLocks,
 }: BuildChoiceTableProps) {
 	if (items.length === 0) {
 		return <div className="px-4 py-3 text-xs text-zinc-600">None</div>;
 	}
-	// The EFFECTIVE locks the resolver used (step overrides queue per type) -- drives the "steered" chip.
-	const mergedLocks = mergeLocks(queueLocks, stepLocks);
+	// The EFFECTIVE locks the resolver used (batch overrides queue per type) -- drives the "steered" chip.
+	const mergedLocks = mergeLocks(queueLocks, batchLocks);
 	return (
 		<table className="w-full text-sm">
 			<thead>
@@ -114,10 +127,13 @@ export function BuildChoiceTable({
 						item={item}
 						data={data}
 						queueId={queueId}
-						stepId={stepId}
+						batchId={batchId}
 						queueLocks={queueLocks}
-						stepLocks={stepLocks}
+						batchLocks={batchLocks}
 						mergedLocks={mergedLocks}
+						containers={containers}
+						containerJumps={containerJumps}
+						batchSourceLocks={batchSourceLocks}
 					/>
 				))}
 			</tbody>
@@ -129,18 +145,24 @@ function BuildChoiceRow({
 	item,
 	data,
 	queueId,
-	stepId,
+	batchId,
 	queueLocks,
-	stepLocks,
+	batchLocks,
 	mergedLocks,
+	containers,
+	containerJumps,
+	batchSourceLocks,
 }: {
-	item: StepBuildItem;
+	item: BatchBuildItem;
 	data: QueueBlueprintData;
 	queueId: string;
-	stepId?: string;
+	batchId?: string;
 	queueLocks: RecipeLockEntry[];
-	stepLocks?: RecipeLockEntry[];
+	batchLocks?: RecipeLockEntry[];
 	mergedLocks: RecipeLockEntry[];
+	containers?: ContainerOption[];
+	containerJumps?: Map<string, number | undefined>;
+	batchSourceLocks?: SourceLockEntry[];
 }) {
 	const [expanded, setExpanded] = useState(false);
 	const producers = data.outputToBlueprints.get(item.typeId) ?? [];
@@ -148,8 +170,31 @@ function BuildChoiceRow({
 	const chosenBp = producers.find((p) => p.blueprintID === item.blueprintId) ?? producers[0];
 	const isSplit = (item.splits?.length ?? 0) > 1;
 	const queueEntry = queueLocks.find((lock) => lock.typeId === item.typeId);
-	const stepEntry = stepLocks?.find((lock) => lock.typeId === item.typeId);
+	const batchEntry = batchLocks?.find((lock) => lock.typeId === item.typeId);
 	const steered = isRecipeSteered(item.typeId, mergedLocks);
+
+	// Per-row sourcing override for this Derived intermediate -- batch sourceLock (cascade layer 4),
+	// keyed by typeId. Only offered inside a batch (batchId set); the queue-level global plan has no
+	// per-batch scope. Preserve any output destination already on the lock.
+	const sourceLock = batchSourceLocks?.find((l) => l.typeId === item.typeId);
+	function handleSourcesChange(sources: ContainerSourceConfig | undefined) {
+		if (batchId == null) return;
+		const next: SourceLockEntry = { ...sourceLock, typeId: item.typeId };
+		if (sources) next.sources = sources;
+		else next.sources = undefined;
+		if (next.sources || next.outputDest) setBatchSourceLock(queueId, batchId, next);
+		else clearBatchSourceLock(queueId, batchId, item.typeId);
+	}
+	// Per-item deposit destination (cascade layer 4 -- batch sourceLock). Live as of plan 41 B1 -- the
+	// built item's leftover output lands in this container in the carry-forward pool, so later batches
+	// source it from named storage. Preserve any sourcing already on the lock. Clearing both sources +
+	// output removes the lock entirely.
+	function handleOutputChange(outputDest: ContainerRef | undefined) {
+		if (batchId == null) return;
+		const next: SourceLockEntry = { ...sourceLock, typeId: item.typeId, outputDest };
+		if (next.sources || next.outputDest) setBatchSourceLock(queueId, batchId, next);
+		else clearBatchSourceLock(queueId, batchId, item.typeId);
+	}
 
 	return (
 		<Fragment>
@@ -158,6 +203,12 @@ function BuildChoiceRow({
 					<span className="flex items-center gap-2">
 						<ItemIcon typeId={item.typeId} />
 						{item.typeName}
+						<span
+							className="shrink-0 rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-300"
+							title="Optimizer-derived intermediate -- not authored. Keyed by typeId for sourcing overrides."
+						>
+							Derived
+						</span>
 					</span>
 				</td>
 				<td className="px-4 py-2">
@@ -197,6 +248,24 @@ function BuildChoiceRow({
 								either/or · {item.alternativeBlueprintIds.length}
 							</button>
 						)}
+						{batchId != null && containers && containers.length > 0 && (
+							<>
+								<RowSourceControl
+									containers={containers}
+									config={sourceLock?.sources}
+									onChange={handleSourcesChange}
+									scopeLabel="this item"
+									jumps={containerJumps}
+									note="Container priority for this item steers which storage it is pulled from when it is sourced from stock. It does not change the optimizer's build-vs-buy math."
+								/>
+								<OutputDestControl
+									containers={containers}
+									value={sourceLock?.outputDest}
+									onChange={handleOutputChange}
+									scopeLabel="this item"
+								/>
+							</>
+						)}
 					</div>
 				</td>
 				<NeedCell value={item.quantity} />
@@ -209,18 +278,15 @@ function BuildChoiceRow({
 					<td colSpan={6} className="px-4 py-2">
 						<RecipeAlternatives
 							queueId={queueId}
-							stepId={stepId}
+							batchId={batchId}
 							typeId={item.typeId}
 							producers={producers}
 							chosenBpId={item.blueprintId}
 							queueEntry={queueEntry}
-							stepEntry={stepEntry}
+							batchEntry={batchEntry}
 							demandQuantity={item.quantity}
 							currentSplits={item.splits}
 							blueprintFacilities={data.blueprintFacilities}
-							outputToBlueprints={data.outputToBlueprints}
-							rawMaterialIds={data.rawMaterialIds}
-							salvageMaterialIds={data.salvageMaterialIds}
 						/>
 					</td>
 				</tr>
@@ -234,11 +300,9 @@ function BuildChoiceRow({
 interface RawSourceTableProps {
 	items: BomLineItem[];
 	typeGroups: Map<number, string>;
-	sourcePrefs: Record<string, SourcePref>;
-	queueId: string;
 }
 
-export function RawSourceTable({ items, typeGroups, sourcePrefs, queueId }: RawSourceTableProps) {
+export function RawSourceTable({ items, typeGroups }: RawSourceTableProps) {
 	if (items.length === 0) {
 		return <div className="px-4 py-3 text-xs text-zinc-600">None</div>;
 	}
@@ -260,7 +324,6 @@ export function RawSourceTable({ items, typeGroups, sourcePrefs, queueId }: RawS
 			<tbody>
 				{items.map((item) => {
 					const group = typeGroups.get(item.typeId) ?? "Other";
-					const pref = sourcePrefs[group] ?? defaultSourcePref(group);
 					return (
 						<tr key={item.typeId} className="border-t border-zinc-800/50 hover:bg-zinc-800/30">
 							<td className="px-4 py-2 text-zinc-200">
@@ -271,16 +334,9 @@ export function RawSourceTable({ items, typeGroups, sourcePrefs, queueId }: RawS
 							</td>
 							<td className="px-4 py-2">
 								<div className="flex items-center gap-2">
-									<span
-										className="truncate text-xs text-zinc-500"
-										title={`Source: ${group} -- this control steers the whole ${group} group across every step in the queue, not just this material`}
-									>
+									<span className="truncate text-xs text-zinc-500" title={`Source: ${group}`}>
 										Source: {group}
 									</span>
-									<RawSourceControl
-										pref={pref}
-										onSetPref={(p) => setSourcePref(queueId, group, p)}
-									/>
 								</div>
 							</td>
 							<NeedCell value={item.quantity} />

@@ -87,7 +87,7 @@ function findBlueprintFor(
 	const overrideBpId = overrides.get(typeId);
 	if (overrideBpId !== undefined) {
 		const bp = lookup.blueprints[String(overrideBpId)];
-		if (bp && bp.outputs.some((o) => o.typeID === typeId)) return bp;
+		if (bp?.outputs.some((o) => o.typeID === typeId)) return bp;
 		// Invalid/stale override -- discard it
 		overrides.delete(typeId);
 	}
@@ -132,7 +132,8 @@ function expandDemand(
 		const visited = new Set<number>();
 		const stack = demands.map((d) => d.typeId);
 		while (stack.length > 0) {
-			const typeId = stack.pop()!;
+			const typeId = stack.pop();
+			if (typeId == null) continue;
 			if (visited.has(typeId)) continue;
 			visited.add(typeId);
 			const bp = findBlueprintFor(typeId, lookup, overrides);
@@ -173,8 +174,10 @@ function expandDemand(
 	const availableStock = new Map(stockMap);
 
 	while (topoQueue.length > 0) {
-		const typeId = topoQueue.shift()!;
-		const bp = typeBp.get(typeId)!;
+		const typeId = topoQueue.shift();
+		if (typeId == null) continue;
+		const bp = typeBp.get(typeId);
+		if (!bp) continue;
 		const orderQty = orderDemand.get(typeId) ?? 0;
 		const interQty = interDemand.get(typeId) ?? 0;
 		const qty = orderQty + interQty;
@@ -438,6 +441,7 @@ export function buildBomFromLp(
 	stockMap: Map<number, number>,
 	externalNameMap?: Map<number, string>,
 	solveTimeMs?: number,
+	gatherableLeafIds?: Set<number>,
 ): BomResult {
 	const { blueprints, outputToBlueprints } = blueprintData;
 
@@ -463,6 +467,9 @@ export function buildBomFromLp(
 	const rawTypeIds = new Set<number>();
 	for (const id of allInputIds) {
 		if (!allOutputIds.has(id)) rawTypeIds.add(id);
+	}
+	if (gatherableLeafIds) {
+		for (const id of gatherableLeafIds) rawTypeIds.add(id);
 	}
 
 	// Order demand lookup
@@ -520,13 +527,14 @@ export function buildBomFromLp(
 
 	// Handle directly ordered raw materials (non-producible)
 	for (const item of orderItems) {
-		if (!outputToBlueprints.has(item.typeId)) {
+		if (!outputToBlueprints.has(item.typeId) || gatherableLeafIds?.has(item.typeId)) {
 			rawTotals.set(item.typeId, (rawTotals.get(item.typeId) ?? 0) + item.quantity);
 		}
 	}
 
 	// Producible types: classify as final or intermediate
 	for (const typeId of allOutputIds) {
+		if (gatherableLeafIds?.has(typeId)) continue;
 		const produced = totalProduced.get(typeId) ?? 0;
 		const consumed = totalConsumed.get(typeId) ?? 0;
 		const demand = orderDemand.get(typeId) ?? 0;

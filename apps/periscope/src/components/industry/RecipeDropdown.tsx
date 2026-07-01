@@ -1,4 +1,3 @@
-import { classifyRecipePath } from "@/hooks/useBlueprintData";
 import type { Blueprint } from "@/lib/bomTypes";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -38,9 +37,6 @@ export interface RecipeDropdownProps {
 	producers: Blueprint[];
 	currentBpId: number | undefined;
 	isOverridden: boolean;
-	outputToBlueprints: Map<number, Blueprint[]>;
-	rawMaterialIds: Set<number>;
-	salvageMaterialIds: Set<number>;
 	onSelect: (blueprintId: number) => void;
 	formatOptionLabel: (bp: Blueprint, typeId: number) => string;
 	getFacilityLabel: (bp: Blueprint) => string;
@@ -53,9 +49,6 @@ export function RecipeDropdown({
 	producers,
 	currentBpId,
 	isOverridden,
-	outputToBlueprints,
-	rawMaterialIds,
-	salvageMaterialIds,
 	onSelect,
 	formatOptionLabel,
 	getFacilityLabel,
@@ -91,12 +84,6 @@ export function RecipeDropdown({
 			{open && (
 				<div className="absolute left-0 top-full z-20 mt-1 min-w-[320px] rounded border border-zinc-700 bg-zinc-900 py-1 shadow-lg">
 					{producers.map((bp) => {
-						const path = classifyRecipePath(
-							bp,
-							outputToBlueprints,
-							rawMaterialIds,
-							salvageMaterialIds,
-						);
 						const isSelected = bp.blueprintID === currentBpId;
 						return (
 							<button
@@ -111,10 +98,7 @@ export function RecipeDropdown({
 								}`}
 							>
 								{isSelected && <span className="text-cyan-400">●</span>}
-								<span className={isSelected ? "" : "ml-4"}>
-									{path === "salvage" ? "♻ " : ""}
-									{formatOptionLabel(bp, typeId)}
-								</span>
+								<span className={isSelected ? "" : "ml-4"}>{formatOptionLabel(bp, typeId)}</span>
 							</button>
 						);
 					})}

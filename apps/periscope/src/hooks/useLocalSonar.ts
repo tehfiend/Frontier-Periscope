@@ -118,6 +118,9 @@ function buildMiningEnded(
 	reason?: MiningEndReason,
 ): Omit<SonarEvent, "id"> {
 	const duration = tsMs(t.lastEventTimestamp) - tsMs(t.startTimestamp);
+	// Average rate over the run. Floor the divisor at one second so a single-cycle run can't blow
+	// the rate up to a meaningless number. Matches the Mining tab's ratePerMin calc.
+	const ratePerMin = Math.round(t.totalAmount / Math.max(duration / 60_000, 1 / 60));
 	const reasonSuffix = reason ? ` -- ${MINING_END_REASON_LABEL[reason]}` : "";
 	return {
 		timestamp: t.lastEventTimestamp,
@@ -128,7 +131,7 @@ function buildMiningEnded(
 		sessionId,
 		typeName: t.ore,
 		quantity: t.totalAmount,
-		details: `Mined ${t.totalAmount.toLocaleString("en-US")} ${t.ore} in ${t.cycles} cycles (${formatDuration(duration)})${reasonSuffix}`,
+		details: `Mined ${t.totalAmount.toLocaleString("en-US")} ${t.ore} in ${t.cycles} cycles (${formatDuration(duration)}, ${ratePerMin.toLocaleString("en-US")}/min)${reasonSuffix}`,
 	};
 }
 

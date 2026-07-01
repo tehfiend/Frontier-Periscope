@@ -1,21 +1,26 @@
-// Build Queue persistence store -- plan 36 (industry-build-queue).
+// Build Queue persistence store -- plan 36 (industry-build-queue); Queue / Batch / Job (plan 39).
 //
 // CRUD + mutation helpers over the db.buildQueues Dexie table, plus reactive read hooks.
 // Every write bumps queue.updatedAt and persists via an immutable update: we read the queue,
-// produce a brand-new steps/jobs structure, then db.buildQueues.put(...) -- never mutate in place.
+// produce a brand-new batches/jobs structure, then db.buildQueues.put(...) -- never mutate in place.
 // The active queue id is persisted in the settings table (key "activeBuildQueueId") so the
 // selection survives reloads, matching the appStore pattern for activeCharacterId / defaultMapId.
 
 import { db } from "@/db";
 import {
-	type BuildJob,
+	type Batch,
 	type BuildQueue,
-	type BuildStep,
+	type ContainerRef,
+	type ContainerSourceConfig,
+	type Job,
+	type JobOverrides,
+	type QueueLocation,
 	type RecipeLockEntry,
 	type ReoptMode,
+	type ScratchItem,
+	type SourceLockEntry,
 	createBuildQueue,
 } from "@/lib/buildQueueTypes";
-import type { SourcePref } from "@/lib/sourcePrefs";
 import { useLiveQuery } from "dexie-react-hooks";
 
 // ── Settings key for the persisted active-queue selection ────────────────────
@@ -39,11 +44,12 @@ async function updateQueue(
 }
 
 /**
- * Concatenate two job lists, summing runs for matching blueprintIds so a step never holds two
+ * Concatenate two job lists, summing runs for matching blueprintIds so a batch never holds two
  * entries for the same blueprint (the one-entry-per-blueprint invariant addJob also upholds).
- * Returns a fresh array of fresh job objects.
+ * Returns a fresh array of fresh job objects. Folded jobs keep the SURVIVING job's id; moved jobs
+ * keep their own id (so a Target job's stable identity follows it across batches -- plan 39 Phase 3).
  */
-function combineJobs(base: BuildJob[], extra: BuildJob[]): BuildJob[] {
+function combineJobs(base: Job[], extra: Job[]): Job[] {
 	const result = base.map((job) => ({ ...job }));
 	for (const job of extra) {
 		const existing = result.find((j) => j.blueprintId === job.blueprintId);
@@ -77,7 +83,9 @@ export async function setQueueDescription(id: string, desc: string): Promise<voi
 
 /**
  * Deep-copy a queue under a new id with a " (copy)" suffix. Returns the copy, or undefined if
- * the source does not exist. Nested steps/jobs/locks are cloned so the copy is independent.
+ * the source does not exist. Nested batches/jobs/locks are cloned so the copy is independent. Job
+ * ids are carried over (the copy lives in a new queue, so reusing ids is harmless and keeps any
+ * future per-job overrides aligned with the copied jobs).
  */
 export async function duplicateQueue(id: string): Promise<BuildQueue | undefined> {
 	const source = await db.buildQueues.get(id);
@@ -87,14 +95,13 @@ export async function duplicateQueue(id: string): Promise<BuildQueue | undefined
 		...source,
 		id: crypto.randomUUID(),
 		name: `${source.name} (copy)`,
-		steps: source.steps.map((step) => ({
-			...step,
-			jobs: step.jobs.map((job) => ({ ...job })),
-			recipeLocks: step.recipeLocks?.map((lock) => ({ ...lock })),
+		batches: source.batches.map((batch) => ({
+			...batch,
+			jobs: batch.jobs.map((job) => ({ ...job })),
+			recipeLocks: batch.recipeLocks?.map((lock) => ({ ...lock })),
 		})),
-		sourcePrefs: { ...source.sourcePrefs },
 		recipeLocks: source.recipeLocks.map((lock) => ({ ...lock })),
-		stockFromQueueIds: source.stockFromQueueIds ? [...source.stockFromQueueIds] : undefined,
+		scratch: source.scratch ? source.scratch.map((s) => ({ ...s })) : undefined,
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -128,210 +135,231 @@ export async function getActiveQueueId(): Promise<string | undefined> {
 	return (setting?.value as string | undefined) ?? undefined;
 }
 
-// ── Step mutations ─────────────────────────────────────────────────────────────
+// ── Batch mutations ──────────────────────────────────────────────────────────
 
-/** Append a new empty step. Returns the new step id. */
-export async function addStep(queueId: string, label?: string): Promise<string> {
-	const stepId = crypto.randomUUID();
-	const step: BuildStep = { id: stepId, jobs: [] };
-	if (label !== undefined) step.label = label;
-	await updateQueue(queueId, (q) => ({ ...q, steps: [...q.steps, step] }));
-	return stepId;
+/** Append a new empty batch. Returns the new batch id. */
+export async function addBatch(queueId: string, label?: string): Promise<string> {
+	const batchId = crypto.randomUUID();
+	const batch: Batch = { id: batchId, jobs: [] };
+	if (label !== undefined) batch.label = label;
+	await updateQueue(queueId, (q) => ({ ...q, batches: [...q.batches, batch] }));
+	return batchId;
 }
 
-/** Remove a step (and its jobs) from the queue. */
-export async function removeStep(queueId: string, stepId: string): Promise<void> {
+/** Remove a batch (and its jobs) from the queue. */
+export async function removeBatch(queueId: string, batchId: string): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		steps: q.steps.filter((s) => s.id !== stepId),
+		batches: q.batches.filter((b) => b.id !== batchId),
 	}));
 }
 
-/** Move a step from fromIndex to toIndex, clamping toIndex into range. */
-export async function reorderSteps(
+/** Move a batch from fromIndex to toIndex, clamping toIndex into range. */
+export async function reorderBatches(
 	queueId: string,
 	fromIndex: number,
 	toIndex: number,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => {
-		if (fromIndex < 0 || fromIndex >= q.steps.length) return q;
-		const steps = [...q.steps];
-		const [moved] = steps.splice(fromIndex, 1);
-		const target = Math.max(0, Math.min(toIndex, steps.length));
-		steps.splice(target, 0, moved);
-		return { ...q, steps };
+		if (fromIndex < 0 || fromIndex >= q.batches.length) return q;
+		const batches = [...q.batches];
+		const [moved] = batches.splice(fromIndex, 1);
+		const target = Math.max(0, Math.min(toIndex, batches.length));
+		batches.splice(target, 0, moved);
+		return { ...q, batches };
 	});
 }
 
 /**
- * Merge step B's jobs into step A (A keeps its position), then drop step B. Duplicate
- * blueprintIds across the two steps have their runs summed. No-op if either step is missing
+ * Merge batch B's jobs into batch A (A keeps its position), then drop batch B. Duplicate
+ * blueprintIds across the two batches have their runs summed. No-op if either batch is missing
  * or the two ids are identical.
  */
-export async function mergeSteps(
+export async function mergeBatches(
 	queueId: string,
-	stepIdA: string,
-	stepIdB: string,
+	batchIdA: string,
+	batchIdB: string,
 ): Promise<void> {
-	if (stepIdA === stepIdB) return;
+	if (batchIdA === batchIdB) return;
 	await updateQueue(queueId, (q) => {
-		const a = q.steps.find((s) => s.id === stepIdA);
-		const b = q.steps.find((s) => s.id === stepIdB);
+		const a = q.batches.find((b) => b.id === batchIdA);
+		const b = q.batches.find((b) => b.id === batchIdB);
 		if (!a || !b) return q;
 		const mergedJobs = combineJobs(a.jobs, b.jobs);
-		const steps = q.steps
-			.filter((s) => s.id !== stepIdB)
-			.map((s) => (s.id === stepIdA ? { ...s, jobs: mergedJobs } : s));
-		return { ...q, steps };
+		const batches = q.batches
+			.filter((b) => b.id !== batchIdB)
+			.map((b) => (b.id === batchIdA ? { ...b, jobs: mergedJobs } : b));
+		return { ...q, batches };
 	});
 }
 
 /**
- * Split a step at jobIndex: jobs[0..jobIndex] (inclusive) stay in the original step, the rest
- * move into a new step inserted immediately after. Returns the new step id. No-op (returns a
- * generated id that is not persisted) if the step is missing or there is nothing to split off.
+ * Split a batch at jobIndex: jobs[0..jobIndex] (inclusive) stay in the original batch, the rest
+ * move into a new batch inserted immediately after. Returns the new batch id. No-op (returns a
+ * generated id that is not persisted) if the batch is missing or there is nothing to split off.
  */
-export async function splitStep(
+export async function splitBatch(
 	queueId: string,
-	stepId: string,
+	batchId: string,
 	jobIndex: number,
 ): Promise<string> {
-	const newStepId = crypto.randomUUID();
+	const newBatchId = crypto.randomUUID();
 	await updateQueue(queueId, (q) => {
-		const idx = q.steps.findIndex((s) => s.id === stepId);
+		const idx = q.batches.findIndex((b) => b.id === batchId);
 		if (idx === -1) return q;
-		const step = q.steps[idx];
-		const keep = step.jobs.slice(0, jobIndex + 1).map((job) => ({ ...job }));
-		const moved = step.jobs.slice(jobIndex + 1).map((job) => ({ ...job }));
+		const batch = q.batches[idx];
+		const keep = batch.jobs.slice(0, jobIndex + 1).map((job) => ({ ...job }));
+		const moved = batch.jobs.slice(jobIndex + 1).map((job) => ({ ...job }));
 		if (moved.length === 0) return q;
-		const newStep: BuildStep = { id: newStepId, jobs: moved };
-		const steps = [...q.steps];
-		steps[idx] = { ...step, jobs: keep };
-		steps.splice(idx + 1, 0, newStep);
-		return { ...q, steps };
+		const newBatch: Batch = { id: newBatchId, jobs: moved };
+		const batches = [...q.batches];
+		batches[idx] = { ...batch, jobs: keep };
+		batches.splice(idx + 1, 0, newBatch);
+		return { ...q, batches };
 	});
-	return newStepId;
+	return newBatchId;
 }
 
-/** Set a step's display label. */
-export async function setStepLabel(
+/** Set a batch's display label. */
+export async function setBatchLabel(
 	queueId: string,
-	stepId: string,
+	batchId: string,
 	label: string,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		steps: q.steps.map((s) => (s.id === stepId ? { ...s, label } : s)),
+		batches: q.batches.map((b) => (b.id === batchId ? { ...b, label } : b)),
 	}));
 }
 
-/** Set a step's collapsed (UI) flag. */
-export async function setStepCollapsed(
+/** Set a batch's collapsed (UI) flag. */
+export async function setBatchCollapsed(
 	queueId: string,
-	stepId: string,
+	batchId: string,
 	collapsed: boolean,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		steps: q.steps.map((s) => (s.id === stepId ? { ...s, collapsed } : s)),
+		batches: q.batches.map((b) => (b.id === batchId ? { ...b, collapsed } : b)),
+	}));
+}
+
+/**
+ * Set (or clear, when undefined) a batch's location (plan 41 B4). Overrides the queue location as the
+ * distance anchor for THIS batch's haul readout; clearing it falls back to the queue location. No-op if
+ * the batch is missing.
+ */
+export async function setBatchLocation(
+	queueId: string,
+	batchId: string,
+	location: QueueLocation | undefined,
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({
+		...q,
+		batches: q.batches.map((b) => (b.id === batchId ? { ...b, location } : b)),
 	}));
 }
 
 // ── Job mutations ──────────────────────────────────────────────────────────────
+// Jobs are identified by ARRAY INDEX in every mutator below (removeJob / moveJob / setJobBlueprint /
+// setJobRuns). The stable `Job.id` (minted in addJob) is additive -- it is the override key for
+// "Target" jobs in the Phase 4 sourcing cascade, not the mutation key.
 
 /**
- * Add a job to a step. If the step already holds a job for the same blueprintId, its runs are
- * incremented by job.runs instead of inserting a duplicate.
+ * Add a job to a batch. The new job gets a fresh stable `id` (crypto.randomUUID()). If the batch
+ * already holds a job for the same blueprintId, its runs are incremented by job.runs instead of
+ * inserting a duplicate (the existing entry keeps its id).
  */
-export async function addJob(queueId: string, stepId: string, job: BuildJob): Promise<void> {
+export async function addJob(
+	queueId: string,
+	batchId: string,
+	job: Omit<Job, "id">,
+): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		steps: q.steps.map((s) => {
-			if (s.id !== stepId) return s;
-			const existing = s.jobs.find((j) => j.blueprintId === job.blueprintId);
+		batches: q.batches.map((b) => {
+			if (b.id !== batchId) return b;
+			const existing = b.jobs.find((j) => j.blueprintId === job.blueprintId);
 			if (existing) {
 				return {
-					...s,
-					jobs: s.jobs.map((j) =>
+					...b,
+					jobs: b.jobs.map((j) =>
 						j.blueprintId === job.blueprintId ? { ...j, runs: j.runs + job.runs } : j,
 					),
 				};
 			}
-			return { ...s, jobs: [...s.jobs, { ...job }] };
+			return { ...b, jobs: [...b.jobs, { ...job, id: crypto.randomUUID() }] };
 		}),
 	}));
 }
 
-/** Remove the job at jobIndex from a step. */
-export async function removeJob(
-	queueId: string,
-	stepId: string,
-	jobIndex: number,
-): Promise<void> {
+/** Remove the job at jobIndex from a batch. */
+export async function removeJob(queueId: string, batchId: string, jobIndex: number): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		steps: q.steps.map((s) =>
-			s.id === stepId ? { ...s, jobs: s.jobs.filter((_, i) => i !== jobIndex) } : s,
+		batches: q.batches.map((b) =>
+			b.id === batchId ? { ...b, jobs: b.jobs.filter((_, i) => i !== jobIndex) } : b,
 		),
 	}));
 }
 
 /**
- * Move a job between (or within) steps -- the grouping primitive. Within the same step this
- * reorders to toIndex. Across steps the job is removed from fromStep and inserted into toStep
- * at toIndex (appended when toIndex is omitted); if toStep already holds that blueprintId its
- * runs are incremented instead of inserting a duplicate. No-op if any referenced item is missing.
+ * Move a job between (or within) batches -- the grouping primitive. Within the same batch this
+ * reorders to toIndex. Across batches the job is removed from fromBatch and inserted into toBatch
+ * at toIndex (appended when toIndex is omitted), carrying its id so a Target job's identity follows
+ * it; if toBatch already holds that blueprintId its runs are incremented instead of inserting a
+ * duplicate. No-op if any referenced item is missing.
  */
 export async function moveJob(
 	queueId: string,
-	fromStepId: string,
+	fromBatchId: string,
 	jobIndex: number,
-	toStepId: string,
+	toBatchId: string,
 	toIndex?: number,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => {
-		const fromStep = q.steps.find((s) => s.id === fromStepId);
-		if (!fromStep) return q;
-		const job = fromStep.jobs[jobIndex];
+		const fromBatch = q.batches.find((b) => b.id === fromBatchId);
+		if (!fromBatch) return q;
+		const job = fromBatch.jobs[jobIndex];
 		if (!job) return q;
 
-		// Same step: reorder within the step.
-		if (fromStepId === toStepId) {
-			const jobs = [...fromStep.jobs];
+		// Same batch: reorder within the batch.
+		if (fromBatchId === toBatchId) {
+			const jobs = [...fromBatch.jobs];
 			const [moved] = jobs.splice(jobIndex, 1);
 			const target = toIndex == null ? jobs.length : Math.max(0, Math.min(toIndex, jobs.length));
 			jobs.splice(target, 0, moved);
 			return {
 				...q,
-				steps: q.steps.map((s) => (s.id === fromStepId ? { ...s, jobs } : s)),
+				batches: q.batches.map((b) => (b.id === fromBatchId ? { ...b, jobs } : b)),
 			};
 		}
 
-		// Cross-step move: bail if the destination is gone so the job is never lost.
-		if (!q.steps.some((s) => s.id === toStepId)) return q;
+		// Cross-batch move: bail if the destination is gone so the job is never lost.
+		if (!q.batches.some((b) => b.id === toBatchId)) return q;
 		return {
 			...q,
-			steps: q.steps.map((s) => {
-				if (s.id === fromStepId) {
-					return { ...s, jobs: s.jobs.filter((_, i) => i !== jobIndex) };
+			batches: q.batches.map((b) => {
+				if (b.id === fromBatchId) {
+					return { ...b, jobs: b.jobs.filter((_, i) => i !== jobIndex) };
 				}
-				if (s.id === toStepId) {
-					const existing = s.jobs.find((j) => j.blueprintId === job.blueprintId);
+				if (b.id === toBatchId) {
+					const existing = b.jobs.find((j) => j.blueprintId === job.blueprintId);
 					if (existing) {
 						return {
-							...s,
-							jobs: s.jobs.map((j) =>
+							...b,
+							jobs: b.jobs.map((j) =>
 								j.blueprintId === job.blueprintId ? { ...j, runs: j.runs + job.runs } : j,
 							),
 						};
 					}
-					const jobs = [...s.jobs];
+					const jobs = [...b.jobs];
 					const target =
 						toIndex == null ? jobs.length : Math.max(0, Math.min(toIndex, jobs.length));
 					jobs.splice(target, 0, { ...job });
-					return { ...s, jobs };
+					return { ...b, jobs };
 				}
-				return s;
+				return b;
 			}),
 		};
 	});
@@ -339,35 +367,35 @@ export async function moveJob(
 
 /**
  * Change a job's top-level blueprint while keeping its position and run count. If another job in
- * the same step already uses the target blueprintId, this job's runs are folded into that entry
+ * the same batch already uses the target blueprintId, this job's runs are folded into that entry
  * and this one is removed (upholding the one-entry-per-blueprint invariant addJob also enforces).
- * No-op when the blueprint is unchanged or the job/step is missing.
+ * No-op when the blueprint is unchanged or the job/batch is missing.
  */
 export async function setJobBlueprint(
 	queueId: string,
-	stepId: string,
+	batchId: string,
 	jobIndex: number,
 	blueprintId: number,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		steps: q.steps.map((s) => {
-			if (s.id !== stepId) return s;
-			const current = s.jobs[jobIndex];
-			if (!current || current.blueprintId === blueprintId) return s;
-			const dupIndex = s.jobs.findIndex((j, i) => i !== jobIndex && j.blueprintId === blueprintId);
+		batches: q.batches.map((b) => {
+			if (b.id !== batchId) return b;
+			const current = b.jobs[jobIndex];
+			if (!current || current.blueprintId === blueprintId) return b;
+			const dupIndex = b.jobs.findIndex((j, i) => i !== jobIndex && j.blueprintId === blueprintId);
 			if (dupIndex !== -1) {
 				// Target blueprint already present -- fold runs in and drop this entry (keep position
 				// of the surviving entry).
-				const jobs = s.jobs
+				const jobs = b.jobs
 					.map((j, i) => (i === dupIndex ? { ...j, runs: j.runs + current.runs } : { ...j }))
 					.filter((_, i) => i !== jobIndex);
-				return { ...s, jobs };
+				return { ...b, jobs };
 			}
 			// Swap the blueprint in place -- position and runs are preserved.
 			return {
-				...s,
-				jobs: s.jobs.map((j, i) => (i === jobIndex ? { ...j, blueprintId } : j)),
+				...b,
+				jobs: b.jobs.map((j, i) => (i === jobIndex ? { ...j, blueprintId } : j)),
 			};
 		}),
 	}));
@@ -376,39 +404,22 @@ export async function setJobBlueprint(
 /** Set a job's run count, clamped to a positive integer (minimum 1). */
 export async function setJobRuns(
 	queueId: string,
-	stepId: string,
+	batchId: string,
 	jobIndex: number,
 	runs: number,
 ): Promise<void> {
 	const safeRuns = Math.max(1, Math.floor(runs));
 	await updateQueue(queueId, (q) => ({
 		...q,
-		steps: q.steps.map((s) =>
-			s.id === stepId
-				? { ...s, jobs: s.jobs.map((j, i) => (i === jobIndex ? { ...j, runs: safeRuns } : j)) }
-				: s,
+		batches: q.batches.map((b) =>
+			b.id === batchId
+				? { ...b, jobs: b.jobs.map((j, i) => (i === jobIndex ? { ...j, runs: safeRuns } : j)) }
+				: b,
 		),
 	}));
 }
 
-// ── Steering: source preferences + recipe locks ─────────────────────────────
-
-/** Set the source preference for a raw-material source group on this queue. */
-export async function setSourcePref(
-	queueId: string,
-	group: string,
-	pref: SourcePref,
-): Promise<void> {
-	await updateQueue(queueId, (q) => ({
-		...q,
-		sourcePrefs: { ...q.sourcePrefs, [group]: pref },
-	}));
-}
-
-/** Clear every source preference on this queue (back to the per-group defaults). */
-export async function resetSourcePrefs(queueId: string): Promise<void> {
-	await updateQueue(queueId, (q) => ({ ...q, sourcePrefs: {} }));
-}
+// ── Steering: recipe locks ───────────────────────────────────────────────────
 
 /** Upsert a recipe lock by typeId (replaces any existing entry for the same typeId). */
 export async function setRecipeLock(queueId: string, entry: RecipeLockEntry): Promise<void> {
@@ -429,46 +440,46 @@ export async function clearRecipeLock(queueId: string, typeId: number): Promise<
 	}));
 }
 
-// ── Per-step recipe locks (F2) ───────────────────────────────────────────────
-// The resolver's mergeLocks merges a step's recipeLocks OVER the queue-global recipeLocks per typeId
-// (a step entry fully replaces the queue entry for that type). These mirror the queue-global
-// setRecipeLock / clearRecipeLock above, scoped to one step.
+// ── Per-batch recipe locks (F2) ──────────────────────────────────────────────
+// The resolver's mergeLocks merges a batch's recipeLocks OVER the queue-global recipeLocks per typeId
+// (a batch entry fully replaces the queue entry for that type). These mirror the queue-global
+// setRecipeLock / clearRecipeLock above, scoped to one batch.
 
 /**
- * Upsert a per-step recipe lock by typeId (replaces any existing entry for the same typeId on that
- * step). No-op if the step is missing.
+ * Upsert a per-batch recipe lock by typeId (replaces any existing entry for the same typeId on that
+ * batch). No-op if the batch is missing.
  */
-export async function setStepRecipeLock(
+export async function setBatchRecipeLock(
 	queueId: string,
-	stepId: string,
+	batchId: string,
 	entry: RecipeLockEntry,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		steps: q.steps.map((s) => {
-			if (s.id !== stepId) return s;
-			const locks = s.recipeLocks ?? [];
+		batches: q.batches.map((b) => {
+			if (b.id !== batchId) return b;
+			const locks = b.recipeLocks ?? [];
 			const exists = locks.some((lock) => lock.typeId === entry.typeId);
 			const recipeLocks = exists
 				? locks.map((lock) => (lock.typeId === entry.typeId ? { ...entry } : lock))
 				: [...locks, { ...entry }];
-			return { ...s, recipeLocks };
+			return { ...b, recipeLocks };
 		}),
 	}));
 }
 
-/** Remove the per-step recipe lock for a given typeId on a step, if present. No-op if step missing. */
-export async function clearStepRecipeLock(
+/** Remove the per-batch recipe lock for a given typeId on a batch, if present. No-op if batch missing. */
+export async function clearBatchRecipeLock(
 	queueId: string,
-	stepId: string,
+	batchId: string,
 	typeId: number,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		steps: q.steps.map((s) =>
-			s.id === stepId
-				? { ...s, recipeLocks: (s.recipeLocks ?? []).filter((lock) => lock.typeId !== typeId) }
-				: s,
+		batches: q.batches.map((b) =>
+			b.id === batchId
+				? { ...b, recipeLocks: (b.recipeLocks ?? []).filter((lock) => lock.typeId !== typeId) }
+				: b,
 		),
 	}));
 }
@@ -477,38 +488,223 @@ export async function clearStepRecipeLock(
 
 /**
  * Set the queue's re-optimization mode. "global" collapses the whole queue into ONE solve
- * (cross-step optimality, a single queue-level gather/build plan); "perStep" (the default) keeps the
- * per-step pipeline. See ReoptMode / resolveQueue.
+ * (cross-batch optimality, a single queue-level gather/build plan); "perStep" (the default) keeps the
+ * per-batch pipeline. See ReoptMode / resolveQueue.
  */
 export async function setReoptMode(queueId: string, mode: ReoptMode): Promise<void> {
 	await updateQueue(queueId, (q) => ({ ...q, reoptMode: mode }));
 }
 
-// ── Cross-queue stock sources (F4) ───────────────────────────────────────────
-// Ids of other saved queues whose resolved outputs (totals.finalPool) count as available stock for
-// this queue. The view resolves those source queues and merges their finalPool into baseStock (via
-// queueResolver.mergeStockMaps) before calling resolveQueue -- the store only persists the id list.
-
-/** Replace the full set of cross-queue stock source ids (deduped). */
-export async function setStockSources(queueId: string, ids: string[]): Promise<void> {
-	await updateQueue(queueId, (q) => ({ ...q, stockFromQueueIds: [...new Set(ids)] }));
+/** Set whether held raw stock should drive stock-derived split pins. */
+export async function setPreferStock(queueId: string, value: boolean): Promise<void> {
+	await updateQueue(queueId, (q) => ({ ...q, preferStock: value }));
 }
 
-/** Add one cross-queue stock source id (deduped; no-op if already present). */
-export async function addStockSource(queueId: string, sourceQueueId: string): Promise<void> {
+// ── Queue location (plan 39 Phase 5) ─────────────────────────────────────────
+// One structured location per queue (decision 10). Containers are distance-sorted against
+// location.systemId (gate-jump count via lib/distance); the output destination is the only per-job
+// "where". Passing `undefined` clears the location.
+
+/** Set (or clear, when undefined) the queue's location. */
+export async function setQueueLocation(
+	queueId: string,
+	location: QueueLocation | undefined,
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({ ...q, location }));
+}
+
+// ── Container sourcing overrides (plan 39 Phase 4a) ──────────────────────────
+// A NEW cascade, independent of recipeLocks: queue/batch `sourcesDefault` + `outputDefault` +
+// per-typeId `sourceLocks`, plus per-job `overrides` (Target jobs). queueResolver.resolveEffectiveOverrides
+// composes the five scopes last-wins / scope-dominant. The sourceLock upsert/clear mirror the recipe-lock
+// helpers (one entry per typeId). Passing `undefined` to a default setter clears that default.
+
+/** Set (or clear, when undefined) the queue-wide container sourcing default (cascade layer 1). */
+export async function setQueueSourcesDefault(
+	queueId: string,
+	config: ContainerSourceConfig | undefined,
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({ ...q, sourcesDefault: config }));
+}
+
+/** Set (or clear, when undefined) the queue-wide output deposit annotation (layer 1). */
+export async function setQueueOutputDefault(
+	queueId: string,
+	ref: ContainerRef | undefined,
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({ ...q, outputDefault: ref }));
+}
+
+/** Upsert a queue-wide per-typeId source lock by typeId (replaces any existing entry; layer 2). */
+export async function setQueueSourceLock(queueId: string, entry: SourceLockEntry): Promise<void> {
 	await updateQueue(queueId, (q) => {
-		const ids = new Set(q.stockFromQueueIds ?? []);
-		ids.add(sourceQueueId);
-		return { ...q, stockFromQueueIds: [...ids] };
+		const locks = q.sourceLocks ?? [];
+		const exists = locks.some((l) => l.typeId === entry.typeId);
+		const sourceLocks = exists
+			? locks.map((l) => (l.typeId === entry.typeId ? { ...entry } : l))
+			: [...locks, { ...entry }];
+		return { ...q, sourceLocks };
 	});
 }
 
-/** Remove one cross-queue stock source id, if present. */
-export async function removeStockSource(queueId: string, sourceQueueId: string): Promise<void> {
+/** Remove the queue-wide source lock for a given typeId, if present. */
+export async function clearQueueSourceLock(queueId: string, typeId: number): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		stockFromQueueIds: (q.stockFromQueueIds ?? []).filter((id) => id !== sourceQueueId),
+		sourceLocks: (q.sourceLocks ?? []).filter((l) => l.typeId !== typeId),
 	}));
+}
+
+/** Set (or clear) a batch's container sourcing default (layer 3). No-op if the batch is missing. */
+export async function setBatchSourcesDefault(
+	queueId: string,
+	batchId: string,
+	config: ContainerSourceConfig | undefined,
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({
+		...q,
+		batches: q.batches.map((b) => (b.id === batchId ? { ...b, sourcesDefault: config } : b)),
+	}));
+}
+
+/** Set (or clear) a batch's output deposit annotation (layer 3). No-op if the batch is missing. */
+export async function setBatchOutputDefault(
+	queueId: string,
+	batchId: string,
+	ref: ContainerRef | undefined,
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({
+		...q,
+		batches: q.batches.map((b) => (b.id === batchId ? { ...b, outputDefault: ref } : b)),
+	}));
+}
+
+/** Upsert a per-batch source lock by typeId (layer 4). No-op if the batch is missing. */
+export async function setBatchSourceLock(
+	queueId: string,
+	batchId: string,
+	entry: SourceLockEntry,
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({
+		...q,
+		batches: q.batches.map((b) => {
+			if (b.id !== batchId) return b;
+			const locks = b.sourceLocks ?? [];
+			const exists = locks.some((l) => l.typeId === entry.typeId);
+			const sourceLocks = exists
+				? locks.map((l) => (l.typeId === entry.typeId ? { ...entry } : l))
+				: [...locks, { ...entry }];
+			return { ...b, sourceLocks };
+		}),
+	}));
+}
+
+/** Remove a per-batch source lock for a typeId, if present. No-op if the batch is missing. */
+export async function clearBatchSourceLock(
+	queueId: string,
+	batchId: string,
+	typeId: number,
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({
+		...q,
+		batches: q.batches.map((b) =>
+			b.id === batchId
+				? { ...b, sourceLocks: (b.sourceLocks ?? []).filter((l) => l.typeId !== typeId) }
+				: b,
+		),
+	}));
+}
+
+/**
+ * Set (or clear, when undefined) a Target job's per-job overrides (cascade layer 5). Keyed by array
+ * index like the other job mutators (removeJob / setJobRuns); no-op if the batch/job is missing.
+ */
+export async function setJobOverrides(
+	queueId: string,
+	batchId: string,
+	jobIndex: number,
+	overrides: JobOverrides | undefined,
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({
+		...q,
+		batches: q.batches.map((b) =>
+			b.id === batchId
+				? { ...b, jobs: b.jobs.map((j, i) => (i === jobIndex ? { ...j, overrides } : j)) }
+				: b,
+		),
+	}));
+}
+
+// ── Queue-local scratch pad (plan 39 Phase 6, decision 18) ───────────────────
+// A per-queue speculative stock list folded into THIS queue's baseStock as the { kind: "scratch" }
+// container (queueResolver.scratchInventory); it ranks like any container but is NEVER surfaced in
+// Assets and NEVER selectable by other queues. One entry per typeId (qty summed on add / paste-merge).
+// Every writer drops the field entirely when the list goes empty so an absent pad reads as undefined.
+
+/** Replace the queue's entire scratch list (empty list clears the pad). */
+export async function setScratchItems(queueId: string, items: ScratchItem[]): Promise<void> {
+	await updateQueue(queueId, (q) => ({
+		...q,
+		scratch: items.length > 0 ? items.map((i) => ({ ...i })) : undefined,
+	}));
+}
+
+/** Add `qty` of `typeId` to the scratch pad, incrementing an existing line. No-op for qty <= 0. */
+export async function addScratchItem(queueId: string, typeId: number, qty = 1): Promise<void> {
+	if (qty <= 0) return;
+	await updateQueue(queueId, (q) => {
+		const items = q.scratch ?? [];
+		const exists = items.some((i) => i.typeId === typeId);
+		const scratch = exists
+			? items.map((i) => (i.typeId === typeId ? { ...i, qty: i.qty + qty } : i))
+			: [...items, { typeId, qty }];
+		return { ...q, scratch };
+	});
+}
+
+/** Set a scratch line's quantity, clamped to a non-negative integer (0 removes the line). */
+export async function setScratchItemQty(
+	queueId: string,
+	typeId: number,
+	qty: number,
+): Promise<void> {
+	const safe = Math.max(0, Math.floor(qty));
+	await updateQueue(queueId, (q) => {
+		const items = q.scratch ?? [];
+		const scratch =
+			safe <= 0
+				? items.filter((i) => i.typeId !== typeId)
+				: items.map((i) => (i.typeId === typeId ? { ...i, qty: safe } : i));
+		return { ...q, scratch: scratch.length > 0 ? scratch : undefined };
+	});
+}
+
+/** Remove a scratch line by typeId, if present. */
+export async function removeScratchItem(queueId: string, typeId: number): Promise<void> {
+	await updateQueue(queueId, (q) => {
+		const scratch = (q.scratch ?? []).filter((i) => i.typeId !== typeId);
+		return { ...q, scratch: scratch.length > 0 ? scratch : undefined };
+	});
+}
+
+/** Merge parsed items into the scratch pad, summing quantities per typeId (paste-to-update). */
+export async function mergeScratchItems(queueId: string, items: ScratchItem[]): Promise<void> {
+	if (items.length === 0) return;
+	await updateQueue(queueId, (q) => {
+		const merged = (q.scratch ?? []).map((i) => ({ ...i }));
+		for (const it of items) {
+			if (it.qty <= 0) continue;
+			const existing = merged.find((m) => m.typeId === it.typeId);
+			if (existing) existing.qty += it.qty;
+			else merged.push({ typeId: it.typeId, qty: it.qty });
+		}
+		return { ...q, scratch: merged.length > 0 ? merged : undefined };
+	});
+}
+
+/** Clear the queue's scratch pad entirely. */
+export async function clearScratch(queueId: string): Promise<void> {
+	await updateQueue(queueId, (q) => ({ ...q, scratch: undefined }));
 }
 
 // ── Reactive read hooks ──────────────────────────────────────────────────────

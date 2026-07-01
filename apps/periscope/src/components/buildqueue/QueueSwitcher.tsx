@@ -1,5 +1,5 @@
 // Queue switcher -- plan 36 (industry-build-queue), Phase 6.
-// Dropdown listing every saved queue (name + step count + relative updatedAt), with select-active,
+// Dropdown listing every saved queue (name + batch count + relative updatedAt), with select-active,
 // per-queue delete (confirm; falls back to the most-recent remaining queue when the active one is
 // deleted), plus duplicate-current and new-queue actions. Rename + description editing stay inline
 // in QueueHeader. All actions delegate to the buildQueueStore; the list is reactive (useBuildQueues
@@ -106,7 +106,7 @@ export function QueueSwitcher({ queue, queues }: QueueSwitcherProps) {
 										<span className="flex min-w-0 flex-1 flex-col">
 											<span className="truncate leading-tight">{q.name}</span>
 											<span className="truncate text-[10px] leading-tight text-zinc-600">
-												{q.steps.length} step{q.steps.length === 1 ? "" : "s"} ·{" "}
+												{q.batches.length} batch{q.batches.length === 1 ? "" : "es"} ·{" "}
 												{formatRelativeMs(q.updatedAt)}
 											</span>
 										</span>

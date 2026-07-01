@@ -898,6 +898,70 @@ export interface TreasuryRecord extends SyncMeta {
 	coinType: string;
 }
 
+// ── Field Storage Types (plan 39) ───────────────────────────────────────────
+
+/**
+ * A manual storage container, peer to on-chain SSUs. Lives only in Periscope and
+ * updates via clipboard snapshots rather than chain sync. `seq` is the per-user
+ * monotonic display id ("#42"); never reused.
+ */
+export interface FieldStorageUnit {
+	/** UUID primary key. */
+	id: string;
+	/** Per-user monotonic display id (never reused). 0 is reserved for the ship cargo hold. */
+	seq: number;
+	/** Optional friendly name; display is "#42" or "#42 Junk". */
+	name?: string;
+	/**
+	 * Container kind. Absent / undefined = a normal numbered field-storage unit. "ship" marks the
+	 * single dedicated Ship Cargo Hold (no location, no "#seq"); see `ensureShipCargoUnit`.
+	 */
+	kind?: "ship";
+	/** Always "manual" -- distinguishes from chain-sourced containers. */
+	source: "manual";
+	/** Structured location (solar system id) -- required for distance sorting later. */
+	systemId?: number;
+	/** Free-text "closest warpable" reference. */
+	warpable?: string;
+	/** Free-text note. */
+	note?: string;
+	/** Unused hedge -- optional future binding to an on-chain assembly. */
+	chainAssemblyId?: string;
+	/** Epoch ms. */
+	createdAt: number;
+	/** Epoch ms. */
+	updatedAt: number;
+}
+
+/** A resolved line in a field-storage snapshot. */
+export interface FieldStorageSnapshotItem {
+	typeId: number;
+	qty: number;
+}
+
+/** An unmatched line in a field-storage snapshot (name could not resolve to a typeId). */
+export interface FieldStorageUnresolvedItem {
+	name: string;
+	qty: number;
+	/** Per-unit volume in m3 (totalVolume / qty) when derivable from the paste. */
+	vol?: number;
+}
+
+/**
+ * A full-inventory snapshot for a field storage container. Current inventory = the
+ * latest snapshot; history = the snapshot sequence; diffs derived on demand.
+ */
+export interface FieldStorageSnapshot {
+	/** UUID primary key. */
+	id: string;
+	/** FK -> FieldStorageUnit.id. */
+	containerId: string;
+	/** Epoch ms when this snapshot was captured. */
+	timestamp: number;
+	items: FieldStorageSnapshotItem[];
+	unresolved: FieldStorageUnresolvedItem[];
+}
+
 // ── Sonar Types ─────────────────────────────────────────────────────────────
 
 export type SonarSource = "local" | "chain";

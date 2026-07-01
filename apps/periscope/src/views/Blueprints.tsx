@@ -5,8 +5,8 @@ import { db } from "@/db";
 import { isRefineryFacility, useBlueprintData } from "@/hooks/useBlueprintData";
 import type { Blueprint } from "@/lib/bomTypes";
 import {
+	addBatch,
 	addJob,
-	addStep,
 	createQueue,
 	getActiveQueueId,
 	setActiveQueue,
@@ -85,10 +85,10 @@ export function Blueprints() {
 		});
 	}, []);
 
-	// Append the picked blueprint as a job on the active Build Queue's current (last) step. The
-	// store increments runs if that blueprint is already queued in the step. Ensures an active queue
-	// and at least one step exist first, then navigates to the queue. (Replaces the old
-	// bom-order-items localStorage write -- plan 36 Phase 5.)
+	// Append the picked blueprint as a job on the active Build Queue's current (last) batch. The
+	// store increments runs if that blueprint is already queued in the batch. Ensures an active queue
+	// and at least one batch exist first, then navigates to the queue. (Replaces the old
+	// bom-order-items localStorage write -- plan 36 Phase 5.) addJob mints the job's stable id.
 	const addToIndustry = useCallback(
 		async (bpId: number) => {
 			let activeId = await getActiveQueueId();
@@ -98,9 +98,9 @@ export function Blueprints() {
 				activeId = queue.id;
 				await setActiveQueue(activeId);
 			}
-			let stepId = queue.steps[queue.steps.length - 1]?.id;
-			if (!stepId) stepId = await addStep(queue.id);
-			await addJob(queue.id, stepId, { blueprintId: bpId, runs: 1 });
+			let batchId = queue.batches[queue.batches.length - 1]?.id;
+			if (!batchId) batchId = await addBatch(queue.id);
+			await addJob(queue.id, batchId, { blueprintId: bpId, runs: 1 });
 			recordRecent(bpId);
 			navigate({ to: "/industry" });
 		},

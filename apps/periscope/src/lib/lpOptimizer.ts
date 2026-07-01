@@ -50,7 +50,7 @@ export interface LpSolveOptions {
  * which is what makes the integer solve fast, and it deterministically eliminates
  * unrelated "junk" recipes (e.g. ammo) that a degenerate objective could otherwise pick.
  */
-function computeDemandCone(
+export function computeDemandCone(
 	orderItems: BomOrderItem[],
 	outputToBlueprints: Map<number, Blueprint[]>,
 	excludedBpIds: Set<number>,
@@ -96,6 +96,8 @@ export function solveLp(
 	stockMap: Map<number, number>,
 	salvageMaterialIds?: Set<number>,
 	opts: LpSolveOptions = {},
+	gatherableLeafIds?: Set<number>,
+	stockCaps?: Map<number, number>,
 ): LpSolution {
 	const { blueprints, outputToBlueprints } = blueprintData;
 	const penalty = opts.penalty ?? 0;
@@ -110,6 +112,9 @@ export function solveLp(
 	const rawTypeIds = new Set<number>();
 	for (const id of allInputIds) {
 		if (!allOutputIds.has(id)) rawTypeIds.add(id);
+	}
+	if (gatherableLeafIds) {
+		for (const id of gatherableLeafIds) rawTypeIds.add(id);
 	}
 
 	// Exclude salvage blueprints unless the player has stock of each specific
@@ -151,6 +156,9 @@ export function solveLp(
 	const producibleTypes = new Set<number>();
 	for (const typeId of outputToBlueprints.keys()) {
 		producibleTypes.add(typeId);
+	}
+	if (gatherableLeafIds) {
+		for (const id of gatherableLeafIds) producibleTypes.delete(id);
 	}
 
 	// Order demand lookup
@@ -224,6 +232,8 @@ export function solveLp(
 				if (penalty > 0) {
 					coeffs[`over_${out.typeID}`] = (coeffs[`over_${out.typeID}`] ?? 0) + out.quantity;
 				}
+			} else if (rawTypeIds.has(out.typeID) && coneTypes.has(out.typeID)) {
+				coeffs[`raw_${out.typeID}`] = (coeffs[`raw_${out.typeID}`] ?? 0) + out.quantity;
 			}
 		}
 
@@ -270,6 +280,29 @@ export function solveLp(
 		}
 	}
 
+	// 4c. Cap selected raw consumption to held stock for stock-driven split pins.
+	if (stockCaps != null && stockCaps.size > 0) {
+		for (const [rawId, stock] of stockCaps) {
+			if (stock <= 0) continue;
+			const constraintName = `stockcap_${rawId}`;
+			let hasConsumer = false;
+			for (const bp of Object.values(blueprints)) {
+				if (excludedBpIds.has(bp.blueprintID)) continue;
+				const inp = bp.inputs.find((i) => i.typeID === rawId);
+				if (inp) {
+					const varName = `bp_${bp.blueprintID}`;
+					if (variables[varName]) {
+						variables[varName][constraintName] = inp.quantity;
+						hasConsumer = true;
+					}
+				}
+			}
+			if (hasConsumer) {
+				constraints[constraintName] = { max: stock };
+			}
+		}
+	}
+
 	// 5. Apply pin constraints
 	// Track blueprint variables that carry a min-run/forced constraint from a split pin. A
 	// co-product blueprint can be force-run by one type's split pin while another type's
@@ -294,6 +327,18 @@ export function solveLp(
 			// If the pinned blueprint isn't available (excluded source / not in cone), ignore
 			// the pin rather than zeroing every other producer (which forces infeasibility).
 			if (!variables[`bp_${pin.blueprintId}`]) continue;
+			if (gatherableLeafIds?.has(pin.typeId)) {
+				const bp = blueprints[String(pin.blueprintId)];
+				const outputQty = bp?.outputs.find((o) => o.typeID === pin.typeId)?.quantity ?? 1;
+				const demandQty = orderDemand.get(pin.typeId) ?? 0;
+				if (demandQty > 0) {
+					const varName = `bp_${pin.blueprintId}`;
+					const constraintName = `pin_${pin.blueprintId}_for_${pin.typeId}`;
+					constraints[constraintName] = { min: Math.ceil(demandQty / outputQty) };
+					variables[varName][constraintName] = 1;
+					forcedBpVars.add(varName);
+				}
+			}
 			// Zero out all non-pinned blueprints that produce this type
 			for (const bp of producers) {
 				if (bp.blueprintID !== pin.blueprintId) {
@@ -422,6 +467,7 @@ export function isIntegralAndConsistent(
 	blueprintData: { blueprints: Record<string, Blueprint> },
 	orderItems: BomOrderItem[],
 	stockMap: Map<number, number>,
+	gatherableLeafIds?: Set<number>,
 ): boolean {
 	const { blueprints } = blueprintData;
 
@@ -454,13 +500,10 @@ export function isIntegralAndConsistent(
 		demand.set(item.typeId, (demand.get(item.typeId) ?? 0) + item.quantity);
 	}
 
-	const allTypes = new Set<number>([
-		...produced.keys(),
-		...consumed.keys(),
-		...demand.keys(),
-	]);
+	const allTypes = new Set<number>([...produced.keys(), ...consumed.keys(), ...demand.keys()]);
 	for (const typeId of allTypes) {
 		if (!producible.has(typeId)) continue; // raws are meant to be consumed
+		if (gatherableLeafIds?.has(typeId)) continue; // directly-gatherable byproduct leaves are raw
 		const balance =
 			(produced.get(typeId) ?? 0) -
 			(consumed.get(typeId) ?? 0) -

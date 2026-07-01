@@ -1,4 +1,4 @@
-// Either/or recipe alternatives -- plan 36 (industry-build-queue), Phase 7 + F2 + F5.
+// Either/or recipe alternatives -- plan 36 (industry-build-queue), Phase 7 + F2 + F5; Batch (plan 39).
 // For one producible input, lists EVERY buildable producer and lets the user steer the optimizer
 // with four actions:
 //   - Lock      -> an exclusive RecipePin (hard pick); clicking the locked recipe clears it.
@@ -7,12 +7,12 @@
 //   - Split...  -> open SplitEditor (F5) to distribute the demand across producers as a split pin.
 // "Reset" clears the SELECTED scope's lock for this type.
 //
-// F2 -- SCOPE. A scope toggle chooses whether an action applies to "This step" (setStepRecipeLock /
-// clearStepRecipeLock) or the "Whole queue" (setRecipeLock / clearRecipeLock). Per the resolver's
-// mergeLocks a step entry FULLY overrides the queue entry for that type, so the per-row status badge
-// reflects the EFFECTIVE entry (and tags it "(step)"/"(queue)"), while the action buttons highlight
+// F2 -- SCOPE. A scope toggle chooses whether an action applies to "This batch" (setBatchRecipeLock /
+// clearBatchRecipeLock) or the "Whole queue" (setRecipeLock / clearRecipeLock). Per the resolver's
+// mergeLocks a batch entry FULLY overrides the queue entry for that type, so the per-row status badge
+// reflects the EFFECTIVE entry (and tags it "(batch)"/"(queue)"), while the action buttons highlight
 // what is set at the scope you are currently editing. Queue is the default scope; a type that
-// already has a step override opens on "This step" so you edit the override that is actually in use.
+// already has a batch override opens on "This batch" so you edit the override that is actually in use.
 //
 // PRECEDENCE (F5): writing a split replaces any exclusive pin for the type (the entry becomes pin-only,
 // dropping prefer/exclude); a single-facility split collapses to an exclusive pin; an empty split
@@ -22,25 +22,24 @@
 
 import { SplitEditor } from "@/components/buildqueue/SplitEditor";
 import { formatOptionLabel, getFacilityLabel } from "@/components/industry/RecipeDropdown";
-import { classifyRecipePath } from "@/hooks/useBlueprintData";
 import type { Blueprint, ProductionSplit } from "@/lib/bomTypes";
 import type { RecipeLockEntry } from "@/lib/buildQueueTypes";
 import {
+	clearBatchRecipeLock,
 	clearRecipeLock,
-	clearStepRecipeLock,
+	setBatchRecipeLock,
 	setRecipeLock,
-	setStepRecipeLock,
 } from "@/stores/buildQueueStore";
 import { Ban, GitFork, Lock, RotateCcw, Star } from "lucide-react";
 import { useState } from "react";
 
-type Scope = "queue" | "step";
+type Scope = "queue" | "batch";
 
 interface RecipeAlternativesProps {
 	queueId: string;
-	/** The step this drill-down belongs to (for the "This step" scope writes). Omit for a queue-only
+	/** The batch this drill-down belongs to (for the "This batch" scope writes). Omit for a queue-only
 	 *  context (e.g. the global-mode plan) -- then only the whole-queue scope is offered. */
-	stepId?: string;
+	batchId?: string;
 	typeId: number;
 	/** All buildable producers of this type (chosen one included). */
 	producers: Blueprint[];
@@ -48,16 +47,13 @@ interface RecipeAlternativesProps {
 	chosenBpId: number | undefined;
 	/** The queue-global lock entry for this type, if any. */
 	queueEntry: RecipeLockEntry | undefined;
-	/** The per-step lock entry for this type, if any (overrides the queue entry -- see mergeLocks). */
-	stepEntry: RecipeLockEntry | undefined;
+	/** The per-batch lock entry for this type, if any (overrides the queue entry -- see mergeLocks). */
+	batchEntry: RecipeLockEntry | undefined;
 	/** This row's required quantity (Need) -- the total the SplitEditor distributes. */
 	demandQuantity: number;
 	/** The LP-decided splits for this type this solve (seeds the SplitEditor when no pin is set). */
 	currentSplits: ProductionSplit[] | undefined;
 	blueprintFacilities: Map<number, string[]>;
-	outputToBlueprints: Map<number, Blueprint[]>;
-	rawMaterialIds: Set<number>;
-	salvageMaterialIds: Set<number>;
 }
 
 /** True when an entry actively steers (pins, prefers, or eliminates) -- an empty entry does not. */
@@ -68,36 +64,33 @@ function isSteered(entry: RecipeLockEntry | undefined): boolean {
 
 export function RecipeAlternatives({
 	queueId,
-	stepId,
+	batchId,
 	typeId,
 	producers,
 	chosenBpId,
 	queueEntry,
-	stepEntry,
+	batchEntry,
 	demandQuantity,
 	currentSplits,
 	blueprintFacilities,
-	outputToBlueprints,
-	rawMaterialIds,
-	salvageMaterialIds,
 }: RecipeAlternativesProps) {
 	const queueSteered = isSteered(queueEntry);
-	const stepSteered = isSteered(stepEntry);
+	const batchSteered = isSteered(batchEntry);
 
-	// Open on the scope whose override is actually in effect: a step override wins, so editing it is
+	// Open on the scope whose override is actually in effect: a batch override wins, so editing it is
 	// the obvious intent. Otherwise default to the whole-queue scope (preserves the pre-F2 behaviour).
-	const [scope, setScope] = useState<Scope>(stepSteered ? "step" : "queue");
+	const [scope, setScope] = useState<Scope>(batchSteered ? "batch" : "queue");
 	const [splitOpen, setSplitOpen] = useState(false);
 
 	const canSplit = producers.length > 1;
-	// When there is no owning step (queue-only context, e.g. global mode), only the whole-queue scope
-	// is offered -- hide the step toggle and route all writes to the queue-global lock.
-	const canScopeStep = stepId != null;
+	// When there is no owning batch (queue-only context, e.g. global mode), only the whole-queue scope
+	// is offered -- hide the batch toggle and route all writes to the queue-global lock.
+	const canScopeBatch = batchId != null;
 
-	// EFFECTIVE entry -- what the resolver uses (step fully overrides queue per mergeLocks). Drives the
+	// EFFECTIVE entry -- what the resolver uses (batch fully overrides queue per mergeLocks). Drives the
 	// per-row status badge so it always tells the truth about the plan, regardless of editing scope.
-	const effectiveFromStep = stepSteered;
-	const effectiveEntry = stepSteered ? stepEntry : queueEntry;
+	const effectiveFromBatch = batchSteered;
+	const effectiveEntry = batchSteered ? batchEntry : queueEntry;
 	const effPin = effectiveEntry?.pin;
 	const effLockedBpId = effPin?.kind === "exclusive" ? effPin.blueprintId : undefined;
 	const effSplitBpIds = new Set(
@@ -105,11 +98,11 @@ export function RecipeAlternatives({
 	);
 	const effPreferred = new Set(effectiveEntry?.prefer ?? []);
 	const effExcluded = new Set(effectiveEntry?.exclude ?? []);
-	const effectiveSteered = queueSteered || stepSteered;
-	const scopeTag = effectiveFromStep ? "step" : "queue";
+	const effectiveSteered = queueSteered || batchSteered;
+	const scopeTag = effectiveFromBatch ? "batch" : "queue";
 
 	// ACTIVE entry -- the one being edited (selected scope). Drives the action buttons' highlight + logic.
-	const activeEntry = scope === "step" ? stepEntry : queueEntry;
+	const activeEntry = scope === "batch" ? batchEntry : queueEntry;
 	const activePin = activeEntry?.pin;
 	const lockedBpId = activePin?.kind === "exclusive" ? activePin.blueprintId : undefined;
 	const preferred = new Set(activeEntry?.prefer ?? []);
@@ -119,11 +112,11 @@ export function RecipeAlternatives({
 
 	// ── Scope-aware store writes ────────────────────────────────────────────────
 	function writeEntry(entry: RecipeLockEntry) {
-		if (scope === "step" && stepId != null) setStepRecipeLock(queueId, stepId, entry);
+		if (scope === "batch" && batchId != null) setBatchRecipeLock(queueId, batchId, entry);
 		else setRecipeLock(queueId, entry);
 	}
 	function clearEntry() {
-		if (scope === "step" && stepId != null) clearStepRecipeLock(queueId, stepId, typeId);
+		if (scope === "batch" && batchId != null) clearBatchRecipeLock(queueId, batchId, typeId);
 		else clearRecipeLock(queueId, typeId);
 	}
 
@@ -202,7 +195,10 @@ export function RecipeAlternatives({
 		if (positive.length === 0) {
 			clearEntry();
 		} else if (positive.length === 1) {
-			writeEntry({ typeId, pin: { typeId, kind: "exclusive", blueprintId: positive[0].blueprintId } });
+			writeEntry({
+				typeId,
+				pin: { typeId, kind: "exclusive", blueprintId: positive[0].blueprintId },
+			});
 		} else {
 			writeEntry({ typeId, pin: { typeId, kind: "split", splits: positive } });
 		}
@@ -219,22 +215,22 @@ export function RecipeAlternatives({
 		setSplitOpen(false);
 	}
 
-	// Cross-scope banner so a step override is unmistakable even while editing the other scope.
+	// Cross-scope banner so a batch override is unmistakable even while editing the other scope.
 	const banner =
-		scope === "queue" && stepSteered
+		scope === "queue" && batchSteered
 			? {
 					cls: "text-amber-400",
-					text: "A step override is set for this item and takes priority. Switch to This step to change what's used here.",
+					text: "A batch override is set for this item and takes priority. Switch to This batch to change what's used here.",
 				}
-			: scope === "step" && stepSteered
+			: scope === "batch" && batchSteered
 				? {
 						cls: "text-cyan-300",
-						text: "Editing this step's override -- it overrides the whole-queue setting for this step.",
+						text: "Editing this batch's override -- it overrides the whole-queue setting for this batch.",
 					}
-				: scope === "step" && queueSteered
+				: scope === "batch" && queueSteered
 					? {
 							cls: "text-zinc-400",
-							text: "No step override yet -- the whole-queue setting applies. Set one here to override it for this step only.",
+							text: "No batch override yet -- the whole-queue setting applies. Set one here to override it for this batch only.",
 						}
 					: null;
 
@@ -243,34 +239,34 @@ export function RecipeAlternatives({
 			<div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
 				<span>{producers.length} ways to build this</span>
 
-				{/* F2 scope toggle -- only when this drill-down belongs to a step */}
-				{canScopeStep && (
-				<div className="ml-1 flex shrink-0 overflow-hidden rounded border border-zinc-700">
-					<button
-						type="button"
-						onClick={() => setScope("step")}
-						className={`px-1.5 py-0.5 text-[10px] transition-colors ${
-							scope === "step"
-								? "bg-cyan-500/20 text-cyan-300"
-								: "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-						}`}
-						title="Apply changes to THIS step only (overrides the whole-queue setting)"
-					>
-						This step
-					</button>
-					<button
-						type="button"
-						onClick={() => setScope("queue")}
-						className={`px-1.5 py-0.5 text-[10px] transition-colors ${
-							scope === "queue"
-								? "bg-zinc-700 text-zinc-100"
-								: "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-						}`}
-						title="Apply changes to the WHOLE queue (every step)"
-					>
-						Whole queue
-					</button>
-				</div>
+				{/* F2 scope toggle -- only when this drill-down belongs to a batch */}
+				{canScopeBatch && (
+					<div className="ml-1 flex shrink-0 overflow-hidden rounded border border-zinc-700">
+						<button
+							type="button"
+							onClick={() => setScope("batch")}
+							className={`px-1.5 py-0.5 text-[10px] transition-colors ${
+								scope === "batch"
+									? "bg-cyan-500/20 text-cyan-300"
+									: "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+							}`}
+							title="Apply changes to THIS batch only (overrides the whole-queue setting)"
+						>
+							This batch
+						</button>
+						<button
+							type="button"
+							onClick={() => setScope("queue")}
+							className={`px-1.5 py-0.5 text-[10px] transition-colors ${
+								scope === "queue"
+									? "bg-zinc-700 text-zinc-100"
+									: "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+							}`}
+							title="Apply changes to the WHOLE queue (every batch)"
+						>
+							Whole queue
+						</button>
+					</div>
 				)}
 
 				{canSplit && (
@@ -295,13 +291,13 @@ export function RecipeAlternatives({
 						onClick={clearEntry}
 						className="ml-auto inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-300"
 						title={
-							scope === "step"
-								? "Clear this step's override for this item"
+							scope === "batch"
+								? "Clear this batch's override for this item"
 								: "Reset this input to the optimizer's automatic pick"
 						}
 					>
 						<RotateCcw size={11} />
-						{scope === "step" ? "Reset step" : "Reset to auto"}
+						{scope === "batch" ? "Reset batch" : "Reset to auto"}
 					</button>
 				)}
 			</div>
@@ -324,7 +320,6 @@ export function RecipeAlternatives({
 
 			{producers.map((bp) => {
 				const bpId = bp.blueprintID;
-				const path = classifyRecipePath(bp, outputToBlueprints, rawMaterialIds, salvageMaterialIds);
 
 				// Status badge reflects the EFFECTIVE entry (+ scope tag) so it matches the resolved plan.
 				const effLocked = effLockedBpId === bpId;
@@ -368,7 +363,6 @@ export function RecipeAlternatives({
 						<div className="min-w-0 flex-1">
 							<div className="flex items-center gap-2">
 								<span className="truncate text-xs font-medium text-zinc-200">
-									{path === "salvage" ? "♻ " : ""}
 									{getFacilityLabel(bp, blueprintFacilities)}
 								</span>
 								{status && (

@@ -1,3 +1,4 @@
+import type { BuildQueue } from "@/lib/buildQueueTypes";
 import Dexie, { type EntityTable } from "dexie";
 import type {
 	AssemblyIntel,
@@ -12,6 +13,8 @@ import type {
 	CurrencyRecord,
 	DeployableIntel,
 	ExtensionRecord,
+	FieldStorageSnapshot,
+	FieldStorageUnit,
 	GameType,
 	GroupMember,
 	Jump,
@@ -49,7 +52,6 @@ import type {
 	TradeNodeRecord,
 	TreasuryRecord,
 } from "./types";
-import type { BuildQueue } from "@/lib/buildQueueTypes";
 
 class PeriscopeDB extends Dexie {
 	// Static data (NOT encrypted)
@@ -143,6 +145,10 @@ class PeriscopeDB extends Dexie {
 
 	// Build Queue (plan 36) -- named, ordered industry build queues
 	buildQueues!: EntityTable<BuildQueue, "id">;
+
+	// Field Storage (plan 39) -- manual storage containers + inventory snapshots
+	fieldStorageUnits!: EntityTable<FieldStorageUnit, "id">;
+	fieldStorageSnapshots!: EntityTable<FieldStorageSnapshot, "id">;
 
 	constructor() {
 		super("frontier-periscope");
@@ -644,6 +650,42 @@ class PeriscopeDB extends Dexie {
 		this.version(35).stores({
 			buildQueues: "id, name, updatedAt",
 		});
+
+		// V36: Field Storage (plan 39) -- manual storage containers + inventory snapshots.
+		// Fresh tables, no data migration. The fieldStorageNextSeq counter reuses the
+		// existing settings table (no schema change there).
+		this.version(36).stores({
+			fieldStorageUnits: "id, seq, systemId, updatedAt",
+			fieldStorageSnapshots: "id, containerId, timestamp",
+		});
+
+		// V37: Build Queue rename (plan 39 Phase 3) -- reshape pre-rename records so legacy queues do
+		// not crash the view ("queue.batches is not iterable"). Old queues persisted a `steps` field and
+		// index-keyed jobs (no id); the renamed model uses `batches` + stable Batch.id / Job.id.
+		// Idempotent: only reshapes records still on the old shape. No new tables/indexes.
+		this.version(37)
+			.stores({})
+			.upgrade(async (tx) => {
+				await tx
+					.table("buildQueues")
+					.toCollection()
+					.modify((q: { steps?: unknown[]; batches?: unknown[] }) => {
+						if (q.batches === undefined && Array.isArray(q.steps)) {
+							q.batches = q.steps;
+						}
+						q.steps = undefined;
+						if (Array.isArray(q.batches)) {
+							for (const batch of q.batches as Array<{ id?: string; jobs?: unknown[] }>) {
+								if (!batch.id) batch.id = crypto.randomUUID();
+								if (Array.isArray(batch.jobs)) {
+									for (const job of batch.jobs as Array<{ id?: string }>) {
+										if (!job.id) job.id = crypto.randomUUID();
+									}
+								}
+							}
+						}
+					});
+			});
 	}
 }
 

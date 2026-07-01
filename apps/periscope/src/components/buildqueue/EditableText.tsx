@@ -1,6 +1,6 @@
 // Inline editable text -- plan 36 (industry-build-queue), Phase 5.
 // Click the text to edit; commit on blur or Enter, cancel on Escape. Used for the queue name,
-// queue description, and step labels. Single-line by default; pass multiline for the description.
+// queue description, and batch labels. Single-line by default; pass multiline for the description.
 
 import { useEffect, useRef, useState } from "react";
 

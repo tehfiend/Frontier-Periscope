@@ -1,13 +1,13 @@
 // Shared helpers + types for the Build Queue view -- plan 36 (industry-build-queue), Phase 5.
-// Small, dependency-free utilities used across the queue/step/job components.
+// Small, dependency-free utilities used across the queue/batch/job components.
 
 import type { Blueprint } from "@/lib/bomTypes";
 import type { RecipeLockEntry } from "@/lib/buildQueueTypes";
-import { type StepResult, mergeLocks } from "@/lib/queueResolver";
+import { type BatchResult, mergeLocks } from "@/lib/queueResolver";
 
 /**
  * The slice of loaded blueprint/game data the Build Queue components consume. The view assembles
- * this once (buildable-filtered, mirroring IndustryCalculator) and threads it down so the step and
+ * this once (buildable-filtered, mirroring IndustryCalculator) and threads it down so the batch and
  * job components never touch useBlueprintData themselves.
  */
 export interface QueueBlueprintData {
@@ -17,9 +17,11 @@ export interface QueueBlueprintData {
 	outputToBlueprints: Map<number, Blueprint[]>;
 	/** Buildable-filtered typeID -> default blueprintID (used to resolve a picked product -> a job). */
 	defaultRecipes: Map<number, number>;
-	/** Leaf raw typeIDs (full set) -- recipe-path classification in the recipe dropdown. */
+	/** Leaf raw typeIDs (full set). */
 	rawMaterialIds: Set<number>;
-	/** Salvage leaf typeIDs (full set) -- recipe-path classification + material source labels. */
+	/** Directly-gatherable leaf typeIDs that may also appear as recipe byproducts. */
+	gatherableLeafIds: Set<number>;
+	/** Salvage leaf typeIDs (full set) -- material source labels. */
 	salvageMaterialIds: Set<number>;
 	/** blueprintID -> live facility names (for the facility label in the recipe dropdown). */
 	blueprintFacilities: Map<number, string[]>;
@@ -29,8 +31,8 @@ export interface QueueBlueprintData {
 	producibleItems: Array<{ typeId: number; typeName: string }>;
 }
 
-/** A lightweight reference to a step, for the move-to-step dropdown. */
-export interface StepRef {
+/** A lightweight reference to a batch, for the move-to-batch dropdown. */
+export interface BatchRef {
 	id: string;
 	label: string;
 }
@@ -81,7 +83,8 @@ export function resolveBlueprintForProduct(
 // ── Either/or "open choice" accounting ────────────────────────────────────────
 // A producible input is an "open choice" when more than one recipe can build it AND the user has
 // NOT steered it yet -- so it is still on the optimizer's auto pick. These power the "N choices"
-// indicators that tell early-game users a decision is available without hunting for it.
+// indicators that tell early-game users a decision is available without hunting for it. (These count
+// optimizer-DERIVED build rows; authored Target jobs are not part of the open-choice tally.)
 
 /**
  * True when a recipe lock actively steers a type -- it pins a recipe, prefers one, or eliminates
@@ -94,25 +97,25 @@ export function isRecipeSteered(typeId: number, recipeLocks: RecipeLockEntry[]):
 	return entry.pin != null || (entry.prefer?.length ?? 0) > 0 || (entry.exclude?.length ?? 0) > 0;
 }
 
-/** Producible inputs in a step with >1 recipe that are still on the optimizer's auto pick. */
-export function stepOpenChoiceCount(step: StepResult, recipeLocks: RecipeLockEntry[]): number {
-	return step.build.filter(
+/** Producible inputs in a batch with >1 recipe that are still on the optimizer's auto pick. */
+export function batchOpenChoiceCount(batch: BatchResult, recipeLocks: RecipeLockEntry[]): number {
+	return batch.build.filter(
 		(b) => b.alternativeBlueprintIds.length > 1 && !isRecipeSteered(b.typeId, recipeLocks),
 	).length;
 }
 
-/** Distinct producible typeIDs across all steps that are still open either/or choices. */
+/** Distinct producible typeIDs across all batches that are still open either/or choices. */
 export function queueOpenChoiceCount(
-	steps: StepResult[],
+	batches: BatchResult[],
 	recipeLocks: RecipeLockEntry[],
 ): number {
 	const open = new Set<number>();
-	for (const step of steps) {
-		// Apply the step's own per-step locks on top of the queue-global locks so a purely
-		// step-scoped steer is counted as steered (otherwise the badge over-counts). Merging with an
-		// absent step.recipeLocks is a no-op, so per-step (default) results are unchanged.
-		const effective = mergeLocks(recipeLocks, step.recipeLocks);
-		for (const b of step.build) {
+	for (const batch of batches) {
+		// Apply the batch's own per-batch locks on top of the queue-global locks so a purely
+		// batch-scoped steer is counted as steered (otherwise the badge over-counts). Merging with an
+		// absent batch.recipeLocks is a no-op, so per-batch (default) results are unchanged.
+		const effective = mergeLocks(recipeLocks, batch.recipeLocks);
+		for (const b of batch.build) {
 			if (b.alternativeBlueprintIds.length > 1 && !isRecipeSteered(b.typeId, effective)) {
 				open.add(b.typeId);
 			}
