@@ -97,10 +97,22 @@ export async function duplicateQueue(id: string): Promise<BuildQueue | undefined
 		name: `${source.name} (copy)`,
 		batches: source.batches.map((batch) => ({
 			...batch,
-			jobs: batch.jobs.map((job) => ({ ...job })),
+			facilityExclude: batch.facilityExclude ? [...batch.facilityExclude] : undefined,
+			jobs: batch.jobs.map((job) => ({
+				...job,
+				overrides: job.overrides
+					? {
+							...job.overrides,
+							facilityExclude: job.overrides.facilityExclude
+								? [...job.overrides.facilityExclude]
+								: undefined,
+						}
+					: undefined,
+			})),
 			recipeLocks: batch.recipeLocks?.map((lock) => ({ ...lock })),
 		})),
 		recipeLocks: source.recipeLocks.map((lock) => ({ ...lock })),
+		facilityExclude: source.facilityExclude ? [...source.facilityExclude] : undefined,
 		scratch: source.scratch ? source.scratch.map((s) => ({ ...s })) : undefined,
 		createdAt: now,
 		updatedAt: now,
@@ -535,6 +547,14 @@ export async function setQueueOutputDefault(
 	await updateQueue(queueId, (q) => ({ ...q, outputDefault: ref }));
 }
 
+/** Set (or clear) the queue-wide facility exclusion default. */
+export async function setQueueFacilityExclude(
+	queueId: string,
+	facilityExclude: string[] | undefined,
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({ ...q, facilityExclude }));
+}
+
 /** Upsert a queue-wide per-typeId source lock by typeId (replaces any existing entry; layer 2). */
 export async function setQueueSourceLock(queueId: string, entry: SourceLockEntry): Promise<void> {
 	await updateQueue(queueId, (q) => {
@@ -576,6 +596,18 @@ export async function setBatchOutputDefault(
 	await updateQueue(queueId, (q) => ({
 		...q,
 		batches: q.batches.map((b) => (b.id === batchId ? { ...b, outputDefault: ref } : b)),
+	}));
+}
+
+/** Set (or clear) a batch's facility exclusion default. No-op if the batch is missing. */
+export async function setBatchFacilityExclude(
+	queueId: string,
+	batchId: string,
+	facilityExclude: string[] | undefined,
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({
+		...q,
+		batches: q.batches.map((b) => (b.id === batchId ? { ...b, facilityExclude } : b)),
 	}));
 }
 

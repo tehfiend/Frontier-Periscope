@@ -163,6 +163,8 @@ export function BatchMaterials({
 						data={data}
 						queueId={queueId}
 						batchId={batch.batchId}
+						queue={activeQueue}
+						rawBatch={rawBatch}
 						queueLocks={recipeLocks}
 						batchLocks={batchLocks}
 						containers={containers}

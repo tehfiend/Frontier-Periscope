@@ -182,8 +182,9 @@ function BuildChoiceRow({
 		const next: SourceLockEntry = { ...sourceLock, typeId: item.typeId };
 		if (sources) next.sources = sources;
 		else next.sources = undefined;
-		if (next.sources || next.outputDest) setBatchSourceLock(queueId, batchId, next);
-		else clearBatchSourceLock(queueId, batchId, item.typeId);
+		if (next.sources || next.outputDest || next.facilityPick !== undefined) {
+			setBatchSourceLock(queueId, batchId, next);
+		} else clearBatchSourceLock(queueId, batchId, item.typeId);
 	}
 	// Per-item deposit destination (cascade layer 4 -- batch sourceLock). Live as of plan 41 B1 -- the
 	// built item's leftover output lands in this container in the carry-forward pool, so later batches
@@ -192,8 +193,9 @@ function BuildChoiceRow({
 	function handleOutputChange(outputDest: ContainerRef | undefined) {
 		if (batchId == null) return;
 		const next: SourceLockEntry = { ...sourceLock, typeId: item.typeId, outputDest };
-		if (next.sources || next.outputDest) setBatchSourceLock(queueId, batchId, next);
-		else clearBatchSourceLock(queueId, batchId, item.typeId);
+		if (next.sources || next.outputDest || next.facilityPick !== undefined) {
+			setBatchSourceLock(queueId, batchId, next);
+		} else clearBatchSourceLock(queueId, batchId, item.typeId);
 	}
 
 	return (

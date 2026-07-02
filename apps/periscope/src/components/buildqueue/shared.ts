@@ -27,6 +27,8 @@ export interface QueueBlueprintData {
 	volumeMap: Map<number, number>;
 	/** blueprintID -> live facility names (for the facility label in the recipe dropdown). */
 	blueprintFacilities: Map<number, string[]>;
+	/** All live facility names derived from the blueprintFacilities values. */
+	facilityNames: string[];
 	/** typeID -> source group name (for the gather material-table source column). */
 	typeGroups: Map<number, string>;
 	/** Buildable producible products, sorted by name (for the add-job search). */

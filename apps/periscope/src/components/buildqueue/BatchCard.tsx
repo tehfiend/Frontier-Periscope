@@ -9,6 +9,7 @@
 import { SystemSearch } from "@/components/SystemSearch";
 import { BatchMaterials } from "@/components/buildqueue/BatchMaterials";
 import { EditableText } from "@/components/buildqueue/EditableText";
+import { FacilityPreferencePanel } from "@/components/buildqueue/FacilityPreferencePanel";
 import { JobRow } from "@/components/buildqueue/JobRow";
 import {
 	type BatchRef,
@@ -29,6 +30,7 @@ import {
 	removeBatch,
 	reorderBatches,
 	setBatchCollapsed,
+	setBatchFacilityExclude,
 	setBatchLabel,
 	setBatchLocation,
 } from "@/stores/buildQueueStore";
@@ -108,6 +110,7 @@ export function BatchCard({
 		inheritedSystemId != null
 			? (systems.find((s) => s.id === inheritedSystemId)?.name ?? `#${inheritedSystemId}`)
 			: null;
+	const effectiveFacilityExclude = batch.facilityExclude ?? queue.facilityExclude ?? [];
 	// EFFECTIVE locks (this batch's per-batch overrides on top of the queue-global locks) so the badge
 	// counts only inputs still on the optimizer's auto pick after any batch-level steer (F2).
 	const mergedLocks = mergeLocks(recipeLocks, batch.recipeLocks);
@@ -285,6 +288,26 @@ export function BatchCard({
 									: "set the queue location to cost haul"}
 						</span>
 					</div>
+
+					{data.facilityNames.length > 0 && (
+						<div className="flex items-center gap-2 border-b border-zinc-800/50 px-4 py-2">
+							<span className="shrink-0 text-[11px] font-medium text-zinc-500">Facilities</span>
+							<FacilityPreferencePanel
+								facilityNames={data.facilityNames}
+								value={batch.facilityExclude}
+								effectiveExcluded={effectiveFacilityExclude}
+								onChange={(excluded) => setBatchFacilityExclude(queueId, batch.id, excluded)}
+								scopeLabel="this batch"
+								inheritedFromLabel="queue"
+								align="left"
+							/>
+							<span className="shrink-0 text-[11px] text-zinc-600">
+								{batch.facilityExclude !== undefined
+									? "batch preference set"
+									: "inherits the queue preference"}
+							</span>
+						</div>
+					)}
 
 					{/* Jobs */}
 					{batch.jobs.length > 0 ? (

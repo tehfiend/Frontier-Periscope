@@ -8,6 +8,7 @@
 // "Target" (authored) production row -- its stable identity is the persisted Job.id.
 
 import { ItemIcon } from "@/components/ItemIcon";
+import { FacilityAvailabilityBadge } from "@/components/buildqueue/FacilityPreferencePanel";
 import { OutputDestControl } from "@/components/buildqueue/OutputDestControl";
 import { RowSourceControl } from "@/components/buildqueue/RowSourceControl";
 import {
@@ -17,8 +18,10 @@ import {
 } from "@/components/buildqueue/shared";
 import {
 	RecipeDropdown,
+	facilityRecipeLabel,
 	formatOptionLabel,
 	getFacilityLabel,
+	resolveEffectiveFacility,
 } from "@/components/industry/RecipeDropdown";
 import type {
 	Batch,
@@ -40,7 +43,7 @@ import {
 } from "@/stores/buildQueueStore";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Scissors, Trash2, Wrench } from "lucide-react";
+import { GripVertical, Scissors, Trash2 } from "lucide-react";
 
 interface JobRowProps {
 	queueId: string;
@@ -76,7 +79,11 @@ export function JobRow({
 	const name = bp?.primaryTypeName ?? `Blueprint #${job.blueprintId}`;
 	const productTypeId = bp?.primaryTypeID;
 	const producers = productTypeId != null ? (data.outputToBlueprints.get(productTypeId) ?? []) : [];
-	const hasMultiple = producers.length > 1;
+	const optionCount = producers.reduce(
+		(sum, producer) =>
+			sum + Math.max(1, (data.blueprintFacilities.get(producer.blueprintID) ?? []).length),
+		0,
+	);
 	const units = job.runs * outputPerRun(bp);
 	const facilityNames = bp ? (data.blueprintFacilities.get(bp.blueprintID) ?? []) : [];
 
@@ -100,16 +107,28 @@ export function JobRow({
 		opacity: isDragging ? 0.4 : undefined,
 	};
 
-	function changeBlueprint(newBpId: number) {
-		if (newBpId === job.blueprintId) return;
-		// Swap the top-level recipe in place (setJobBlueprint preserves position + runs).
-		setJobBlueprint(queueId, batchId, jobIndex, newBpId);
+	function persistOverrides(next: JobOverrides) {
+		const hasOverrides =
+			next.sources ||
+			next.outputDest ||
+			next.facilityExclude !== undefined ||
+			next.facilityPick !== undefined;
+		setJobOverrides(queueId, batchId, jobIndex, hasOverrides ? next : undefined);
+	}
+
+	function handleRecipeFacilitySelect(bpId: number, facility: string | undefined) {
+		if (bpId !== job.blueprintId) setJobBlueprint(queueId, batchId, jobIndex, bpId);
+		persistOverrides({ ...job.overrides, facilityPick: facility });
+	}
+
+	function handleFacilityReset() {
+		persistOverrides({ ...job.overrides, facilityPick: undefined });
 	}
 
 	// Per-job sourcing override (cascade layer 5 -- keyed by Job.id). Preserve any output destination.
 	function handleSourcesChange(sources: ContainerSourceConfig | undefined) {
 		const next: JobOverrides = { ...job.overrides, sources };
-		setJobOverrides(queueId, batchId, jobIndex, next.sources || next.outputDest ? next : undefined);
+		persistOverrides(next);
 	}
 
 	// Per-job deposit destination (cascade layer 5). Live as of plan 41 B1 -- the job's leftover outputs
@@ -117,15 +136,19 @@ export function JobRow({
 	// Preserve any sourcing override already on the job.
 	function handleOutputChange(outputDest: ContainerRef | undefined) {
 		const next: JobOverrides = { ...job.overrides, outputDest };
-		setJobOverrides(queueId, batchId, jobIndex, next.sources || next.outputDest ? next : undefined);
+		persistOverrides(next);
 	}
 
 	// The cascade-resolved deposit destination for this job (queue/batch defaults + per-typeId locks +
 	// this job's own override). Shown as the inherited hint when the job sets nothing itself.
-	const effectiveOutput =
+	const effectiveOverrides =
 		productTypeId != null
-			? resolveEffectiveOverrides(queue, batch, productTypeId, job.overrides).outputDest
+			? resolveEffectiveOverrides(queue, batch, productTypeId, job.overrides)
 			: undefined;
+	const effectiveOutput = effectiveOverrides?.outputDest;
+	const effectiveExcludedFacilities = effectiveOverrides?.excludedFacilities ?? [];
+	const excludedSet = new Set(effectiveExcludedFacilities);
+	const pick = job.overrides?.facilityPick;
 
 	return (
 		<div
@@ -156,15 +179,19 @@ export function JobRow({
 				</span>
 			</span>
 
-			{hasMultiple && productTypeId != null ? (
+			{optionCount > 1 && productTypeId != null ? (
 				<RecipeDropdown
 					typeId={productTypeId}
 					producers={producers}
 					currentBpId={job.blueprintId}
 					isOverridden={false}
-					onSelect={changeBlueprint}
+					onSelect={handleRecipeFacilitySelect}
 					formatOptionLabel={(b, typeId) => formatOptionLabel(b, typeId, data.blueprintFacilities)}
 					getFacilityLabel={(b) => getFacilityLabel(b, data.blueprintFacilities)}
+					blueprintFacilities={data.blueprintFacilities}
+					excludedFacilities={effectiveExcludedFacilities}
+					pick={pick}
+					onResetFacility={handleFacilityReset}
 				/>
 			) : (
 				bp && (
@@ -172,20 +199,15 @@ export function JobRow({
 						className="shrink-0 truncate rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-xs text-zinc-500"
 						title={`Recipe: ${formatOptionLabel(bp, bp.primaryTypeID, data.blueprintFacilities)}`}
 					>
-						{getFacilityLabel(bp, data.blueprintFacilities)}
+						{facilityRecipeLabel(bp, resolveEffectiveFacility(facilityNames, excludedSet, pick))}
 					</span>
 				)
 			)}
 
-			{facilityNames.length > 0 && (
-				<span
-					className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300"
-					title={`This build can run at any of: ${facilityNames.join(", ")}. Facility ownership is not checked and batch order is manual.`}
-				>
-					<Wrench size={10} />
-					needs {facilityNames.join(" or ")}
-				</span>
-			)}
+			<FacilityAvailabilityBadge
+				facilityNames={facilityNames}
+				excludedFacilities={effectiveExcludedFacilities}
+			/>
 
 			<RowSourceControl
 				containers={containers}

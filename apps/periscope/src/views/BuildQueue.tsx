@@ -19,6 +19,7 @@ import {
 	DepositsTable,
 	depositRowsFromRecords,
 } from "@/components/buildqueue/DepositsTable";
+import { facilityNamesFromBlueprintFacilities } from "@/components/buildqueue/FacilityPreferencePanel";
 import { QueueHeader } from "@/components/buildqueue/QueueHeader";
 import { ScratchPadPanel } from "@/components/buildqueue/ScratchPadPanel";
 import { SourceOverridesPanel } from "@/components/buildqueue/SourceOverridesPanel";
@@ -383,6 +384,11 @@ export function BuildQueue() {
 		return computeDefaultRecipes(filteredOutputToBlueprints, filteredRaw);
 	}, [filteredBlueprints, filteredOutputToBlueprints, gatherableLeafIds]);
 
+	const facilityNames = useMemo(
+		() => facilityNamesFromBlueprintFacilities(blueprintFacilities),
+		[blueprintFacilities],
+	);
+
 	// Buildable producible products (outputs), for the add-job search.
 	const producibleItems = useMemo(() => {
 		const seen = new Set<number>();
@@ -436,6 +442,7 @@ export function BuildQueue() {
 			salvageMaterialIds,
 			volumeMap,
 			blueprintFacilities,
+			facilityNames,
 			typeGroups,
 			producibleItems,
 		}),
@@ -448,6 +455,7 @@ export function BuildQueue() {
 			salvageMaterialIds,
 			volumeMap,
 			blueprintFacilities,
+			facilityNames,
 			typeGroups,
 			producibleItems,
 		],
@@ -535,10 +543,26 @@ export function BuildQueue() {
 	// only shows once the user has containers to manage or overrides to surface/clean up).
 	const hasSourceConfig = useMemo(() => {
 		if (!activeQueue) return false;
-		if ((activeQueue.sourceLocks?.length ?? 0) > 0 || activeQueue.sourcesDefault) return true;
+		if (
+			(activeQueue.sourceLocks?.length ?? 0) > 0 ||
+			activeQueue.sourcesDefault ||
+			activeQueue.outputDefault ||
+			activeQueue.facilityExclude !== undefined
+		) {
+			return true;
+		}
 		return activeQueue.batches.some(
 			(b) =>
-				(b.sourceLocks?.length ?? 0) > 0 || b.sourcesDefault || b.jobs.some((j) => j.overrides),
+				(b.sourceLocks?.length ?? 0) > 0 ||
+				b.sourcesDefault ||
+				b.outputDefault ||
+				b.facilityExclude !== undefined ||
+				b.jobs.some(
+					(j) =>
+						j.overrides?.sources ||
+						j.overrides?.outputDest ||
+						j.overrides?.facilityExclude !== undefined,
+				),
 		);
 	}, [activeQueue]);
 
@@ -796,25 +820,27 @@ export function BuildQueue() {
 
 				{/* Container sourcing -- queue-level priority + per-item/per-job overrides (greying any
 				    orphaned override whose target left the resolved plan). Drives the sourcing plan below. */}
-				{resolved && (containerOptions.length > 0 || hasSourceConfig) && (
-					<div className="mb-4">
-						<CollapsibleSection
-							title="Container sourcing"
-							defaultOpen={hasSourceConfig}
-							collapsedSummary="rank or exclude storage containers; review overrides"
-						>
-							<SourceOverridesPanel
-								queue={activeQueue}
-								resolved={resolved}
-								containers={containerOptions}
-								containerLabels={baseContainerLabels}
-								containerJumps={containerJumps}
-								nameFor={typeNameFor}
-								blueprintName={blueprintNameFor}
-							/>
-						</CollapsibleSection>
-					</div>
-				)}
+				{resolved &&
+					(containerOptions.length > 0 || facilityNames.length > 0 || hasSourceConfig) && (
+						<div className="mb-4">
+							<CollapsibleSection
+								title="Build preferences"
+								defaultOpen={hasSourceConfig}
+								collapsedSummary="facility availability, storage priority, and overrides"
+							>
+								<SourceOverridesPanel
+									queue={activeQueue}
+									resolved={resolved}
+									containers={containerOptions}
+									containerLabels={baseContainerLabels}
+									containerJumps={containerJumps}
+									facilityNames={facilityNames}
+									nameFor={typeNameFor}
+									blueprintName={blueprintNameFor}
+								/>
+							</CollapsibleSection>
+						</div>
+					)}
 
 				{/* Queue totals */}
 				{totals && activeQueue.batches.length > 0 && (
@@ -875,6 +901,7 @@ export function BuildQueue() {
 										data={data}
 										queueId={activeQueue.id}
 										batchId={null}
+										queue={activeQueue}
 										queueLocks={activeQueue.recipeLocks}
 										sourceSystemId={queueSystemId}
 										systemNames={systemNames}

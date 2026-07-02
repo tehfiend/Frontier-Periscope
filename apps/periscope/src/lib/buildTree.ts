@@ -19,12 +19,14 @@ export interface BuildTreeBatch {
 }
 
 export interface BuildTreeNode {
+	jobId?: string;
 	typeId: number;
 	typeName: string;
 	tier: "final" | "intermediate" | "raw";
 	blueprintId?: number;
 	splits?: ProductionSplit[];
 	alternativeBlueprintIds: number[];
+	excludedFacilities?: string[];
 	needPerEdge: number;
 	have: number;
 	still: number;
@@ -248,6 +250,8 @@ export function buildBatchTree(batch: BuildTreeBatch, data: BuildTreeData): Buil
 		path: string,
 		ancestorTypes: Set<number>,
 		rootBlueprint?: Blueprint,
+		rootJobId?: string,
+		rootExcludedFacilities?: string[],
 	): BuildTreeNode {
 		const line = lines.get(typeId);
 		const buildItem = buildByType.get(typeId);
@@ -324,12 +328,14 @@ export function buildBatchTree(batch: BuildTreeBatch, data: BuildTreeData): Buil
 		}
 
 		return {
+			jobId: rootJobId,
 			typeId,
 			typeName: nodeName,
 			tier,
 			blueprintId: rootBlueprint?.blueprintID ?? line?.blueprintId ?? buildItem?.blueprintId,
 			splits,
 			alternativeBlueprintIds: producers.map((bp) => bp.blueprintID),
+			excludedFacilities: rootExcludedFacilities ?? buildItem?.excludedFacilities,
 			needPerEdge,
 			have: allocation.have,
 			still: allocation.still,
@@ -353,6 +359,8 @@ export function buildBatchTree(batch: BuildTreeBatch, data: BuildTreeData): Buil
 			`job:${job.jobId}:${job.blueprint.primaryTypeID}`,
 			new Set(),
 			job.blueprint,
+			job.jobId,
+			job.excludedFacilities,
 		),
 	);
 

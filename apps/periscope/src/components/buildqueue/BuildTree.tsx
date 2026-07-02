@@ -1,4 +1,5 @@
 import { ItemIcon } from "@/components/ItemIcon";
+import { FacilityAvailabilityBadge } from "@/components/buildqueue/FacilityPreferencePanel";
 import {
 	HaveCell,
 	NeedCell,
@@ -11,12 +12,17 @@ import { RowSourceControl } from "@/components/buildqueue/RowSourceControl";
 import { type QueueBlueprintData, isRecipeSteered } from "@/components/buildqueue/shared";
 import {
 	RecipeDropdown,
+	facilityRecipeLabel,
 	formatOptionLabel,
 	getFacilityLabel,
+	resolveEffectiveFacility,
 } from "@/components/industry/RecipeDropdown";
 import type {
+	Batch,
+	BuildQueue,
 	ContainerRef,
 	ContainerSourceConfig,
+	JobOverrides,
 	RecipeLockEntry,
 	SourceLockEntry,
 } from "@/lib/buildQueueTypes";
@@ -31,9 +37,11 @@ import {
 	clearBatchSourceLock,
 	setBatchRecipeLock,
 	setBatchSourceLock,
+	setJobBlueprint,
+	setJobOverrides,
 	setRecipeLock,
 } from "@/stores/buildQueueStore";
-import { ChevronDown, ChevronRight, GitFork, Wrench } from "lucide-react";
+import { ChevronDown, ChevronRight, GitFork } from "lucide-react";
 import { Fragment, memo, useMemo, useState } from "react";
 
 interface BuildTreeProps {
@@ -41,6 +49,8 @@ interface BuildTreeProps {
 	data: QueueBlueprintData;
 	queueId: string;
 	batchId?: string | null;
+	queue?: BuildQueue;
+	rawBatch?: Batch;
 	queueLocks: RecipeLockEntry[];
 	batchLocks?: RecipeLockEntry[];
 	containers?: ContainerOption[];
@@ -172,6 +182,8 @@ interface TreeRowProps {
 	data: QueueBlueprintData;
 	queueId: string;
 	batchId?: string | null;
+	queue?: BuildQueue;
+	rawBatch?: Batch;
 	queueLocks: RecipeLockEntry[];
 	batchLocks?: RecipeLockEntry[];
 	mergedLocks: RecipeLockEntry[];
@@ -194,6 +206,8 @@ const TreeRow = memo(function TreeRow({
 	data,
 	queueId,
 	batchId,
+	queue,
+	rawBatch,
 	queueLocks,
 	batchLocks,
 	mergedLocks,
@@ -210,6 +224,11 @@ const TreeRow = memo(function TreeRow({
 	toggleDetails,
 }: TreeRowProps) {
 	const producers = data.outputToBlueprints.get(node.typeId) ?? [];
+	const optionCount = producers.reduce(
+		(sum, producer) =>
+			sum + Math.max(1, (data.blueprintFacilities.get(producer.blueprintID) ?? []).length),
+		0,
+	);
 	const chosenBp =
 		producers.find((bp) => bp.blueprintID === node.blueprintId) ??
 		(node.blueprintId == null ? undefined : data.blueprints[String(node.blueprintId)]);
@@ -221,27 +240,88 @@ const TreeRow = memo(function TreeRow({
 	const isCollapsed = collapsedPaths.has(node.path);
 	const detailsOpen = detailPaths.has(node.path);
 	const canShowRecipe = node.tier !== "raw" && chosenBp != null;
-	const canInlineChange = node.tier !== "final" && producers.length > 1;
 	const reprocessableRaw = node.tier === "raw" && producers.length > 0;
 	// Facility choice is independent of recipe choice -- the SAME blueprint can often run at more than
 	// one facility type, so this is informational (which facilities work), not a selectable control.
 	// Surfaced even for "final" (Target) nodes, whose recipe itself is locked to the authored Job.
 	const facilityNames = chosenBp ? (data.blueprintFacilities.get(chosenBp.blueprintID) ?? []) : [];
-
+	const excludedFacilities = node.excludedFacilities ?? [];
+	const excludedSet = new Set(excludedFacilities);
+	let targetBatch = rawBatch;
+	let targetJobIndex =
+		node.tier === "final" && node.jobId && rawBatch
+			? rawBatch.jobs.findIndex((job) => job.id === node.jobId)
+			: -1;
+	if (node.tier === "final" && node.jobId && targetJobIndex < 0 && queue) {
+		for (const batch of queue.batches) {
+			const index = batch.jobs.findIndex((job) => job.id === node.jobId);
+			if (index < 0) continue;
+			targetBatch = batch;
+			targetJobIndex = index;
+			break;
+		}
+	}
+	const targetJob =
+		targetBatch && targetJobIndex >= 0 ? targetBatch.jobs[targetJobIndex] : undefined;
 	const sourceLock = batchSourceLocks?.find((lock) => lock.typeId === node.typeId);
+	const derivedPick = sourceLock?.facilityPick;
+	const targetPick = targetJob?.overrides?.facilityPick;
+	const pick = node.tier === "final" ? targetPick : derivedPick;
+
+	// A final-tier row is an authored Target job -- changing its recipe goes straight to the Job
+	// (setJobBlueprint), mirroring how a derived row steers via a recipe lock.
+	const canChangeFinalRecipe = node.tier === "final" && targetJob != null && targetJobIndex >= 0;
+	const canInlineChange =
+		(node.tier === "intermediate" && optionCount > 1) || (canChangeFinalRecipe && optionCount > 1);
+
 	function handleSourcesChange(sources: ContainerSourceConfig | undefined) {
 		if (!batchId) return;
 		const next: SourceLockEntry = { ...sourceLock, typeId: node.typeId };
 		if (sources) next.sources = sources;
 		else next.sources = undefined;
-		if (next.sources || next.outputDest) setBatchSourceLock(queueId, batchId, next);
-		else clearBatchSourceLock(queueId, batchId, node.typeId);
+		if (next.sources || next.outputDest || next.facilityPick) {
+			setBatchSourceLock(queueId, batchId, next);
+		} else clearBatchSourceLock(queueId, batchId, node.typeId);
 	}
 	function handleOutputChange(outputDest: ContainerRef | undefined) {
 		if (!batchId) return;
 		const next: SourceLockEntry = { ...sourceLock, typeId: node.typeId, outputDest };
+		if (next.sources || next.outputDest || next.facilityPick) {
+			setBatchSourceLock(queueId, batchId, next);
+		} else clearBatchSourceLock(queueId, batchId, node.typeId);
+	}
+	function handleDerivedSelect(bpId: number, facility: string | undefined) {
+		if (bpId !== selectedBpId) writeExclusiveLock(queueId, batchId, node.typeId, bpId);
+		if (!batchId) return;
+		const next: SourceLockEntry = { ...sourceLock, typeId: node.typeId, facilityPick: facility };
+		if (next.sources || next.outputDest || next.facilityPick) {
+			setBatchSourceLock(queueId, batchId, next);
+		} else clearBatchSourceLock(queueId, batchId, node.typeId);
+	}
+	function handleDerivedFacilityReset() {
+		if (!batchId) return;
+		const next: SourceLockEntry = { ...sourceLock, typeId: node.typeId, facilityPick: undefined };
 		if (next.sources || next.outputDest) setBatchSourceLock(queueId, batchId, next);
 		else clearBatchSourceLock(queueId, batchId, node.typeId);
+	}
+	function handleFinalSelect(bpId: number, facility: string | undefined) {
+		if (!targetBatch || targetJobIndex < 0) return;
+		if (bpId !== node.blueprintId) setJobBlueprint(queueId, targetBatch.id, targetJobIndex, bpId);
+		const base = targetJob?.overrides ?? {};
+		const next: JobOverrides = { ...base, facilityPick: facility };
+		const hasOverrides =
+			next.sources ||
+			next.outputDest ||
+			next.facilityExclude !== undefined ||
+			next.facilityPick !== undefined;
+		setJobOverrides(queueId, targetBatch.id, targetJobIndex, hasOverrides ? next : undefined);
+	}
+	function handleFinalFacilityReset() {
+		if (!targetBatch || targetJobIndex < 0) return;
+		const base = targetJob?.overrides ?? {};
+		const next: JobOverrides = { ...base, facilityPick: undefined };
+		const hasOverrides = next.sources || next.outputDest || next.facilityExclude !== undefined;
+		setJobOverrides(queueId, targetBatch.id, targetJobIndex, hasOverrides ? next : undefined);
 	}
 
 	const phaseLabel =
@@ -315,36 +395,38 @@ const TreeRow = memo(function TreeRow({
 								typeId={node.typeId}
 								producers={producers}
 								currentBpId={selectedBpId}
-								isOverridden={steered}
-								onSelect={(blueprintId) =>
-									writeExclusiveLock(queueId, batchId, node.typeId, blueprintId)
-								}
+								isOverridden={node.tier === "final" ? false : steered}
+								onSelect={node.tier === "final" ? handleFinalSelect : handleDerivedSelect}
 								formatOptionLabel={(bp, typeId) =>
 									formatOptionLabel(bp, typeId, data.blueprintFacilities)
 								}
 								getFacilityLabel={(bp) => getFacilityLabel(bp, data.blueprintFacilities)}
-								onSplitRequest={() => toggleDetails(node.path)}
+								blueprintFacilities={data.blueprintFacilities}
+								excludedFacilities={excludedFacilities}
+								pick={pick}
+								onResetFacility={
+									node.tier === "final" ? handleFinalFacilityReset : handleDerivedFacilityReset
+								}
+								onSplitRequest={node.tier === "final" ? undefined : () => toggleDetails(node.path)}
 							/>
 						) : canShowRecipe && chosenBp ? (
 							<span
 								className="shrink-0 truncate rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-xs text-zinc-500"
 								title={`Recipe: ${formatOptionLabel(chosenBp, node.typeId, data.blueprintFacilities)}`}
 							>
-								{getFacilityLabel(chosenBp, data.blueprintFacilities)}
+								{facilityRecipeLabel(
+									chosenBp,
+									resolveEffectiveFacility(facilityNames, excludedSet, pick),
+								)}
 							</span>
 						) : (
 							<span className="text-xs text-zinc-600">--</span>
 						)}
 
-						{facilityNames.length > 0 && (
-							<span
-								className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300"
-								title={`This build can run at any of: ${facilityNames.join(", ")}. Facility ownership is not checked and batch order is manual.`}
-							>
-								<Wrench size={10} />
-								needs {facilityNames.join(" or ")}
-							</span>
-						)}
+						<FacilityAvailabilityBadge
+							facilityNames={facilityNames}
+							excludedFacilities={excludedFacilities}
+						/>
 
 						{hasAlternatives && node.tier !== "final" && (
 							<button
@@ -435,6 +517,8 @@ const TreeRow = memo(function TreeRow({
 						data={data}
 						queueId={queueId}
 						batchId={batchId}
+						queue={queue}
+						rawBatch={rawBatch}
 						queueLocks={queueLocks}
 						batchLocks={batchLocks}
 						mergedLocks={mergedLocks}
@@ -460,6 +544,8 @@ export function BuildTree({
 	data,
 	queueId,
 	batchId,
+	queue,
+	rawBatch,
 	queueLocks,
 	batchLocks,
 	containers,
@@ -518,6 +604,8 @@ export function BuildTree({
 						data={data}
 						queueId={queueId}
 						batchId={batchId}
+						queue={queue}
+						rawBatch={rawBatch}
 						queueLocks={queueLocks}
 						batchLocks={batchLocks}
 						mergedLocks={mergedLocks}

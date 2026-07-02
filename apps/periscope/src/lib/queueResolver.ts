@@ -87,6 +87,8 @@ export interface JobResult {
 	blueprint: Blueprint;
 	/** This job's outputs scaled by runs (primary output + co-products). */
 	outputs: BomOrderItem[];
+	/** Effective facility exclusions from the Queue -> Batch -> Job replace cascade. */
+	excludedFacilities?: string[];
 }
 
 /** An intermediate the batch builds, plus the either/or alternatives so Phase 7 can offer a swap.
@@ -101,6 +103,8 @@ export interface BatchBuildItem extends BomLineItem {
 	 * one (`blueprintId`). `length > 1` means an either/or choice exists for this input.
 	 */
 	alternativeBlueprintIds: number[];
+	/** Effective facility exclusions from the Queue -> Batch replace cascade. */
+	excludedFacilities?: string[];
 }
 
 /** Top-level demand a batch satisfied from the carry-forward pool / base stock (nothing built). */
@@ -469,6 +473,7 @@ export function scratchInventory(queue: BuildQueue): ContainerInventory | undefi
 //   5. job.overrides                                       (Target jobs only -- narrowest)
 // last-wins, scope-dominant: the NARROWEST scope that mentions a container sets its fate, so a narrow
 // `order` re-include beats a wider `exclude`. Output destination is plain last-defined-wins.
+// Facility exclusions use the same replace cascade as outputDest, but only across Queue -> Batch -> Job.
 
 /** The resolved overrides for one job after the 5-layer cascade. */
 export interface EffectiveOverrides {
@@ -480,6 +485,8 @@ export interface EffectiveOverrides {
 	sources?: { order: ContainerRef[]; exclude: ContainerRef[] };
 	/** Resolved deposit annotation -- the narrowest scope that defined one wins. */
 	outputDest?: ContainerRef;
+	/** Resolved facility exclusions -- the narrowest defined Queue/Batch/Job list wins. */
+	excludedFacilities?: string[];
 }
 
 /**
@@ -575,14 +582,22 @@ export function resolveEffectiveOverrides(
 		batchLock?.outputDest,
 		jobOverrides?.outputDest,
 	];
+	const facilityLayers: Array<string[] | undefined> = [
+		queue.facilityExclude,
+		batch.facilityExclude,
+		jobOverrides?.facilityExclude,
+	];
 
 	const sources = composeSources(sourceLayers);
 	let outputDest: ContainerRef | undefined;
 	for (const o of outputLayers) if (o) outputDest = o; // last (narrowest) defined wins
+	let excludedFacilities: string[] | undefined;
+	for (const f of facilityLayers) if (f !== undefined) excludedFacilities = f;
 
 	const eff: EffectiveOverrides = {};
 	if (sources) eff.sources = sources;
 	if (outputDest) eff.outputDest = outputDest;
+	if (excludedFacilities !== undefined) eff.excludedFacilities = excludedFacilities;
 	return eff;
 }
 
@@ -1401,6 +1416,7 @@ function resolveBatch(
 	for (const job of batch.jobs) {
 		const bp = bpData.blueprints[String(job.blueprintId)];
 		if (!bp) continue; // stale blueprintId -- skip the job (cannot resolve its recipe)
+		const eff = resolveEffectiveOverrides(queue, batch, bp.primaryTypeID, job.overrides);
 		jobsTime += bp.runTime * job.runs;
 		authoredProductTypeIds.add(bp.primaryTypeID);
 		for (const inp of bp.inputs) {
@@ -1415,6 +1431,7 @@ function resolveBatch(
 			blueprintId: job.blueprintId,
 			runs: job.runs,
 			blueprint: bp,
+			excludedFacilities: eff.excludedFacilities,
 			outputs: bp.outputs.map((o) => ({
 				typeId: o.typeID,
 				typeName: o.typeName,
@@ -1491,7 +1508,11 @@ function resolveBatch(
 
 	// 4. Build the batch's display lists from the BOM (gather / build / fromUpstream; D4 guard inside).
 	// Derived intermediates that coincide with an authored Target job's output merge away here.
-	const { gather, build, fromUpstream } = bomToDisplayLists(
+	const {
+		gather,
+		build: rawBuild,
+		fromUpstream,
+	} = bomToDisplayLists(
 		bom,
 		bpData.outputToBlueprints,
 		ctx.volumeMap,
@@ -1499,6 +1520,10 @@ function resolveBatch(
 		authoredProductTypeIds,
 		sourceBatchIdsByType,
 	);
+	const build = rawBuild.map((item) => ({
+		...item,
+		excludedFacilities: resolveEffectiveOverrides(queue, batch, item.typeId).excludedFacilities,
+	}));
 
 	// 5. Advance the container-keyed carry-forward pool (plan 41 B1). FLATTENED, this reproduces the old
 	// scalar advance EXACTLY: pool[t] = max(0, before - drawn) + (jobOutputs[t] - internalUse[t]) +
@@ -1678,6 +1703,7 @@ function resolveQueueGlobal(
 	const authoredProductTypeIds = new Set<number>();
 	const batches: BatchResult[] = [];
 	let globalJobTime = 0;
+	const emptyBatch: Batch = { id: "", jobs: [] };
 
 	for (const batch of queue.batches) {
 		const jobs: JobResult[] = [];
@@ -1685,6 +1711,7 @@ function resolveQueueGlobal(
 		for (const job of batch.jobs) {
 			const bp = bpData.blueprints[String(job.blueprintId)];
 			if (!bp) continue; // stale blueprintId -- skip the job (cannot resolve its recipe)
+			const eff = resolveEffectiveOverrides(queue, batch, bp.primaryTypeID, job.overrides);
 			jobsTime += bp.runTime * job.runs;
 			authoredProductTypeIds.add(bp.primaryTypeID);
 			for (const inp of bp.inputs) {
@@ -1702,6 +1729,7 @@ function resolveQueueGlobal(
 				blueprintId: job.blueprintId,
 				runs: job.runs,
 				blueprint: bp,
+				excludedFacilities: eff.excludedFacilities,
 				outputs: bp.outputs.map((o) => ({
 					typeId: o.typeID,
 					typeName: o.typeName,
@@ -1779,13 +1807,22 @@ function resolveQueueGlobal(
 
 	// 3. Queue-level display plan (D4 guard inside) + advance the pool to the final carry-forward.
 	// Derived intermediates coinciding with a queue-wide Target job output merge away (decision 5).
-	const { gather, build, fromUpstream } = bomToDisplayLists(
+	const {
+		gather,
+		build: rawBuild,
+		fromUpstream,
+	} = bomToDisplayLists(
 		bom,
 		bpData.outputToBlueprints,
 		ctx.volumeMap,
 		nameMap,
 		authoredProductTypeIds,
 	);
+	const build = rawBuild.map((item) => ({
+		...item,
+		excludedFacilities: resolveEffectiveOverrides(queue, emptyBatch, item.typeId)
+			.excludedFacilities,
+	}));
 
 	const stockConsumed = bom.stockConsumed ?? new Map<number, number>();
 	const surplusMap = new Map<number, number>();
@@ -1809,7 +1846,6 @@ function resolveQueueGlobal(
 	// route deposits). Draws still attribute the queue-wide stockConsumed across the named breakdown
 	// containers via the QUEUE-scope cascade (per-batch source locks do not apply in global mode); a fresh
 	// running inventory cloned from the breakdown mirrors the old sourcingPlan global walk exactly.
-	const emptyBatch: Batch = { id: "", jobs: [] };
 	const globalRunning: ContainerPool = new Map();
 	for (const c of breakdown) {
 		const m = new Map<number, number>();

@@ -30,6 +30,12 @@ export interface JobOverrides {
 	/** Deposit destination (plan 41 B1). The job's leftover outputs physically land here in the
 	 *  carry-forward pool so later batches source them from this named storage; un-routed -> Unassigned. */
 	outputDest?: ContainerRef;
+	/** Facility availability exclusions. Undefined inherits; a defined array fully replaces wider
+	 *  scope exclusions for this job. Names match `blueprintFacilities` facility names. */
+	facilityExclude?: string[];
+	/** Per-item facility override -- the single facility name this item should run at. Undefined
+	 *  inherits (uses the first available facility of the chosen recipe). Overrides availability. */
+	facilityPick?: string;
 }
 
 /** A per-typeId override rule -- keys the Derived-job ("item-rule") cascade layers (2 and 4). */
@@ -89,6 +95,9 @@ export interface Batch {
 	sourcesDefault?: ContainerSourceConfig;
 	/** Batch-scope output deposit annotation default (layer 3). */
 	outputDefault?: ContainerRef;
+	/** Batch-scope facility availability exclusions. Undefined inherits; a defined array fully
+	 *  replaces the queue default for jobs under this batch. */
+	facilityExclude?: string[];
 	/** Batch-scope per-typeId sourcing/output rules (layer 4 -- the finest grain for Derived jobs). */
 	sourceLocks?: SourceLockEntry[];
 	/** Per-batch build location (plan 41 B4). The distance anchor for THIS batch's costed haul readout
@@ -122,6 +131,9 @@ export interface BuildQueue {
 	sourcesDefault?: ContainerSourceConfig;
 	/** Queue-scope output deposit annotation default (layer 1). */
 	outputDefault?: ContainerRef;
+	/** Queue-scope facility availability exclusions. Undefined means no queue default; a defined array is
+	 *  the complete default exclude list inherited by batches/jobs until they replace it. */
+	facilityExclude?: string[];
 	/** Queue-scope per-typeId sourcing/output rules (layer 2). */
 	sourceLocks?: SourceLockEntry[];
 	/** Queue location (plan 39 Phase 5). Containers are distance-sorted against it; the output

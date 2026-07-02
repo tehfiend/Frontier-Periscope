@@ -5,9 +5,16 @@
 // "inactive" and kept (never auto-deleted; it reactivates if its target reappears). A manual clear is
 // offered so users can tidy up. Editing the active queue-default uses the shared RowSourceControl.
 
+import { FacilityPreferencePanel } from "@/components/buildqueue/FacilityPreferencePanel";
 import { OutputDestControl } from "@/components/buildqueue/OutputDestControl";
 import { RowSourceControl } from "@/components/buildqueue/RowSourceControl";
-import type { BuildQueue, ContainerRef, ContainerSourceConfig } from "@/lib/buildQueueTypes";
+import type {
+	BuildQueue,
+	ContainerRef,
+	ContainerSourceConfig,
+	JobOverrides,
+	SourceLockEntry,
+} from "@/lib/buildQueueTypes";
 import { type QueueResolveResult, containerRefKey } from "@/lib/queueResolver";
 import {
 	type ContainerOption,
@@ -20,7 +27,9 @@ import {
 import {
 	clearBatchSourceLock,
 	clearQueueSourceLock,
+	setBatchSourceLock,
 	setJobOverrides,
+	setQueueFacilityExclude,
 	setQueueOutputDefault,
 	setQueueSourcesDefault,
 } from "@/stores/buildQueueStore";
@@ -33,6 +42,8 @@ interface SourceOverridesPanelProps {
 	containerLabels: Map<string, string>;
 	/** Gate-jump distance per container (containerRefKey -> jumps) for the source-priority badges. */
 	containerJumps?: Map<string, number | undefined>;
+	/** All live build facility names from loaded blueprint data. */
+	facilityNames: string[];
 	/** Resolve a material/product typeId to a display name (for per-typeId source locks). */
 	nameFor: (typeId: number) => string;
 	/** Resolve a blueprintId to its product name (for per-job overrides). */
@@ -58,6 +69,7 @@ export function SourceOverridesPanel({
 	containers,
 	containerLabels,
 	containerJumps,
+	facilityNames,
 	nameFor,
 	blueprintName,
 }: SourceOverridesPanelProps) {
@@ -72,7 +84,11 @@ export function SourceOverridesPanel({
 	const depositByTypeDest = new Map<string, number>();
 	const jobOutputTypeIds = new Map<string, number[]>();
 	for (const b of resolved.batches) {
-		for (const j of b.jobs) jobOutputTypeIds.set(j.jobId, j.outputs.map((o) => o.typeId));
+		for (const j of b.jobs)
+			jobOutputTypeIds.set(
+				j.jobId,
+				j.outputs.map((o) => o.typeId),
+			);
 		for (const rec of b.deposits) {
 			const dk = containerRefKey(rec.dest);
 			depositTotals.set(dk, (depositTotals.get(dk) ?? 0) + rec.qty);
@@ -111,6 +127,18 @@ export function SourceOverridesPanel({
 		const batchLabel = batch.label?.trim() ? batch.label : `Batch ${bi + 1}`;
 		const batchTypeIds = batchResolvedTypeIds(resolved, batch.id);
 		for (const lock of batch.sourceLocks ?? []) {
+			const clearBatchSourceOutput = () => {
+				const next: SourceLockEntry = {
+					...lock,
+					sources: undefined,
+					outputDest: undefined,
+				};
+				if (next.facilityExclude !== undefined || next.facilityPick !== undefined) {
+					setBatchSourceLock(queue.id, batch.id, next);
+				} else {
+					clearBatchSourceLock(queue.id, batch.id, lock.typeId);
+				}
+			};
 			entries.push({
 				key: `batch:${batch.id}:${lock.typeId}`,
 				scope: batchLabel,
@@ -119,15 +147,29 @@ export function SourceOverridesPanel({
 				outputDest: lock.outputDest,
 				depositQty: lock.outputDest ? depositQtyForType(lock.typeId, lock.outputDest) : 0,
 				active: batchTypeIds.has(lock.typeId),
-				onClear: () => clearBatchSourceLock(queue.id, batch.id, lock.typeId),
+				onClear: clearBatchSourceOutput,
 			});
 		}
 		for (let ji = 0; ji < batch.jobs.length; ji++) {
 			const job = batch.jobs[ji];
 			if (!job.overrides) continue;
+			if (!job.overrides.sources && !job.overrides.outputDest) continue;
 			// A job's co-products all land in its single effective outputDest (Q5a), keyed by each output
 			// typeId -- sum those to report the projected qty this job deposits there.
 			const jobDest = job.overrides.outputDest;
+			const clearJobSourceOutput = () => {
+				const next: JobOverrides = {
+					...job.overrides,
+					sources: undefined,
+					outputDest: undefined,
+				};
+				const remaining: JobOverrides = {};
+				if (next.facilityExclude !== undefined) remaining.facilityExclude = next.facilityExclude;
+				if (next.facilityPick !== undefined) remaining.facilityPick = next.facilityPick;
+				const hasRemaining =
+					remaining.facilityExclude !== undefined || remaining.facilityPick !== undefined;
+				setJobOverrides(queue.id, batch.id, ji, hasRemaining ? remaining : undefined);
+			};
 			const outIds = jobOutputTypeIds.get(job.id) ?? [];
 			entries.push({
 				key: `job:${job.id}`,
@@ -135,17 +177,16 @@ export function SourceOverridesPanel({
 				title: blueprintName(job.blueprintId),
 				sources: job.overrides.sources,
 				outputDest: jobDest,
-				depositQty: jobDest
-					? outIds.reduce((sum, t) => sum + depositQtyForType(t, jobDest), 0)
-					: 0,
+				depositQty: jobDest ? outIds.reduce((sum, t) => sum + depositQtyForType(t, jobDest), 0) : 0,
 				active: activeJobIds.has(job.id),
-				onClear: () => setJobOverrides(queue.id, batch.id, ji, undefined),
+				onClear: clearJobSourceOutput,
 			});
 		}
 	}
 
 	const hasContainers = containers.length > 0;
-	if (!hasContainers && entries.length === 0) return null;
+	const hasFacilities = facilityNames.length > 0;
+	if (!hasContainers && !hasFacilities && entries.length === 0) return null;
 
 	const orphanCount = entries.filter((e) => !e.active).length;
 
@@ -170,6 +211,22 @@ export function SourceOverridesPanel({
 					/>
 					<span className="text-[11px] text-zinc-600">
 						applies to every material unless a narrower scope overrides it
+					</span>
+				</div>
+			)}
+
+			{hasFacilities && (
+				<div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+					<span className="font-medium text-zinc-300">Queue facility availability</span>
+					<FacilityPreferencePanel
+						facilityNames={facilityNames}
+						value={queue.facilityExclude}
+						effectiveExcluded={queue.facilityExclude ?? []}
+						onChange={(excluded) => setQueueFacilityExclude(queue.id, excluded)}
+						scopeLabel="the whole queue"
+					/>
+					<span className="text-[11px] text-zinc-600">
+						applies to every build unless a batch or job replaces it
 					</span>
 				</div>
 			)}
