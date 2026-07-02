@@ -1,8 +1,8 @@
 // Output destination control -- plan 39 Phase 5; routing made REAL in plan 41 B1.
 // A compact single-select picker for one scope's deposit destination (a ContainerRef). The chosen
 // destination is now LIVE: the resolver deposits the scope's leftover outputs into this container in the
-// carry-forward pool, so later batches (and later queues) source them from this named storage. Reused on
-// Target job rows (writes job.overrides.outputDest), Derived intermediate rows (writes a batch
+// carry-forward pool, so later orders (and later queues) source them from this named storage. Reused on
+// Target job rows (writes job.overrides.outputDest), Derived intermediate rows (writes an order
 // sourceLock), and the queue-level default (writes outputDefault). It edits ONLY the value it is handed;
 // the Phase 4a cascade composes the scopes (queueResolver.resolveEffectiveOverrides). When this scope is
 // unset, the cascade-resolved (`effective`) destination is shown greyed as an inherited hint; un-routed
@@ -67,7 +67,7 @@ export function OutputDestControl({
 						? "border-emerald-600/50 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
 						: "border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-zinc-200"
 				}`}
-				title={`Where ${scopeLabel} deposits its output -- later batches source it from this container`}
+				title={`Where ${scopeLabel} deposits its output -- later orders source it from this container`}
 				aria-expanded={open}
 			>
 				<PackageOpen size={10} />

@@ -1,7 +1,7 @@
 // Per-scope container source control -- plan 39 Phase 4b.
 // A compact expandable editor for one ContainerSourceConfig (a ranked include `order` + scoped
 // `exclude`). Reused as the source-controls entry point on Target job rows (writes job.overrides),
-// Derived intermediate rows (writes a batch sourceLock), and the queue-level container priority
+// Derived intermediate rows (writes an order sourceLock), and the queue-level container priority
 // (writes sourcesDefault). It edits ONLY the config it is handed -- the Phase 4a cascade composes the
 // scopes (queueResolver.resolveEffectiveOverrides), and the resulting per-material plan is rendered by
 // SourcingPlanTable. Editing is intentionally minimal-but-usable: rank, reorder, exclude, restore.
@@ -29,7 +29,7 @@ interface RowSourceControlProps {
 	jumps?: Map<string, number | undefined>;
 	/**
 	 * Optional caption shown at the top of the popover. Used to flag that a per-row (job/item) source
-	 * priority is recorded but does not steer the live raw plan (the queue/batch container priority does).
+	 * priority is recorded but does not steer the live raw plan (the queue/order container priority does).
 	 */
 	note?: string;
 }

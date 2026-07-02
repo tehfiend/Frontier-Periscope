@@ -1,9 +1,9 @@
-// Job row -- plan 36 (industry-build-queue), Phase 6; Queue / Batch / Job (plan 39).
-// One job in a batch: a drag handle (drag to reorder within / move between batches), blueprint name +
+// Job row -- plan 36 (industry-build-queue), Phase 6; Queue / Order / Job (plan 39).
+// One job in an order: a drag handle (drag to reorder within / move between orders), blueprint name +
 // runs input (-> units), an optional recipe dropdown for the job's own top-level blueprint (only
-// when its product has >1 producer), a "split after" control, a move-to-batch picker, and a remove
+// when its product has >1 producer), a "split after" control, a move-to-order picker, and a remove
 // control. The drag handle is sortable via @dnd-kit (the DndContext lives in BuildQueue); the
-// move-to-batch <select> stays as the non-DnD grouping fallback. Recipe changes keep the job's
+// move-to-order <select> stays as the non-DnD grouping fallback. Recipe changes keep the job's
 // position via setJobBlueprint. All edits go straight to the buildQueueStore. Every job row is a
 // "Target" (authored) production row -- its stable identity is the persisted Job.id.
 
@@ -12,7 +12,7 @@ import { FacilityAvailabilityBadge } from "@/components/buildqueue/FacilityPrefe
 import { OutputDestControl } from "@/components/buildqueue/OutputDestControl";
 import { RowSourceControl } from "@/components/buildqueue/RowSourceControl";
 import {
-	type BatchRef,
+	type OrderRef,
 	type QueueBlueprintData,
 	outputPerRun,
 } from "@/components/buildqueue/shared";
@@ -24,12 +24,12 @@ import {
 	resolveEffectiveFacility,
 } from "@/components/industry/RecipeDropdown";
 import type {
-	Batch,
 	BuildQueue,
 	ContainerRef,
 	ContainerSourceConfig,
 	Job,
 	JobOverrides,
+	Order,
 } from "@/lib/buildQueueTypes";
 import { resolveEffectiveOverrides } from "@/lib/queueResolver";
 import type { ContainerOption } from "@/lib/sourcingPlan";
@@ -39,7 +39,7 @@ import {
 	setJobBlueprint,
 	setJobOverrides,
 	setJobRuns,
-	splitBatch,
+	splitOrder,
 } from "@/stores/buildQueueStore";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -47,15 +47,15 @@ import { GripVertical, Scissors, Trash2 } from "lucide-react";
 
 interface JobRowProps {
 	queueId: string;
-	/** The persisted queue + batch -- needed to resolve this job's effective (cascaded) output dest. */
+	/** The persisted queue + order -- needed to resolve this job's effective (cascaded) output dest. */
 	queue: BuildQueue;
-	batch: Batch;
-	batchId: string;
+	order: Order;
+	orderId: string;
 	job: Job;
 	jobIndex: number;
 	jobCount: number;
 	data: QueueBlueprintData;
-	batches: BatchRef[];
+	orders: OrderRef[];
 	/** Selectable containers for the per-job sourcing override (Phase 4b -- Target key = Job.id). */
 	containers: ContainerOption[];
 	/** Gate-jump distance per container (containerRefKey -> jumps) for the source-priority badges. */
@@ -65,13 +65,13 @@ interface JobRowProps {
 export function JobRow({
 	queueId,
 	queue,
-	batch,
-	batchId,
+	order,
+	orderId,
 	job,
 	jobIndex,
 	jobCount,
 	data,
-	batches,
+	orders,
 	containers,
 	containerJumps,
 }: JobRowProps) {
@@ -87,8 +87,8 @@ export function JobRow({
 	const units = job.runs * outputPerRun(bp);
 	const facilityNames = bp ? (data.blueprintFacilities.get(bp.blueprintID) ?? []) : [];
 
-	// Sortable: stable id within the DndContext (blueprintId is unique within a batch, so this never
-	// collides across batches). data lets BuildQueue resolve the move on drag end without a closure.
+	// Sortable: stable id within the DndContext (blueprintId is unique within an order, so this never
+	// collides across orders). data lets BuildQueue resolve the move on drag end without a closure.
 	const {
 		attributes,
 		listeners,
@@ -98,8 +98,8 @@ export function JobRow({
 		transition,
 		isDragging,
 	} = useSortable({
-		id: `job:${batchId}:${job.blueprintId}`,
-		data: { type: "job", batchId, jobIndex, blueprintId: job.blueprintId, name },
+		id: `job:${orderId}:${job.blueprintId}`,
+		data: { type: "job", orderId, jobIndex, blueprintId: job.blueprintId, name },
 	});
 	const style: React.CSSProperties = {
 		transform: CSS.Transform.toString(transform),
@@ -113,11 +113,11 @@ export function JobRow({
 			next.outputDest ||
 			next.facilityExclude !== undefined ||
 			next.facilityPick !== undefined;
-		setJobOverrides(queueId, batchId, jobIndex, hasOverrides ? next : undefined);
+		setJobOverrides(queueId, orderId, jobIndex, hasOverrides ? next : undefined);
 	}
 
 	function handleRecipeFacilitySelect(bpId: number, facility: string | undefined) {
-		if (bpId !== job.blueprintId) setJobBlueprint(queueId, batchId, jobIndex, bpId);
+		if (bpId !== job.blueprintId) setJobBlueprint(queueId, orderId, jobIndex, bpId);
 		persistOverrides({ ...job.overrides, facilityPick: facility });
 	}
 
@@ -132,18 +132,18 @@ export function JobRow({
 	}
 
 	// Per-job deposit destination (cascade layer 5). Live as of plan 41 B1 -- the job's leftover outputs
-	// land in this container in the carry-forward pool, so later batches source them from named storage.
+	// land in this container in the carry-forward pool, so later orders source them from named storage.
 	// Preserve any sourcing override already on the job.
 	function handleOutputChange(outputDest: ContainerRef | undefined) {
 		const next: JobOverrides = { ...job.overrides, outputDest };
 		persistOverrides(next);
 	}
 
-	// The cascade-resolved deposit destination for this job (queue/batch defaults + per-typeId locks +
+	// The cascade-resolved deposit destination for this job (queue/order defaults + per-typeId locks +
 	// this job's own override). Shown as the inherited hint when the job sets nothing itself.
 	const effectiveOverrides =
 		productTypeId != null
-			? resolveEffectiveOverrides(queue, batch, productTypeId, job.overrides)
+			? resolveEffectiveOverrides(queue, order, productTypeId, job.overrides)
 			: undefined;
 	const effectiveOutput = effectiveOverrides?.outputDest;
 	const effectiveExcludedFacilities = effectiveOverrides?.excludedFacilities ?? [];
@@ -162,7 +162,7 @@ export function JobRow({
 				{...attributes}
 				{...listeners}
 				className="shrink-0 cursor-grab touch-none rounded p-0.5 text-zinc-600 hover:text-zinc-300 active:cursor-grabbing"
-				title="Drag to reorder or move to another batch"
+				title="Drag to reorder or move to another order"
 				aria-label={`Drag to move ${name}`}
 			>
 				<GripVertical size={14} />
@@ -173,7 +173,7 @@ export function JobRow({
 				<span className="truncate">{name}</span>
 				<span
 					className="shrink-0 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300"
-					title="Authored job -- a Target build you added to this batch"
+					title="Authored job -- a Target build you added to this order"
 				>
 					Target
 				</span>
@@ -215,7 +215,7 @@ export function JobRow({
 				onChange={handleSourcesChange}
 				scopeLabel="this job"
 				jumps={containerJumps}
-				note="Per-job source priority is recorded. The live plan still sources raw materials by the queue/batch container priority, not per job."
+				note="Per-job source priority is recorded. The live plan still sources raw materials by the queue/order container priority, not per job."
 			/>
 
 			<OutputDestControl
@@ -233,7 +233,7 @@ export function JobRow({
 					min={1}
 					value={job.runs}
 					onChange={(e) =>
-						setJobRuns(queueId, batchId, jobIndex, Number.parseInt(e.target.value) || 1)
+						setJobRuns(queueId, orderId, jobIndex, Number.parseInt(e.target.value) || 1)
 					}
 					className="w-16 rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-center text-xs text-zinc-100 focus:border-violet-600 focus:outline-none"
 				/>
@@ -245,23 +245,23 @@ export function JobRow({
 			{jobIndex < jobCount - 1 && (
 				<button
 					type="button"
-					onClick={() => splitBatch(queueId, batchId, jobIndex)}
+					onClick={() => splitOrder(queueId, orderId, jobIndex)}
 					className="shrink-0 rounded p-0.5 text-zinc-600 hover:text-cyan-300"
-					title="Split into a new batch after this job"
-					aria-label="Split batch after this job"
+					title="Split into a new order after this job"
+					aria-label="Split order after this job"
 				>
 					<Scissors size={14} />
 				</button>
 			)}
 
-			{batches.length > 1 && (
+			{orders.length > 1 && (
 				<select
-					value={batchId}
-					onChange={(e) => moveJob(queueId, batchId, jobIndex, e.target.value)}
+					value={orderId}
+					onChange={(e) => moveJob(queueId, orderId, jobIndex, e.target.value)}
 					className="max-w-[8rem] rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400 focus:border-violet-600 focus:outline-none"
-					title="Move job to another batch"
+					title="Move job to another order"
 				>
-					{batches.map((b) => (
+					{orders.map((b) => (
 						<option key={b.id} value={b.id}>
 							{b.label}
 						</option>
@@ -271,7 +271,7 @@ export function JobRow({
 
 			<button
 				type="button"
-				onClick={() => removeJob(queueId, batchId, jobIndex)}
+				onClick={() => removeJob(queueId, orderId, jobIndex)}
 				className="shrink-0 rounded p-0.5 text-zinc-600 hover:text-red-400"
 				title="Remove job"
 			>

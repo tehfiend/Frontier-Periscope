@@ -1,6 +1,6 @@
 // Container sourcing overrides panel -- plan 39 Phase 4b (decision 8).
 // One place to see/manage every configured sourcing override: the queue-level container priority
-// (sourcesDefault), plus each per-typeId sourceLock (queue + batch scope) and per-job override. An
+// (sourcesDefault), plus each per-typeId sourceLock (queue + order scope) and per-job override. An
 // override whose typeId / Job.id no longer appears in the resolved plan is ORPHANED -- rendered greyed
 // "inactive" and kept (never auto-deleted; it reactivates if its target reappears). A manual clear is
 // offered so users can tidy up. Editing the active queue-default uses the shared RowSourceControl.
@@ -18,17 +18,17 @@ import type {
 import { type QueueResolveResult, containerRefKey } from "@/lib/queueResolver";
 import {
 	type ContainerOption,
-	batchResolvedTypeIds,
 	formatContainerRef,
+	orderResolvedTypeIds,
 	resolvedJobIds,
 	resolvedTypeIds,
 	sourceConfigSummary,
 } from "@/lib/sourcingPlan";
 import {
-	clearBatchSourceLock,
+	clearOrderSourceLock,
 	clearQueueSourceLock,
-	setBatchSourceLock,
 	setJobOverrides,
+	setOrderSourceLock,
 	setQueueFacilityExclude,
 	setQueueOutputDefault,
 	setQueueSourcesDefault,
@@ -83,7 +83,7 @@ export function SourceOverridesPanel({
 	const depositTotals = new Map<string, number>();
 	const depositByTypeDest = new Map<string, number>();
 	const jobOutputTypeIds = new Map<string, number[]>();
-	for (const b of resolved.batches) {
+	for (const b of resolved.orders) {
 		for (const j of b.jobs)
 			jobOutputTypeIds.set(
 				j.jobId,
@@ -121,37 +121,37 @@ export function SourceOverridesPanel({
 		});
 	}
 
-	// Batch-scope locks (layer 4) + per-job overrides (layer 5).
+	// Order-scope locks (layer 4) + per-job overrides (layer 5).
 	for (let bi = 0; bi < queue.batches.length; bi++) {
-		const batch = queue.batches[bi];
-		const batchLabel = batch.label?.trim() ? batch.label : `Batch ${bi + 1}`;
-		const batchTypeIds = batchResolvedTypeIds(resolved, batch.id);
-		for (const lock of batch.sourceLocks ?? []) {
-			const clearBatchSourceOutput = () => {
+		const order = queue.batches[bi];
+		const orderLabel = order.label?.trim() ? order.label : `Order ${bi + 1}`;
+		const orderTypeIds = orderResolvedTypeIds(resolved, order.id);
+		for (const lock of order.sourceLocks ?? []) {
+			const clearOrderSourceOutput = () => {
 				const next: SourceLockEntry = {
 					...lock,
 					sources: undefined,
 					outputDest: undefined,
 				};
 				if (next.facilityExclude !== undefined || next.facilityPick !== undefined) {
-					setBatchSourceLock(queue.id, batch.id, next);
+					setOrderSourceLock(queue.id, order.id, next);
 				} else {
-					clearBatchSourceLock(queue.id, batch.id, lock.typeId);
+					clearOrderSourceLock(queue.id, order.id, lock.typeId);
 				}
 			};
 			entries.push({
-				key: `batch:${batch.id}:${lock.typeId}`,
-				scope: batchLabel,
+				key: `order:${order.id}:${lock.typeId}`,
+				scope: orderLabel,
 				title: nameFor(lock.typeId),
 				sources: lock.sources,
 				outputDest: lock.outputDest,
 				depositQty: lock.outputDest ? depositQtyForType(lock.typeId, lock.outputDest) : 0,
-				active: batchTypeIds.has(lock.typeId),
-				onClear: clearBatchSourceOutput,
+				active: orderTypeIds.has(lock.typeId),
+				onClear: clearOrderSourceOutput,
 			});
 		}
-		for (let ji = 0; ji < batch.jobs.length; ji++) {
-			const job = batch.jobs[ji];
+		for (let ji = 0; ji < order.jobs.length; ji++) {
+			const job = order.jobs[ji];
 			if (!job.overrides) continue;
 			if (!job.overrides.sources && !job.overrides.outputDest) continue;
 			// A job's co-products all land in its single effective outputDest (Q5a), keyed by each output
@@ -168,12 +168,12 @@ export function SourceOverridesPanel({
 				if (next.facilityPick !== undefined) remaining.facilityPick = next.facilityPick;
 				const hasRemaining =
 					remaining.facilityExclude !== undefined || remaining.facilityPick !== undefined;
-				setJobOverrides(queue.id, batch.id, ji, hasRemaining ? remaining : undefined);
+				setJobOverrides(queue.id, order.id, ji, hasRemaining ? remaining : undefined);
 			};
 			const outIds = jobOutputTypeIds.get(job.id) ?? [];
 			entries.push({
 				key: `job:${job.id}`,
-				scope: batchLabel,
+				scope: orderLabel,
 				title: blueprintName(job.blueprintId),
 				sources: job.overrides.sources,
 				outputDest: jobDest,
@@ -226,7 +226,7 @@ export function SourceOverridesPanel({
 						scopeLabel="the whole queue"
 					/>
 					<span className="text-[11px] text-zinc-600">
-						applies to every build unless a batch or job replaces it
+						applies to every build unless an order or job replaces it
 					</span>
 				</div>
 			)}

@@ -1,5 +1,5 @@
 // Queue header -- plan 36 (industry-build-queue).
-// Editable queue name + description for the active queue, the F3 per-batch / global re-optimization
+// Editable queue name + description for the active queue, the F3 per-order / global re-optimization
 // toggle, plus the QueueSwitcher dropdown (select, new, duplicate, delete). Rename and description
 // editing live here (inline EditableText); the list/select/new/duplicate/delete actions live in
 // QueueSwitcher.
@@ -90,25 +90,25 @@ function QueueLocationRow({ queue, systems }: { queue: BuildQueue; systems: Sola
 }
 
 /**
- * F3 -- the per-batch / global re-optimization toggle. "Per-batch" (default) solves each batch on its
+ * F3 -- the per-order / global re-optimization toggle. "Per-Order" (default) solves each order on its
  * own with earlier outputs carried forward as stock; "Global" collapses the whole queue into one
- * solve for cross-batch optimality at the cost of per-batch legibility (per-batch recipe locks are
- * ignored and the per-batch material breakdown is replaced by a single queue-level plan). The mode
- * value stays "perStep" (persisted string); only the label reads "Per-batch".
+ * solve for cross-order optimality at the cost of per-order legibility (per-order recipe locks are
+ * ignored and the per-order material breakdown is replaced by a single queue-level plan). The mode
+ * value stays "perStep" (persisted string); only the label reads "Per-Order".
  */
 function ReoptModeToggle({ queueId, mode }: { queueId: string; mode: ReoptMode }) {
 	const options: Array<{ value: ReoptMode; label: string; title: string }> = [
 		{
 			value: "perStep",
-			label: "Per-batch",
+			label: "Per-Order",
 			title:
-				"Solve each batch on its own, carrying earlier outputs forward as stock -- legible per-batch plans that respect the build order.",
+				"Solve each order on its own, carrying earlier outputs forward as stock -- legible per-order plans that respect the build order.",
 		},
 		{
 			value: "global",
 			label: "Global",
 			title:
-				"Collapse the whole queue into one solve for cross-batch optimality. Per-batch recipe locks are ignored and the per-batch material breakdown is replaced by a single queue-level plan.",
+				"Collapse the whole queue into one solve for cross-order optimality. Per-Order recipe locks are ignored and the per-order material breakdown is replaced by a single queue-level plan.",
 		},
 	];
 	return (

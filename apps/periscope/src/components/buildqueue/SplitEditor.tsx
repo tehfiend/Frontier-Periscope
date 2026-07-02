@@ -1,7 +1,7 @@
 // Multi-facility split authoring -- plan 36 (industry-build-queue), F5.
 // Lets the user distribute a producible intermediate's required quantity across its producer
 // facilities, then writes a split RecipePin. Adapted from the old IntermediateTable split editor:
-// per-producer number input + slider with batch-size snapping (each facility's output-per-run) and
+// per-producer number input + slider with order-size snapping (each facility's output-per-run) and
 // redistribute-on-overflow (raising one facility pulls the excess from the others). The caller
 // (RecipeAlternatives) owns the store write + pin precedence -- this component is purely the draft
 // editor and hands the final per-blueprint quantities back via onApply / onOnly / onClear.
@@ -29,14 +29,14 @@ interface SplitEditorProps {
 	onCancel: () => void;
 }
 
-/** This blueprint's output-per-run for the given type (its batch size). Defaults to 1. */
+/** This blueprint's output-per-run for the given type (its order size). Defaults to 1. */
 function outQtyFor(bp: Blueprint, typeId: number): number {
 	return bp.outputs.find((o) => o.typeID === typeId)?.quantity ?? 1;
 }
 
-/** Round UP to the nearest multiple of batchSize (a facility can only build whole runs). */
-function snapToBatch(val: number, batchSize: number): number {
-	return Math.ceil(val / batchSize) * batchSize;
+/** Round UP to the nearest multiple of orderSize (a facility can only build whole runs). */
+function snapToOrder(val: number, orderSize: number): number {
+	return Math.ceil(val / orderSize) * orderSize;
 }
 
 /** Total inputs needed to build `quantity` of `typeId` on this blueprint (ceil runs * per-run inputs). */
@@ -63,11 +63,11 @@ export function SplitEditor({
 	const [splitDraft, setSplitDraft] = useState<Map<number, number>>(() => new Map(initialDraft));
 
 	// Raising one facility's quantity past total demand pulls the overflow back out of the OTHERS,
-	// proportional to what they currently hold and snapped to each one's batch size. Mirrors the
+	// proportional to what they currently hold and snapped to each one's order size. Mirrors the
 	// reference editor so an over-allocation never silently produces surplus while you drag.
 	function setQtyAndRedistribute(bp: Blueprint, newVal: number) {
 		const outQty = outQtyFor(bp, typeId);
-		const snapped = snapToBatch(Math.max(0, Math.min(newVal, demandQuantity)), outQty);
+		const snapped = snapToOrder(Math.max(0, Math.min(newVal, demandQuantity)), outQty);
 		const next = new Map(splitDraft);
 		next.set(bp.blueprintID, snapped);
 
@@ -84,9 +84,9 @@ export function SplitEditor({
 				for (const p of otherBps) {
 					if (remaining <= 0) break;
 					const cur = next.get(p.blueprintID) ?? 0;
-					const otherBatch = outQtyFor(p, typeId);
+					const otherOrder = outQtyFor(p, typeId);
 					const raw = cur - (cur / othersSum) * overflow;
-					const reduced = snapToBatch(Math.max(0, raw), otherBatch);
+					const reduced = snapToOrder(Math.max(0, raw), otherOrder);
 					const took = cur - reduced;
 					next.set(p.blueprintID, reduced);
 					remaining -= took;
@@ -122,10 +122,7 @@ export function SplitEditor({
 				const inputTotals = getTotalInputs(bp, typeId, draftQty);
 				const pct = demandQuantity > 0 ? Math.round((draftQty / demandQuantity) * 100) : 0;
 				return (
-					<div
-						key={bp.blueprintID}
-						className="grid grid-cols-[5rem_12rem_1fr] gap-x-2 gap-y-0"
-					>
+					<div key={bp.blueprintID} className="grid grid-cols-[5rem_12rem_1fr] gap-x-2 gap-y-0">
 						<input
 							type="number"
 							value={draftQty || ""}

@@ -1,37 +1,37 @@
-// Per-batch materials summary -- plan 36 (industry-build-queue), Phase 7; Queue / Batch / Job (plan 39).
-// Compact gather (raws) / build (intermediates) / from-upstream / surplus lists for one batch.
+// Per-Order materials summary -- plan 36 (industry-build-queue), Phase 7; Queue / Order / Job (plan 39).
+// Compact gather (raws) / build (intermediates) / from-upstream / surplus lists for one order.
 // Phase 7 makes the build + gather sections interactive: the build list is the either/or recipe
 // drill-down (BuildChoiceTable -> RecipeAlternatives, lock/prefer/eliminate). From-upstream and
 // surplus stay read-only (reused SurplusTable). The build subsection's hint counts the inputs that
 // still have an OPEN either/or choice (more than one recipe, not yet steered). Build rows are the
-// optimizer-DERIVED intermediates (authored Target jobs live in the batch card's job rows).
+// optimizer-DERIVED intermediates (authored Target jobs live in the order card's job rows).
 
 import { ItemIcon } from "@/components/ItemIcon";
 import { BuildTree } from "@/components/buildqueue/BuildTree";
-import { DepositsTable, projectBatchDeposits } from "@/components/buildqueue/DepositsTable";
+import { DepositsTable, projectOrderDeposits } from "@/components/buildqueue/DepositsTable";
 import { SourcingPlanTable } from "@/components/buildqueue/SourcingPlanTable";
 import {
 	type QueueBlueprintData,
-	batchOpenChoiceCount,
 	formatVolume,
+	orderOpenChoiceCount,
 } from "@/components/buildqueue/shared";
 import { SurplusTable } from "@/components/industry/SurplusTable";
 import type { RecipeLockEntry, SourceLockEntry } from "@/lib/buildQueueTypes";
-import { type BatchResult, mergeLocks } from "@/lib/queueResolver";
+import { type OrderResult, mergeLocks } from "@/lib/queueResolver";
 import type { ContainerOption, MaterialSourcingPlan } from "@/lib/sourcingPlan";
 import { useActiveQueue } from "@/stores/buildQueueStore";
 
-interface BatchMaterialsProps {
-	batch: BatchResult;
+interface OrderMaterialsProps {
+	order: OrderResult;
 	queueId: string;
 	data: QueueBlueprintData;
 	/** Queue-global recipe locks (the default lock scope). */
 	recipeLocks: RecipeLockEntry[];
-	/** This batch's per-batch lock overrides, if any (F2 -- override queue locks per type). */
-	batchLocks: RecipeLockEntry[] | undefined;
-	/** True when the queue is in global re-optimization mode (per-batch material lists are empty). */
+	/** This order's per-order lock overrides, if any (F2 -- override queue locks per type). */
+	orderLocks: RecipeLockEntry[] | undefined;
+	/** True when the queue is in global re-optimization mode (per-order material lists are empty). */
 	globalMode: boolean;
-	/** Post-solve per-material container allocation for this batch (Phase 4b). */
+	/** Post-solve per-material container allocation for this order (Phase 4b). */
 	sourcingPlan?: MaterialSourcingPlan[];
 	/** Selectable containers for the per-row Derived sourcing override. */
 	containers: ContainerOption[];
@@ -39,13 +39,13 @@ interface BatchMaterialsProps {
 	containerLabels: Map<string, string>;
 	/** Gate-jump distance per container (containerRefKey -> jumps) for the Derived source-priority badges. */
 	containerJumps?: Map<string, number | undefined>;
-	/** This batch's per-typeId source locks (cascade layer 4 -- written by the Derived row control). */
-	batchSourceLocks?: SourceLockEntry[];
+	/** This order's per-typeId source locks (cascade layer 4 -- written by the Derived row control). */
+	orderSourceLocks?: SourceLockEntry[];
 	/** Per-unit item volume (m3) by typeId -- with haulJumps, costs the sourcing-plan haul (plan 41 B4). */
 	volumeMap?: Map<number, number>;
-	/** Gate-jumps from THIS batch's location (else the queue) to each container, for the haul readout. */
+	/** Gate-jumps from THIS order's location (else the queue) to each container, for the haul readout. */
 	haulJumps?: Map<string, number | undefined>;
-	/** Effective source-site origin: batch location when set, else queue location. */
+	/** Effective source-site origin: order location when set, else queue location. */
 	sourceSystemId?: number | null;
 	/** Solar system id -> display name for source-site details. */
 	systemNames?: Map<number, string>;
@@ -74,46 +74,46 @@ function Subsection({
 	);
 }
 
-export function BatchMaterials({
-	batch,
+export function OrderMaterials({
+	order,
 	queueId,
 	data,
 	recipeLocks,
-	batchLocks,
+	orderLocks,
 	globalMode,
 	sourcingPlan,
 	containers,
 	containerLabels,
 	containerJumps,
-	batchSourceLocks,
+	orderSourceLocks,
 	volumeMap,
 	haulJumps,
 	sourceSystemId,
 	systemNames,
-}: BatchMaterialsProps) {
-	// EFFECTIVE locks (batch overrides queue per type) so the open-choice hint reflects batch-level steers.
-	const mergedLocks = mergeLocks(recipeLocks, batchLocks);
-	const openChoiceCount = batchOpenChoiceCount(batch, mergedLocks);
+}: OrderMaterialsProps) {
+	// EFFECTIVE locks (order overrides queue per type) so the open-choice hint reflects order-level steers.
+	const mergedLocks = mergeLocks(recipeLocks, orderLocks);
+	const openChoiceCount = orderOpenChoiceCount(order, mergedLocks);
 	const buildHint =
 		openChoiceCount > 0
 			? `${openChoiceCount} default choice${openChoiceCount === 1 ? "" : "s"} shown; click to change`
 			: undefined;
 
-	// Deposits projection (plan 41 B0): where this batch's outputs land (effective outputDest cascade).
-	// BatchMaterials only renders within the active queue's batches, so the active queue IS this batch's
-	// queue -- we read it reactively to resolve the cascade (BatchResult alone lacks the queue/job scopes).
-	// Suppressed in global mode (per-batch lists are queue-level there; the queue-total summary covers it).
+	// Deposits projection (plan 41 B0): where this order's outputs land (effective outputDest cascade).
+	// OrderMaterials only renders within the active queue's orders, so the active queue IS this order's
+	// queue -- we read it reactively to resolve the cascade (OrderResult alone lacks the queue/job scopes).
+	// Suppressed in global mode (per-order lists are queue-level there; the queue-total summary covers it).
 	const activeQueue = useActiveQueue();
-	const rawBatch =
+	const rawOrder =
 		activeQueue?.id === queueId
-			? activeQueue.batches.find((b) => b.id === batch.batchId)
+			? activeQueue.batches.find((b) => b.id === order.orderId)
 			: undefined;
 	const deposits =
-		!globalMode && activeQueue && rawBatch
-			? projectBatchDeposits(batch, activeQueue, rawBatch)
+		!globalMode && activeQueue && rawOrder
+			? projectOrderDeposits(order, activeQueue, rawOrder)
 			: [];
-	const phaseLabelForBatchIds = (batchIds: string[]): string => {
-		const indexes = batchIds
+	const phaseLabelForOrderIds = (orderIds: string[]): string => {
+		const indexes = orderIds
 			.map((id) => activeQueue?.batches.findIndex((b) => b.id === id) ?? -1)
 			.filter((index) => index >= 0)
 			.map((index) => index + 1);
@@ -122,55 +122,55 @@ export function BatchMaterials({
 		return `phases ${indexes.join(", ")}`;
 	};
 	const surplusConsumersByType = new Map<number, string>();
-	for (const surplus of batch.surplus) {
+	for (const surplus of order.surplus) {
 		const consumerIds = new Set<string>();
-		for (const deposit of batch.deposits) {
+		for (const deposit of order.deposits) {
 			if (deposit.typeId !== surplus.typeId) continue;
-			for (const id of deposit.consumerBatchIds ?? []) consumerIds.add(id);
+			for (const id of deposit.consumerOrderIds ?? []) consumerIds.add(id);
 		}
 		if (consumerIds.size > 0) {
-			surplusConsumersByType.set(surplus.typeId, phaseLabelForBatchIds([...consumerIds]));
+			surplusConsumersByType.set(surplus.typeId, phaseLabelForOrderIds([...consumerIds]));
 		}
 	}
 
 	const hasSourcingPlan = (sourcingPlan?.length ?? 0) > 0;
 	const hasAnything =
-		batch.gather.length > 0 ||
-		batch.build.length > 0 ||
-		batch.fromUpstream.length > 0 ||
-		batch.surplus.length > 0 ||
+		order.gather.length > 0 ||
+		order.build.length > 0 ||
+		order.fromUpstream.length > 0 ||
+		order.surplus.length > 0 ||
 		hasSourcingPlan ||
 		deposits.length > 0;
 
 	if (!hasAnything) {
-		// In global mode the per-batch lists are intentionally empty (the plan is queue-level), so the
+		// In global mode the per-order lists are intentionally empty (the plan is queue-level), so the
 		// "fully covered" wording would be misleading -- point the user to the queue-level plan instead.
 		return (
 			<div className="px-4 py-3 text-xs text-zinc-600">
 				{globalMode
 					? "Materials are shown in the queue-level plan above (global mode)."
-					: "No additional materials -- this batch's inputs are fully covered."}
+					: "No additional materials -- this order's inputs are fully covered."}
 			</div>
 		);
 	}
 
 	return (
 		<div className="space-y-3 px-4 pb-4">
-			{(batch.gather.length > 0 || batch.build.length > 0 || batch.fromUpstream.length > 0) && (
-				<Subsection title="Build path" count={batch.jobs.length} hint={buildHint}>
+			{(order.gather.length > 0 || order.build.length > 0 || order.fromUpstream.length > 0) && (
+				<Subsection title="Build path" count={order.jobs.length} hint={buildHint}>
 					<BuildTree
-						batch={batch}
+						order={order}
 						data={data}
 						queueId={queueId}
-						batchId={batch.batchId}
+						orderId={order.orderId}
 						queue={activeQueue}
-						rawBatch={rawBatch}
+						rawOrder={rawOrder}
 						queueLocks={recipeLocks}
-						batchLocks={batchLocks}
+						orderLocks={orderLocks}
 						containers={containers}
 						containerJumps={containerJumps}
-						batchSourceLocks={batchSourceLocks}
-						phaseLabelForBatchIds={phaseLabelForBatchIds}
+						orderSourceLocks={orderSourceLocks}
+						phaseLabelForOrderIds={phaseLabelForOrderIds}
 						sourceSystemId={sourceSystemId}
 						systemNames={systemNames}
 					/>
@@ -202,8 +202,8 @@ export function BatchMaterials({
 				</Subsection>
 			)}
 
-			{batch.fromUpstream.length > 0 && (
-				<Subsection title="From upstream (earlier batches)" count={batch.fromUpstream.length}>
+			{order.fromUpstream.length > 0 && (
+				<Subsection title="From upstream (earlier orders)" count={order.fromUpstream.length}>
 					<table className="w-full text-sm">
 						<thead>
 							<tr className="border-t border-zinc-800 text-xs text-zinc-500">
@@ -213,15 +213,15 @@ export function BatchMaterials({
 							</tr>
 						</thead>
 						<tbody>
-							{batch.fromUpstream.map((item) => (
+							{order.fromUpstream.map((item) => (
 								<tr key={item.typeId} className="border-t border-zinc-800/50 hover:bg-zinc-800/30">
 									<td className="px-4 py-2 text-zinc-200">
 										<span className="flex items-center gap-2">
 											<ItemIcon typeId={item.typeId} />
 											{item.typeName}
-											{item.sourceBatchIds && item.sourceBatchIds.length > 0 && (
+											{item.sourceOrderIds && item.sourceOrderIds.length > 0 && (
 												<span className="shrink-0 rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] text-cyan-300">
-													from {phaseLabelForBatchIds(item.sourceBatchIds)}
+													from {phaseLabelForOrderIds(item.sourceOrderIds)}
 												</span>
 											)}
 										</span>
@@ -239,13 +239,13 @@ export function BatchMaterials({
 				</Subsection>
 			)}
 
-			{batch.surplus.length > 0 && (
+			{order.surplus.length > 0 && (
 				<Subsection
-					title="Surplus (rolls into next batch)"
-					count={batch.surplus.length}
-					hint="available to later batches"
+					title="Surplus (rolls into next order)"
+					count={order.surplus.length}
+					hint="available to later orders"
 				>
-					<SurplusTable items={batch.surplus} consumerLabelsByType={surplusConsumersByType} />
+					<SurplusTable items={order.surplus} consumerLabelsByType={surplusConsumersByType} />
 				</Subsection>
 			)}
 		</div>

@@ -189,7 +189,7 @@ export function RecipeDropdown({
 								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-500 hover:bg-zinc-800 hover:text-amber-300"
 							>
 								<RotateCcw size={10} />
-								<span>Reset to batch default</span>
+								<span>Reset to order default</span>
 							</button>
 							<div className="mx-2 my-1 border-t border-zinc-800" />
 						</>

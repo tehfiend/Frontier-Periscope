@@ -1,13 +1,13 @@
 // Shared helpers + types for the Build Queue view -- plan 36 (industry-build-queue), Phase 5.
-// Small, dependency-free utilities used across the queue/batch/job components.
+// Small, dependency-free utilities used across the queue/order/job components.
 
 import type { Blueprint } from "@/lib/bomTypes";
 import type { RecipeLockEntry } from "@/lib/buildQueueTypes";
-import { type BatchResult, mergeLocks } from "@/lib/queueResolver";
+import { type OrderResult, mergeLocks } from "@/lib/queueResolver";
 
 /**
  * The slice of loaded blueprint/game data the Build Queue components consume. The view assembles
- * this once (buildable-filtered, mirroring IndustryCalculator) and threads it down so the batch and
+ * this once (buildable-filtered, mirroring IndustryCalculator) and threads it down so the order and
  * job components never touch useBlueprintData themselves.
  */
 export interface QueueBlueprintData {
@@ -35,8 +35,8 @@ export interface QueueBlueprintData {
 	producibleItems: Array<{ typeId: number; typeName: string }>;
 }
 
-/** A lightweight reference to a batch, for the move-to-batch dropdown. */
-export interface BatchRef {
+/** A lightweight reference to an order, for the move-to-order dropdown. */
+export interface OrderRef {
 	id: string;
 	label: string;
 }
@@ -101,25 +101,25 @@ export function isRecipeSteered(typeId: number, recipeLocks: RecipeLockEntry[]):
 	return entry.pin != null || (entry.prefer?.length ?? 0) > 0 || (entry.exclude?.length ?? 0) > 0;
 }
 
-/** Producible inputs in a batch with >1 recipe that are still showing the deterministic default. */
-export function batchOpenChoiceCount(batch: BatchResult, recipeLocks: RecipeLockEntry[]): number {
-	return batch.build.filter(
+/** Producible inputs in an order with >1 recipe that are still showing the deterministic default. */
+export function orderOpenChoiceCount(order: OrderResult, recipeLocks: RecipeLockEntry[]): number {
+	return order.build.filter(
 		(b) => b.alternativeBlueprintIds.length > 1 && !isRecipeSteered(b.typeId, recipeLocks),
 	).length;
 }
 
-/** Distinct producible typeIDs across all batches that are still showing the deterministic default. */
+/** Distinct producible typeIDs across all orders that are still showing the deterministic default. */
 export function queueOpenChoiceCount(
-	batches: BatchResult[],
+	orders: OrderResult[],
 	recipeLocks: RecipeLockEntry[],
 ): number {
 	const open = new Set<number>();
-	for (const batch of batches) {
-		// Apply the batch's own per-batch locks on top of the queue-global locks so a purely
-		// batch-scoped steer is counted as steered (otherwise the badge over-counts). Merging with an
-		// absent batch.recipeLocks is a no-op, so per-batch (default) results are unchanged.
-		const effective = mergeLocks(recipeLocks, batch.recipeLocks);
-		for (const b of batch.build) {
+	for (const order of orders) {
+		// Apply the order's own per-order locks on top of the queue-global locks so a purely
+		// order-scoped steer is counted as steered (otherwise the badge over-counts). Merging with an
+		// absent order.recipeLocks is a no-op, so per-order (default) results are unchanged.
+		const effective = mergeLocks(recipeLocks, order.recipeLocks);
+		for (const b of order.build) {
 			if (b.alternativeBlueprintIds.length > 1 && !isRecipeSteered(b.typeId, effective)) {
 				open.add(b.typeId);
 			}

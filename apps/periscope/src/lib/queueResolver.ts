@@ -1,20 +1,20 @@
 // Queue resolver -- plan 36 (industry-build-queue), Phase 4.
 //
-// Solves a BuildQueue as a SEQUENTIAL PIPELINE: each batch is solved on its own with the LP
-// optimizer, and the outputs (plus uncredited co-products) of earlier batches flow forward as
-// available stock for later batches. The user owns the top-level plan (which blueprint, how many
-// runs, the order and grouping); the optimizer only sources the INPUTS each batch's jobs need.
+// Solves a BuildQueue as a SEQUENTIAL PIPELINE: each order is solved on its own with the LP
+// optimizer, and the outputs (plus uncredited co-products) of earlier orders flow forward as
+// available stock for later orders. The user owns the top-level plan (which blueprint, how many
+// runs, the order and grouping); the optimizer only sources the INPUTS each order's jobs need.
 //
-// TRADEOFF (documented per the plan): per-batch greedy solves are NOT guaranteed globally optimal
-// versus collapsing the whole queue into one big solve -- a later batch might have steered an
-// earlier batch's recipe choice differently to share a co-product. We accept that on purpose: the
-// point of a build queue is a legible, executable per-batch plan that respects the user's chosen
-// build order. Queue-global recipe locks (merged into each batch) keep recipe choices consistent
-// across batches so the plan does not flip-flop between batches.
+// TRADEOFF (documented per the plan): per-order greedy solves are NOT guaranteed globally optimal
+// versus collapsing the whole queue into one big solve -- a later order might have steered an
+// earlier order's recipe choice differently to share a co-product. We accept that on purpose: the
+// point of a build queue is a legible, executable per-order plan that respects the user's chosen
+// build order. Queue-global recipe locks (merged into each order) keep recipe choices consistent
+// across orders so the plan does not flip-flop between orders.
 //
 // F3 adds an OPT-IN escape hatch: `queue.reoptMode === "global"` collapses the whole queue into one
-// solve (see resolveQueueGlobal) for cross-batch optimality, surfacing the result as a queue-level
-// plan instead of per-batch rows. "perStep" stays the default so existing callers are unchanged.
+// solve (see resolveQueueGlobal) for cross-order optimality, surfacing the result as a queue-level
+// plan instead of per-order rows. "perStep" stays the default so existing callers are unchanged.
 
 import { type BomResult, buildBomFromLp, resolveBom } from "@/lib/bomResolver";
 import type {
@@ -26,11 +26,11 @@ import type {
 	RecipePin,
 } from "@/lib/bomTypes";
 import type {
-	Batch,
 	BuildQueue,
 	ContainerRef,
 	ContainerSourceConfig,
 	JobOverrides,
+	Order,
 	RecipeLockEntry,
 } from "@/lib/buildQueueTypes";
 import {
@@ -43,7 +43,7 @@ import {
 } from "@/lib/lpOptimizer";
 
 // ── Tuning constants ─────────────────────────────────────────────────────────
-// Mirror IndustryCalculator's LP tuning so per-batch solves behave like the flat-list solve.
+// Mirror IndustryCalculator's LP tuning so per-order solves behave like the flat-list solve.
 
 /** Objective weight on overproduction of any producible type (breaks objective degeneracy). */
 const LP_OVERPRODUCTION_PENALTY = 0.1;
@@ -66,7 +66,7 @@ const PREFER_DEPRIORITIZE_WEIGHT = 100;
 
 /**
  * Job provenance (plan 39, decision 5):
- * - "Target"  -- an authored Job the user added to a batch; its stable identity is `Job.id`.
+ * - "Target"  -- an authored Job the user added to an order; its stable identity is `Job.id`.
  * - "Derived" -- an optimizer-spawned intermediate the user never authored; its stable identity is
  *                its `typeId`.
  * These are the keys the Phase 4 sourcing-override cascade uses (Job.id for Target, typeId for
@@ -75,7 +75,7 @@ const PREFER_DEPRIORITIZE_WEIGHT = 100;
 export type Provenance = "Target" | "Derived";
 
 /** A resolved job: the user's chosen blueprint + runs, and the outputs that produces. Always "Target"
- *  provenance -- an authored Job in some batch (its `jobId` keys the Phase 4 cascade). */
+ *  provenance -- an authored Job in some order (its `jobId` keys the Phase 4 cascade). */
 export interface JobResult {
 	/** Stable identity of the authored Job (`Job.id`) -- the Phase 4 cascade's Target override key. */
 	jobId: string;
@@ -87,15 +87,15 @@ export interface JobResult {
 	blueprint: Blueprint;
 	/** This job's outputs scaled by runs (primary output + co-products). */
 	outputs: BomOrderItem[];
-	/** Effective facility exclusions from the Queue -> Batch -> Job replace cascade. */
+	/** Effective facility exclusions from the Queue -> Order -> Job replace cascade. */
 	excludedFacilities?: string[];
 }
 
-/** An intermediate the batch builds, plus the either/or alternatives so Phase 7 can offer a swap.
+/** An intermediate the order builds, plus the either/or alternatives so Phase 7 can offer a swap.
  *  Always "Derived" provenance -- an optimizer-spawned intermediate (its `typeId`, from BomLineItem,
  *  is the Phase 4 cascade's Derived override key). Intermediates that are ALSO an authored Job output
- *  in the same batch are merged away (they surface as the Target job row instead -- decision 5). */
-export interface BatchBuildItem extends BomLineItem {
+ *  in the same order are merged away (they surface as the Target job row instead -- decision 5). */
+export interface OrderBuildItem extends BomLineItem {
 	/** Provenance of this resolved row -- always "Derived" for an optimizer-built intermediate. */
 	provenance: "Derived";
 	/**
@@ -103,11 +103,11 @@ export interface BatchBuildItem extends BomLineItem {
 	 * one (`blueprintId`). `length > 1` means an either/or choice exists for this input.
 	 */
 	alternativeBlueprintIds: number[];
-	/** Effective facility exclusions from the Queue -> Batch replace cascade. */
+	/** Effective facility exclusions from the Queue -> Order replace cascade. */
 	excludedFacilities?: string[];
 }
 
-/** Top-level demand a batch satisfied from the carry-forward pool / base stock (nothing built). */
+/** Top-level demand an order satisfied from the carry-forward pool / base stock (nothing built). */
 export interface FromUpstreamItem {
 	typeId: number;
 	typeName: string;
@@ -115,8 +115,8 @@ export interface FromUpstreamItem {
 	quantity: number;
 	/** m3 (-1 when the type's volume is unknown). */
 	volume: number;
-	/** Earlier batches whose deposited output contributed to this draw, FIFO by execution order. */
-	sourceBatchIds?: string[];
+	/** Earlier orders whose deposited output contributed to this draw, FIFO by execution order. */
+	sourceOrderIds?: string[];
 }
 
 /**
@@ -133,26 +133,26 @@ export interface ContainerDraw {
 /**
  * One recorded deposit (plan 41 B1): a produced type landing in its effective `outputDest` container.
  * `dest` is the reserved `{ kind: "unassigned" }` ref when nothing in the cascade routed the output
- * (Q1a). Deposits are merged per (typeId, dest) within a batch.
+ * (Q1a). Deposits are merged per (typeId, dest) within an order.
  */
 export interface DepositRecord {
 	typeId: number;
 	typeName: string;
 	dest: ContainerRef;
 	qty: number;
-	/** Later batches that consumed some of this deposited output. Informational only. */
-	consumerBatchIds?: string[];
+	/** Later orders that consumed some of this deposited output. Informational only. */
+	consumerOrderIds?: string[];
 }
 
 /**
  * The container-keyed carry-forward pool (plan 41 B1): `containerRefKey -> (typeId -> qty)`. The LP
- * never sees this; each batch flattens it to one scalar `Map<typeId, qty>` (flattenPool) before solving,
+ * never sees this; each order flattens it to one scalar `Map<typeId, qty>` (flattenPool) before solving,
  * so the solver stays frozen / anonymous and Option B is purely an attribution layer over Option A.
  */
 export type ContainerPool = Map<string, Map<number, number>>;
 
 interface ProvenanceLedgerEntry {
-	batchId: string;
+	orderId: string;
 	remaining: number;
 	record: DepositRecord;
 }
@@ -161,7 +161,7 @@ type ProvenanceLedger = Map<number, ProvenanceLedgerEntry[]>;
 
 /**
  * The reserved terminal deposit bucket (plan 41, decision Q1a). Un-routed outputs land here; it sits at
- * the bottom of the job -> batch -> queue `outputDest` cascade and is never a user-selectable source.
+ * the bottom of the job -> order -> queue `outputDest` cascade and is never a user-selectable source.
  * Flattened, it is exactly Option A's anonymous pool, so a queue with NO `outputDest` set anywhere
  * resolves bit-identically to today.
  */
@@ -169,33 +169,33 @@ export const UNASSIGNED_REF: ContainerRef = { kind: "unassigned" };
 /** `containerRefKey(UNASSIGNED_REF)` as a literal -- the Unassigned bucket's key in the pool. */
 const UNASSIGNED_KEY = "unassigned";
 
-/** Everything a single build batch resolves to. */
-export interface BatchResult {
-	batchId: string;
+/** Everything a single build order resolves to. */
+export interface OrderResult {
+	orderId: string;
 	label?: string;
-	/** The batch's jobs resolved to blueprint + runs + outputs (each tagged "Target" provenance). */
+	/** The order's jobs resolved to blueprint + runs + outputs (each tagged "Target" provenance). */
 	jobs: JobResult[];
-	/** Raw materials this batch needs (each line carries quantity / stockQty / stillNeed). */
+	/** Raw materials this order needs (each line carries quantity / stockQty / stillNeed). */
 	gather: BomLineItem[];
-	/** Intermediates produced this batch (each tagged "Derived"), with chosen recipe + alternatives. */
-	build: BatchBuildItem[];
+	/** Intermediates produced this order (each tagged "Derived"), with chosen recipe + alternatives. */
+	build: OrderBuildItem[];
 	/** Demand satisfied by the carry-forward pool / base stock (producible types, qty from pool). */
 	fromUpstream: FromUpstreamItem[];
-	/** Uncredited co-products produced this batch (carried into the next batch's pool). */
+	/** Uncredited co-products produced this order (carried into the next order's pool). */
 	surplus: BomSurplus[];
-	/** Seconds: this batch's job run time + the run time of the intermediates it builds. */
+	/** Seconds: this order's job run time + the run time of the intermediates it builds. */
 	time: number;
-	/** m3: total material volume for this batch (raw + intermediate; -1 entries excluded). */
+	/** m3: total material volume for this order (raw + intermediate; -1 entries excluded). */
 	volume: number;
 	/** m3: raw-material volume only. */
 	rawVolume: number;
-	/** True when the LP produced a clean, consistent integer plan for this batch. */
+	/** True when the LP produced a clean, consistent integer plan for this order. */
 	feasible: boolean;
-	/** True when the batch had to relax a source exclusion (e.g. Salvage) to be buildable. */
+	/** True when the order had to relax a source exclusion (e.g. Salvage) to be buildable. */
 	usedExcludedSources: boolean;
 	/**
-	 * The batch's own per-batch recipe locks (copied straight from Batch.recipeLocks). Carried on the
-	 * result so the UI can merge them with the queue-global locks per batch (e.g. queueOpenChoiceCount).
+	 * The order's own per-order recipe locks (copied straight from Order.recipeLocks). Carried on the
+	 * result so the UI can merge them with the queue-global locks per order (e.g. queueOpenChoiceCount).
 	 */
 	recipeLocks?: RecipeLockEntry[];
 	/**
@@ -206,7 +206,7 @@ export interface BatchResult {
 	 */
 	draws: Map<number, ContainerDraw[]>;
 	/**
-	 * Plan 41 B1 -- where this batch's net leftover outputs + surplus co-products were deposited. Each
+	 * Plan 41 B1 -- where this order's net leftover outputs + surplus co-products were deposited. Each
 	 * job's outputs land in its single effective `outputDest` (Q5a); un-routed outputs fall to the
 	 * reserved Unassigned bucket (Q1a). These are the REAL recorded deposits the Deposits table renders.
 	 */
@@ -217,15 +217,15 @@ export interface BatchResult {
  * The single queue-level plan produced in "global" re-optimization mode (F3). Present on
  * QueueResolveResult.global ONLY when queue.reoptMode === "global". The whole queue's job-input
  * demand was solved as ONE LP against baseStock, so this gather/build is a queue-wide summary and is
- * NOT attributed back to individual batches (each batch's BatchResult.gather/build/fromUpstream/surplus
- * are left empty in this mode -- the view should render this object instead). Per-batch recipe locks
+ * NOT attributed back to individual orders (each order's OrderResult.gather/build/fromUpstream/surplus
+ * are left empty in this mode -- the view should render this object instead). Per-Order recipe locks
  * are NOT applied in global mode; only queue-global locks + source-prefs steer the solve.
  */
 export interface QueueGlobalPlan {
 	/** Raw materials gathered across the whole queue (single combined solve). */
 	gather: BomLineItem[];
 	/** Intermediates built across the whole queue (each tagged "Derived"), with recipe + alternatives. */
-	build: BatchBuildItem[];
+	build: OrderBuildItem[];
 	/** Top-level producible job inputs met from base stock, queue-wide. */
 	fromUpstream: FromUpstreamItem[];
 	/** Uncredited co-products produced across the whole queue. */
@@ -243,39 +243,39 @@ export interface QueueGlobalPlan {
 	/**
 	 * Plan 41 B1 -- recorded container attribution for the single global plan. `draws` attributes the
 	 * queue-wide stockConsumed across the named breakdown containers via the QUEUE-scope cascade. Global
-	 * mode has NO batch order to deposit along, so `deposits` are NOT routed -- every leftover output +
-	 * surplus lands in the reserved Unassigned bucket (decision 9). Use per-batch mode for routed deposits.
+	 * mode has NO order sequence to deposit along, so `deposits` are NOT routed -- every leftover output +
+	 * surplus lands in the reserved Unassigned bucket (decision 9). Use per-order mode for routed deposits.
 	 */
 	draws: Map<number, ContainerDraw[]>;
 	deposits: DepositRecord[];
 }
 
 export interface QueueResolveResult {
-	batches: BatchResult[];
+	orders: OrderResult[];
 	totals: {
-		/** Sum of every batch's time (seconds). In global mode, the whole-queue plan time. */
+		/** Sum of every order's time (seconds). In global mode, the whole-queue plan time. */
 		time: number;
-		/** Sum of every batch's raw-material volume (m3). In global mode, the whole-queue raw volume. */
+		/** Sum of every order's raw-material volume (m3). In global mode, the whole-queue raw volume. */
 		rawVolume: number;
-		/** Sum of every batch's total material volume (m3). In global mode, the whole-queue volume. */
+		/** Sum of every order's total material volume (m3). In global mode, the whole-queue volume. */
 		volume: number;
-		/** True only when EVERY batch resolved to a clean LP plan (in global mode, the single solve). */
+		/** True only when EVERY order resolved to a clean LP plan (in global mode, the single solve). */
 		feasible: boolean;
 		/**
-		 * The CONTAINER-KEYED carry-forward pool after the last batch (plan 41 B3 -- Q2a). Mirrors the B1
+		 * The CONTAINER-KEYED carry-forward pool after the last order (plan 41 B3 -- Q2a). Mirrors the B1
 		 * `ContainerPool` (`containerRefKey -> typeId -> qty`): each named outputDest bucket holds the
 		 * leftovers routed there, and the reserved `unassigned` bucket holds un-routed leftovers + surplus
 		 * (exactly Option A's anonymous pool when nothing is routed). `flattenPool(finalPool)` reproduces the
 		 * old flat `Map<typeId, qty>` byte-for-byte. Its one consumer -- the cross-queue (F4) projection --
 		 * partitions these buckets so a source queue's leftovers overlay onto MATCHING containers in the
 		 * active queue's breakdown (named) or fold flat into baseStock (unassigned). In global mode there is
-		 * no batch order to route along (decision 9), so the whole pool sits in the single `unassigned` bucket.
+		 * no order sequence to route along (decision 9), so the whole pool sits in the single `unassigned` bucket.
 		 */
 		finalPool: ContainerPool;
 	};
 	/**
 	 * Present ONLY when the queue resolved in "global" re-optimization mode (queue.reoptMode ===
-	 * "global"). Undefined in the default per-batch mode. See QueueGlobalPlan.
+	 * "global"). Undefined in the default per-order mode. See QueueGlobalPlan.
 	 */
 	global?: QueueGlobalPlan;
 	/**
@@ -307,19 +307,19 @@ export interface QueueResolveContext {
 // ── Lock merging + steering translation ──────────────────────────────────────
 
 /**
- * Merge queue-global recipe locks with a batch's optional per-batch overrides. Per typeId, a batch
+ * Merge queue-global recipe locks with an order's optional per-order overrides. Per typeId, an order
  * entry FULLY overrides the queue entry for that type (replace, not union); otherwise the queue
- * entry applies. The Phase 7 UI writes both queue-global AND per-batch locks; this merge resolves the
+ * entry applies. The Phase 7 UI writes both queue-global AND per-order locks; this merge resolves the
  * two scopes per type (plan Open Question 3 -- hybrid).
  */
 export function mergeLocks(
 	queueLocks: RecipeLockEntry[],
-	batchLocks?: RecipeLockEntry[],
+	orderLocks?: RecipeLockEntry[],
 ): RecipeLockEntry[] {
 	const byType = new Map<number, RecipeLockEntry>();
 	for (const lock of queueLocks) byType.set(lock.typeId, lock);
-	if (batchLocks) {
-		for (const lock of batchLocks) byType.set(lock.typeId, lock);
+	if (orderLocks) {
+		for (const lock of orderLocks) byType.set(lock.typeId, lock);
 	}
 	return [...byType.values()];
 }
@@ -468,12 +468,12 @@ export function scratchInventory(queue: BuildQueue): ContainerInventory | undefi
 // compose side by side. resolveEffectiveOverrides folds the five scopes for one job producing typeId T:
 //   1. queue.sourcesDefault / queue.outputDefault          (widest)
 //   2. queue.sourceLocks[typeId === T]
-//   3. batch.sourcesDefault / batch.outputDefault
-//   4. batch.sourceLocks[typeId === T]                     (finest grain for Derived jobs)
+//   3. order.sourcesDefault / order.outputDefault
+//   4. order.sourceLocks[typeId === T]                     (finest grain for Derived jobs)
 //   5. job.overrides                                       (Target jobs only -- narrowest)
 // last-wins, scope-dominant: the NARROWEST scope that mentions a container sets its fate, so a narrow
 // `order` re-include beats a wider `exclude`. Output destination is plain last-defined-wins.
-// Facility exclusions use the same replace cascade as outputDest, but only across Queue -> Batch -> Job.
+// Facility exclusions use the same replace cascade as outputDest, but only across Queue -> Order -> Job.
 
 /** The resolved overrides for one job after the 5-layer cascade. */
 export interface EffectiveOverrides {
@@ -485,7 +485,7 @@ export interface EffectiveOverrides {
 	sources?: { order: ContainerRef[]; exclude: ContainerRef[] };
 	/** Resolved deposit annotation -- the narrowest scope that defined one wins. */
 	outputDest?: ContainerRef;
-	/** Resolved facility exclusions -- the narrowest defined Queue/Batch/Job list wins. */
+	/** Resolved facility exclusions -- the narrowest defined Queue/Order/Job list wins. */
 	excludedFacilities?: string[];
 }
 
@@ -555,36 +555,36 @@ function composeSources(
 /**
  * Resolve the effective sourcing/output overrides for a job producing typeId `T`, composing the five
  * cascade scopes (see the section comment). Pass `jobOverrides` (a Target job's `overrides`) for layer 5;
- * omit it for Derived jobs, whose finest grain is the batch-scope source lock (layer 4). Pure function of
+ * omit it for Derived jobs, whose finest grain is the order-scope source lock (layer 4). Pure function of
  * its inputs -- independent of the recipeLocks cascade.
  */
 export function resolveEffectiveOverrides(
 	queue: BuildQueue,
-	batch: Batch,
+	order: Order,
 	typeId: number,
 	jobOverrides?: JobOverrides,
 ): EffectiveOverrides {
 	const queueLock = queue.sourceLocks?.find((l) => l.typeId === typeId);
-	const batchLock = batch.sourceLocks?.find((l) => l.typeId === typeId);
+	const orderLock = order.sourceLocks?.find((l) => l.typeId === typeId);
 
 	// Widest -> narrowest (layers 1..5). jobOverrides is layer 5 (undefined for Derived jobs).
 	const sourceLayers: Array<ContainerSourceConfig | undefined> = [
 		queue.sourcesDefault,
 		queueLock?.sources,
-		batch.sourcesDefault,
-		batchLock?.sources,
+		order.sourcesDefault,
+		orderLock?.sources,
 		jobOverrides?.sources,
 	];
 	const outputLayers: Array<ContainerRef | undefined> = [
 		queue.outputDefault,
 		queueLock?.outputDest,
-		batch.outputDefault,
-		batchLock?.outputDest,
+		order.outputDefault,
+		orderLock?.outputDest,
 		jobOverrides?.outputDest,
 	];
 	const facilityLayers: Array<string[] | undefined> = [
 		queue.facilityExclude,
-		batch.facilityExclude,
+		order.facilityExclude,
 		jobOverrides?.facilityExclude,
 	];
 
@@ -602,7 +602,7 @@ export function resolveEffectiveOverrides(
 }
 
 // ── Container draw + deposit (plan 41 B1) ─────────────────────────────────────
-// The carry-forward pool is container-keyed (ContainerPool). Each batch DRAWS its `stockConsumed` from
+// The carry-forward pool is container-keyed (ContainerPool). Each order DRAWS its `stockConsumed` from
 // the source containers (priority cascade + spillover) and DEPOSITS its true leftover output into the
 // effective `outputDest`. The LP never sees any of this -- it solves against flattenPool(pool), one
 // anonymized scalar. These primitives moved here from sourcingPlan.ts (decision 5) so the resolver is
@@ -682,7 +682,7 @@ function appendUnique(list: string[] | undefined, value: string): string[] {
 
 function addDepositProvenance(
 	ledger: ProvenanceLedger,
-	batchId: string,
+	orderId: string,
 	typeId: number,
 	qty: number,
 	record: DepositRecord,
@@ -693,12 +693,12 @@ function addDepositProvenance(
 		entries = [];
 		ledger.set(typeId, entries);
 	}
-	entries.push({ batchId, remaining: qty, record });
+	entries.push({ orderId, remaining: qty, record });
 }
 
 function consumeDepositProvenance(
 	ledger: ProvenanceLedger,
-	consumerBatchId: string,
+	consumerOrderId: string,
 	typeId: number,
 	qty: number,
 ): string[] | undefined {
@@ -706,14 +706,14 @@ function consumeDepositProvenance(
 	const entries = ledger.get(typeId);
 	if (!entries || entries.length === 0) return undefined;
 
-	const sourceBatchIds: string[] = [];
+	const sourceOrderIds: string[] = [];
 	let remaining = qty;
 	while (remaining > 0 && entries.length > 0) {
 		const entry = entries[0];
 		const take = Math.min(entry.remaining, remaining);
 		if (take > 0) {
-			if (!sourceBatchIds.includes(entry.batchId)) sourceBatchIds.push(entry.batchId);
-			entry.record.consumerBatchIds = appendUnique(entry.record.consumerBatchIds, consumerBatchId);
+			if (!sourceOrderIds.includes(entry.orderId)) sourceOrderIds.push(entry.orderId);
+			entry.record.consumerOrderIds = appendUnique(entry.record.consumerOrderIds, consumerOrderId);
 			entry.remaining -= take;
 			remaining -= take;
 		}
@@ -721,7 +721,7 @@ function consumeDepositProvenance(
 		else break;
 	}
 
-	return sourceBatchIds.length > 0 ? sourceBatchIds : undefined;
+	return sourceOrderIds.length > 0 ? sourceOrderIds : undefined;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1046,7 +1046,7 @@ interface SolveOutput {
 }
 
 /**
- * Solve one demand set (a batch's net input demand, or the whole queue's in global mode) against the
+ * Solve one demand set (an order's net input demand, or the whole queue's in global mode) against the
  * carry-forward pool. Integer solve runs first, with continuous+ceil fallback on timeout. Salvage/source
  * exclusions are now inert: solveLp's 5th slot is always an empty set, so every raw weighs 1.
  */
@@ -1209,7 +1209,7 @@ function solveDemandWithDefaults(
 }
 
 /**
- * Turn a solved BOM into the display lists shared by both per-batch and global resolution:
+ * Turn a solved BOM into the display lists shared by both per-order and global resolution:
  *   gather       = raw materials (each line carries its own stockQty / stillNeed)
  *   build        = intermediates produced, each with its chosen recipe + either/or alternatives
  *   fromUpstream = top-level producible job INPUTS met from the pool (drawn from stock, nothing built)
@@ -1217,7 +1217,7 @@ function solveDemandWithDefaults(
  * D4 -- a type already shown as a built intermediate (in `build`, with its own "Have"/stockQty
  * column) or as a gathered raw must NOT also appear in fromUpstream, or a partially-stocked
  * intermediate double-lists. fromUpstream therefore skips any typeId present in bom.intermediates or
- * bom.rawMaterials; only producible types that live solely in bom.finals (the batch/queue's top-level
+ * bom.rawMaterials; only producible types that live solely in bom.finals (the order/queue's top-level
  * producible inputs covered from the pool) survive -- e.g. the "8 Capacitor -- from upstream" case.
  */
 function bomToDisplayLists(
@@ -1226,13 +1226,13 @@ function bomToDisplayLists(
 	volumeMap: Map<number, number>,
 	nameMap: Map<number, string>,
 	authoredProductTypeIds: Set<number>,
-	sourceBatchIdsByType?: Map<number, string[]>,
-): { gather: BomLineItem[]; build: BatchBuildItem[]; fromUpstream: FromUpstreamItem[] } {
+	sourceOrderIdsByType?: Map<number, string[]>,
+): { gather: BomLineItem[]; build: OrderBuildItem[]; fromUpstream: FromUpstreamItem[] } {
 	const gather = bom.rawMaterials;
 	// Provenance merge (plan 39, decision 5): an intermediate the optimizer builds whose type is ALSO
 	// an authored Job's primary output in this scope is NOT a separate Derived row -- it merges into the
-	// Target job row (rendered from BatchResult.jobs). Drop it here; everything left is genuinely Derived.
-	const build: BatchBuildItem[] = bom.intermediates
+	// Target job row (rendered from OrderResult.jobs). Drop it here; everything left is genuinely Derived.
+	const build: OrderBuildItem[] = bom.intermediates
 		.filter((item) => !authoredProductTypeIds.has(item.typeId))
 		.map((item) => ({
 			...item,
@@ -1261,7 +1261,7 @@ function bomToDisplayLists(
 			typeName: nameMap.get(typeId) ?? `Type ${typeId}`,
 			quantity: qty,
 			volume: unitVol !== undefined ? qty * unitVol : -1,
-			sourceBatchIds: sourceBatchIdsByType?.get(typeId),
+			sourceOrderIds: sourceOrderIdsByType?.get(typeId),
 		});
 	}
 	fromUpstream.sort((a, b) => a.typeName.localeCompare(b.typeName));
@@ -1272,21 +1272,21 @@ function bomToDisplayLists(
 // ── Main entry ─────────────────────────────────────────────────────────────────
 
 /**
- * Resolve a whole BuildQueue into per-batch plans with a carry-forward stock pool.
+ * Resolve a whole BuildQueue into per-order plans with a carry-forward stock pool.
  *
- * For each batch in order:
- *   demand   = sum over the batch's jobs of runs * blueprint.inputs[].quantity  (Map<typeId, qty>)
- *   pins     = locksToPins(mergeLocks(queue.recipeLocks, batch.recipeLocks))    (batch overrides queue)
+ * For each order in order:
+ *   demand   = sum over the order's jobs of runs * blueprint.inputs[].quantity  (Map<typeId, qty>)
+ *   pins     = locksToPins(mergeLocks(queue.recipeLocks, order.recipeLocks))    (order overrides queue)
  *   sol      = solveLp(demand, ..., stockMap = pool, primary-output pins, integer)
- *   BatchResult built from the BOM (gather = raws, build = intermediates + either/or alternatives,
+ *   OrderResult built from the BOM (gather = raws, build = intermediates + either/or alternatives,
  *              fromUpstream = pool-satisfied producible demand, surplus = co-products)
  *   pool     = max(0, pool - stockConsumed) + jobOutputs + surplus              (carry forward)
  *
- * The pool update uses the BOM's additive `stockConsumed` report-back (plan 36 Phase 4): a batch
+ * The pool update uses the BOM's additive `stockConsumed` report-back (plan 36 Phase 4): an order
  * draws `stockConsumed` from the pool, then deposits the products its jobs build (`jobOutputs`) and
- * any uncredited co-products (`surplus`) for the next batch to consume.
+ * any uncredited co-products (`surplus`) for the next order to consume.
  *
- * @param queue          the saved build queue (ordered batches, queue-global recipe locks)
+ * @param queue          the saved build queue (ordered orders, queue-global recipe locks)
  * @param ctx            loaded blueprint + game data (see QueueResolveContext)
  * @param baseStock      the user's starting stock (assembled from selected containers), typeId -> qty
  * @param stockBreakdown optional ordered per-container breakdown `baseStock` was assembled from (plan 39
@@ -1309,7 +1309,7 @@ export function resolveQueue(
 
 	const breakdown = stockBreakdown ?? [];
 
-	// F3 -- opt-in global re-optimization. Default / "perStep" falls through to the per-batch pipeline
+	// F3 -- opt-in global re-optimization. Default / "perStep" falls through to the per-order pipeline
 	// below, so the existing resolveQueue(queue, ctx, stock) caller and its behavior are unchanged.
 	if (queue.reoptMode === "global") {
 		const result = resolveQueueGlobal(queue, bpData, ctx, baseStock, nameMap, breakdown);
@@ -1344,16 +1344,16 @@ export function resolveQueue(
 	}
 	pool.set(UNASSIGNED_KEY, unassigned);
 
-	const batches: BatchResult[] = [];
+	const orders: OrderResult[] = [];
 	let totalTime = 0;
 	let totalRawVolume = 0;
 	let totalVolume = 0;
 	let allFeasible = true;
 	const provenanceLedger: ProvenanceLedger = new Map();
 
-	for (const batch of queue.batches) {
-		const batchResult = resolveBatch(
-			batch,
+	for (const order of queue.batches) {
+		const orderResult = resolveOrder(
+			order,
 			queue,
 			bpData,
 			ctx,
@@ -1362,15 +1362,15 @@ export function resolveQueue(
 			nameMap,
 			provenanceLedger,
 		);
-		batches.push(batchResult);
-		totalTime += batchResult.time;
-		totalRawVolume += batchResult.rawVolume;
-		totalVolume += batchResult.volume;
-		if (!batchResult.feasible) allFeasible = false;
+		orders.push(orderResult);
+		totalTime += orderResult.time;
+		totalRawVolume += orderResult.rawVolume;
+		totalVolume += orderResult.volume;
+		if (!orderResult.feasible) allFeasible = false;
 	}
 
 	return {
-		batches,
+		orders,
 		totals: {
 			time: totalTime,
 			rawVolume: totalRawVolume,
@@ -1386,11 +1386,11 @@ export function resolveQueue(
 }
 
 /**
- * Resolve a single batch and advance the carry-forward `pool` in place. Split out of resolveQueue so
- * the per-batch accounting is easy to follow.
+ * Resolve a single order and advance the carry-forward `pool` in place. Split out of resolveQueue so
+ * the per-order accounting is easy to follow.
  */
-function resolveBatch(
-	batch: Batch,
+function resolveOrder(
+	order: Order,
 	queue: BuildQueue,
 	bpData: {
 		blueprints: Record<string, Blueprint>;
@@ -1402,21 +1402,21 @@ function resolveBatch(
 	breakdown: StockBreakdown,
 	nameMap: Map<number, string>,
 	provenanceLedger: ProvenanceLedger,
-): BatchResult {
+): OrderResult {
 	// 1. Resolve jobs -> demand (sum of inputs), jobOutputs (sum of outputs), job run time. Each
 	// authored job becomes a "Target" JobResult keyed by its stable Job.id (the Phase 4 override key).
 	const demand = new Map<number, number>();
 	const jobOutputs = new Map<number, number>();
 	const jobs: JobResult[] = [];
-	// The primary-output typeIds of this batch's authored jobs -- the Target rows. A Derived
+	// The primary-output typeIds of this order's authored jobs -- the Target rows. A Derived
 	// intermediate of one of these merges into the Target job row (see bomToDisplayLists).
 	const authoredProductTypeIds = new Set<number>();
 	let jobsTime = 0;
 
-	for (const job of batch.jobs) {
+	for (const job of order.jobs) {
 		const bp = bpData.blueprints[String(job.blueprintId)];
 		if (!bp) continue; // stale blueprintId -- skip the job (cannot resolve its recipe)
-		const eff = resolveEffectiveOverrides(queue, batch, bp.primaryTypeID, job.overrides);
+		const eff = resolveEffectiveOverrides(queue, order, bp.primaryTypeID, job.overrides);
 		jobsTime += bp.runTime * job.runs;
 		authoredProductTypeIds.add(bp.primaryTypeID);
 		for (const inp of bp.inputs) {
@@ -1441,14 +1441,14 @@ function resolveBatch(
 	}
 
 	// 2. Translate the merged recipe locks into optimizer steering.
-	const mergedLocks = mergeLocks(queue.recipeLocks, batch.recipeLocks);
+	const mergedLocks = mergeLocks(queue.recipeLocks, order.recipeLocks);
 	const steering = locksToPins(mergedLocks, bpData.outputToBlueprints);
 	steering.pins = validatePins(steering.pins, bpData.outputToBlueprints);
 
-	// D1 -- net intra-batch job dependencies. A batch is an UNORDERED pool of jobs: a component built by
+	// D1 -- net intra-order job dependencies. An order is an UNORDERED pool of jobs: a component built by
 	// one job covers a sibling job's consumption of that component FIRST, before anything is sourced.
 	// Without this, `demand` sums every job's inputs with NO credit for sibling outputs, so a
-	// producer+consumer grouped in one batch double-builds the component (the solver sources it fresh
+	// producer+consumer grouped in one order double-builds the component (the solver sources it fresh
 	// AND the producer's output is left as phantom surplus). For each producible type we credit
 	// internalUse = min(demand, jobOutputs): the solver sees only the shortfall (netDemand), and the
 	// pool-advance below deposits only the true leftover (jobOutputs - internalUse). Conservative:
@@ -1462,7 +1462,7 @@ function resolveBatch(
 		if (net > 0) netDemand.set(typeId, net);
 	}
 
-	// 3. Solve the batch's NET input demand against the pool (or short-circuit when there is none). The
+	// 3. Solve the order's NET input demand against the pool (or short-circuit when there is none). The
 	// gather / build / fromUpstream lists below therefore all reflect the netted demand, not the gross.
 	const orderItems: BomOrderItem[] = [...netDemand.entries()].map(([typeId, quantity]) => ({
 		typeId,
@@ -1478,7 +1478,7 @@ function resolveBatch(
 	let feasible: boolean;
 	let usedExcludedSources: boolean;
 	if (orderItems.length === 0) {
-		// No inputs to source (e.g. a batch of pure raw->nothing jobs). Empty BOM; jobs still deposit.
+		// No inputs to source (e.g. an order of pure raw->nothing jobs). Empty BOM; jobs still deposit.
 		bom = emptyBom();
 		feasible = true;
 		usedExcludedSources = false;
@@ -1500,13 +1500,13 @@ function resolveBatch(
 	}
 
 	const stockConsumed = bom.stockConsumed ?? new Map<number, number>();
-	const sourceBatchIdsByType = new Map<number, string[]>();
+	const sourceOrderIdsByType = new Map<number, string[]>();
 	for (const [typeId, drawn] of stockConsumed) {
-		const sourceBatchIds = consumeDepositProvenance(provenanceLedger, batch.id, typeId, drawn);
-		if (sourceBatchIds) sourceBatchIdsByType.set(typeId, sourceBatchIds);
+		const sourceOrderIds = consumeDepositProvenance(provenanceLedger, order.id, typeId, drawn);
+		if (sourceOrderIds) sourceOrderIdsByType.set(typeId, sourceOrderIds);
 	}
 
-	// 4. Build the batch's display lists from the BOM (gather / build / fromUpstream; D4 guard inside).
+	// 4. Build the order's display lists from the BOM (gather / build / fromUpstream; D4 guard inside).
 	// Derived intermediates that coincide with an authored Target job's output merge away here.
 	const {
 		gather,
@@ -1518,11 +1518,11 @@ function resolveBatch(
 		ctx.volumeMap,
 		nameMap,
 		authoredProductTypeIds,
-		sourceBatchIdsByType,
+		sourceOrderIdsByType,
 	);
 	const build = rawBuild.map((item) => ({
 		...item,
-		excludedFacilities: resolveEffectiveOverrides(queue, batch, item.typeId).excludedFacilities,
+		excludedFacilities: resolveEffectiveOverrides(queue, order, item.typeId).excludedFacilities,
 	}));
 
 	// 5. Advance the container-keyed carry-forward pool (plan 41 B1). FLATTENED, this reproduces the old
@@ -1539,9 +1539,9 @@ function resolveBatch(
 	const draws = new Map<number, ContainerDraw[]>();
 	for (const [typeId, drawn] of stockConsumed) {
 		if (drawn <= 0) continue;
-		const eff = resolveEffectiveOverrides(queue, batch, typeId);
-		const order = effectiveOrder(breakdown, eff);
-		const { allocations, fromStock } = allocate(typeId, drawn, order, pool);
+		const eff = resolveEffectiveOverrides(queue, order, typeId);
+		const sourceOrder = effectiveOrder(breakdown, eff);
+		const { allocations, fromStock } = allocate(typeId, drawn, sourceOrder, pool);
 		if (allocations.length > 0) draws.set(typeId, allocations);
 		let remaining = drawn - fromStock;
 		if (remaining > 0) {
@@ -1575,10 +1575,10 @@ function resolveBatch(
 		}
 	}
 
-	// 5b. DEPOSIT. Each job's TRUE leftover output -- its gross output minus the intra-batch internalUse a
+	// 5b. DEPOSIT. Each job's TRUE leftover output -- its gross output minus the intra-order internalUse a
 	// sibling job already consumed (D1) -- lands in that job's SINGLE effective outputDest (Q5a); surplus
 	// co-products are Derived (typeId cascade). The internalUse hand-off NEVER lands in any container: it
-	// is passed sibling-to-sibling inside the batch and is deducted here (in job order) before deposit.
+	// is passed sibling-to-sibling inside the order and is deducted here (in job order) before deposit.
 	// Un-routed outputs fall to the reserved Unassigned bucket (Q1a) -- Option A's anonymous pool.
 	const deposits: DepositRecord[] = [];
 	const depositAcc = new Map<string, DepositRecord>();
@@ -1599,15 +1599,15 @@ function resolveBatch(
 			record = { typeId, typeName, dest, qty };
 			depositAcc.set(accKey, record);
 		}
-		addDepositProvenance(provenanceLedger, batch.id, typeId, qty, record);
+		addDepositProvenance(provenanceLedger, order.id, typeId, qty, record);
 	};
 
 	const deductRemaining = new Map(internalUse);
-	for (const job of batch.jobs) {
+	for (const job of order.jobs) {
 		const bp = bpData.blueprints[String(job.blueprintId)];
 		if (!bp) continue; // stale blueprintId -- skipped above too
 		const dest =
-			resolveEffectiveOverrides(queue, batch, bp.primaryTypeID, job.overrides).outputDest ??
+			resolveEffectiveOverrides(queue, order, bp.primaryTypeID, job.overrides).outputDest ??
 			UNASSIGNED_REF;
 		for (const out of bp.outputs) {
 			let qty = out.quantity * job.runs;
@@ -1623,7 +1623,7 @@ function resolveBatch(
 	}
 	for (const s of bom.surplus) {
 		if (s.quantity <= 0) continue;
-		const dest = resolveEffectiveOverrides(queue, batch, s.typeId).outputDest ?? UNASSIGNED_REF;
+		const dest = resolveEffectiveOverrides(queue, order, s.typeId).outputDest ?? UNASSIGNED_REF;
 		depositInto(s.typeId, s.typeName, s.quantity, dest);
 	}
 	deposits.push(...depositAcc.values());
@@ -1633,8 +1633,8 @@ function resolveBatch(
 	const intermediateTime = bom.totals.totalTime;
 
 	return {
-		batchId: batch.id,
-		label: batch.label,
+		orderId: order.id,
+		label: order.label,
 		jobs,
 		gather,
 		build,
@@ -1645,7 +1645,7 @@ function resolveBatch(
 		rawVolume,
 		feasible,
 		usedExcludedSources,
-		recipeLocks: batch.recipeLocks,
+		recipeLocks: order.recipeLocks,
 		draws,
 		deposits,
 	};
@@ -1653,7 +1653,7 @@ function resolveBatch(
 
 // ── Global re-optimization (F3) ──────────────────────────────────────────────
 
-/** An empty BOM (no inputs to source). Shared by the per-batch and global no-demand short-circuits. */
+/** An empty BOM (no inputs to source). Shared by the per-order and global no-demand short-circuits. */
 function emptyBom(): BomResult {
 	return {
 		rawMaterials: [],
@@ -1666,15 +1666,15 @@ function emptyBom(): BomResult {
 }
 
 /**
- * Resolve the WHOLE queue as ONE solve (queue.reoptMode === "global"). Instead of the per-batch
- * greedy pipeline, the union of every batch's top-level job-input demand is collapsed into a single
- * solveLp against baseStock, finding cross-batch optimality the per-batch solve cannot see (a recipe
- * choice in one batch that shares a co-product needed by another).
+ * Resolve the WHOLE queue as ONE solve (queue.reoptMode === "global"). Instead of the per-order
+ * greedy pipeline, the union of every order's top-level job-input demand is collapsed into a single
+ * solveLp against baseStock, finding cross-order optimality the per-order solve cannot see (a recipe
+ * choice in one order that shares a co-product needed by another).
  *
- * TRADEOFF: this trades per-batch legibility for cross-batch optimality. The gather / build / fromUpstream
+ * TRADEOFF: this trades per-order legibility for cross-order optimality. The gather / build / fromUpstream
  * plan is a single QUEUE-LEVEL summary (returned on QueueResolveResult.global) and is NOT attributed
- * back to individual batches -- each BatchResult keeps its jobs (and their outputs) but its gather / build /
- * fromUpstream / surplus are left EMPTY. Per-batch recipe locks are a per-batch-mode feature and are NOT
+ * back to individual orders -- each OrderResult keeps its jobs (and their outputs) but its gather / build /
+ * fromUpstream / surplus are left EMPTY. Per-Order recipe locks are a per-order-mode feature and are NOT
  * applied here; only queue-global recipe locks + source-prefs steer the global solve.
  *
  * D1 netting is applied queue-wide: a component built by ANY job covers ANY sibling job's consumption
@@ -1693,25 +1693,25 @@ function resolveQueueGlobal(
 	nameMap: Map<number, string>,
 	breakdown: StockBreakdown,
 ): QueueResolveResult {
-	// 1. Resolve every batch's jobs; accumulate queue-wide demand, job outputs, and job run time. The
-	// per-batch rows are placeholders (jobs only) -- gather / build / fromUpstream / surplus stay empty
+	// 1. Resolve every order's jobs; accumulate queue-wide demand, job outputs, and job run time. The
+	// per-order rows are placeholders (jobs only) -- gather / build / fromUpstream / surplus stay empty
 	// because the plan is queue-level in this mode.
 	const globalDemand = new Map<number, number>();
 	const globalJobOutputs = new Map<number, number>();
 	// Primary-output typeIds of every authored job across the queue -- the queue-wide Target set used to
 	// merge coincident Derived intermediates out of the global plan (decision 5).
 	const authoredProductTypeIds = new Set<number>();
-	const batches: BatchResult[] = [];
+	const orders: OrderResult[] = [];
 	let globalJobTime = 0;
-	const emptyBatch: Batch = { id: "", jobs: [] };
+	const emptyOrder: Order = { id: "", jobs: [] };
 
-	for (const batch of queue.batches) {
+	for (const order of queue.batches) {
 		const jobs: JobResult[] = [];
 		let jobsTime = 0;
-		for (const job of batch.jobs) {
+		for (const job of order.jobs) {
 			const bp = bpData.blueprints[String(job.blueprintId)];
 			if (!bp) continue; // stale blueprintId -- skip the job (cannot resolve its recipe)
-			const eff = resolveEffectiveOverrides(queue, batch, bp.primaryTypeID, job.overrides);
+			const eff = resolveEffectiveOverrides(queue, order, bp.primaryTypeID, job.overrides);
 			jobsTime += bp.runTime * job.runs;
 			authoredProductTypeIds.add(bp.primaryTypeID);
 			for (const inp of bp.inputs) {
@@ -1738,11 +1738,11 @@ function resolveQueueGlobal(
 			});
 		}
 		globalJobTime += jobsTime;
-		// Per-batch time is this batch's job run time only -- intermediate build time is queue-level (see
+		// Per-Order time is this order's job run time only -- intermediate build time is queue-level (see
 		// global.time). feasible/usedExcludedSources are refined from the single global solve below.
-		batches.push({
-			batchId: batch.id,
-			label: batch.label,
+		orders.push({
+			orderId: order.id,
+			label: order.label,
 			jobs,
 			gather: [],
 			build: [],
@@ -1753,8 +1753,8 @@ function resolveQueueGlobal(
 			rawVolume: 0,
 			feasible: true,
 			usedExcludedSources: false,
-			recipeLocks: batch.recipeLocks,
-			// Per-batch attribution is empty in global mode -- the single plan carries draws/deposits.
+			recipeLocks: order.recipeLocks,
+			// Per-Order attribution is empty in global mode -- the single plan carries draws/deposits.
 			draws: new Map(),
 			deposits: [],
 		});
@@ -1770,7 +1770,7 @@ function resolveQueueGlobal(
 		if (net > 0) netDemand.set(typeId, net);
 	}
 
-	// Only queue-global locks steer the global solve (per-batch locks are a per-batch-mode feature).
+	// Only queue-global locks steer the global solve (per-order locks are a per-order-mode feature).
 	const steering = locksToPins(queue.recipeLocks, bpData.outputToBlueprints);
 	steering.pins = validatePins(steering.pins, bpData.outputToBlueprints);
 
@@ -1820,7 +1820,7 @@ function resolveQueueGlobal(
 	);
 	const build = rawBuild.map((item) => ({
 		...item,
-		excludedFacilities: resolveEffectiveOverrides(queue, emptyBatch, item.typeId)
+		excludedFacilities: resolveEffectiveOverrides(queue, emptyOrder, item.typeId)
 			.excludedFacilities,
 	}));
 
@@ -1840,11 +1840,11 @@ function resolveQueueGlobal(
 		pool.set(typeId, Math.max(0, before - drawn) + produced);
 	}
 
-	// Plan 41 B1 -- recorded container attribution for the single global plan. Global mode has no batch
+	// Plan 41 B1 -- recorded container attribution for the single global plan. Global mode has no order
 	// order to deposit along, so deposits are NOT routed: every leftover output + surplus lands in the
-	// reserved Unassigned bucket (decision 9 -- a documented scoping limitation; use per-batch mode to
+	// reserved Unassigned bucket (decision 9 -- a documented scoping limitation; use per-order mode to
 	// route deposits). Draws still attribute the queue-wide stockConsumed across the named breakdown
-	// containers via the QUEUE-scope cascade (per-batch source locks do not apply in global mode); a fresh
+	// containers via the QUEUE-scope cascade (per-order source locks do not apply in global mode); a fresh
 	// running inventory cloned from the breakdown mirrors the old sourcingPlan global walk exactly.
 	const globalRunning: ContainerPool = new Map();
 	for (const c of breakdown) {
@@ -1855,14 +1855,14 @@ function resolveQueueGlobal(
 	const globalDraws = new Map<number, ContainerDraw[]>();
 	for (const [typeId, drawn] of stockConsumed) {
 		if (drawn <= 0) continue;
-		const order = effectiveOrder(breakdown, resolveEffectiveOverrides(queue, emptyBatch, typeId));
+		const order = effectiveOrder(breakdown, resolveEffectiveOverrides(queue, emptyOrder, typeId));
 		const { allocations } = allocate(typeId, drawn, order, globalRunning);
 		if (allocations.length > 0) globalDraws.set(typeId, allocations);
 	}
 	const globalDepositAcc = new Map<number, DepositRecord>();
 	const globalDeduct = new Map(internalUse);
-	for (const batch of queue.batches) {
-		for (const job of batch.jobs) {
+	for (const order of queue.batches) {
+		for (const job of order.jobs) {
 			const bp = bpData.blueprints[String(job.blueprintId)];
 			if (!bp) continue;
 			for (const out of bp.outputs) {
@@ -1905,8 +1905,8 @@ function resolveQueueGlobal(
 	const volume = bom.totals.totalVolume;
 	const time = globalJobTime + bom.totals.totalTime;
 
-	// Reflect the single solve's feasibility on every batch so the UI can still flag the queue.
-	for (const b of batches) {
+	// Reflect the single solve's feasibility on every order so the UI can still flag the queue.
+	for (const b of orders) {
 		b.feasible = feasible;
 		b.usedExcludedSources = usedExcludedSources;
 	}
@@ -1930,7 +1930,7 @@ function resolveQueueGlobal(
 	const finalPool: ContainerPool = new Map([[UNASSIGNED_KEY, pool]]);
 
 	return {
-		batches,
+		orders,
 		totals: { time, rawVolume, volume, feasible, finalPool },
 		global,
 	};

@@ -45,11 +45,11 @@ export function gateDistancesFrom(graph: GateGraph, origin: number): Map<number,
 /**
  * Gate-jump count for a SINGLE depositing -> consuming pair (plan 41 B4 -- the costed haul readout).
  * Where `containerJumpDistances` runs one BFS from a fixed origin to every container, this answers one
- * "from A to B" leg: the gate jumps between a container's (depositing) system and a batch's (consuming)
+ * "from A to B" leg: the gate jumps between a container's (depositing) system and an order's (consuming)
  * system. Same system = 0; `undefined` when either end has no structured system or the two are not
  * gate-connected. The undirected BFS short-circuits the moment it settles `toSystemId`, so nearby legs
- * are cheap. Used per-batch so a batch with its own location re-anchors its haul; callers fall back to
- * the queue location when a batch sets none.
+ * are cheap. Used per-order so an order with its own location re-anchors its haul; callers fall back to
+ * the queue location when an order sets none.
  */
 export function gateJumpsBetween(
 	graph: GateGraph,

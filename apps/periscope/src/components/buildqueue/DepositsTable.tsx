@@ -1,18 +1,18 @@
 // Deposits table -- plan 41 (Option B output routing), stage B1.
-// A DISPLAY of where a batch's produced items physically landed: the resolver now deposits each job's
-// TRUE leftover output (gross minus intra-batch sibling consumption) plus surplus co-products into the
-// effective `outputDest` container, recording them on BatchResult.deposits (and global.deposits). This
+// A DISPLAY of where an order's produced items physically landed: the resolver now deposits each job's
+// TRUE leftover output (gross minus intra-order sibling consumption) plus surplus co-products into the
+// effective `outputDest` container, recording them on OrderResult.deposits (and global.deposits). This
 // table simply renders those REAL recorded deposits -- the symmetric counterpart to SourcingPlanTable
 // ("pull from storage" / "deposit to storage").
 //
-// B0 projected GROSS outputs from the resolved BatchResult; B1 re-points this at the resolver's recorded,
-// intra-batch-netted deposits so the numbers match the carry-forward pool. When no scope set an
+// B0 projected GROSS outputs from the resolved OrderResult; B1 re-points this at the resolver's recorded,
+// intra-order-netted deposits so the numbers match the carry-forward pool. When no scope set an
 // `outputDest`, the deposit's `dest` is the reserved { kind: "unassigned" } ref (decision Q1a) and renders
 // as "Unassigned" (Option A stays bit-identical -- everything lands in the one anonymous bucket).
 
 import { ItemIcon } from "@/components/ItemIcon";
-import type { Batch, BuildQueue, ContainerRef } from "@/lib/buildQueueTypes";
-import { type BatchResult, type DepositRecord, containerRefKey } from "@/lib/queueResolver";
+import type { BuildQueue, ContainerRef, Order } from "@/lib/buildQueueTypes";
+import { type DepositRecord, type OrderResult, containerRefKey } from "@/lib/queueResolver";
 import { formatContainerRef } from "@/lib/sourcingPlan";
 
 /** Grouping key for the reserved "Unassigned" pseudo-container (decision Q1a -- terminal default). */
@@ -51,14 +51,14 @@ export function depositRowsFromRecords(records: DepositRecord[]): DepositRow[] {
 }
 
 /**
- * Render one batch's recorded deposits (plan 41 B1). The `queue` / `batch` arguments are retained for
+ * Render one order's recorded deposits (plan 41 B1). The `queue` / `order` arguments are retained for
  * the established call signature but are no longer needed -- the deposits already ride on the resolved
- * BatchResult, netted and routed by the resolver (decision 5: single source of truth).
+ * OrderResult, netted and routed by the resolver (decision 5: single source of truth).
  */
-export function projectBatchDeposits(
-	result: BatchResult,
+export function projectOrderDeposits(
+	result: OrderResult,
 	_queue: BuildQueue,
-	_batch: Batch,
+	_order: Order,
 ): DepositRow[] {
 	return depositRowsFromRecords(result.deposits);
 }
@@ -73,7 +73,7 @@ export function DepositsTable({ rows, containerLabels }: DepositsTableProps) {
 	if (rows.length === 0) {
 		return (
 			<div className="px-4 py-3 text-xs text-zinc-600">
-				This batch deposits nothing into storage.
+				This order deposits nothing into storage.
 			</div>
 		);
 	}

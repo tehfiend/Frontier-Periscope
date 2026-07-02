@@ -1,13 +1,13 @@
 // Post-solve container sourcing plan -- plan 39 Phase 4b, reworked in plan 41 B1.
 //
-// As of plan 41 B1 the RESOLVER (queueResolver.resolveBatch) is the single source of truth for post-solve
-// container attribution: it draws each batch's stockConsumed from the named source containers (priority
+// As of plan 41 B1 the RESOLVER (queueResolver.resolveOrder) is the single source of truth for post-solve
+// container attribution: it draws each order's stockConsumed from the named source containers (priority
 // cascade + spillover) against the same container-keyed carry-forward pool it solves over, and RECORDS
-// those draws on BatchResult.draws (global.draws in re-opt mode). This module no longer re-walks its own
+// those draws on OrderResult.draws (global.draws in re-opt mode). This module no longer re-walks its own
 // inventory -- it RE-SHAPES those recorded draws into the per-material plans the UI renders ("pull 400
 // from #42, 365 from #43"), so the displayed plan and the carry-forward pool cannot drift.
 //
-// The container-priority cascade (queue/batch sourcesDefault + per-typeId sourceLocks) steers WHICH
+// The container-priority cascade (queue/order sourcesDefault + per-typeId sourceLocks) steers WHICH
 // container each drawn type is attributed to; it never changes the LP solve or the quantities. Shortfall
 // is the LP's authoritative `stillNeed`, so it is never inflated by stock the solve used that is not in
 // the per-container breakdown (the reserved Unassigned bucket: chain-pool / cross-queue stock).
@@ -42,10 +42,10 @@ export interface MaterialSourcingPlan {
 	shortfall: number;
 }
 
-/** The whole-queue sourcing plan: per-batch material plans (perStep) or a single global list. */
+/** The whole-queue sourcing plan: per-order material plans (perStep) or a single global list. */
 export interface QueueSourcingPlan {
-	/** Per-batch material sourcing plans, keyed by batchId (empty in global re-opt mode). */
-	byBatch: Map<string, MaterialSourcingPlan[]>;
+	/** Per-Order material sourcing plans, keyed by orderId (empty in global re-opt mode). */
+	byOrder: Map<string, MaterialSourcingPlan[]>;
 	/** The single queue-level material sourcing plan, present only in global re-opt mode. */
 	global?: MaterialSourcingPlan[];
 }
@@ -58,7 +58,7 @@ export interface ContainerOption {
 
 // ── Allocation (plan 41 B1: consume the resolver's recorded draws) ────────────
 // The resolver is now the single source of truth for post-solve container attribution (decision 5): it
-// records, per batch, which named containers each drawn type was pulled from (BatchResult.draws), drawn
+// records, per order, which named containers each drawn type was pulled from (OrderResult.draws), drawn
 // against the SAME carry-forward pool it solves over. This module no longer re-walks its own inventory
 // -- it shapes those recorded draws into the per-material plans the UI renders, so the two cannot drift.
 
@@ -91,19 +91,19 @@ function plansFromDraws(
 
 /**
  * Build the whole-queue sourcing plan from a resolved queue by consuming the resolver's recorded draws
- * (BatchResult.draws, or global.draws in re-opt mode). The carry-forward pool those draws were
- * attributed against already mirrors batch order, so this is a pure re-shape -- no second inventory walk
+ * (OrderResult.draws, or global.draws in re-opt mode). The carry-forward pool those draws were
+ * attributed against already mirrors order sequence, so this is a pure re-shape -- no second inventory walk
  * (decision 5). Returns an empty plan when the resolver recorded no draws (e.g. a flat-baseStock resolve).
  */
 export function buildQueueSourcingPlan(resolved: QueueResolveResult): QueueSourcingPlan {
-	const byBatch = new Map<string, MaterialSourcingPlan[]>();
+	const byOrder = new Map<string, MaterialSourcingPlan[]>();
 	if (resolved.global) {
-		return { byBatch, global: plansFromDraws(resolved.global.gather, resolved.global.draws) };
+		return { byOrder, global: plansFromDraws(resolved.global.gather, resolved.global.draws) };
 	}
-	for (const result of resolved.batches) {
-		byBatch.set(result.batchId, plansFromDraws(result.gather, result.draws));
+	for (const result of resolved.orders) {
+		byOrder.set(result.orderId, plansFromDraws(result.gather, result.draws));
 	}
-	return { byBatch };
+	return { byOrder };
 }
 
 // ── Orphaned overrides (decision 8) ──────────────────────────────────────────
@@ -114,7 +114,7 @@ export function buildQueueSourcingPlan(resolved: QueueResolveResult): QueueSourc
 /** Every typeId present anywhere in the resolved plan (job outputs, gather, build, from-upstream). */
 export function resolvedTypeIds(resolved: QueueResolveResult): Set<number> {
 	const ids = new Set<number>();
-	for (const b of resolved.batches) {
+	for (const b of resolved.orders) {
 		for (const j of b.jobs) for (const o of j.outputs) ids.add(o.typeId);
 		for (const g of b.gather) ids.add(g.typeId);
 		for (const bi of b.build) ids.add(bi.typeId);
@@ -128,10 +128,10 @@ export function resolvedTypeIds(resolved: QueueResolveResult): Set<number> {
 	return ids;
 }
 
-/** The typeIds present in a single batch's resolved result (for batch-scope lock orphan checks). */
-export function batchResolvedTypeIds(resolved: QueueResolveResult, batchId: string): Set<number> {
+/** The typeIds present in a single order's resolved result (for order-scope lock orphan checks). */
+export function orderResolvedTypeIds(resolved: QueueResolveResult, orderId: string): Set<number> {
 	const ids = new Set<number>();
-	const b = resolved.batches.find((x) => x.batchId === batchId);
+	const b = resolved.orders.find((x) => x.orderId === orderId);
 	if (!b) return ids;
 	for (const j of b.jobs) for (const o of j.outputs) ids.add(o.typeId);
 	for (const g of b.gather) ids.add(g.typeId);
@@ -143,7 +143,7 @@ export function batchResolvedTypeIds(resolved: QueueResolveResult, batchId: stri
 /** Every resolved Job.id (Target jobs that actually resolved) -- for job-override orphan checks. */
 export function resolvedJobIds(resolved: QueueResolveResult): Set<string> {
 	const ids = new Set<string>();
-	for (const b of resolved.batches) for (const j of b.jobs) ids.add(j.jobId);
+	for (const b of resolved.orders) for (const j of b.jobs) ids.add(j.jobId);
 	return ids;
 }
 

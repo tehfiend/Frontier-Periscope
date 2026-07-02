@@ -22,7 +22,7 @@ interface SourcingPlanTableProps {
 	/** Per-unit item volume (m3) keyed by typeId. Present (with haulJumps) enables the costed haul
 	 *  readout (plan 41 B4); absent renders the plain Phase 4b table. */
 	volumeMap?: Map<number, number>;
-	/** Gate-jumps from the consuming location (this plan's batch, else the queue) to each container,
+	/** Gate-jumps from the consuming location (this plan's order, else the queue) to each container,
 	 *  keyed by containerRefKey. Paired with volumeMap to cost each allocation's haul leg. */
 	haulJumps?: Map<string, number | undefined>;
 }
@@ -61,7 +61,7 @@ export function SourcingPlanTable({
 	if (plans.length === 0) {
 		return (
 			<div className="px-4 py-3 text-xs text-zinc-600">
-				No materials are pulled from storage containers for this batch.
+				No materials are pulled from storage containers for this order.
 			</div>
 		);
 	}
@@ -86,7 +86,7 @@ export function SourcingPlanTable({
 					{showHaul && (
 						<th
 							className="px-4 py-2 text-right"
-							title="Costed haul: item volume (m³) x gate-jumps from each container to this batch's location. Informational -- the optimizer does not trade off hauling (deferred)."
+							title="Costed haul: item volume (m³) x gate-jumps from each container to this order's location. Informational -- the optimizer does not trade off hauling (deferred)."
 						>
 							Haul
 						</th>
@@ -116,7 +116,9 @@ export function SourcingPlanTable({
 												key={containerRefKey(alloc.ref)}
 												className="inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[11px] text-zinc-300"
 											>
-												<span className="font-mono text-cyan-400">{alloc.qty.toLocaleString()}</span>
+												<span className="font-mono text-cyan-400">
+													{alloc.qty.toLocaleString()}
+												</span>
 												<span className="text-zinc-500">from</span>
 												<span className="text-zinc-200">
 													{formatContainerRef(alloc.ref, containerLabels)}
@@ -186,7 +188,9 @@ export function SourcingPlanTable({
 						<td className="px-4 py-2 font-medium" colSpan={4}>
 							Total haul
 						</td>
-						<td className="px-4 py-2 text-right font-mono text-zinc-200">{formatHaul(totalHaul)}</td>
+						<td className="px-4 py-2 text-right font-mono text-zinc-200">
+							{formatHaul(totalHaul)}
+						</td>
 					</tr>
 				</tfoot>
 			)}

@@ -1,19 +1,19 @@
-// Build Queue persistence store -- plan 36 (industry-build-queue); Queue / Batch / Job (plan 39).
+// Build Queue persistence store -- plan 36 (industry-build-queue); Queue / Order / Job (plan 39).
 //
 // CRUD + mutation helpers over the db.buildQueues Dexie table, plus reactive read hooks.
 // Every write bumps queue.updatedAt and persists via an immutable update: we read the queue,
-// produce a brand-new batches/jobs structure, then db.buildQueues.put(...) -- never mutate in place.
+// produce a brand-new orders/jobs structure, then db.buildQueues.put(...) -- never mutate in place.
 // The active queue id is persisted in the settings table (key "activeBuildQueueId") so the
 // selection survives reloads, matching the appStore pattern for activeCharacterId / defaultMapId.
 
 import { db } from "@/db";
 import {
-	type Batch,
 	type BuildQueue,
 	type ContainerRef,
 	type ContainerSourceConfig,
 	type Job,
 	type JobOverrides,
+	type Order,
 	type QueueLocation,
 	type RecipeLockEntry,
 	type ReoptMode,
@@ -44,10 +44,10 @@ async function updateQueue(
 }
 
 /**
- * Concatenate two job lists, summing runs for matching blueprintIds so a batch never holds two
+ * Concatenate two job lists, summing runs for matching blueprintIds so an order never holds two
  * entries for the same blueprint (the one-entry-per-blueprint invariant addJob also upholds).
  * Returns a fresh array of fresh job objects. Folded jobs keep the SURVIVING job's id; moved jobs
- * keep their own id (so a Target job's stable identity follows it across batches -- plan 39 Phase 3).
+ * keep their own id (so a Target job's stable identity follows it across orders -- plan 39 Phase 3).
  */
 function combineJobs(base: Job[], extra: Job[]): Job[] {
 	const result = base.map((job) => ({ ...job }));
@@ -83,7 +83,7 @@ export async function setQueueDescription(id: string, desc: string): Promise<voi
 
 /**
  * Deep-copy a queue under a new id with a " (copy)" suffix. Returns the copy, or undefined if
- * the source does not exist. Nested batches/jobs/locks are cloned so the copy is independent. Job
+ * the source does not exist. Nested orders/jobs/locks are cloned so the copy is independent. Job
  * ids are carried over (the copy lives in a new queue, so reusing ids is harmless and keeps any
  * future per-job overrides aligned with the copied jobs).
  */
@@ -95,10 +95,10 @@ export async function duplicateQueue(id: string): Promise<BuildQueue | undefined
 		...source,
 		id: crypto.randomUUID(),
 		name: `${source.name} (copy)`,
-		batches: source.batches.map((batch) => ({
-			...batch,
-			facilityExclude: batch.facilityExclude ? [...batch.facilityExclude] : undefined,
-			jobs: batch.jobs.map((job) => ({
+		batches: source.batches.map((order) => ({
+			...order,
+			facilityExclude: order.facilityExclude ? [...order.facilityExclude] : undefined,
+			jobs: order.jobs.map((job) => ({
 				...job,
 				overrides: job.overrides
 					? {
@@ -109,7 +109,7 @@ export async function duplicateQueue(id: string): Promise<BuildQueue | undefined
 						}
 					: undefined,
 			})),
-			recipeLocks: batch.recipeLocks?.map((lock) => ({ ...lock })),
+			recipeLocks: order.recipeLocks?.map((lock) => ({ ...lock })),
 		})),
 		recipeLocks: source.recipeLocks.map((lock) => ({ ...lock })),
 		facilityExclude: source.facilityExclude ? [...source.facilityExclude] : undefined,
@@ -147,128 +147,128 @@ export async function getActiveQueueId(): Promise<string | undefined> {
 	return (setting?.value as string | undefined) ?? undefined;
 }
 
-// ── Batch mutations ──────────────────────────────────────────────────────────
+// ── Order mutations ──────────────────────────────────────────────────────────
 
-/** Append a new empty batch. Returns the new batch id. */
-export async function addBatch(queueId: string, label?: string): Promise<string> {
-	const batchId = crypto.randomUUID();
-	const batch: Batch = { id: batchId, jobs: [] };
-	if (label !== undefined) batch.label = label;
-	await updateQueue(queueId, (q) => ({ ...q, batches: [...q.batches, batch] }));
-	return batchId;
+/** Append a new empty order. Returns the new order id. */
+export async function addOrder(queueId: string, label?: string): Promise<string> {
+	const orderId = crypto.randomUUID();
+	const order: Order = { id: orderId, jobs: [] };
+	if (label !== undefined) order.label = label;
+	await updateQueue(queueId, (q) => ({ ...q, batches: [...q.batches, order] }));
+	return orderId;
 }
 
-/** Remove a batch (and its jobs) from the queue. */
-export async function removeBatch(queueId: string, batchId: string): Promise<void> {
+/** Remove an order (and its jobs) from the queue. */
+export async function removeOrder(queueId: string, orderId: string): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		batches: q.batches.filter((b) => b.id !== batchId),
+		batches: q.batches.filter((b) => b.id !== orderId),
 	}));
 }
 
-/** Move a batch from fromIndex to toIndex, clamping toIndex into range. */
-export async function reorderBatches(
+/** Move an order from fromIndex to toIndex, clamping toIndex into range. */
+export async function reorderOrders(
 	queueId: string,
 	fromIndex: number,
 	toIndex: number,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => {
 		if (fromIndex < 0 || fromIndex >= q.batches.length) return q;
-		const batches = [...q.batches];
-		const [moved] = batches.splice(fromIndex, 1);
-		const target = Math.max(0, Math.min(toIndex, batches.length));
-		batches.splice(target, 0, moved);
-		return { ...q, batches };
+		const orders = [...q.batches];
+		const [moved] = orders.splice(fromIndex, 1);
+		const target = Math.max(0, Math.min(toIndex, orders.length));
+		orders.splice(target, 0, moved);
+		return { ...q, orders };
 	});
 }
 
 /**
- * Merge batch B's jobs into batch A (A keeps its position), then drop batch B. Duplicate
- * blueprintIds across the two batches have their runs summed. No-op if either batch is missing
+ * Merge order B's jobs into order A (A keeps its position), then drop order B. Duplicate
+ * blueprintIds across the two orders have their runs summed. No-op if either order is missing
  * or the two ids are identical.
  */
-export async function mergeBatches(
+export async function mergeOrders(
 	queueId: string,
-	batchIdA: string,
-	batchIdB: string,
+	orderIdA: string,
+	orderIdB: string,
 ): Promise<void> {
-	if (batchIdA === batchIdB) return;
+	if (orderIdA === orderIdB) return;
 	await updateQueue(queueId, (q) => {
-		const a = q.batches.find((b) => b.id === batchIdA);
-		const b = q.batches.find((b) => b.id === batchIdB);
+		const a = q.batches.find((b) => b.id === orderIdA);
+		const b = q.batches.find((b) => b.id === orderIdB);
 		if (!a || !b) return q;
 		const mergedJobs = combineJobs(a.jobs, b.jobs);
-		const batches = q.batches
-			.filter((b) => b.id !== batchIdB)
-			.map((b) => (b.id === batchIdA ? { ...b, jobs: mergedJobs } : b));
-		return { ...q, batches };
+		const orders = q.batches
+			.filter((b) => b.id !== orderIdB)
+			.map((b) => (b.id === orderIdA ? { ...b, jobs: mergedJobs } : b));
+		return { ...q, orders };
 	});
 }
 
 /**
- * Split a batch at jobIndex: jobs[0..jobIndex] (inclusive) stay in the original batch, the rest
- * move into a new batch inserted immediately after. Returns the new batch id. No-op (returns a
- * generated id that is not persisted) if the batch is missing or there is nothing to split off.
+ * Split an order at jobIndex: jobs[0..jobIndex] (inclusive) stay in the original order, the rest
+ * move into a new order inserted immediately after. Returns the new order id. No-op (returns a
+ * generated id that is not persisted) if the order is missing or there is nothing to split off.
  */
-export async function splitBatch(
+export async function splitOrder(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	jobIndex: number,
 ): Promise<string> {
-	const newBatchId = crypto.randomUUID();
+	const newOrderId = crypto.randomUUID();
 	await updateQueue(queueId, (q) => {
-		const idx = q.batches.findIndex((b) => b.id === batchId);
+		const idx = q.batches.findIndex((b) => b.id === orderId);
 		if (idx === -1) return q;
-		const batch = q.batches[idx];
-		const keep = batch.jobs.slice(0, jobIndex + 1).map((job) => ({ ...job }));
-		const moved = batch.jobs.slice(jobIndex + 1).map((job) => ({ ...job }));
+		const order = q.batches[idx];
+		const keep = order.jobs.slice(0, jobIndex + 1).map((job) => ({ ...job }));
+		const moved = order.jobs.slice(jobIndex + 1).map((job) => ({ ...job }));
 		if (moved.length === 0) return q;
-		const newBatch: Batch = { id: newBatchId, jobs: moved };
-		const batches = [...q.batches];
-		batches[idx] = { ...batch, jobs: keep };
-		batches.splice(idx + 1, 0, newBatch);
-		return { ...q, batches };
+		const newOrder: Order = { id: newOrderId, jobs: moved };
+		const orders = [...q.batches];
+		orders[idx] = { ...order, jobs: keep };
+		orders.splice(idx + 1, 0, newOrder);
+		return { ...q, orders };
 	});
-	return newBatchId;
+	return newOrderId;
 }
 
-/** Set a batch's display label. */
-export async function setBatchLabel(
+/** Set an order's display label. */
+export async function setOrderLabel(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	label: string,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		batches: q.batches.map((b) => (b.id === batchId ? { ...b, label } : b)),
+		batches: q.batches.map((b) => (b.id === orderId ? { ...b, label } : b)),
 	}));
 }
 
-/** Set a batch's collapsed (UI) flag. */
-export async function setBatchCollapsed(
+/** Set an order's collapsed (UI) flag. */
+export async function setOrderCollapsed(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	collapsed: boolean,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		batches: q.batches.map((b) => (b.id === batchId ? { ...b, collapsed } : b)),
+		batches: q.batches.map((b) => (b.id === orderId ? { ...b, collapsed } : b)),
 	}));
 }
 
 /**
- * Set (or clear, when undefined) a batch's location (plan 41 B4). Overrides the queue location as the
- * distance anchor for THIS batch's haul readout; clearing it falls back to the queue location. No-op if
- * the batch is missing.
+ * Set (or clear, when undefined) an order's location (plan 41 B4). Overrides the queue location as the
+ * distance anchor for THIS order's haul readout; clearing it falls back to the queue location. No-op if
+ * the order is missing.
  */
-export async function setBatchLocation(
+export async function setOrderLocation(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	location: QueueLocation | undefined,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		batches: q.batches.map((b) => (b.id === batchId ? { ...b, location } : b)),
+		batches: q.batches.map((b) => (b.id === orderId ? { ...b, location } : b)),
 	}));
 }
 
@@ -278,19 +278,19 @@ export async function setBatchLocation(
 // "Target" jobs in the Phase 4 sourcing cascade, not the mutation key.
 
 /**
- * Add a job to a batch. The new job gets a fresh stable `id` (crypto.randomUUID()). If the batch
+ * Add a job to an order. The new job gets a fresh stable `id` (crypto.randomUUID()). If the order
  * already holds a job for the same blueprintId, its runs are incremented by job.runs instead of
  * inserting a duplicate (the existing entry keeps its id).
  */
 export async function addJob(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	job: Omit<Job, "id">,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
 		batches: q.batches.map((b) => {
-			if (b.id !== batchId) return b;
+			if (b.id !== orderId) return b;
 			const existing = b.jobs.find((j) => j.blueprintId === job.blueprintId);
 			if (existing) {
 				return {
@@ -305,57 +305,57 @@ export async function addJob(
 	}));
 }
 
-/** Remove the job at jobIndex from a batch. */
-export async function removeJob(queueId: string, batchId: string, jobIndex: number): Promise<void> {
+/** Remove the job at jobIndex from an order. */
+export async function removeJob(queueId: string, orderId: string, jobIndex: number): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
 		batches: q.batches.map((b) =>
-			b.id === batchId ? { ...b, jobs: b.jobs.filter((_, i) => i !== jobIndex) } : b,
+			b.id === orderId ? { ...b, jobs: b.jobs.filter((_, i) => i !== jobIndex) } : b,
 		),
 	}));
 }
 
 /**
- * Move a job between (or within) batches -- the grouping primitive. Within the same batch this
- * reorders to toIndex. Across batches the job is removed from fromBatch and inserted into toBatch
+ * Move a job between (or within) orders -- the grouping primitive. Within the same order this
+ * reorders to toIndex. Across orders the job is removed from fromOrder and inserted into toOrder
  * at toIndex (appended when toIndex is omitted), carrying its id so a Target job's identity follows
- * it; if toBatch already holds that blueprintId its runs are incremented instead of inserting a
+ * it; if toOrder already holds that blueprintId its runs are incremented instead of inserting a
  * duplicate. No-op if any referenced item is missing.
  */
 export async function moveJob(
 	queueId: string,
-	fromBatchId: string,
+	fromOrderId: string,
 	jobIndex: number,
-	toBatchId: string,
+	toOrderId: string,
 	toIndex?: number,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => {
-		const fromBatch = q.batches.find((b) => b.id === fromBatchId);
-		if (!fromBatch) return q;
-		const job = fromBatch.jobs[jobIndex];
+		const fromOrder = q.batches.find((b) => b.id === fromOrderId);
+		if (!fromOrder) return q;
+		const job = fromOrder.jobs[jobIndex];
 		if (!job) return q;
 
-		// Same batch: reorder within the batch.
-		if (fromBatchId === toBatchId) {
-			const jobs = [...fromBatch.jobs];
+		// Same order: reorder within the order.
+		if (fromOrderId === toOrderId) {
+			const jobs = [...fromOrder.jobs];
 			const [moved] = jobs.splice(jobIndex, 1);
 			const target = toIndex == null ? jobs.length : Math.max(0, Math.min(toIndex, jobs.length));
 			jobs.splice(target, 0, moved);
 			return {
 				...q,
-				batches: q.batches.map((b) => (b.id === fromBatchId ? { ...b, jobs } : b)),
+				batches: q.batches.map((b) => (b.id === fromOrderId ? { ...b, jobs } : b)),
 			};
 		}
 
-		// Cross-batch move: bail if the destination is gone so the job is never lost.
-		if (!q.batches.some((b) => b.id === toBatchId)) return q;
+		// Cross-order move: bail if the destination is gone so the job is never lost.
+		if (!q.batches.some((b) => b.id === toOrderId)) return q;
 		return {
 			...q,
 			batches: q.batches.map((b) => {
-				if (b.id === fromBatchId) {
+				if (b.id === fromOrderId) {
 					return { ...b, jobs: b.jobs.filter((_, i) => i !== jobIndex) };
 				}
-				if (b.id === toBatchId) {
+				if (b.id === toOrderId) {
 					const existing = b.jobs.find((j) => j.blueprintId === job.blueprintId);
 					if (existing) {
 						return {
@@ -379,20 +379,20 @@ export async function moveJob(
 
 /**
  * Change a job's top-level blueprint while keeping its position and run count. If another job in
- * the same batch already uses the target blueprintId, this job's runs are folded into that entry
+ * the same order already uses the target blueprintId, this job's runs are folded into that entry
  * and this one is removed (upholding the one-entry-per-blueprint invariant addJob also enforces).
- * No-op when the blueprint is unchanged or the job/batch is missing.
+ * No-op when the blueprint is unchanged or the job/order is missing.
  */
 export async function setJobBlueprint(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	jobIndex: number,
 	blueprintId: number,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
 		batches: q.batches.map((b) => {
-			if (b.id !== batchId) return b;
+			if (b.id !== orderId) return b;
 			const current = b.jobs[jobIndex];
 			if (!current || current.blueprintId === blueprintId) return b;
 			const dupIndex = b.jobs.findIndex((j, i) => i !== jobIndex && j.blueprintId === blueprintId);
@@ -416,7 +416,7 @@ export async function setJobBlueprint(
 /** Set a job's run count, clamped to a positive integer (minimum 1). */
 export async function setJobRuns(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	jobIndex: number,
 	runs: number,
 ): Promise<void> {
@@ -424,7 +424,7 @@ export async function setJobRuns(
 	await updateQueue(queueId, (q) => ({
 		...q,
 		batches: q.batches.map((b) =>
-			b.id === batchId
+			b.id === orderId
 				? { ...b, jobs: b.jobs.map((j, i) => (i === jobIndex ? { ...j, runs: safeRuns } : j)) }
 				: b,
 		),
@@ -452,24 +452,24 @@ export async function clearRecipeLock(queueId: string, typeId: number): Promise<
 	}));
 }
 
-// ── Per-batch recipe locks (F2) ──────────────────────────────────────────────
-// The resolver's mergeLocks merges a batch's recipeLocks OVER the queue-global recipeLocks per typeId
-// (a batch entry fully replaces the queue entry for that type). These mirror the queue-global
-// setRecipeLock / clearRecipeLock above, scoped to one batch.
+// ── Per-Order recipe locks (F2) ──────────────────────────────────────────────
+// The resolver's mergeLocks merges an order's recipeLocks OVER the queue-global recipeLocks per typeId
+// (an order entry fully replaces the queue entry for that type). These mirror the queue-global
+// setRecipeLock / clearRecipeLock above, scoped to one order.
 
 /**
- * Upsert a per-batch recipe lock by typeId (replaces any existing entry for the same typeId on that
- * batch). No-op if the batch is missing.
+ * Upsert a per-order recipe lock by typeId (replaces any existing entry for the same typeId on that
+ * order). No-op if the order is missing.
  */
-export async function setBatchRecipeLock(
+export async function setOrderRecipeLock(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	entry: RecipeLockEntry,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
 		batches: q.batches.map((b) => {
-			if (b.id !== batchId) return b;
+			if (b.id !== orderId) return b;
 			const locks = b.recipeLocks ?? [];
 			const exists = locks.some((lock) => lock.typeId === entry.typeId);
 			const recipeLocks = exists
@@ -480,16 +480,16 @@ export async function setBatchRecipeLock(
 	}));
 }
 
-/** Remove the per-batch recipe lock for a given typeId on a batch, if present. No-op if batch missing. */
-export async function clearBatchRecipeLock(
+/** Remove the per-order recipe lock for a given typeId on an order, if present. No-op if order missing. */
+export async function clearOrderRecipeLock(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	typeId: number,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
 		batches: q.batches.map((b) =>
-			b.id === batchId
+			b.id === orderId
 				? { ...b, recipeLocks: (b.recipeLocks ?? []).filter((lock) => lock.typeId !== typeId) }
 				: b,
 		),
@@ -500,8 +500,8 @@ export async function clearBatchRecipeLock(
 
 /**
  * Set the queue's re-optimization mode. "global" collapses the whole queue into ONE solve
- * (cross-batch optimality, a single queue-level gather/build plan); "perStep" (the default) keeps the
- * per-batch pipeline. See ReoptMode / resolveQueue.
+ * (cross-order optimality, a single queue-level gather/build plan); "perStep" (the default) keeps the
+ * per-order pipeline. See ReoptMode / resolveQueue.
  */
 export async function setReoptMode(queueId: string, mode: ReoptMode): Promise<void> {
 	await updateQueue(queueId, (q) => ({ ...q, reoptMode: mode }));
@@ -526,7 +526,7 @@ export async function setQueueLocation(
 }
 
 // ── Container sourcing overrides (plan 39 Phase 4a) ──────────────────────────
-// A NEW cascade, independent of recipeLocks: queue/batch `sourcesDefault` + `outputDefault` +
+// A NEW cascade, independent of recipeLocks: queue/order `sourcesDefault` + `outputDefault` +
 // per-typeId `sourceLocks`, plus per-job `overrides` (Target jobs). queueResolver.resolveEffectiveOverrides
 // composes the five scopes last-wins / scope-dominant. The sourceLock upsert/clear mirror the recipe-lock
 // helpers (one entry per typeId). Passing `undefined` to a default setter clears that default.
@@ -575,52 +575,52 @@ export async function clearQueueSourceLock(queueId: string, typeId: number): Pro
 	}));
 }
 
-/** Set (or clear) a batch's container sourcing default (layer 3). No-op if the batch is missing. */
-export async function setBatchSourcesDefault(
+/** Set (or clear) an order's container sourcing default (layer 3). No-op if the order is missing. */
+export async function setOrderSourcesDefault(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	config: ContainerSourceConfig | undefined,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		batches: q.batches.map((b) => (b.id === batchId ? { ...b, sourcesDefault: config } : b)),
+		batches: q.batches.map((b) => (b.id === orderId ? { ...b, sourcesDefault: config } : b)),
 	}));
 }
 
-/** Set (or clear) a batch's output deposit annotation (layer 3). No-op if the batch is missing. */
-export async function setBatchOutputDefault(
+/** Set (or clear) an order's output deposit annotation (layer 3). No-op if the order is missing. */
+export async function setOrderOutputDefault(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	ref: ContainerRef | undefined,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		batches: q.batches.map((b) => (b.id === batchId ? { ...b, outputDefault: ref } : b)),
+		batches: q.batches.map((b) => (b.id === orderId ? { ...b, outputDefault: ref } : b)),
 	}));
 }
 
-/** Set (or clear) a batch's facility exclusion default. No-op if the batch is missing. */
-export async function setBatchFacilityExclude(
+/** Set (or clear) an order's facility exclusion default. No-op if the order is missing. */
+export async function setOrderFacilityExclude(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	facilityExclude: string[] | undefined,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
-		batches: q.batches.map((b) => (b.id === batchId ? { ...b, facilityExclude } : b)),
+		batches: q.batches.map((b) => (b.id === orderId ? { ...b, facilityExclude } : b)),
 	}));
 }
 
-/** Upsert a per-batch source lock by typeId (layer 4). No-op if the batch is missing. */
-export async function setBatchSourceLock(
+/** Upsert a per-order source lock by typeId (layer 4). No-op if the order is missing. */
+export async function setOrderSourceLock(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	entry: SourceLockEntry,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
 		batches: q.batches.map((b) => {
-			if (b.id !== batchId) return b;
+			if (b.id !== orderId) return b;
 			const locks = b.sourceLocks ?? [];
 			const exists = locks.some((l) => l.typeId === entry.typeId);
 			const sourceLocks = exists
@@ -631,16 +631,16 @@ export async function setBatchSourceLock(
 	}));
 }
 
-/** Remove a per-batch source lock for a typeId, if present. No-op if the batch is missing. */
-export async function clearBatchSourceLock(
+/** Remove a per-order source lock for a typeId, if present. No-op if the order is missing. */
+export async function clearOrderSourceLock(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	typeId: number,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
 		batches: q.batches.map((b) =>
-			b.id === batchId
+			b.id === orderId
 				? { ...b, sourceLocks: (b.sourceLocks ?? []).filter((l) => l.typeId !== typeId) }
 				: b,
 		),
@@ -649,18 +649,18 @@ export async function clearBatchSourceLock(
 
 /**
  * Set (or clear, when undefined) a Target job's per-job overrides (cascade layer 5). Keyed by array
- * index like the other job mutators (removeJob / setJobRuns); no-op if the batch/job is missing.
+ * index like the other job mutators (removeJob / setJobRuns); no-op if the order/job is missing.
  */
 export async function setJobOverrides(
 	queueId: string,
-	batchId: string,
+	orderId: string,
 	jobIndex: number,
 	overrides: JobOverrides | undefined,
 ): Promise<void> {
 	await updateQueue(queueId, (q) => ({
 		...q,
 		batches: q.batches.map((b) =>
-			b.id === batchId
+			b.id === orderId
 				? { ...b, jobs: b.jobs.map((j, i) => (i === jobIndex ? { ...j, overrides } : j)) }
 				: b,
 		),

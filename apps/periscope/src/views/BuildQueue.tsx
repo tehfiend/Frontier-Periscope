@@ -1,18 +1,17 @@
-// Build Queue view -- plan 36 (industry-build-queue); Queue / Batch / Job (plan 39).
-// Renders the active build queue as an ordered list of batch cards. The queue is solved as a
-// sequential pipeline by resolveQueue (per-batch LP solve + carry-forward stock pool); this view
+// Build Queue view -- plan 36 (industry-build-queue); Queue / Order / Job (plan 39).
+// Renders the active build queue as an ordered list of order cards. The queue is solved as a
+// sequential pipeline by resolveQueue (per-order LP solve + carry-forward stock pool); this view
 // assembles the blueprint context + base stock and wires the store mutations to the UI.
 //
 // It reuses the extracted industry / build-queue components (ProducibleItemSearch, RecipeDropdown,
 // SurplusTable, the InputDrillDown tables) and the BomStockPanel for stock. Drag/drop reordering, the
 // either/or recipe drill-down, and the container-sourcing UI are all live here. This view also
 // hosts the queue-level extras: F3 global re-optimization (a single whole-queue solve surfaced via
-// resolved.global) and F6 live drag reflow (a transient batch order fed to the SortableContext during
+// resolved.global) and F6 live drag reflow (a transient order sequence fed to the SortableContext during
 // a drag).
 
 import { BomStockPanel, type SsuInventory } from "@/components/BomStockPanel";
 import { ItemIcon } from "@/components/ItemIcon";
-import { BatchCard } from "@/components/buildqueue/BatchCard";
 import { BuildTree } from "@/components/buildqueue/BuildTree";
 import {
 	type DepositRow,
@@ -20,12 +19,13 @@ import {
 	depositRowsFromRecords,
 } from "@/components/buildqueue/DepositsTable";
 import { facilityNamesFromBlueprintFacilities } from "@/components/buildqueue/FacilityPreferencePanel";
+import { OrderCard } from "@/components/buildqueue/OrderCard";
 import { QueueHeader } from "@/components/buildqueue/QueueHeader";
 import { ScratchPadPanel } from "@/components/buildqueue/ScratchPadPanel";
 import { SourceOverridesPanel } from "@/components/buildqueue/SourceOverridesPanel";
 import { SourcingPlanTable } from "@/components/buildqueue/SourcingPlanTable";
 import {
-	type BatchRef,
+	type OrderRef,
 	type QueueBlueprintData,
 	formatTime,
 	formatVolume,
@@ -43,8 +43,8 @@ import {
 	useBlueprintData,
 } from "@/hooks/useBlueprintData";
 import type { Blueprint } from "@/lib/bomTypes";
-import type { Batch, BuildQueue as BuildQueueModel, ContainerRef } from "@/lib/buildQueueTypes";
-import type { BuildTreeBatch } from "@/lib/buildTree";
+import type { BuildQueue as BuildQueueModel, ContainerRef, Order } from "@/lib/buildQueueTypes";
+import type { BuildTreeOrder } from "@/lib/buildTree";
 import {
 	buildGateGraph,
 	containerJumpDistances,
@@ -52,7 +52,7 @@ import {
 	sortContainersByDistance,
 } from "@/lib/distance";
 import {
-	type BatchResult,
+	type OrderResult,
 	type QueueResolveContext,
 	type QueueResolveResult,
 	type StockBreakdown,
@@ -67,11 +67,11 @@ import {
 	buildQueueSourcingPlan,
 } from "@/lib/sourcingPlan";
 import {
-	addBatch,
 	addJob,
+	addOrder,
 	createQueue,
 	moveJob,
-	reorderBatches,
+	reorderOrders,
 	setActiveQueue,
 	useActiveQueue,
 	useActiveQueueId,
@@ -111,10 +111,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Every container a queue routes output INTO, across the whole outputDest cascade (queue default + locks,
- * batch default + locks, per-job overrides). Used to seed empty deposit-target containers into the stock
+ * order default + locks, per-job overrides). Used to seed empty deposit-target containers into the stock
  * breakdown (plan 41 B1): a field unit chosen as an outputDest but with no pasted snapshot is skipped by
  * fieldStorageBreakdown, so without this it would not exist as a container and routed deposits could not
- * land there (nor be sourceable by later batches).
+ * land there (nor be sourceable by later orders).
  */
 function collectOutputDestRefs(queue: BuildQueueModel): ContainerRef[] {
 	const refs: ContainerRef[] = [];
@@ -169,8 +169,8 @@ function CollapsibleSection({
 }
 
 /**
- * Section frame for the F3 global-plan tables. Mirrors BatchMaterials' (non-exported) Subsection so
- * the queue-level gather / build / from-stock / surplus lists read identically to the per-batch ones.
+ * Section frame for the F3 global-plan tables. Mirrors OrderMaterials' (non-exported) Subsection so
+ * the queue-level gather / build / from-stock / surplus lists read identically to the per-order ones.
  */
 function PlanSubsection({
 	title,
@@ -298,12 +298,12 @@ export function BuildQueue() {
 		return containerJumpDistances(containerEntries, queueSystemId, gateGraph);
 	}, [containerEntries, queueSystemId, gateGraph]);
 
-	// Per-batch haul anchor (plan 41 B4). The costed haul readout measures gate-jumps from each source
-	// container to the CONSUMING location -- a batch's own location when set, else the queue location.
-	// Batches that inherit the queue location reuse the queue-anchored containerJumps as-is; only batches
+	// Per-Order haul anchor (plan 41 B4). The costed haul readout measures gate-jumps from each source
+	// container to the CONSUMING location -- an order's own location when set, else the queue location.
+	// Orders that inherit the queue location reuse the queue-anchored containerJumps as-is; only orders
 	// with their own location re-anchor (one gateJumpsBetween per container -- few containers, memoized,
-	// and only for the batches that override). Keyed by batchId. Distance never enters the LP (B6).
-	const haulJumpsByBatch = useMemo(() => {
+	// and only for the orders that override). Keyed by orderId. Distance never enters the LP (B6).
+	const haulJumpsByOrder = useMemo(() => {
 		const map = new Map<string, Map<string, number | undefined>>();
 		for (const b of activeQueue?.batches ?? []) {
 			const sys = b.location?.systemId;
@@ -431,7 +431,7 @@ export function BuildQueue() {
 		],
 	);
 
-	// Blueprint data threaded to the batch/job components.
+	// Blueprint data threaded to the order/job components.
 	const data = useMemo<QueueBlueprintData>(
 		() => ({
 			blueprints: filteredBlueprints,
@@ -517,9 +517,9 @@ export function BuildQueue() {
 		return resolveQueue(activeQueue, ctx, baseStock, breakdown);
 	}, [activeQueue, ctx, ssuInventories, fieldStorageBreakdown, containerJumps]);
 
-	const resultByBatch = useMemo(() => {
-		const map = new Map<string, BatchResult>();
-		if (resolved) for (const b of resolved.batches) map.set(b.batchId, b);
+	const resultByOrder = useMemo(() => {
+		const map = new Map<string, OrderResult>();
+		if (resolved) for (const b of resolved.orders) map.set(b.orderId, b);
 		return map;
 	}, [resolved]);
 
@@ -530,8 +530,8 @@ export function BuildQueue() {
 		return buildQueueSourcingPlan(resolved);
 	}, [resolved]);
 
-	// Queue-total deposits (plan 41 B1) -- only used in global mode, where the per-batch material lists
-	// (and their per-batch Deposits tables) are empty. Global mode has no batch order to route along, so
+	// Queue-total deposits (plan 41 B1) -- only used in global mode, where the per-order material lists
+	// (and their per-order Deposits tables) are empty. Global mode has no order sequence to route along, so
 	// the resolver deposits everything to the reserved Unassigned bucket (decision 9); this renders those
 	// recorded deposits straight from the global plan.
 	const globalDeposits = useMemo<DepositRow[]>(() => {
@@ -579,7 +579,7 @@ export function BuildQueue() {
 	// Queue-wide count of producible inputs that still have an open either/or choice (on auto pick).
 	const openChoiceCount = useMemo(() => {
 		if (!resolved || !activeQueue) return 0;
-		// Global mode empties the per-batch build lists, so count either/or choices from the single
+		// Global mode empties the per-order build lists, so count either/or choices from the single
 		// queue-level plan (resolved.global.build) instead -- otherwise the badge would read 0.
 		if (resolved.global) {
 			return resolved.global.build.filter(
@@ -588,41 +588,41 @@ export function BuildQueue() {
 					!isRecipeSteered(b.typeId, activeQueue.recipeLocks),
 			).length;
 		}
-		return queueOpenChoiceCount(resolved.batches, activeQueue.recipeLocks);
+		return queueOpenChoiceCount(resolved.orders, activeQueue.recipeLocks);
 	}, [resolved, activeQueue]);
 
-	const globalTreeBatch = useMemo<BuildTreeBatch | null>(() => {
+	const globalTreeOrder = useMemo<BuildTreeOrder | null>(() => {
 		if (!resolved?.global) return null;
 		return {
-			jobs: resolved.batches.flatMap((batch) => batch.jobs),
+			jobs: resolved.orders.flatMap((order) => order.jobs),
 			gather: resolved.global.gather,
 			build: resolved.global.build,
 			fromUpstream: resolved.global.fromUpstream,
 		};
 	}, [resolved]);
 
-	const batchRefs = useMemo<BatchRef[]>(
+	const orderRefs = useMemo<OrderRef[]>(
 		() =>
 			(activeQueue?.batches ?? []).map((b, i) => ({
 				id: b.id,
-				label: b.label?.trim() ? b.label : `Batch ${i + 1}`,
+				label: b.label?.trim() ? b.label : `Order ${i + 1}`,
 			})),
 		[activeQueue],
 	);
 
-	const handleAddBatch = useCallback(() => {
-		if (activeQueue) addBatch(activeQueue.id);
+	const handleAddOrder = useCallback(() => {
+		if (activeQueue) addOrder(activeQueue.id);
 	}, [activeQueue]);
 
-	// Empty-state add: ensure a batch exists, then append the resolved job to it.
+	// Empty-state add: ensure an order exists, then append the resolved job to it.
 	const handleAddFirstJob = useCallback(
 		async (typeId: number) => {
 			if (!activeQueue) return;
 			const bpId = resolveBlueprintForProduct(typeId, data);
 			if (bpId == null) return;
-			let batchId = activeQueue.batches[activeQueue.batches.length - 1]?.id;
-			if (!batchId) batchId = await addBatch(activeQueue.id);
-			await addJob(activeQueue.id, batchId, { blueprintId: bpId, runs: 1 });
+			let orderId = activeQueue.batches[activeQueue.batches.length - 1]?.id;
+			if (!orderId) orderId = await addOrder(activeQueue.id);
+			await addJob(activeQueue.id, orderId, { blueprintId: bpId, runs: 1 });
 		},
 		[activeQueue, data],
 	);
@@ -640,36 +640,38 @@ export function BuildQueue() {
 	// source of truth and commits only on drag end).
 	const [activeDrag, setActiveDrag] = useState<{ type: string; label: string } | null>(null);
 
-	// F6 -- transient batch order during a drag. Null except while a BATCH is being dragged; updated in
-	// onDragOver so the batches list opens a gap LIVE (Dexie is only written on drag end). Job reordering
-	// inside a batch already reflows via the sortable strategy; cross-batch job moves still commit on
-	// drag end (the per-job sortable ids are batch-scoped, so a live cross-batch gap would need a stable
-	// queue-wide job id -- a BatchCard / data-model change that is out of scope here).
-	const [dragBatchOrder, setDragBatchOrder] = useState<string[] | null>(null);
+	// F6 -- transient order sequence during a drag. Null except while an order is being dragged; updated in
+	// onDragOver so the orders list opens a gap LIVE (Dexie is only written on drag end). Job reordering
+	// inside an order already reflows via the sortable strategy; cross-order job moves still commit on
+	// drag end (the per-job sortable ids are order-scoped, so a live cross-order gap would need a stable
+	// queue-wide job id -- an OrderCard / data-model change that is out of scope here).
+	const [dragOrderSequence, setDragOrderSequence] = useState<string[] | null>(null);
 
-	// Batches in their live (preview) order: the transient drag order while a batch is dragged, otherwise
+	// Orders in their live (preview) order: the transient drag order while an order is dragged, otherwise
 	// the persisted order. Drives BOTH the SortableContext items and the rendered cards so the
 	// gap-opening animation matches the order eventually committed on drag end.
-	const orderedBatches = useMemo<Batch[]>(() => {
-		const batches = activeQueue?.batches ?? [];
-		if (!dragBatchOrder) return batches;
-		const byId = new Map(batches.map((b) => [b.id, b]));
-		const reordered = dragBatchOrder.map((id) => byId.get(id)).filter((b): b is Batch => b != null);
-		// Fall back to the persisted order if the preview drifted out of sync (e.g. a batch vanished).
-		return reordered.length === batches.length ? reordered : batches;
-	}, [activeQueue, dragBatchOrder]);
+	const orderedOrders = useMemo<Order[]>(() => {
+		const orders = activeQueue?.batches ?? [];
+		if (!dragOrderSequence) return orders;
+		const byId = new Map(orders.map((b) => [b.id, b]));
+		const reordered = dragOrderSequence
+			.map((id) => byId.get(id))
+			.filter((b): b is Order => b != null);
+		// Fall back to the persisted order if the preview drifted out of sync (e.g. an order vanished).
+		return reordered.length === orders.length ? reordered : orders;
+	}, [activeQueue, dragOrderSequence]);
 
-	const batchIds = useMemo(() => orderedBatches.map((b) => b.id), [orderedBatches]);
+	const orderIds = useMemo(() => orderedOrders.map((b) => b.id), [orderedOrders]);
 
 	const handleDragStart = useCallback(
 		(event: DragStartEvent) => {
 			const d = event.active.data.current as
 				| { type?: string; label?: string; name?: string }
 				| undefined;
-			if (d?.type === "batch") {
-				setActiveDrag({ type: "batch", label: d.label ?? "Batch" });
+			if (d?.type === "order") {
+				setActiveDrag({ type: "order", label: d.label ?? "Order" });
 				// Seed the transient order so the gap opens from the current layout.
-				setDragBatchOrder((activeQueue?.batches ?? []).map((b) => b.id));
+				setDragOrderSequence((activeQueue?.batches ?? []).map((b) => b.id));
 			} else if (d?.type === "job") {
 				setActiveDrag({ type: "job", label: d.name ?? "Job" });
 			} else {
@@ -679,22 +681,22 @@ export function BuildQueue() {
 		[activeQueue],
 	);
 
-	// F6 -- live reflow for BATCH drags: map the over target (which may be a job inside another batch)
-	// to its parent batch and arrayMove the transient order. No store write happens here; the order is
-	// committed once on drag end. Job drags are intentionally ignored (see dragBatchOrder note).
+	// F6 -- live reflow for ORDER drags: map the over target (which may be a job inside another order)
+	// to its parent order and arrayMove the transient order. No store write happens here; the order is
+	// committed once on drag end. Job drags are intentionally ignored (see dragOrderSequence note).
 	const handleDragOver = useCallback(
 		(event: DragOverEvent) => {
 			const { active, over } = event;
 			if (!over || !activeQueue) return;
 			const a = active.data.current as { type?: string } | undefined;
-			if (a?.type !== "batch") return;
-			const o = over.data.current as { type?: string; batchId?: string } | undefined;
-			const overBatchId = o?.type === "job" ? o.batchId : String(over.id);
-			if (!overBatchId) return;
-			setDragBatchOrder((prev) => {
+			if (a?.type !== "order") return;
+			const o = over.data.current as { type?: string; orderId?: string } | undefined;
+			const overOrderId = o?.type === "job" ? o.orderId : String(over.id);
+			if (!overOrderId) return;
+			setDragOrderSequence((prev) => {
 				const base = prev ?? activeQueue.batches.map((b) => b.id);
 				const fromIndex = base.indexOf(String(active.id));
-				const toIndex = base.indexOf(overBatchId);
+				const toIndex = base.indexOf(overOrderId);
 				if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return prev;
 				return arrayMove(base, fromIndex, toIndex);
 			});
@@ -702,67 +704,67 @@ export function BuildQueue() {
 		[activeQueue],
 	);
 
-	// The DnD layer is THIN: it resolves from/to from the live preview (batches) or the active+over data
-	// (jobs) and delegates to the store mutations (reorderBatches / moveJob). It never mutates queue
+	// The DnD layer is THIN: it resolves from/to from the live preview (orders) or the active+over data
+	// (jobs) and delegates to the store mutations (reorderOrders / moveJob). It never mutates queue
 	// state directly during the drag -- only on drag end.
 	const handleDragEnd = useCallback(
 		(event: DragEndEvent) => {
 			setActiveDrag(null);
-			const committedOrder = dragBatchOrder; // capture this render's preview before clearing
-			setDragBatchOrder(null);
+			const committedOrder = dragOrderSequence; // capture this render's preview before clearing
+			setDragOrderSequence(null);
 			const { active, over } = event;
 			if (!over || !activeQueue) return;
 			const queueId = activeQueue.id;
 			const a = active.data.current as
-				| { type?: string; batchId?: string; jobIndex?: number }
+				| { type?: string; orderId?: string; jobIndex?: number }
 				| undefined;
 			const o = over.data.current as
-				| { type?: string; batchId?: string; jobIndex?: number }
+				| { type?: string; orderId?: string; jobIndex?: number }
 				| undefined;
 
-			// Reorder batches: commit the live preview order when present (it is exactly what the user
+			// Reorder orders: commit the live preview order when present (it is exactly what the user
 			// saw); otherwise resolve the destination from the over target (e.g. a keyboard path that
-			// did not stream onDragOver). over may be a batch or a job inside one.
-			if (a?.type === "batch") {
+			// did not stream onDragOver). over may be an order or a job inside one.
+			if (a?.type === "order") {
 				const fromIndex = activeQueue.batches.findIndex((b) => b.id === active.id);
 				let toIndex: number;
 				if (committedOrder) {
 					toIndex = committedOrder.indexOf(String(active.id));
 				} else {
-					const overBatchId = o?.type === "job" ? o.batchId : String(over.id);
-					toIndex = activeQueue.batches.findIndex((b) => b.id === overBatchId);
+					const overOrderId = o?.type === "job" ? o.orderId : String(over.id);
+					toIndex = activeQueue.batches.findIndex((b) => b.id === overOrderId);
 				}
 				if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
-					reorderBatches(queueId, fromIndex, toIndex);
+					reorderOrders(queueId, fromIndex, toIndex);
 				}
 				return;
 			}
 
-			// Move a job: within a batch (reorder) or across batches (regroup). Dropping over a job
-			// inserts before it; dropping over a batch container appends to that batch.
-			if (a?.type === "job" && a.batchId != null && a.jobIndex != null) {
-				let toBatchId: string | undefined;
+			// Move a job: within an order (reorder) or across orders (regroup). Dropping over a job
+			// inserts before it; dropping over an order container appends to that order.
+			if (a?.type === "job" && a.orderId != null && a.jobIndex != null) {
+				let toOrderId: string | undefined;
 				let toIndex: number | undefined;
-				if (o?.type === "job" && o.batchId != null) {
-					toBatchId = o.batchId;
+				if (o?.type === "job" && o.orderId != null) {
+					toOrderId = o.orderId;
 					toIndex = o.jobIndex;
-				} else if (o?.type === "batch") {
-					toBatchId = String(over.id);
-					toIndex = undefined; // append to the batch
+				} else if (o?.type === "order") {
+					toOrderId = String(over.id);
+					toIndex = undefined; // append to the order
 				} else {
 					return;
 				}
-				if (a.batchId === toBatchId && a.jobIndex === toIndex) return;
-				moveJob(queueId, a.batchId, a.jobIndex, toBatchId, toIndex);
+				if (a.orderId === toOrderId && a.jobIndex === toIndex) return;
+				moveJob(queueId, a.orderId, a.jobIndex, toOrderId, toIndex);
 			}
 		},
-		[activeQueue, dragBatchOrder],
+		[activeQueue, dragOrderSequence],
 	);
 
 	// Drag cancelled (Esc / dropped on nothing): drop the transient preview so the list snaps back.
 	const handleDragCancel = useCallback(() => {
 		setActiveDrag(null);
-		setDragBatchOrder(null);
+		setDragOrderSequence(null);
 	}, []);
 
 	if (isLoading) {
@@ -858,14 +860,14 @@ export function BuildQueue() {
 						{!totals.feasible && (
 							<span className="ml-auto flex items-center gap-1 text-amber-400">
 								<AlertTriangle size={12} />
-								{globalPlan ? "no clean integer plan" : "some batches need attention"}
+								{globalPlan ? "no clean integer plan" : "some orders need attention"}
 							</span>
 						)}
 					</div>
 				)}
 
 				{/* F3 -- global re-optimization plan. Rendered only in "global" mode: this single
-				    whole-queue plan replaces the per-batch material breakdown (batches below still list
+				    whole-queue plan replaces the per-order material breakdown (orders below still list
 				    their jobs). The totals bar above already reflects globalPlan.time / volume. */}
 				{globalPlan && activeQueue.batches.length > 0 && (
 					<div className="mb-4 space-y-3">
@@ -878,29 +880,29 @@ export function BuildQueue() {
 								</div>
 								<p className="text-violet-200/80">
 									Sourcing is optimized across the whole queue as one solve, so a recipe choice in
-									one batch can share a co-product needed by another. Per-batch recipe locks are
-									ignored in this mode and the per-batch material breakdown is omitted -- this
+									one order can share a co-product needed by another. Per-Order recipe locks are
+									ignored in this mode and the per-order material breakdown is omitted -- this
 									single queue-level plan (gather / build / surplus) covers the whole queue, while
-									each batch below still lists its jobs. Switch back to Per-batch for legible
-									per-batch gather/build lists.
+									each order below still lists its jobs. Switch back to Per-Order for legible
+									per-order gather/build lists.
 								</p>
 								<p className="text-violet-200/80">
-									This plan assumes free build ordering, so the batch order listed below may not be
-									executable as written if a later batch's co-product feeds an earlier batch.
+									This plan assumes free build ordering, so the order sequence listed below may not
+									be executable as written if a later order's co-product feeds an earlier order.
 								</p>
 							</div>
 						</div>
 
-						{globalTreeBatch &&
+						{globalTreeOrder &&
 							(globalPlan.gather.length > 0 ||
 								globalPlan.build.length > 0 ||
 								globalPlan.fromUpstream.length > 0) && (
-								<PlanSubsection title="Build path" count={globalTreeBatch.jobs.length}>
+								<PlanSubsection title="Build path" count={globalTreeOrder.jobs.length}>
 									<BuildTree
-										batch={globalTreeBatch}
+										order={globalTreeOrder}
 										data={data}
 										queueId={activeQueue.id}
-										batchId={null}
+										orderId={null}
 										queue={activeQueue}
 										queueLocks={activeQueue.recipeLocks}
 										sourceSystemId={queueSystemId}
@@ -972,13 +974,13 @@ export function BuildQueue() {
 					</div>
 				)}
 
-				{/* Batches */}
+				{/* Orders */}
 				{activeQueue.batches.length === 0 ? (
 					<div className="rounded-lg border border-dashed border-zinc-700 bg-zinc-900/30 p-8 text-center">
 						<Factory size={28} className="mx-auto mb-3 text-zinc-600" />
 						<h2 className="mb-1 text-sm font-medium text-zinc-300">Your build queue is empty</h2>
 						<p className="mb-4 text-xs text-zinc-500">
-							Search for something to build, or add an empty batch to organize jobs yourself. You
+							Search for something to build, or add an empty order to organize jobs yourself. You
 							can also add blueprints straight from the Blueprint Library.
 						</p>
 						<div className="mx-auto max-w-md">
@@ -990,11 +992,11 @@ export function BuildQueue() {
 						</div>
 						<button
 							type="button"
-							onClick={handleAddBatch}
+							onClick={handleAddOrder}
 							className="mt-4 inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:border-cyan-500/60 hover:text-cyan-300"
 						>
 							<Plus size={12} />
-							Add empty batch
+							Add empty order
 						</button>
 					</div>
 				) : (
@@ -1007,38 +1009,38 @@ export function BuildQueue() {
 						onDragCancel={handleDragCancel}
 					>
 						<div className="space-y-3">
-							<SortableContext items={batchIds} strategy={verticalListSortingStrategy}>
-								{orderedBatches.map((batch, index) => (
-									<BatchCard
-										key={batch.id}
+							<SortableContext items={orderIds} strategy={verticalListSortingStrategy}>
+								{orderedOrders.map((order, index) => (
+									<OrderCard
+										key={order.id}
 										queueId={activeQueue.id}
 										queue={activeQueue}
-										batch={batch}
-										result={resultByBatch.get(batch.id)}
+										order={order}
+										result={resultByOrder.get(order.id)}
 										index={index}
-										totalBatches={orderedBatches.length}
-										batches={batchRefs}
+										totalOrders={orderedOrders.length}
+										orders={orderRefs}
 										data={data}
 										recipeLocks={activeQueue.recipeLocks}
 										globalMode={!!globalPlan}
-										sourcingPlan={sourcingPlan?.byBatch.get(batch.id)}
+										sourcingPlan={sourcingPlan?.byOrder.get(order.id)}
 										containers={containerOptions}
 										containerLabels={baseContainerLabels}
 										containerJumps={containerJumps}
 										systems={solarSystems}
 										systemNames={systemNames}
 										volumeMap={volumeMap}
-										haulJumps={haulJumpsByBatch.get(batch.id)}
+										haulJumps={haulJumpsByOrder.get(order.id)}
 									/>
 								))}
 							</SortableContext>
 							<button
 								type="button"
-								onClick={handleAddBatch}
+								onClick={handleAddOrder}
 								className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-700 py-2.5 text-xs text-zinc-500 hover:border-cyan-500/50 hover:text-cyan-300"
 							>
 								<Plus size={14} />
-								Add batch
+								Add order
 							</button>
 						</div>
 						<DragOverlay>

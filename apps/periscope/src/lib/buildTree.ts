@@ -1,5 +1,5 @@
 import type { Blueprint, BomLineItem, ProductionSplit } from "@/lib/bomTypes";
-import type { BatchBuildItem, BatchResult, FromUpstreamItem, JobResult } from "@/lib/queueResolver";
+import type { FromUpstreamItem, JobResult, OrderBuildItem, OrderResult } from "@/lib/queueResolver";
 
 export interface BuildTreeData {
 	blueprints: Record<string, Blueprint>;
@@ -11,10 +11,10 @@ export interface BuildTreeData {
 	typeGroups: Map<number, string>;
 }
 
-export interface BuildTreeBatch {
+export interface BuildTreeOrder {
 	jobs: JobResult[];
 	gather: BomLineItem[];
-	build: BatchBuildItem[];
+	build: OrderBuildItem[];
 	fromUpstream?: FromUpstreamItem[];
 }
 
@@ -35,7 +35,7 @@ export interface BuildTreeNode {
 	isGatherableLeaf: boolean;
 	siteSourceTypeId?: number;
 	sourceGroup?: string;
-	sourceBatchIds?: string[];
+	sourceOrderIds?: string[];
 	stockShownElsewhere: boolean;
 	children: BuildTreeNode[];
 	path: string;
@@ -52,7 +52,7 @@ interface FlatLine {
 	tier: "raw" | "intermediate" | "final";
 	blueprintId?: number;
 	splits?: ProductionSplit[];
-	sourceBatchIds?: string[];
+	sourceOrderIds?: string[];
 }
 
 interface AllocationState {
@@ -61,7 +61,7 @@ interface AllocationState {
 	totalHave: number;
 	totalStill: number;
 	seen: number;
-	sourceBatchIds?: string[];
+	sourceOrderIds?: string[];
 }
 
 const MAX_TREE_DEPTH = 48;
@@ -103,23 +103,23 @@ function makeFromUpstreamLine(item: FromUpstreamItem): FlatLine {
 		volume: item.volume,
 		volumeMissing: item.volume < 0,
 		tier: "intermediate",
-		sourceBatchIds: item.sourceBatchIds,
+		sourceOrderIds: item.sourceOrderIds,
 	};
 }
 
-function flatLineMaps(batch: BuildTreeBatch) {
+function flatLineMaps(order: BuildTreeOrder) {
 	const lines = new Map<number, FlatLine>();
 	const reconcileLines = new Map<number, FlatLine>();
 
-	for (const item of batch.gather) {
+	for (const item of order.gather) {
 		lines.set(item.typeId, item);
 		reconcileLines.set(item.typeId, item);
 	}
-	for (const item of batch.build) {
+	for (const item of order.build) {
 		lines.set(item.typeId, item);
 		reconcileLines.set(item.typeId, item);
 	}
-	for (const item of batch.fromUpstream ?? []) {
+	for (const item of order.fromUpstream ?? []) {
 		const line = makeFromUpstreamLine(item);
 		lines.set(item.typeId, line);
 	}
@@ -158,7 +158,7 @@ function allocateForType(
 	have: number;
 	still: number;
 	stockShownElsewhere: boolean;
-	sourceBatchIds?: string[];
+	sourceOrderIds?: string[];
 } {
 	const state = states.get(typeId);
 	if (!state) return { have: 0, still: 0, stockShownElsewhere: false };
@@ -176,7 +176,7 @@ function allocateForType(
 		have,
 		still,
 		stockShownElsewhere,
-		sourceBatchIds: have > 0 ? state.sourceBatchIds : undefined,
+		sourceOrderIds: have > 0 ? state.sourceOrderIds : undefined,
 	};
 }
 
@@ -197,7 +197,7 @@ function buildAllocationStates(lines: Map<number, FlatLine>): Map<number, Alloca
 			totalHave: line.stockQty,
 			totalStill: line.stillNeed,
 			seen: 0,
-			sourceBatchIds: line.sourceBatchIds,
+			sourceOrderIds: line.sourceOrderIds,
 		});
 	}
 	return states;
@@ -226,20 +226,20 @@ function assertReconciled(roots: BuildTreeNode[], reconcileLines: Map<number, Fl
 	}
 	if (errors.length > 0) {
 		// A best-effort dev sanity check, not a runtime guarantee -- the tree is a local, path-based
-		// reconstruction of what the LP solved globally, and known gaps remain (e.g. cross-batch /
+		// reconstruction of what the LP solved globally, and known gaps remain (e.g. cross-order /
 		// split recipe edges). Warn loudly instead of throwing so a display-accounting mismatch never
 		// crashes the Build Queue UI; the flat BOM tables remain the source of truth regardless.
 		console.error(`Build tree reconciliation mismatch:\n${errors.join("\n")}`);
 	}
 }
 
-export function buildBatchTree(batch: BatchResult, data: BuildTreeData): BuildTreeNode[];
-export function buildBatchTree(batch: BuildTreeBatch, data: BuildTreeData): BuildTreeNode[];
-export function buildBatchTree(batch: BuildTreeBatch, data: BuildTreeData): BuildTreeNode[] {
-	const buildByType = new Map<number, BatchBuildItem>();
-	for (const item of batch.build) buildByType.set(item.typeId, item);
+export function buildOrderTree(order: OrderResult, data: BuildTreeData): BuildTreeNode[];
+export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): BuildTreeNode[];
+export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): BuildTreeNode[] {
+	const buildByType = new Map<number, OrderBuildItem>();
+	for (const item of order.build) buildByType.set(item.typeId, item);
 
-	const { lines, reconcileLines } = flatLineMaps(batch);
+	const { lines, reconcileLines } = flatLineMaps(order);
 	const allocationStates = buildAllocationStates(lines);
 	const emittedBuildTypes = new Set<number>();
 
@@ -270,16 +270,16 @@ export function buildBatchTree(batch: BuildTreeBatch, data: BuildTreeData): Buil
 		const producers = data.outputToBlueprints.get(typeId) ?? [];
 		const allocation =
 			rootBlueprint && !rawLike
-				? { have: 0, still: 0, stockShownElsewhere: false, sourceBatchIds: undefined }
+				? { have: 0, still: 0, stockShownElsewhere: false, sourceOrderIds: undefined }
 				: allocateForType(typeId, needPerEdge, allocationStates);
 		const { volume, volumeMissing } = volumeFor(typeId, needPerEdge, data);
 		const nodeName = nameForType(typeId, typeName ?? line?.typeName ?? buildItem?.typeName, data);
 		const sourceGroup = data.typeGroups.get(typeId);
 
 		let children: BuildTreeNode[] = [];
-		// A producible child can need recursion even when its type isn't in `batch.build` -- e.g. an
+		// A producible child can need recursion even when its type isn't in `order.build` -- e.g. an
 		// intermediate that's ALSO an authored Job's own primary output gets merged out of
-		// `batch.build` (see bomToDisplayLists' provenance merge), but still needs its own recipe
+		// `order.build` (see bomToDisplayLists' provenance merge), but still needs its own recipe
 		// expanded when a DIFFERENT job/recipe consumes it as an ingredient here. Any non-raw child
 		// reached via a real recursive call already carries genuine demand from its parent, so gating
 		// on `buildItem`/`rootBlueprint` presence is unnecessary and was silently truncating that
@@ -344,14 +344,14 @@ export function buildBatchTree(batch: BuildTreeBatch, data: BuildTreeData): Buil
 			isGatherableLeaf,
 			siteSourceTypeId: tier === "raw" ? typeId : undefined,
 			sourceGroup,
-			sourceBatchIds: allocation.sourceBatchIds,
+			sourceOrderIds: allocation.sourceOrderIds,
 			stockShownElsewhere: allocation.stockShownElsewhere,
 			children,
 			path,
 		};
 	}
 
-	const roots: BuildTreeNode[] = batch.jobs.map((job) =>
+	const roots: BuildTreeNode[] = order.jobs.map((job) =>
 		makeNode(
 			job.blueprint.primaryTypeID,
 			job.blueprint.primaryTypeName,
@@ -364,7 +364,7 @@ export function buildBatchTree(batch: BuildTreeBatch, data: BuildTreeData): Buil
 		),
 	);
 
-	for (const item of batch.build) {
+	for (const item of order.build) {
 		if (emittedBuildTypes.has(item.typeId)) continue;
 		roots.push(
 			makeNode(item.typeId, item.typeName, item.quantity, `derived:${item.typeId}`, new Set()),

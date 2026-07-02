@@ -1,9 +1,9 @@
 // Input drill-down tables -- plan 36 (industry-build-queue), Phase 7 + F2 + D9.
-// The interactive material lists inside a batch's materials summary:
+// The interactive material lists inside an order's materials summary:
 //   - BuildChoiceTable: producible inputs. Each row shows the chosen-recipe chip (via
 //     formatOptionLabel) -- or a "Split" chip when a split pin is set -- and, when more than one
 //     recipe can build it, an "either/or" badge that expands to RecipeAlternatives (lock / prefer /
-//     eliminate / split, scoped to this batch or the whole queue -- see RecipeAlternatives + SplitEditor).
+//     eliminate / split, scoped to this order or the whole queue -- see RecipeAlternatives + SplitEditor).
 //   - RawSourceTable: raw / leaf inputs. Each row shows its source group read-only.
 // Each row keeps the Need / Have / Still Need / Volume columns so the numbers read at a glance.
 
@@ -20,9 +20,9 @@ import type {
 	RecipeLockEntry,
 	SourceLockEntry,
 } from "@/lib/buildQueueTypes";
-import { type BatchBuildItem, mergeLocks } from "@/lib/queueResolver";
+import { type OrderBuildItem, mergeLocks } from "@/lib/queueResolver";
 import type { ContainerOption } from "@/lib/sourcingPlan";
-import { clearBatchSourceLock, setBatchSourceLock } from "@/stores/buildQueueStore";
+import { clearOrderSourceLock, setOrderSourceLock } from "@/stores/buildQueueStore";
 import { AlertTriangle, ChevronDown, ChevronRight, GitFork } from "lucide-react";
 import { Fragment, useState } from "react";
 
@@ -75,39 +75,39 @@ export function VolumeCell({ item }: { item: Pick<BomLineItem, "volume" | "volum
 // ── Build (producible) choices ─────────────────────────────────────────────────
 
 interface BuildChoiceTableProps {
-	items: BatchBuildItem[];
+	items: OrderBuildItem[];
 	data: QueueBlueprintData;
 	queueId: string;
-	/** The batch these intermediates belong to (for the per-batch recipe-lock scope -- F2). */
-	batchId?: string;
+	/** The order these intermediates belong to (for the per-order recipe-lock scope -- F2). */
+	orderId?: string;
 	/** Queue-global recipe locks (the default scope). */
 	queueLocks: RecipeLockEntry[];
-	/** Per-batch recipe locks for this batch, if any (override the queue locks per type -- mergeLocks). */
-	batchLocks?: RecipeLockEntry[];
+	/** Per-Order recipe locks for this order, if any (override the queue locks per type -- mergeLocks). */
+	orderLocks?: RecipeLockEntry[];
 	/** Selectable containers for the per-row sourcing override (Phase 4b -- Derived key = typeId). */
 	containers?: ContainerOption[];
 	/** Gate-jump distance per container (containerRefKey -> jumps) for the source-priority badges. */
 	containerJumps?: Map<string, number | undefined>;
-	/** This batch's per-typeId source locks (cascade layer 4 -- the finest grain for Derived rows). */
-	batchSourceLocks?: SourceLockEntry[];
+	/** This order's per-typeId source locks (cascade layer 4 -- the finest grain for Derived rows). */
+	orderSourceLocks?: SourceLockEntry[];
 }
 
 export function BuildChoiceTable({
 	items,
 	data,
 	queueId,
-	batchId,
+	orderId,
 	queueLocks,
-	batchLocks,
+	orderLocks,
 	containers,
 	containerJumps,
-	batchSourceLocks,
+	orderSourceLocks,
 }: BuildChoiceTableProps) {
 	if (items.length === 0) {
 		return <div className="px-4 py-3 text-xs text-zinc-600">None</div>;
 	}
-	// The EFFECTIVE locks the resolver used (batch overrides queue per type) -- drives the "steered" chip.
-	const mergedLocks = mergeLocks(queueLocks, batchLocks);
+	// The EFFECTIVE locks the resolver used (order overrides queue per type) -- drives the "steered" chip.
+	const mergedLocks = mergeLocks(queueLocks, orderLocks);
 	return (
 		<table className="w-full text-sm">
 			<thead>
@@ -127,13 +127,13 @@ export function BuildChoiceTable({
 						item={item}
 						data={data}
 						queueId={queueId}
-						batchId={batchId}
+						orderId={orderId}
 						queueLocks={queueLocks}
-						batchLocks={batchLocks}
+						orderLocks={orderLocks}
 						mergedLocks={mergedLocks}
 						containers={containers}
 						containerJumps={containerJumps}
-						batchSourceLocks={batchSourceLocks}
+						orderSourceLocks={orderSourceLocks}
 					/>
 				))}
 			</tbody>
@@ -145,24 +145,24 @@ function BuildChoiceRow({
 	item,
 	data,
 	queueId,
-	batchId,
+	orderId,
 	queueLocks,
-	batchLocks,
+	orderLocks,
 	mergedLocks,
 	containers,
 	containerJumps,
-	batchSourceLocks,
+	orderSourceLocks,
 }: {
-	item: BatchBuildItem;
+	item: OrderBuildItem;
 	data: QueueBlueprintData;
 	queueId: string;
-	batchId?: string;
+	orderId?: string;
 	queueLocks: RecipeLockEntry[];
-	batchLocks?: RecipeLockEntry[];
+	orderLocks?: RecipeLockEntry[];
 	mergedLocks: RecipeLockEntry[];
 	containers?: ContainerOption[];
 	containerJumps?: Map<string, number | undefined>;
-	batchSourceLocks?: SourceLockEntry[];
+	orderSourceLocks?: SourceLockEntry[];
 }) {
 	const [expanded, setExpanded] = useState(false);
 	const producers = data.outputToBlueprints.get(item.typeId) ?? [];
@@ -170,32 +170,32 @@ function BuildChoiceRow({
 	const chosenBp = producers.find((p) => p.blueprintID === item.blueprintId) ?? producers[0];
 	const isSplit = (item.splits?.length ?? 0) > 1;
 	const queueEntry = queueLocks.find((lock) => lock.typeId === item.typeId);
-	const batchEntry = batchLocks?.find((lock) => lock.typeId === item.typeId);
+	const orderEntry = orderLocks?.find((lock) => lock.typeId === item.typeId);
 	const steered = isRecipeSteered(item.typeId, mergedLocks);
 
-	// Per-row sourcing override for this Derived intermediate -- batch sourceLock (cascade layer 4),
-	// keyed by typeId. Only offered inside a batch (batchId set); the queue-level global plan has no
-	// per-batch scope. Preserve any output destination already on the lock.
-	const sourceLock = batchSourceLocks?.find((l) => l.typeId === item.typeId);
+	// Per-row sourcing override for this Derived intermediate -- order sourceLock (cascade layer 4),
+	// keyed by typeId. Only offered inside an order (orderId set); the queue-level global plan has no
+	// per-order scope. Preserve any output destination already on the lock.
+	const sourceLock = orderSourceLocks?.find((l) => l.typeId === item.typeId);
 	function handleSourcesChange(sources: ContainerSourceConfig | undefined) {
-		if (batchId == null) return;
+		if (orderId == null) return;
 		const next: SourceLockEntry = { ...sourceLock, typeId: item.typeId };
 		if (sources) next.sources = sources;
 		else next.sources = undefined;
 		if (next.sources || next.outputDest || next.facilityPick !== undefined) {
-			setBatchSourceLock(queueId, batchId, next);
-		} else clearBatchSourceLock(queueId, batchId, item.typeId);
+			setOrderSourceLock(queueId, orderId, next);
+		} else clearOrderSourceLock(queueId, orderId, item.typeId);
 	}
-	// Per-item deposit destination (cascade layer 4 -- batch sourceLock). Live as of plan 41 B1 -- the
-	// built item's leftover output lands in this container in the carry-forward pool, so later batches
+	// Per-item deposit destination (cascade layer 4 -- order sourceLock). Live as of plan 41 B1 -- the
+	// built item's leftover output lands in this container in the carry-forward pool, so later orders
 	// source it from named storage. Preserve any sourcing already on the lock. Clearing both sources +
 	// output removes the lock entirely.
 	function handleOutputChange(outputDest: ContainerRef | undefined) {
-		if (batchId == null) return;
+		if (orderId == null) return;
 		const next: SourceLockEntry = { ...sourceLock, typeId: item.typeId, outputDest };
 		if (next.sources || next.outputDest || next.facilityPick !== undefined) {
-			setBatchSourceLock(queueId, batchId, next);
-		} else clearBatchSourceLock(queueId, batchId, item.typeId);
+			setOrderSourceLock(queueId, orderId, next);
+		} else clearOrderSourceLock(queueId, orderId, item.typeId);
 	}
 
 	return (
@@ -250,7 +250,7 @@ function BuildChoiceRow({
 								either/or · {item.alternativeBlueprintIds.length}
 							</button>
 						)}
-						{batchId != null && containers && containers.length > 0 && (
+						{orderId != null && containers && containers.length > 0 && (
 							<>
 								<RowSourceControl
 									containers={containers}
@@ -280,12 +280,12 @@ function BuildChoiceRow({
 					<td colSpan={6} className="px-4 py-2">
 						<RecipeAlternatives
 							queueId={queueId}
-							batchId={batchId}
+							orderId={orderId}
 							typeId={item.typeId}
 							producers={producers}
 							chosenBpId={item.blueprintId}
 							queueEntry={queueEntry}
-							batchEntry={batchEntry}
+							orderEntry={orderEntry}
 							demandQuantity={item.quantity}
 							currentSplits={item.splits}
 							blueprintFacilities={data.blueprintFacilities}

@@ -1,5 +1,5 @@
-// Build Queue data model -- plan 36 (industry-build-queue); terminology Queue / Batch / Job (plan 39).
-// Defines the persisted shape of a named, ordered build queue with per-batch jobs and recipe locks.
+// Build Queue data model -- plan 36 (industry-build-queue); terminology Queue / Order / Job (plan 39).
+// Defines the persisted shape of a named, ordered build queue with per-order jobs and recipe locks.
 
 import type { RecipePin } from "@/lib/bomTypes";
 
@@ -28,7 +28,7 @@ export interface JobOverrides {
 	/** Container sourcing (ranked include + scoped exclude). */
 	sources?: ContainerSourceConfig;
 	/** Deposit destination (plan 41 B1). The job's leftover outputs physically land here in the
-	 *  carry-forward pool so later batches source them from this named storage; un-routed -> Unassigned. */
+	 *  carry-forward pool so later orders source them from this named storage; un-routed -> Unassigned. */
 	outputDest?: ContainerRef;
 	/** Facility availability exclusions. Undefined inherits; a defined array fully replaces wider
 	 *  scope exclusions for this job. Names match `blueprintFacilities` facility names. */
@@ -62,7 +62,7 @@ export interface ScratchItem {
 	qty: number;
 }
 
-/** One job in a build batch: N runs of a blueprint. Outputs = its primary output + co-products.
+/** One job in a build order: N runs of a blueprint. Outputs = its primary output + co-products.
  *  The UI divides a target output quantity by the blueprint's PRIMARY output (ceil) to get runs.
  *
  *  `id` is a stable per-job identity (crypto.randomUUID(), minted in addJob -- plan 39 Phase 3). It is
@@ -84,55 +84,55 @@ export interface RecipeLockEntry {
 	pin?: RecipePin; // hard exclusive/split (reuses existing type)
 }
 
-/** One batch in the queue: a group of jobs built together, solved as a unit. */
-export interface Batch {
+/** One order in the queue: a group of jobs built together, solved as a unit. */
+export interface Order {
 	id: string;
 	label?: string;
 	jobs: Job[];
 	collapsed?: boolean;
-	recipeLocks?: RecipeLockEntry[]; // optional per-batch lock override; queue-global is the default
-	/** Batch-scope container sourcing default (Phase 4a cascade layer 3). */
+	recipeLocks?: RecipeLockEntry[]; // optional per-order lock override; queue-global is the default
+	/** Order-scope container sourcing default (Phase 4a cascade layer 3). */
 	sourcesDefault?: ContainerSourceConfig;
-	/** Batch-scope output deposit annotation default (layer 3). */
+	/** Order-scope output deposit annotation default (layer 3). */
 	outputDefault?: ContainerRef;
-	/** Batch-scope facility availability exclusions. Undefined inherits; a defined array fully
-	 *  replaces the queue default for jobs under this batch. */
+	/** Order-scope facility availability exclusions. Undefined inherits; a defined array fully
+	 *  replaces the queue default for jobs under this order. */
 	facilityExclude?: string[];
-	/** Batch-scope per-typeId sourcing/output rules (layer 4 -- the finest grain for Derived jobs). */
+	/** Order-scope per-typeId sourcing/output rules (layer 4 -- the finest grain for Derived jobs). */
 	sourceLocks?: SourceLockEntry[];
-	/** Per-batch build location (plan 41 B4). The distance anchor for THIS batch's costed haul readout
-	 *  (container -> consuming-batch gate jumps); inherits the queue location when unset. Additive -- no
+	/** Per-Order build location (plan 41 B4). The distance anchor for THIS order's costed haul readout
+	 *  (container -> consuming-order gate jumps); inherits the queue location when unset. Additive -- no
 	 *  Dexie bump (lives in the JSON queue record), and inert in the frozen LP. */
 	location?: QueueLocation;
 }
 
 /**
  * How the queue is solved:
- * - "perStep" (default / undefined) -- each batch solved on its own with the outputs of earlier batches
- *   flowing forward as stock; legible, executable per-batch plans that respect the build order.
- * - "global" -- the whole queue's job-input demand is collapsed into ONE solve, trading per-batch
- *   legibility for cross-batch optimality (a recipe choice in one batch that shares a co-product needed
- *   by another). The gather/build plan is then a single queue-level summary, not attributed per batch.
+ * - "perStep" (default / undefined) -- each order solved on its own with the outputs of earlier orders
+ *   flowing forward as stock; legible, executable per-order plans that respect the build order.
+ * - "global" -- the whole queue's job-input demand is collapsed into ONE solve, trading per-order
+ *   legibility for cross-order optimality (a recipe choice in one order that shares a co-product needed
+ *   by another). The gather/build plan is then a single queue-level summary, not attributed per order.
  *
  * NOTE: the mode values stay "perStep" / "global" (persisted strings) even though the UI now says
- * "Per-batch" / "Global" -- no migration of existing dev queues.
+ * "Per-Order" / "Global" -- no migration of existing dev queues.
  */
 export type ReoptMode = "perStep" | "global";
 
 /** A saved, ordered build queue. The type NAME stays `BuildQueue` (the Dexie `buildQueues` index keys
- *  on id/name/updatedAt). Its ordered units are `batches` (Queue / Batch / Job -- plan 39). */
+ *  on id/name/updatedAt). Its ordered units are `batches` (Queue / Order / Job -- plan 39). */
 export interface BuildQueue {
 	id: string;
 	name: string;
 	description?: string;
-	batches: Batch[];
+	batches: Order[];
 	recipeLocks: RecipeLockEntry[];
 	/** Queue-scope container sourcing default (Phase 4a cascade layer 1). Optional -- no Dexie bump. */
 	sourcesDefault?: ContainerSourceConfig;
 	/** Queue-scope output deposit annotation default (layer 1). */
 	outputDefault?: ContainerRef;
 	/** Queue-scope facility availability exclusions. Undefined means no queue default; a defined array is
-	 *  the complete default exclude list inherited by batches/jobs until they replace it. */
+	 *  the complete default exclude list inherited by orders/jobs until they replace it. */
 	facilityExclude?: string[];
 	/** Queue-scope per-typeId sourcing/output rules (layer 2). */
 	sourceLocks?: SourceLockEntry[];
