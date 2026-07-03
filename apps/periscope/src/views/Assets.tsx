@@ -6,13 +6,15 @@ import { ContainerHistory, type TimelineEntry } from "@/components/fieldstorage/
 import { FieldStorageEditor } from "@/components/fieldstorage/FieldStorageEditor";
 import { PasteUpdatePanel } from "@/components/fieldstorage/PasteUpdatePanel";
 import { db } from "@/db";
-import type { FieldStorageSnapshot, FieldStorageUnit, GameType } from "@/db/types";
+import type { FieldStorageSnapshot, FieldStorageUnit } from "@/db/types";
 import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useBlueprintData } from "@/hooks/useBlueprintData";
+import { useCharacterRecentSystems } from "@/hooks/useCharacterRecentSystems";
 import { useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { diffSnapshots, ensureShipCargoUnit } from "@/lib/fieldStorage";
+import type { InventoryTypeInfo } from "@/lib/inventoryParser";
 import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -148,8 +150,9 @@ export function Assets() {
 	// Local client-extracted type names (types.json). Offline-safe and comprehensive; the World
 	// API gameTypes cache is empty in Cycle 6 (host down at cutover), so this is the reliable
 	// name source with gameTypes only as a supplementary fallback.
-	const { typeList } = useBlueprintData();
+	const { typeList, volumeMap } = useBlueprintData();
 	const systems = useLiveQuery(() => db.solarSystems.toArray()) ?? [];
+	const recentSystems = useCharacterRecentSystems(systems);
 	const allFieldUnits = useLiveQuery(() => db.fieldStorageUnits.orderBy("seq").toArray()) ?? [];
 	const allSnapshots = useLiveQuery(() => db.fieldStorageSnapshots.toArray()) ?? [];
 
@@ -176,6 +179,14 @@ export function Assets() {
 		for (const t of typeList) map[t.id] = t.name; // local types.json overrides / fills gaps
 		return map;
 	}, [gameTypes, typeList]);
+
+	// Candidate types for resolving pasted inventories. Sourced from the local blueprint data
+	// (types.json + volumes), which loads reliably regardless of the async db.gameTypes import, so
+	// paste resolution never silently fails when gameTypes has not populated yet.
+	const resolverTypes = useMemo<InventoryTypeInfo[]>(
+		() => typeList.map((t) => ({ id: t.id, name: t.name, volume: volumeMap.get(t.id) ?? 0 })),
+		[typeList, volumeMap],
+	);
 
 	const systemNameMap = useMemo(() => {
 		const map: Record<number, string> = {};
@@ -564,6 +575,8 @@ export function Assets() {
 						<FieldStorageEditor
 							unit={editingUnit ?? undefined}
 							systems={systems}
+							recentSystems={recentSystems}
+							types={resolverTypes}
 							onSaved={(id) => {
 								setShowEditor(false);
 								setEditingUnit(null);
@@ -580,7 +593,7 @@ export function Assets() {
 							snapshot={shipUnit ? (snapshotsByContainer.get(shipUnit.id)?.[0] ?? null) : null}
 							timeline={shipTimeline}
 							typeNameMap={typeNameMap}
-							gameTypes={gameTypes}
+							resolverTypes={resolverTypes}
 							onClear={handleClearShip}
 						/>
 					) : selectedUnit ? (
@@ -590,7 +603,7 @@ export function Assets() {
 							timeline={fieldTimeline}
 							typeNameMap={typeNameMap}
 							systemNameMap={systemNameMap}
-							gameTypes={gameTypes}
+							resolverTypes={resolverTypes}
 							copied={copiedId === selectedUnit.id}
 							onCopy={() => handleCopy(selectedUnit)}
 							onEdit={() => {
@@ -692,7 +705,7 @@ function FieldDetail({
 	timeline,
 	typeNameMap,
 	systemNameMap,
-	gameTypes,
+	resolverTypes,
 	copied,
 	onCopy,
 	onEdit,
@@ -703,7 +716,7 @@ function FieldDetail({
 	timeline: TimelineEntry[];
 	typeNameMap: Record<number, string>;
 	systemNameMap: Record<number, string>;
-	gameTypes: GameType[];
+	resolverTypes: InventoryTypeInfo[];
 	copied: boolean;
 	onCopy: () => void;
 	onEdit: () => void;
@@ -771,7 +784,7 @@ function FieldDetail({
 				</div>
 			</div>
 
-			<PasteUpdatePanel containerId={unit.id} types={gameTypes} />
+			<PasteUpdatePanel containerId={unit.id} types={resolverTypes} />
 
 			<div>
 				<h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
@@ -822,14 +835,14 @@ function ShipDetail({
 	snapshot,
 	timeline,
 	typeNameMap,
-	gameTypes,
+	resolverTypes,
 	onClear,
 }: {
 	unit: FieldStorageUnit | null;
 	snapshot: FieldStorageSnapshot | null;
 	timeline: TimelineEntry[];
 	typeNameMap: Record<number, string>;
-	gameTypes: GameType[];
+	resolverTypes: InventoryTypeInfo[];
 	onClear: () => void;
 }) {
 	const rows = useMemo(() => {
@@ -870,7 +883,7 @@ function ShipDetail({
 
 			<PasteUpdatePanel
 				ensureContainerId={async () => (await ensureShipCargoUnit()).id}
-				types={gameTypes}
+				types={resolverTypes}
 			/>
 
 			<div>

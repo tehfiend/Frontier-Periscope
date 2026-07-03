@@ -1,7 +1,6 @@
 import { db } from "@/db";
-import type { GameType } from "@/db/types";
 import { createSnapshot } from "@/lib/fieldStorage";
-import { parseInventoryPaste } from "@/lib/inventoryParser";
+import { type InventoryTypeInfo, parseInventoryPaste } from "@/lib/inventoryParser";
 import { ClipboardPaste, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -13,8 +12,8 @@ interface PasteUpdatePanelProps {
 	 * `containerId`; used by the Ship Cargo Hold so its unit is only created on first paste.
 	 */
 	ensureContainerId?: () => Promise<string>;
-	/** Candidate types for name resolution (typically all of `db.gameTypes`). */
-	types: GameType[];
+	/** Candidate types for name resolution (id + name + per-unit volume). */
+	types: InventoryTypeInfo[];
 	/** Called with the persisted snapshot's container id after a snapshot is saved. */
 	onSnapshot?: (containerId: string) => void;
 }
