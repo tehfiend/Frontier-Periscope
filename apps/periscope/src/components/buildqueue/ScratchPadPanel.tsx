@@ -37,6 +37,10 @@ interface ScratchPadPanelProps {
 	 * a lighter subsection heading, so the scratch pad reads as part of Stock rather than its own card.
 	 */
 	embedded?: boolean;
+	/** Start expanded (the stock-list row already gates visibility, so it should open straight to content). */
+	defaultOpen?: boolean;
+	/** Start with the paste box open, so pasting inventory is one action from the stock list's Update. */
+	defaultShowPaste?: boolean;
 }
 
 // ── Any-type search (scratch holds speculative stock of ANY type, not just blueprint outputs) ──
@@ -144,9 +148,16 @@ function ScratchItemSearch({
 
 // ── Panel ──────────────────────────────────────────────────────────────────────
 
-export function ScratchPadPanel({ queue, typeList, volumeMap, embedded }: ScratchPadPanelProps) {
-	const [open, setOpen] = useState(false);
-	const [showPaste, setShowPaste] = useState(false);
+export function ScratchPadPanel({
+	queue,
+	typeList,
+	volumeMap,
+	embedded,
+	defaultOpen,
+	defaultShowPaste,
+}: ScratchPadPanelProps) {
+	const [open, setOpen] = useState(defaultOpen ?? false);
+	const [showPaste, setShowPaste] = useState(defaultShowPaste ?? false);
 	const [pasteText, setPasteText] = useState("");
 
 	const items = queue.scratch ?? [];

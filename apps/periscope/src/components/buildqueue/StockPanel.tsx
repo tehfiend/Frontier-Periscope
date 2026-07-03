@@ -8,6 +8,7 @@
 import { type AssemblyInventory, fetchAssemblyInventory } from "@/chain/inventory";
 import { ItemIcon } from "@/components/ItemIcon";
 import { ScratchPadPanel } from "@/components/buildqueue/ScratchPadPanel";
+import { PasteUpdatePanel } from "@/components/fieldstorage/PasteUpdatePanel";
 import { db } from "@/db";
 import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
@@ -16,6 +17,7 @@ import { useSuiClient } from "@/hooks/useSuiClient";
 import type { RecentSystem } from "@/hooks/useCharacterRecentSystems";
 import { ensureShipCargoUnit } from "@/lib/fieldStorage";
 import type { BuildQueue, ContainerRef, StockSourceEntry } from "@/lib/buildQueueTypes";
+import type { InventoryTypeInfo } from "@/lib/inventoryParser";
 import { containerRefKey } from "@/lib/queueResolver";
 import { setStockSources } from "@/stores/buildQueueStore";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
@@ -26,9 +28,11 @@ import {
 	ChevronDown,
 	ChevronRight,
 	ChevronUp,
+	ClipboardPaste,
 	FlaskConical,
 	Loader2,
 	Package,
+	RefreshCw,
 	Ship,
 	Warehouse,
 } from "lucide-react";
@@ -108,7 +112,14 @@ export function StockPanel({
 	onSsuStockChange,
 }: StockPanelProps) {
 	const [open, setOpen] = useState(false);
-	const [scratchExpanded, setScratchExpanded] = useState(false);
+	// Which row's inline update panel is expanded (paste box / scratch editor). Single-open at a time.
+	const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+	// Candidate types (id + name + per-unit volume) for the paste parser's name -> typeId resolution.
+	const inventoryTypes = useMemo<InventoryTypeInfo[]>(
+		() => typeList.map((t) => ({ id: t.id, name: t.name, volume: volumeMap.get(t.id) ?? 0 })),
+		[typeList, volumeMap],
+	);
 	const account = useCurrentAccount();
 	const { activeCharacter } = useActiveCharacter();
 	const client = useSuiClient();
@@ -172,7 +183,12 @@ export function StockPanel({
 			.map((a) => a.objectId);
 	}, [storageAssemblies, stockSources]);
 
-	const { data: inventories, isLoading: loadingInventory } = useQuery({
+	const {
+		data: inventories,
+		isLoading: loadingInventory,
+		isFetching: fetchingInventory,
+		refetch: refetchInventories,
+	} = useQuery({
 		queryKey: ["stockSsuInventories", enabledChainIds.join(",")],
 		queryFn: async () => {
 			const results: AssemblyInventory[] = [];
@@ -469,29 +485,64 @@ export function StockPanel({
 													</span>
 												</>
 											)}
-											{entry.kind === "scratch" && (
-												<button
-													type="button"
-													onClick={() => setScratchExpanded((v) => !v)}
-													className="ml-1 rounded px-1 py-0.5 text-[10px] text-zinc-500 hover:text-violet-300"
-													title="Edit scratch pad contents"
-												>
-													{scratchExpanded ? "close" : "edit"}
-												</button>
-											)}
+											{entry.kind === "chain"
+												? entry.enabled && (
+														<button
+															type="button"
+															onClick={() => refetchInventories()}
+															className="ml-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-zinc-500 hover:text-cyan-300"
+															title="Refresh this SSU's inventory from chain"
+														>
+															<RefreshCw
+																size={11}
+																className={fetchingInventory ? "animate-spin" : ""}
+															/>
+															refresh
+														</button>
+													)
+												: (
+														<button
+															type="button"
+															onClick={() =>
+																setExpandedKey((k) => (k === entry.key ? null : entry.key))
+															}
+															className="ml-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-zinc-500 hover:text-cyan-300"
+															title="Paste inventory from the game client to update this storage"
+														>
+															<ClipboardPaste size={11} />
+															{expandedKey === entry.key ? "close" : "update"}
+														</button>
+													)}
 										</span>
 									</div>
 
-									{entry.kind === "scratch" && scratchExpanded && (
+									{expandedKey === entry.key && entry.kind === "scratch" && (
 										<div className="border-t border-zinc-800/50 bg-zinc-900/40">
 											<ScratchPadPanel
 												queue={queue}
 												typeList={typeList}
 												volumeMap={volumeMap}
 												embedded
+												defaultOpen
+												defaultShowPaste
 											/>
 										</div>
 									)}
+									{expandedKey === entry.key &&
+										(entry.kind === "field" || entry.kind === "ship") && (
+											<div className="border-t border-zinc-800/50 bg-zinc-900/40 p-2">
+												<PasteUpdatePanel
+													containerId={entry.ref.kind === "field" ? entry.ref.id : undefined}
+													ensureContainerId={
+														entry.kind === "ship"
+															? async () => (await ensureShipCargoUnit()).id
+															: undefined
+													}
+													types={inventoryTypes}
+													onSnapshot={() => setExpandedKey(null)}
+												/>
+											</div>
+										)}
 								</div>
 							))}
 						</div>
