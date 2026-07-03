@@ -7,8 +7,14 @@
 
 import { formatRelativeMs } from "@/components/buildqueue/shared";
 import type { BuildQueue } from "@/lib/buildQueueTypes";
-import { createQueue, deleteQueue, duplicateQueue, setActiveQueue } from "@/stores/buildQueueStore";
-import { Check, ChevronDown, Copy, Layers, Plus, Trash2 } from "lucide-react";
+import {
+	clearQueue,
+	createQueue,
+	deleteQueue,
+	duplicateQueue,
+	setActiveQueue,
+} from "@/stores/buildQueueStore";
+import { Check, ChevronDown, Copy, Eraser, Layers, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface QueueSwitcherProps {
@@ -44,6 +50,12 @@ export function QueueSwitcher({ queue, queues }: QueueSwitcherProps) {
 	async function handleSelect(id: string) {
 		setOpen(false);
 		if (id !== queue.id) await setActiveQueue(id);
+	}
+
+	async function handleReset() {
+		if (!confirm(`Reset "${queue.name}"? This clears every order and starts the queue over.`)) return;
+		setOpen(false);
+		await clearQueue(queue.id);
 	}
 
 	async function handleDelete(id: string, name: string) {
@@ -122,6 +134,14 @@ export function QueueSwitcher({ queue, queues }: QueueSwitcherProps) {
 
 					<div className="my-1 border-t border-zinc-800" />
 
+					<button
+						type="button"
+						onClick={handleReset}
+						className="flex w-full items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-amber-300"
+					>
+						<Eraser size={13} />
+						Reset current queue (clear all orders)
+					</button>
 					<button
 						type="button"
 						onClick={handleDuplicate}

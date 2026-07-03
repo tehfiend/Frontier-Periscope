@@ -4,6 +4,7 @@
 // (inline EditableText); the list/select/new/duplicate/delete actions live in QueueSwitcher.
 
 import { SystemPicker } from "@/components/SystemPicker";
+import { WarpableSelector } from "@/components/WarpableSelector";
 import { EditableText } from "@/components/buildqueue/EditableText";
 import { QueueSwitcher } from "@/components/buildqueue/QueueSwitcher";
 import type { SolarSystem } from "@/db/types";
@@ -16,6 +17,35 @@ import {
 	setQueueLocation,
 } from "@/stores/buildQueueStore";
 import { GitFork } from "lucide-react";
+import { useEffect, useState } from "react";
+
+/**
+ * Closest-warpable field for the queue location. Holds a local draft so the store is only written
+ * on commit (blur / pick), not on every keystroke, and offers the system's warpables via the shared
+ * WarpableSelector.
+ */
+function QueueWarpableField({
+	loc,
+	setLoc,
+}: {
+	loc: QueueLocation;
+	setLoc: (next: QueueLocation) => void;
+}) {
+	const [draft, setDraft] = useState(loc.warpable ?? "");
+	// Re-seed when the underlying value changes (e.g. switching queues).
+	useEffect(() => {
+		setDraft(loc.warpable ?? "");
+	}, [loc.warpable]);
+	return (
+		<WarpableSelector
+			value={draft}
+			onChange={setDraft}
+			onCommit={(w) => setLoc({ ...loc, warpable: w.trim() || undefined })}
+			systemId={loc.systemId ?? null}
+			compact
+		/>
+	);
+}
 
 interface QueueHeaderProps {
 	queue: BuildQueue;
@@ -70,17 +100,12 @@ function QueueLocationRow({
 				)}
 			</div>
 			{loc?.systemId != null && (
-				<div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
+				<div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-zinc-500">
 					<span className="flex items-center gap-1">
 						<span className="text-zinc-600">warp:</span>
-						<EditableText
-							value={loc.warpable ?? ""}
-							onCommit={(w) => setLoc({ ...loc, warpable: w || undefined })}
-							placeholder="Closest warpable"
-							emptyLabel="add warpable..."
-							className="text-left text-zinc-400 hover:text-zinc-200"
-							inputClassName="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-100 focus:border-cyan-500 focus:outline-none"
-						/>
+						<div className="w-56">
+							<QueueWarpableField loc={loc} setLoc={setLoc} />
+						</div>
 					</span>
 					<span className="flex items-center gap-1">
 						<span className="text-zinc-600">note:</span>

@@ -70,6 +70,8 @@ interface OrderCardProps {
 	containers: ContainerOption[];
 	/** containerRefKey -> display label for the sourcing plan + override controls. */
 	containerLabels: Map<string, string>;
+	/** containerRefKey -> display label + solar system, for the tree's "sourced from storage" labels. */
+	containerInfo?: Map<string, { label: string; systemId?: number }>;
 	/** Gate-jump distance per container (containerRefKey -> jumps) for the source-priority badges. */
 	containerJumps?: Map<string, number | undefined>;
 	/** Solar systems for the per-order location picker (plan 41 B4). */
@@ -97,6 +99,7 @@ export function OrderCard({
 	sourcingPlan,
 	containers,
 	containerLabels,
+	containerInfo,
 	containerJumps,
 	systems,
 	recentSystems,
@@ -375,6 +378,8 @@ export function OrderCard({
 								orderLocks={order.recipeLocks}
 								containers={containers}
 								containerJumps={containerJumps}
+								draws={result.draws}
+								containerInfo={containerInfo}
 								orderSourceLocks={order.sourceLocks}
 								phaseLabelForOrderIds={phaseLabelForOrderIds}
 								sourceSystemId={effectiveSystemId}

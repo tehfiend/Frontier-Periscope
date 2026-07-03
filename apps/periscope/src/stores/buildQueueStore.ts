@@ -18,6 +18,7 @@ import {
 	type RecipeLockEntry,
 	type ScratchItem,
 	type SourceLockEntry,
+	type StockSourceEntry,
 	createBuildQueue,
 } from "@/lib/buildQueueTypes";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -118,6 +119,25 @@ export async function duplicateQueue(id: string): Promise<BuildQueue | undefined
 	};
 	await db.buildQueues.put(copy);
 	return copy;
+}
+
+/**
+ * Reset a queue to empty while keeping its id + name (a "start over" that survives reloads and stays the
+ * active queue): drop every order, all steering (recipe/source locks, sourcing + facility defaults), the
+ * scratch pad, and the unified stock-source arrangement.
+ */
+export async function clearQueue(id: string): Promise<void> {
+	await updateQueue(id, (q) => ({
+		...q,
+		batches: [],
+		recipeLocks: [],
+		sourceLocks: undefined,
+		sourcesDefault: undefined,
+		outputDefault: undefined,
+		facilityExclude: undefined,
+		scratch: undefined,
+		stockSources: undefined,
+	}));
 }
 
 /** Delete a queue. Clears the active-queue selection if it pointed at this queue. */
@@ -496,6 +516,21 @@ export async function clearOrderRecipeLock(
 				? { ...b, recipeLocks: (b.recipeLocks ?? []).filter((lock) => lock.typeId !== typeId) }
 				: b,
 		),
+	}));
+}
+
+/**
+ * Replace the queue's unified stock list (plan: unified storage) -- the ordered, enable-flagged storage
+ * sources. Position is sourcing priority; disabled entries are dropped from baseStock. Pass an empty list
+ * to reset back to defaults (stored as undefined).
+ */
+export async function setStockSources(
+	queueId: string,
+	sources: StockSourceEntry[],
+): Promise<void> {
+	await updateQueue(queueId, (q) => ({
+		...q,
+		stockSources: sources.length > 0 ? sources.map((s) => ({ ...s })) : undefined,
 	}));
 }
 

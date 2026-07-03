@@ -12,10 +12,18 @@ import {
 	getSortedRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
-import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Search, X } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+	ChevronDown,
+	ChevronRight,
+	ChevronUp,
+	ChevronsUpDown,
+	Download,
+	Search,
+	X,
+} from "lucide-react";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ColumnFilter, excelFilterFn, type ExcelFilterValue } from "./ColumnFilter";
+import { ColumnFilter, type ExcelFilterValue, excelFilterFn } from "./ColumnFilter";
 
 // Opt-in per-column filter UI. `multiselect` renders a dropdown checklist of the column's faceted
 // values (used for the Facilities column) instead of the default text "contains" box.
@@ -294,6 +302,21 @@ interface DataGridProps<T> {
 	columnSearch?: boolean;
 	/** When set, persist global + column filter state to localStorage under this key. */
 	persistKey?: string;
+	/**
+	 * When set, rows are partitioned into collapsible groups keyed by this accessor. Grouping is a
+	 * display layer over the sorted/filtered rows -- each group's rows keep the active sort order.
+	 */
+	groupBy?: (row: T) => string;
+	/** Renders a group header row's content (spans all columns); receives the group's original rows. */
+	renderGroupHeader?: (groupKey: string, rows: T[]) => ReactNode;
+	/** Orders group keys (default: order of first appearance in the sorted rows). */
+	groupSort?: (a: string, b: string) => number;
+	/**
+	 * Rows for which this returns true are the group's anchor: they still establish their group (so a
+	 * childless anchor keeps a header) but are rendered ONLY via `renderGroupHeader`, never as a body
+	 * row. Used to promote a parent node into its group header instead of duplicating it as a row.
+	 */
+	isGroupAnchorRow?: (row: T) => boolean;
 }
 
 export function DataGrid<T>({
@@ -313,8 +336,20 @@ export function DataGrid<T>({
 	initialSorting,
 	columnSearch = false,
 	persistKey,
+	groupBy,
+	renderGroupHeader,
+	groupSort,
+	isGroupAnchorRow,
 }: DataGridProps<T>) {
 	const [sorting, setSorting] = useState<SortingState>(initialSorting ?? []);
+	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+	const toggleGroup = (key: string) =>
+		setCollapsedGroups((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) next.delete(key);
+			else next.add(key);
+			return next;
+		});
 	// Load persisted filter state once (lazy) so we don't re-read localStorage on every render.
 	const [persisted] = useState(() => loadPersistedFilters(persistKey));
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(
@@ -375,6 +410,54 @@ export function DataGrid<T>({
 	});
 
 	const hasFilters = columnFilters.length > 0;
+
+	const rows = table.getRowModel().rows;
+	const leafColumnCount = table.getVisibleLeafColumns().length;
+
+	const renderDataRow = (row: (typeof rows)[number]) => {
+		const isSelected = selectedRowId != null && row.id === selectedRowId;
+		return (
+			<tr
+				key={row.id}
+				data-row-id={row.id}
+				onClick={onRowClick ? () => onRowClick(row.id) : undefined}
+				className={`border-b border-zinc-800/30 transition-colors hover:bg-zinc-800/30 ${
+					onRowClick ? "cursor-pointer" : ""
+				} ${isSelected ? "bg-cyan-900/20 border-l-2 border-l-cyan-500" : ""}`}
+			>
+				{row.getVisibleCells().map((cell) => {
+					const hasSize = cell.column.columnDef.size != null;
+					return (
+						<td
+							key={cell.id}
+							className={`px-1.5 py-1.5 text-zinc-300 ${hasSize ? "whitespace-nowrap" : "max-w-0 overflow-hidden"}`}
+						>
+							{flexRender(cell.column.columnDef.cell, cell.getContext())}
+						</td>
+					);
+				})}
+			</tr>
+		);
+	};
+
+	// Partition the sorted/filtered rows into contiguous groups (display layer only).
+	const groupedRows = groupBy
+		? (() => {
+				const map = new Map<string, typeof rows>();
+				const order: string[] = [];
+				for (const row of rows) {
+					const key = groupBy(row.original);
+					const arr = map.get(key);
+					if (arr) arr.push(row);
+					else {
+						map.set(key, [row]);
+						order.push(key);
+					}
+				}
+				if (groupSort) order.sort(groupSort);
+				return order.map((key) => ({ key, rows: map.get(key) ?? [] }));
+			})()
+		: null;
 
 	return (
 		<div className="flex h-full flex-col gap-3 pt-3">
@@ -479,7 +562,7 @@ export function DataGrid<T>({
 						)}
 					</thead>
 					<tbody>
-						{table.getRowModel().rows.length === 0 ? (
+						{rows.length === 0 ? (
 							<tr>
 								<td
 									colSpan={columns.length}
@@ -488,32 +571,37 @@ export function DataGrid<T>({
 									{emptyMessage}
 								</td>
 							</tr>
-						) : (
-							table.getRowModel().rows.map((row) => {
-								const isSelected = selectedRowId != null && row.id === selectedRowId;
+						) : groupedRows ? (
+							groupedRows.map(({ key, rows: groupRows }) => {
+								const collapsed = collapsedGroups.has(key);
+								const bodyRows = isGroupAnchorRow
+									? groupRows.filter((r) => !isGroupAnchorRow(r.original))
+									: groupRows;
 								return (
-									<tr
-										key={row.id}
-										data-row-id={row.id}
-										onClick={onRowClick ? () => onRowClick(row.id) : undefined}
-										className={`border-b border-zinc-800/30 transition-colors hover:bg-zinc-800/30 ${
-											onRowClick ? "cursor-pointer" : ""
-										} ${isSelected ? "bg-cyan-900/20 border-l-2 border-l-cyan-500" : ""}`}
-									>
-										{row.getVisibleCells().map((cell) => {
-											const hasSize = cell.column.columnDef.size != null;
-											return (
-												<td
-													key={cell.id}
-													className={`px-1.5 py-1.5 text-zinc-300 ${hasSize ? "whitespace-nowrap" : "max-w-0 overflow-hidden"}`}
-												>
-													{flexRender(cell.column.columnDef.cell, cell.getContext())}
-												</td>
-											);
-										})}
-									</tr>
+									<Fragment key={key}>
+										<tr className="border-b border-zinc-800 bg-zinc-900/70">
+											<td colSpan={leafColumnCount} className="px-2 py-2">
+												<div className="flex items-center gap-2">
+													<button
+														type="button"
+														onClick={() => toggleGroup(key)}
+														className="shrink-0 text-zinc-500 hover:text-zinc-200"
+														aria-label={collapsed ? "Expand group" : "Collapse group"}
+													>
+														{collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+													</button>
+													<div className="min-w-0 flex-1">
+														{renderGroupHeader?.(key, groupRows.map((r) => r.original))}
+													</div>
+												</div>
+											</td>
+										</tr>
+										{!collapsed && bodyRows.map(renderDataRow)}
+									</Fragment>
 								);
 							})
+						) : (
+							rows.map(renderDataRow)
 						)}
 					</tbody>
 				</table>

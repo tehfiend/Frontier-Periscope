@@ -1,9 +1,11 @@
 import { type AssemblyInventory, fetchAssemblyInventory } from "@/chain/inventory";
-import { CopyAddress } from "@/components/CopyAddress";
-import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
-import { ItemIcon } from "@/components/ItemIcon";
 import { ContainerHistory, type TimelineEntry } from "@/components/fieldstorage/ContainerHistory";
 import { FieldStorageEditor } from "@/components/fieldstorage/FieldStorageEditor";
+import {
+	InventoryGrid,
+	type InventoryGroup,
+	type InventoryLine,
+} from "@/components/fieldstorage/InventoryGrid";
 import { PasteUpdatePanel } from "@/components/fieldstorage/PasteUpdatePanel";
 import { db } from "@/db";
 import type { FieldStorageSnapshot, FieldStorageUnit } from "@/db/types";
@@ -20,26 +22,18 @@ import { useLiveQuery } from "dexie-react-hooks";
 import {
 	Boxes,
 	Check,
+	ClipboardPaste,
 	Copy,
-	HardDrive,
+	History,
 	Loader2,
-	MapPin,
 	Pencil,
 	Plus,
 	RefreshCw,
-	Ship,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 // ── Types ───────────────────────────────────────────────────────────────────
-
-interface InventoryRow {
-	id: string;
-	typeId: number;
-	typeName: string;
-	quantity: number;
-}
 
 interface ItemQty {
 	typeId: number;
@@ -47,57 +41,15 @@ interface ItemQty {
 }
 
 interface ChainContainer {
-	kind: "chain";
 	id: string;
 	label: string;
 	items: ItemQty[];
 }
 
-type Selection =
-	| { kind: "chain"; id: string }
-	| { kind: "field"; id: string }
-	| { kind: "ship" };
+/** Base (undecorated) group data before header actions / inline panels are attached. */
+type BaseGroup = Omit<InventoryGroup, "actions" | "panel">;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function toInventoryRows(
-	containerId: string,
-	items: ItemQty[],
-	typeNameMap: Record<number, string>,
-): InventoryRow[] {
-	return items.map((it) => ({
-		id: `${containerId}-${it.typeId}`,
-		typeId: it.typeId,
-		typeName: typeNameMap[it.typeId] ?? `Type ${it.typeId}`,
-		quantity: it.quantity,
-	}));
-}
-
-const inventoryColumns: ColumnDef<InventoryRow, unknown>[] = [
-	{
-		id: "typeName",
-		accessorKey: "typeName",
-		header: "Item",
-		filterFn: excelFilterFn,
-		cell: ({ row }) => (
-			<div className="flex items-center gap-2">
-				<ItemIcon typeId={row.original.typeId} size={20} />
-				<span className="font-medium text-zinc-100">{row.original.typeName}</span>
-				<span className="font-mono text-xs text-zinc-600">#{row.original.typeId}</span>
-			</div>
-		),
-	},
-	{
-		id: "quantity",
-		accessorKey: "quantity",
-		header: "Qty",
-		size: 120,
-		enableColumnFilter: false,
-		cell: ({ row }) => (
-			<span className="font-mono text-zinc-200">{row.original.quantity.toLocaleString()}</span>
-		),
-	},
-];
 
 /**
  * Build a history timeline (newest-first) from a container's snapshots (also newest-first), diffing
@@ -139,6 +91,41 @@ function buildSnapshotTimeline(
 	});
 }
 
+/** Compact icon button for a group header action. */
+function HeaderBtn({
+	title,
+	onClick,
+	active,
+	danger,
+	children,
+}: {
+	title: string;
+	onClick: () => void;
+	active?: boolean;
+	danger?: boolean;
+	children: ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			title={title}
+			onClick={(e) => {
+				e.stopPropagation();
+				onClick();
+			}}
+			className={`rounded border p-1 transition-colors ${
+				active
+					? "border-cyan-500/60 bg-cyan-500/10 text-cyan-300"
+					: danger
+						? "border-zinc-700 text-zinc-400 hover:border-red-800 hover:text-red-400"
+						: "border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+			}`}
+		>
+			{children}
+		</button>
+	);
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function Assets() {
@@ -147,17 +134,16 @@ export function Assets() {
 	const { data: discovery, isLoading: loadingAssemblies } = useOwnedAssemblies();
 
 	const gameTypes = useLiveQuery(() => db.gameTypes.toArray()) ?? [];
-	// Local client-extracted type names (types.json). Offline-safe and comprehensive; the World
-	// API gameTypes cache is empty in Cycle 6 (host down at cutover), so this is the reliable
-	// name source with gameTypes only as a supplementary fallback.
+	// Local client-extracted type names / volumes (types.json). Offline-safe and comprehensive; the
+	// World API gameTypes cache is empty in Cycle 6 (host down at cutover), so this is the reliable
+	// source with gameTypes only as a supplementary fallback.
 	const { typeList, volumeMap } = useBlueprintData();
 	const systems = useLiveQuery(() => db.solarSystems.toArray()) ?? [];
 	const recentSystems = useCharacterRecentSystems(systems);
 	const allFieldUnits = useLiveQuery(() => db.fieldStorageUnits.orderBy("seq").toArray()) ?? [];
 	const allSnapshots = useLiveQuery(() => db.fieldStorageSnapshots.toArray()) ?? [];
 
-	// Split the dedicated Ship Cargo Hold (kind "ship") out of the numbered field-storage list so it
-	// renders in its own always-visible card and never appears twice.
+	// Split the dedicated Ship Cargo Hold (kind "ship") out of the numbered field-storage list.
 	const shipUnit = useMemo(
 		() => allFieldUnits.find((u) => u.kind === "ship") ?? null,
 		[allFieldUnits],
@@ -167,10 +153,14 @@ export function Assets() {
 		[allFieldUnits],
 	);
 
-	const [selection, setSelection] = useState<Selection | null>(null);
 	const [showEditor, setShowEditor] = useState(false);
 	const [editingUnit, setEditingUnit] = useState<FieldStorageUnit | null>(null);
 	const [copiedId, setCopiedId] = useState<string | null>(null);
+	// Inline panel expanded under a group header: paste-to-update or snapshot/event history.
+	const [activePanel, setActivePanel] = useState<{
+		containerId: string;
+		mode: "paste" | "history";
+	} | null>(null);
 
 	// Lookups
 	const typeNameMap = useMemo(() => {
@@ -180,9 +170,8 @@ export function Assets() {
 		return map;
 	}, [gameTypes, typeList]);
 
-	// Candidate types for resolving pasted inventories. Sourced from the local blueprint data
-	// (types.json + volumes), which loads reliably regardless of the async db.gameTypes import, so
-	// paste resolution never silently fails when gameTypes has not populated yet.
+	// Candidate types for resolving pasted inventories -- local data, so resolution never silently
+	// fails while the async db.gameTypes import has not populated yet.
 	const resolverTypes = useMemo<InventoryTypeInfo[]>(
 		() => typeList.map((t) => ({ id: t.id, name: t.name, volume: volumeMap.get(t.id) ?? 0 })),
 		[typeList, volumeMap],
@@ -217,6 +206,7 @@ export function Assets() {
 		isLoading: loadingInventory,
 		refetch,
 		isFetching,
+		dataUpdatedAt: chainUpdatedAt,
 	} = useQuery({
 		queryKey: ["assetInventories", storageAssemblies.map((a) => a.objectId).join(",")],
 		queryFn: async () => {
@@ -243,10 +233,9 @@ export function Assets() {
 			}
 			const items = [...itemMap.entries()].map(([typeId, quantity]) => ({ typeId, quantity }));
 			return {
-				kind: "chain",
 				id: a.objectId,
-				// Prefer the assembly name; when unnamed, label by the in-game item ID rather than
-				// the opaque Sui object address so the SSU is identifiable.
+				// Prefer the assembly name; when unnamed, label by the in-game item ID rather than the
+				// opaque Sui object address so the SSU is identifiable.
 				label: a.name?.trim() || (a.itemId ? `SSU #${a.itemId}` : `${a.objectId.slice(0, 10)}...`),
 				items,
 			};
@@ -277,47 +266,15 @@ export function Assets() {
 		};
 	}, [chainContainers, allFieldUnits, snapshotsByContainer]);
 
-	// Auto-select the first container once data is available, falling back to the always-present
-	// Ship Cargo Hold card when there is nothing else to show.
-	useEffect(() => {
-		if (selection) return;
-		if (chainContainers.length > 0) {
-			setSelection({ kind: "chain", id: chainContainers[0].id });
-		} else if (fieldUnits.length > 0) {
-			setSelection({ kind: "field", id: fieldUnits[0].id });
-		} else {
-			setSelection({ kind: "ship" });
-		}
-	}, [selection, chainContainers, fieldUnits]);
-
-	// ── Selected container resolution ──────────────────────────────────────────
-	const selectedChain =
-		selection?.kind === "chain"
-			? (chainContainers.find((c) => c.id === selection.id) ?? null)
-			: null;
-	const selectedUnit =
-		selection?.kind === "field" ? (fieldUnits.find((u) => u.id === selection.id) ?? null) : null;
-	const selectedShip = selection?.kind === "ship";
-
-	// Chain SSU history -- reuse Sonar deposit/withdraw events (decision 15).
+	// Chain SSU history -- reuse Sonar deposit/withdraw events -- only for the open history panel.
 	const chainEvents = useLiveQuery(async () => {
-		if (selection?.kind !== "chain") return [];
-		const evs = await db.sonarEvents.where("assemblyId").equals(selection.id).toArray();
+		if (activePanel?.mode !== "history") return [];
+		if (!chainContainers.some((c) => c.id === activePanel.containerId)) return [];
+		const evs = await db.sonarEvents.where("assemblyId").equals(activePanel.containerId).toArray();
 		return evs
 			.filter((e) => e.eventType === "item_deposited" || e.eventType === "item_withdrawn")
 			.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-	}, [selection]);
-
-	// ── Timeline entries ────────────────────────────────────────────────────────
-	const fieldTimeline = useMemo<TimelineEntry[]>(() => {
-		if (!selectedUnit) return [];
-		return buildSnapshotTimeline(snapshotsByContainer.get(selectedUnit.id) ?? [], typeNameMap);
-	}, [selectedUnit, snapshotsByContainer, typeNameMap]);
-
-	const shipTimeline = useMemo<TimelineEntry[]>(() => {
-		if (!shipUnit) return [];
-		return buildSnapshotTimeline(snapshotsByContainer.get(shipUnit.id) ?? [], typeNameMap);
-	}, [shipUnit, snapshotsByContainer, typeNameMap]);
+	}, [activePanel, chainContainers]);
 
 	const chainTimeline = useMemo<TimelineEntry[]>(() => {
 		return (chainEvents ?? []).map((e) => {
@@ -340,6 +297,80 @@ export function Assets() {
 		});
 	}, [chainEvents]);
 
+	// ── Build grouped rows (field storage -> ship -> chain) ────────────────────
+	const baseGroups = useMemo<BaseGroup[]>(() => {
+		const volOf = (typeId: number, qty: number) => (volumeMap.get(typeId) ?? 0) * qty;
+		const nameOf = (typeId: number) => typeNameMap[typeId] ?? `Type ${typeId}`;
+		const linesFromQty = (items: ItemQty[]): InventoryLine[] =>
+			items.map((it) => ({
+				typeId: it.typeId,
+				name: nameOf(it.typeId),
+				quantity: it.quantity,
+				volume: volOf(it.typeId, it.quantity),
+			}));
+
+		const out: BaseGroup[] = [];
+
+		for (const unit of fieldUnits) {
+			const latest = snapshotsByContainer.get(unit.id)?.[0];
+			const items = linesFromQty(
+				(latest?.items ?? []).map((i) => ({ typeId: i.typeId, quantity: i.qty })),
+			);
+			out.push({
+				id: unit.id,
+				name: `#${unit.seq} ${unit.name?.trim() || "(unnamed)"}`,
+				kind: "field",
+				system: unit.systemId
+					? (systemNameMap[unit.systemId] ?? `System #${unit.systemId}`)
+					: "",
+				warpable: unit.warpable?.trim() ?? "",
+				updatedAt: latest?.timestamp,
+				items,
+			});
+		}
+
+		// Ship Cargo Hold is always present so it can be pasted into even before it exists. Its
+		// location follows the character: the most recently visited system (recentSystems is sorted
+		// newest-first) is where the ship currently is.
+		const shipLatest = shipUnit ? snapshotsByContainer.get(shipUnit.id)?.[0] : undefined;
+		out.push({
+			id: shipUnit?.id ?? "ship",
+			name: "Ship Cargo Hold",
+			kind: "ship",
+			system: recentSystems[0]?.name ?? "",
+			warpable: "",
+			updatedAt: shipLatest?.timestamp,
+			items: linesFromQty(
+				(shipLatest?.items ?? []).map((i) => ({ typeId: i.typeId, quantity: i.qty })),
+			),
+		});
+
+		for (const c of chainContainers) {
+			out.push({
+				id: c.id,
+				name: c.label,
+				kind: "chain",
+				system: "",
+				warpable: "",
+				// SSU inventories all refresh together, so the query's last-updated time applies to each.
+				updatedAt: chainUpdatedAt || undefined,
+				items: linesFromQty(c.items),
+			});
+		}
+
+		return out;
+	}, [
+		fieldUnits,
+		shipUnit,
+		chainContainers,
+		chainUpdatedAt,
+		recentSystems,
+		snapshotsByContainer,
+		systemNameMap,
+		typeNameMap,
+		volumeMap,
+	]);
+
 	// ── Actions ──────────────────────────────────────────────────────────────
 	function handleCopy(unit: FieldStorageUnit) {
 		const text = unit.name?.trim() ? `#${unit.seq} ${unit.name.trim()}` : `#${unit.seq}`;
@@ -353,7 +384,7 @@ export function Assets() {
 		if (!window.confirm(`Delete field storage container ${label} and its history?`)) return;
 		await db.fieldStorageSnapshots.where("containerId").equals(unit.id).delete();
 		await db.fieldStorageUnits.delete(unit.id);
-		setSelection((s) => (s?.kind === "field" && s.id === unit.id ? null : s));
+		setActivePanel((p) => (p?.containerId === unit.id ? null : p));
 		if (editingUnit?.id === unit.id) {
 			setEditingUnit(null);
 			setShowEditor(false);
@@ -368,8 +399,130 @@ export function Assets() {
 		await db.fieldStorageUnits.delete(shipUnit.id);
 	}
 
+	function togglePanel(containerId: string, mode: "paste" | "history") {
+		setActivePanel((cur) =>
+			cur && cur.containerId === containerId && cur.mode === mode ? null : { containerId, mode },
+		);
+	}
+
+	const isPanel = (id: string, mode: "paste" | "history") =>
+		activePanel?.containerId === id && activePanel.mode === mode;
+
+	// Decorate the base groups with header actions and the inline paste / history panel.
+	function renderActions(g: BaseGroup): ReactNode {
+		if (g.kind === "field") {
+			const unit = fieldUnits.find((u) => u.id === g.id);
+			if (!unit) return null;
+			return (
+				<>
+					<HeaderBtn title="Paste / update inventory" onClick={() => togglePanel(g.id, "paste")} active={isPanel(g.id, "paste")}>
+						<ClipboardPaste size={13} />
+					</HeaderBtn>
+					<HeaderBtn title="History" onClick={() => togglePanel(g.id, "history")} active={isPanel(g.id, "history")}>
+						<History size={13} />
+					</HeaderBtn>
+					<HeaderBtn title={copiedId === unit.id ? "Copied" : "Copy #id + name"} onClick={() => handleCopy(unit)}>
+						{copiedId === unit.id ? <Check size={13} className="text-teal-400" /> : <Copy size={13} />}
+					</HeaderBtn>
+					<HeaderBtn
+						title="Edit container"
+						onClick={() => {
+							setEditingUnit(unit);
+							setShowEditor(true);
+						}}
+					>
+						<Pencil size={13} />
+					</HeaderBtn>
+					<HeaderBtn title="Delete container" danger onClick={() => handleDelete(unit)}>
+						<Trash2 size={13} />
+					</HeaderBtn>
+				</>
+			);
+		}
+		if (g.kind === "ship") {
+			return (
+				<>
+					<HeaderBtn title="Paste / update cargo" onClick={() => togglePanel(g.id, "paste")} active={isPanel(g.id, "paste")}>
+						<ClipboardPaste size={13} />
+					</HeaderBtn>
+					<HeaderBtn title="History" onClick={() => togglePanel(g.id, "history")} active={isPanel(g.id, "history")}>
+						<History size={13} />
+					</HeaderBtn>
+					{shipUnit && (
+						<HeaderBtn title="Clear cargo hold" danger onClick={handleClearShip}>
+							<Trash2 size={13} />
+						</HeaderBtn>
+					)}
+				</>
+			);
+		}
+		// chain SSU -- read-only, history only
+		return (
+			<HeaderBtn title="History" onClick={() => togglePanel(g.id, "history")} active={isPanel(g.id, "history")}>
+				<History size={13} />
+			</HeaderBtn>
+		);
+	}
+
+	function renderPanel(g: BaseGroup): ReactNode {
+		if (activePanel?.containerId !== g.id) return undefined;
+		if (activePanel.mode === "paste") {
+			if (g.kind === "ship") {
+				return (
+					<PasteUpdatePanel
+						ensureContainerId={async () => (await ensureShipCargoUnit()).id}
+						types={resolverTypes}
+						onSnapshot={() => setActivePanel(null)}
+					/>
+				);
+			}
+			return (
+				<PasteUpdatePanel
+					containerId={g.id}
+					types={resolverTypes}
+					onSnapshot={() => setActivePanel(null)}
+				/>
+			);
+		}
+		// history
+		if (g.kind === "chain") {
+			return (
+				<ContainerHistory
+					entries={chainTimeline}
+					emptyMessage="No deposit / withdraw events recorded yet. Enable Chain Sonar to capture them."
+				/>
+			);
+		}
+		return (
+			<ContainerHistory
+				entries={buildSnapshotTimeline(snapshotsByContainer.get(g.id) ?? [], typeNameMap)}
+				emptyMessage="No snapshots yet. Paste an inventory to start the history."
+			/>
+		);
+	}
+
+	const groups: InventoryGroup[] = baseGroups.map((g) => ({
+		...g,
+		actions: renderActions(g),
+		panel: renderPanel(g),
+	}));
+
 	const isLoading = loadingAssemblies || (storageAssemblies.length > 0 && loadingInventory);
 	const showChainPrompt = CHAIN_ENABLED && !activeCharacter;
+
+	const addButton = (
+		<button
+			type="button"
+			onClick={() => {
+				setEditingUnit(null);
+				setShowEditor(true);
+			}}
+			className="flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+		>
+			<Plus size={14} />
+			Add field storage
+		</button>
+	);
 
 	return (
 		<div className="flex h-full flex-col p-6">
@@ -399,525 +552,42 @@ export function Assets() {
 				)}
 			</div>
 
-			{/* Summary Cards */}
-			<div className="mb-4 grid grid-cols-3 gap-4">
-				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-					<p className="text-xs text-zinc-500">Total Items</p>
-					<p className="mt-1 text-2xl font-bold text-zinc-100">
-						{summary.totalItems.toLocaleString()}
-					</p>
+			{showChainPrompt && (
+				<div className="mb-4 rounded-lg border border-dashed border-zinc-800 p-3 text-center text-xs text-zinc-500">
+					Select a character on the{" "}
+					<a href="/manifest" className="text-cyan-400 hover:text-cyan-300">
+						Manifest
+					</a>{" "}
+					to load on-chain storage.
 				</div>
-				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-					<p className="text-xs text-zinc-500">Unique Types</p>
-					<p className="mt-1 text-2xl font-bold text-amber-400">{summary.uniqueTypes}</p>
-				</div>
-				<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-					<p className="text-xs text-zinc-500">Containers</p>
-					<p className="mt-1 text-2xl font-bold text-cyan-400">{summary.containers}</p>
-				</div>
-			</div>
+			)}
 
-			{/* Master / detail */}
-			<div className="flex min-h-0 flex-1 gap-4">
-				{/* Container list */}
-				<div className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto pr-1">
-					{/* Ship cargo hold -- always present; copy ship cargo in-game and paste to update */}
-					<div>
-						<div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-							<Ship size={12} />
-							Ship
-						</div>
-						<button
-							type="button"
-							onClick={() => {
-								setSelection({ kind: "ship" });
-								setShowEditor(false);
-							}}
-							className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-								selectedShip
-									? "border-cyan-600/60 bg-cyan-950/30"
-									: "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700"
-							}`}
-						>
-							<div className="flex items-center justify-between gap-2">
-								<span className="truncate text-sm font-medium text-zinc-100">Ship Cargo Hold</span>
-								<span className="shrink-0 text-[10px] text-zinc-600">
-									{(shipUnit ? snapshotsByContainer.get(shipUnit.id)?.[0]?.items.length : 0) ?? 0}{" "}
-									types
-								</span>
-							</div>
-							<div className="mt-0.5 truncate text-[11px] text-zinc-600">Paste cargo to update</div>
-						</button>
-					</div>
-
-					{/* Field storage */}
-					<div>
-						<div className="mb-2 flex items-center justify-between">
-							<div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-								<HardDrive size={12} />
-								Field Storage
-							</div>
-							<button
-								type="button"
-								onClick={() => {
-									setEditingUnit(null);
-									setShowEditor(true);
-								}}
-								className="flex items-center gap-1 rounded border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-							>
-								<Plus size={11} />
-								Add
-							</button>
-						</div>
-						<div className="space-y-1.5">
-							{fieldUnits.length === 0 && !showEditor && (
-								<p className="rounded-lg border border-dashed border-zinc-800 p-3 text-center text-[11px] text-zinc-600">
-									No field storage yet. Add a container to track manual inventory.
-								</p>
-							)}
-							{fieldUnits.map((unit) => {
-								const latest = snapshotsByContainer.get(unit.id)?.[0];
-								const itemCount = latest?.items.length ?? 0;
-								const isActive = selection?.kind === "field" && selection.id === unit.id;
-								return (
-									<button
-										key={unit.id}
-										type="button"
-										onClick={() => {
-											setSelection({ kind: "field", id: unit.id });
-											setShowEditor(false);
-										}}
-										className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-											isActive
-												? "border-cyan-600/60 bg-cyan-950/30"
-												: "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700"
-										}`}
-									>
-										<div className="flex items-center justify-between gap-2">
-											<span className="truncate text-sm font-medium text-zinc-100">
-												<span className="font-mono text-zinc-500">#{unit.seq}</span>{" "}
-												{unit.name?.trim() || "(unnamed)"}
-											</span>
-											<span className="shrink-0 text-[10px] text-zinc-600">{itemCount} types</span>
-										</div>
-										<div className="mt-0.5 truncate text-[11px] text-zinc-600">
-											{unit.systemId
-												? (systemNameMap[unit.systemId] ?? `System #${unit.systemId}`)
-												: "No location"}
-										</div>
-									</button>
-								);
-							})}
-						</div>
-					</div>
-
-					{/* On-chain SSUs */}
-					<div>
-						<div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-							<Boxes size={12} />
-							On-Chain SSUs
-						</div>
-						<div className="space-y-1.5">
-							{showChainPrompt && (
-								<p className="rounded-lg border border-dashed border-zinc-800 p-3 text-center text-[11px] text-zinc-600">
-									Select a character on the{" "}
-									<a href="/manifest" className="text-cyan-400 hover:text-cyan-300">
-										Manifest
-									</a>{" "}
-									to load on-chain storage.
-								</p>
-							)}
-							{!showChainPrompt && isLoading && (
-								<div className="flex items-center gap-2 px-3 py-2 text-[11px] text-zinc-500">
-									<Loader2 size={12} className="animate-spin" />
-									{loadingAssemblies ? "Discovering assemblies..." : "Fetching inventories..."}
-								</div>
-							)}
-							{!showChainPrompt && !isLoading && chainContainers.length === 0 && (
-								<p className="rounded-lg border border-dashed border-zinc-800 p-3 text-center text-[11px] text-zinc-600">
-									No storage units found.
-								</p>
-							)}
-							{chainContainers.map((c) => {
-								const itemCount = c.items.length;
-								const isActive = selection?.kind === "chain" && selection.id === c.id;
-								return (
-									<button
-										key={c.id}
-										type="button"
-										onClick={() => {
-											setSelection({ kind: "chain", id: c.id });
-											setShowEditor(false);
-										}}
-										className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-											isActive
-												? "border-cyan-600/60 bg-cyan-950/30"
-												: "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700"
-										}`}
-									>
-										<div className="flex items-center justify-between gap-2">
-											<span className="truncate font-mono text-sm font-medium text-zinc-100">
-												{c.label}
-											</span>
-											<span className="shrink-0 text-[10px] text-zinc-600">{itemCount} types</span>
-										</div>
-										<div className="mt-0.5 text-[11px] text-zinc-600">Smart Storage Unit</div>
-									</button>
-								);
-							})}
-						</div>
-					</div>
-				</div>
-
-				{/* Detail */}
-				<div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-					{showEditor ? (
+			{/* Content: editor form, or the unified inventory grid */}
+			<div className="min-h-0 flex-1">
+				{showEditor ? (
+					<div className="max-w-2xl">
 						<FieldStorageEditor
 							unit={editingUnit ?? undefined}
 							systems={systems}
 							recentSystems={recentSystems}
 							types={resolverTypes}
-							onSaved={(id) => {
+							onSaved={() => {
 								setShowEditor(false);
 								setEditingUnit(null);
-								setSelection({ kind: "field", id });
 							}}
 							onCancel={() => {
 								setShowEditor(false);
 								setEditingUnit(null);
 							}}
 						/>
-					) : selectedShip ? (
-						<ShipDetail
-							unit={shipUnit}
-							snapshot={shipUnit ? (snapshotsByContainer.get(shipUnit.id)?.[0] ?? null) : null}
-							timeline={shipTimeline}
-							typeNameMap={typeNameMap}
-							resolverTypes={resolverTypes}
-							onClear={handleClearShip}
-						/>
-					) : selectedUnit ? (
-						<FieldDetail
-							unit={selectedUnit}
-							snapshot={snapshotsByContainer.get(selectedUnit.id)?.[0] ?? null}
-							timeline={fieldTimeline}
-							typeNameMap={typeNameMap}
-							systemNameMap={systemNameMap}
-							resolverTypes={resolverTypes}
-							copied={copiedId === selectedUnit.id}
-							onCopy={() => handleCopy(selectedUnit)}
-							onEdit={() => {
-								setEditingUnit(selectedUnit);
-								setShowEditor(true);
-							}}
-							onDelete={() => handleDelete(selectedUnit)}
-						/>
-					) : selectedChain ? (
-						<ChainDetail
-							container={selectedChain}
-							timeline={chainTimeline}
-							typeNameMap={typeNameMap}
-						/>
-					) : (
-						<div className="flex h-full items-center justify-center text-center">
-							<div>
-								<Boxes size={40} className="mx-auto mb-3 text-zinc-700" />
-								<p className="text-sm text-zinc-500">
-									Select a container, or add a field storage unit.
-								</p>
-							</div>
-						</div>
-					)}
-				</div>
-			</div>
-		</div>
-	);
-}
-
-// ── Chain SSU detail ──────────────────────────────────────────────────────────
-
-function ChainDetail({
-	container,
-	timeline,
-	typeNameMap,
-}: {
-	container: ChainContainer;
-	timeline: TimelineEntry[];
-	typeNameMap: Record<number, string>;
-}) {
-	const rows = useMemo(
-		() => toInventoryRows(container.id, container.items, typeNameMap),
-		[container, typeNameMap],
-	);
-
-	return (
-		<div className="space-y-4">
-			<div className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<div className="flex items-center gap-2">
-						<h2 className="truncate font-mono text-lg font-semibold text-zinc-100">
-							{container.label}
-						</h2>
-						<span className="rounded bg-zinc-700/40 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
-							On-Chain SSU
-						</span>
 					</div>
-					<CopyAddress
-						address={container.id}
-						sliceStart={12}
-						sliceEnd={6}
-						className="mt-1 text-xs text-zinc-500"
+				) : (
+					<InventoryGrid
+						groups={groups}
+						toolbarActions={addButton}
+						emptyMessage="No items yet. Add a field storage container or paste your ship cargo."
 					/>
-				</div>
-			</div>
-
-			<div>
-				<h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-					Inventory
-				</h3>
-				<DataGrid
-					columns={inventoryColumns}
-					data={rows}
-					keyFn={(r) => r.id}
-					searchPlaceholder="Search items..."
-					emptyMessage="No items in this storage unit."
-				/>
-			</div>
-
-			<div>
-				<h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-					History
-				</h3>
-				<ContainerHistory
-					entries={timeline}
-					emptyMessage="No deposit / withdraw events recorded yet. Enable Chain Sonar to capture them."
-				/>
-			</div>
-		</div>
-	);
-}
-
-// ── Field storage detail ────────────────────────────────────────────────────────
-
-function FieldDetail({
-	unit,
-	snapshot,
-	timeline,
-	typeNameMap,
-	systemNameMap,
-	resolverTypes,
-	copied,
-	onCopy,
-	onEdit,
-	onDelete,
-}: {
-	unit: FieldStorageUnit;
-	snapshot: FieldStorageSnapshot | null;
-	timeline: TimelineEntry[];
-	typeNameMap: Record<number, string>;
-	systemNameMap: Record<number, string>;
-	resolverTypes: InventoryTypeInfo[];
-	copied: boolean;
-	onCopy: () => void;
-	onEdit: () => void;
-	onDelete: () => void;
-}) {
-	const rows = useMemo(() => {
-		const items = (snapshot?.items ?? []).map((i) => ({ typeId: i.typeId, quantity: i.qty }));
-		return toInventoryRows(unit.id, items, typeNameMap);
-	}, [snapshot, unit.id, typeNameMap]);
-
-	const systemName = unit.systemId
-		? (systemNameMap[unit.systemId] ?? `System #${unit.systemId}`)
-		: null;
-
-	return (
-		<div className="space-y-4">
-			<div className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<div className="flex items-center gap-2">
-						<h2 className="truncate text-lg font-semibold text-zinc-100">
-							<span className="font-mono text-zinc-500">#{unit.seq}</span>{" "}
-							{unit.name?.trim() || "(unnamed)"}
-						</h2>
-						<span className="rounded bg-cyan-700/30 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">
-							Field Storage
-						</span>
-					</div>
-					<div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500">
-						{systemName && (
-							<span className="flex items-center gap-1">
-								<MapPin size={12} className="text-cyan-500" />
-								{systemName}
-							</span>
-						)}
-						{unit.warpable?.trim() && <span>warp: {unit.warpable.trim()}</span>}
-					</div>
-					{unit.note?.trim() && <p className="mt-1 text-xs text-zinc-600">{unit.note.trim()}</p>}
-				</div>
-				<div className="flex shrink-0 items-center gap-1.5">
-					<button
-						type="button"
-						onClick={onCopy}
-						title="Copy #id + name to clipboard"
-						className="flex items-center gap-1 rounded-lg border border-zinc-700 px-2 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-					>
-						{copied ? <Check size={13} className="text-teal-400" /> : <Copy size={13} />}
-						{copied ? "Copied" : "Copy ID"}
-					</button>
-					<button
-						type="button"
-						onClick={onEdit}
-						title="Edit container"
-						className="rounded-lg border border-zinc-700 p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-					>
-						<Pencil size={13} />
-					</button>
-					<button
-						type="button"
-						onClick={onDelete}
-						title="Delete container"
-						className="rounded-lg border border-zinc-700 p-1.5 text-zinc-400 transition-colors hover:border-red-800 hover:text-red-400"
-					>
-						<Trash2 size={13} />
-					</button>
-				</div>
-			</div>
-
-			<PasteUpdatePanel containerId={unit.id} types={resolverTypes} />
-
-			<div>
-				<h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-					Inventory{" "}
-					<span className="font-normal normal-case text-zinc-600">
-						{snapshot
-							? `(latest snapshot ${new Date(snapshot.timestamp).toLocaleString()})`
-							: "(no snapshot yet)"}
-					</span>
-				</h3>
-				<DataGrid
-					columns={inventoryColumns}
-					data={rows}
-					keyFn={(r) => r.id}
-					searchPlaceholder="Search items..."
-					emptyMessage="No snapshot yet. Paste an inventory above to capture one."
-				/>
-				{snapshot && snapshot.unresolved.length > 0 && (
-					<div className="mt-2 rounded border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300/80">
-						<span className="font-medium">{snapshot.unresolved.length} unresolved:</span>{" "}
-						{snapshot.unresolved.map((u) => `${u.name} x${u.qty}`).join(", ")}
-					</div>
 				)}
-			</div>
-
-			<div>
-				<h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-					History
-				</h3>
-				<ContainerHistory
-					entries={timeline}
-					emptyMessage="No snapshots yet. Paste an inventory above to start the history."
-				/>
-			</div>
-		</div>
-	);
-}
-
-// ── Ship cargo hold detail ──────────────────────────────────────────────────────
-
-/**
- * Dedicated Ship Cargo Hold detail. Reuses the same paste -> snapshot flow + history timeline as
- * field storage, but has no location picker and no "#seq" (a ship moves). The unit is created
- * lazily on first paste via `ensureShipCargoUnit`, so `unit` may be null until then.
- */
-function ShipDetail({
-	unit,
-	snapshot,
-	timeline,
-	typeNameMap,
-	resolverTypes,
-	onClear,
-}: {
-	unit: FieldStorageUnit | null;
-	snapshot: FieldStorageSnapshot | null;
-	timeline: TimelineEntry[];
-	typeNameMap: Record<number, string>;
-	resolverTypes: InventoryTypeInfo[];
-	onClear: () => void;
-}) {
-	const rows = useMemo(() => {
-		const items = (snapshot?.items ?? []).map((i) => ({ typeId: i.typeId, quantity: i.qty }));
-		return toInventoryRows("ship", items, typeNameMap);
-	}, [snapshot, typeNameMap]);
-
-	return (
-		<div className="space-y-4">
-			<div className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<div className="flex items-center gap-2">
-						<h2 className="flex items-center gap-2 truncate text-lg font-semibold text-zinc-100">
-							<Ship size={18} className="shrink-0 text-violet-400" />
-							Ship Cargo Hold
-						</h2>
-						<span className="rounded bg-violet-700/30 px-1.5 py-0.5 text-[10px] font-medium text-violet-300">
-							Ship
-						</span>
-					</div>
-					<p className="mt-1 text-xs text-zinc-500">
-						Copy your ship cargo in-game, then paste below to update what is in your hold.
-					</p>
-				</div>
-				{unit && (
-					<div className="flex shrink-0 items-center gap-1.5">
-						<button
-							type="button"
-							onClick={onClear}
-							title="Clear cargo hold and history"
-							className="rounded-lg border border-zinc-700 p-1.5 text-zinc-400 transition-colors hover:border-red-800 hover:text-red-400"
-						>
-							<Trash2 size={13} />
-						</button>
-					</div>
-				)}
-			</div>
-
-			<PasteUpdatePanel
-				ensureContainerId={async () => (await ensureShipCargoUnit()).id}
-				types={resolverTypes}
-			/>
-
-			<div>
-				<h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-					Inventory{" "}
-					<span className="font-normal normal-case text-zinc-600">
-						{snapshot
-							? `(latest snapshot ${new Date(snapshot.timestamp).toLocaleString()})`
-							: "(no snapshot yet)"}
-					</span>
-				</h3>
-				<DataGrid
-					columns={inventoryColumns}
-					data={rows}
-					keyFn={(r) => r.id}
-					searchPlaceholder="Search items..."
-					emptyMessage="No snapshot yet. Paste your ship cargo above to capture one."
-				/>
-				{snapshot && snapshot.unresolved.length > 0 && (
-					<div className="mt-2 rounded border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300/80">
-						<span className="font-medium">{snapshot.unresolved.length} unresolved:</span>{" "}
-						{snapshot.unresolved.map((u) => `${u.name} x${u.qty}`).join(", ")}
-					</div>
-				)}
-			</div>
-
-			<div>
-				<h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-					History
-				</h3>
-				<ContainerHistory
-					entries={timeline}
-					emptyMessage="No snapshots yet. Paste your ship cargo above to start the history."
-				/>
 			</div>
 		</div>
 	);

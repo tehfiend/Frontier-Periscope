@@ -98,7 +98,9 @@ export interface DeployableIntel extends IntelBase {
 	status: AssemblyStatus;
 	label: string;
 	systemId?: number;
-	lPoint?: string; // "P{n}-L{m}" e.g. "P2-L3" or "L1"-"L5" for legacy
+	lPoint?: string; // "P{n}-L{m}" e.g. "P2-L3" or "L1"-"L5" for legacy (chain-derived, map placement)
+	/** User-set closest warpable free-text (e.g. "Planet 2 (Gas)", a gate, a structure). */
+	warpable?: string;
 	fuelLevel?: number;
 	fuelExpiresAt?: string;
 	position?: [number, number, number];
@@ -125,7 +127,9 @@ export interface AssemblyIntel extends IntelBase {
 	owner: string;
 	status: AssemblyStatus;
 	systemId?: number;
-	lPoint?: string; // "P{n}-L{m}" e.g. "P2-L3" or "L1"-"L5" for legacy
+	lPoint?: string; // "P{n}-L{m}" e.g. "P2-L3" or "L1"-"L5" for legacy (chain-derived, map placement)
+	/** User-set closest warpable free-text (e.g. "Planet 2 (Gas)", a gate, a structure). */
+	warpable?: string;
 	label?: string;
 	notes?: string;
 	/** Parent structure ID (reference to another deployable or assembly) */

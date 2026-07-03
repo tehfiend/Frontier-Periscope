@@ -36,7 +36,8 @@ import { buildOrderTree } from "@/lib/buildTree";
 import type { LandscapeData, LandscapeMaterialSource } from "@/lib/landscapeData";
 import { useLandscapeData } from "@/lib/landscapeData";
 import { nearestSourceSites } from "@/lib/proximity";
-import { mergeLocks, resolveEffectiveOverrides } from "@/lib/queueResolver";
+import type { ContainerDraw } from "@/lib/queueResolver";
+import { containerRefKey, mergeLocks, resolveEffectiveOverrides } from "@/lib/queueResolver";
 import type { ContainerOption } from "@/lib/sourcingPlan";
 import {
 	clearOrderRecipeLock,
@@ -61,6 +62,7 @@ import {
 	GripVertical,
 	Scissors,
 	Trash2,
+	Warehouse,
 } from "lucide-react";
 import { Fragment, memo, useMemo, useState } from "react";
 
@@ -75,6 +77,14 @@ interface BuildTreeProps {
 	orderLocks?: RecipeLockEntry[];
 	containers?: ContainerOption[];
 	containerJumps?: Map<string, number | undefined>;
+	/**
+	 * Post-solve container attribution for this order (typeId -> the named storage each drawn type was
+	 * pulled from). Rows that draw from stock (`have > 0`) show that storage as their source instead of a
+	 * recipe/gather label.
+	 */
+	draws?: Map<number, ContainerDraw[]>;
+	/** containerRefKey -> display label + solar system, to name (and locate) the sourced-from storage. */
+	containerInfo?: Map<string, { label: string; systemId?: number }>;
 	orderSourceLocks?: SourceLockEntry[];
 	phaseLabelForOrderIds?: (orderIds: string[]) => string;
 	sourceSystemId?: number | null;
@@ -298,6 +308,52 @@ function RawSourceDetail({
 	);
 }
 
+/**
+ * The storage a stock-covered row is sourced FROM. When the resolver drew this type from one or more
+ * named containers (`draws`), list each container and the solar system it sits in -- so an item you
+ * already hold shows "pull from <storage> · <system>" instead of the recipe/gather label it would build
+ * from. Renders nothing when the row draws no stock or the stock was unattributed (e.g. carry-forward
+ * from an earlier order, which surfaces via the "from phase N" badge instead).
+ */
+function StorageSourceDetail({
+	node,
+	draws,
+	containerInfo,
+	systemNames,
+}: {
+	node: BuildTreeNode;
+	draws?: Map<number, ContainerDraw[]>;
+	containerInfo?: Map<string, { label: string; systemId?: number }>;
+	systemNames?: Map<number, string>;
+}) {
+	if (node.have <= 0) return null;
+	const allocations = draws?.get(node.typeId);
+	if (!allocations || allocations.length === 0) return null;
+
+	return (
+		<span className="flex min-w-0 flex-col gap-0.5">
+			{allocations.map((draw) => {
+				const key = containerRefKey(draw.ref);
+				const info = containerInfo?.get(key);
+				const label = info?.label ?? key;
+				const systemName =
+					info?.systemId != null ? (systemNames?.get(info.systemId) ?? `#${info.systemId}`) : null;
+				return (
+					<span
+						key={key}
+						className="flex min-w-0 items-center gap-1 text-xs text-emerald-300/90"
+						title={`Sourced from ${label}${systemName ? ` in ${systemName}` : ""} -- ${formatQty(draw.qty)} on hand`}
+					>
+						<Warehouse size={11} className="shrink-0 text-emerald-400/80" />
+						<span className="truncate">{label}</span>
+						{systemName && <span className="shrink-0 text-zinc-500">· {systemName}</span>}
+					</span>
+				);
+			})}
+		</span>
+	);
+}
+
 function writeExclusiveLock(
 	queueId: string,
 	orderId: string | null | undefined,
@@ -394,6 +450,8 @@ interface TreeRowProps {
 	mergedLocks: RecipeLockEntry[];
 	containers?: ContainerOption[];
 	containerJumps?: Map<string, number | undefined>;
+	draws?: Map<number, ContainerDraw[]>;
+	containerInfo?: Map<string, { label: string; systemId?: number }>;
 	orderSourceLocks?: SourceLockEntry[];
 	phaseLabelForOrderIds?: (orderIds: string[]) => string;
 	sourceSystemId?: number | null;
@@ -422,6 +480,8 @@ const TreeRow = memo(function TreeRow({
 	mergedLocks,
 	containers,
 	containerJumps,
+	draws,
+	containerInfo,
 	orderSourceLocks,
 	phaseLabelForOrderIds,
 	sourceSystemId,
@@ -585,6 +645,13 @@ const TreeRow = memo(function TreeRow({
 	const qtyBuilt = node.orderTotals?.built ?? node.built ?? 0;
 	const qtyNeed = Math.max(0, qtyRequired - qtyHave - qtyBuilt);
 
+	// This row draws (some of) its need from a named storage container -- show that storage instead of
+	// (fully covered) or alongside (partial) the recipe/gather label. `fullyFromStock` means the whole
+	// edge is on hand, so no recipe/gather is needed at all. Duplicate occurrences of a shared item
+	// (sharedProductionIndex) reference the canonical row's numbers, so they skip the storage line too.
+	const hasStorageDraw = node.have > 0 && (draws?.get(node.typeId)?.length ?? 0) > 0;
+	const fullyFromStock = hasStorageDraw && node.have >= node.needPerEdge;
+
 	const cells = (dragHandle: React.ReactNode) => (
 		<>
 			<IndexCell value={buildIndex} accent />
@@ -706,6 +773,17 @@ const TreeRow = memo(function TreeRow({
 
 			{/* Source / Recipe */}
 			<div className="min-w-0 px-2 py-2">
+				{hasStorageDraw && (
+					<div className={fullyFromStock ? undefined : "mb-1"}>
+						<StorageSourceDetail
+							node={node}
+							draws={draws}
+							containerInfo={containerInfo}
+							systemNames={systemNames}
+						/>
+					</div>
+				)}
+				{!fullyFromStock && (
 				<div className="flex flex-wrap items-center gap-2">
 					{node.tier === "raw" ? (
 						<span className="flex min-w-0 flex-col gap-1">
@@ -814,6 +892,7 @@ const TreeRow = memo(function TreeRow({
 						</>
 					)}
 				</div>
+				)}
 				<SplitSummary node={node} data={data} />
 			</div>
 
@@ -893,6 +972,8 @@ const TreeRow = memo(function TreeRow({
 						mergedLocks={mergedLocks}
 						containers={containers}
 						containerJumps={containerJumps}
+						draws={draws}
+						containerInfo={containerInfo}
 						orderSourceLocks={orderSourceLocks}
 						phaseLabelForOrderIds={phaseLabelForOrderIds}
 						sourceSystemId={sourceSystemId}
@@ -922,6 +1003,8 @@ export function BuildTree({
 	orderLocks,
 	containers,
 	containerJumps,
+	draws,
+	containerInfo,
 	orderSourceLocks,
 	phaseLabelForOrderIds,
 	sourceSystemId,
@@ -990,6 +1073,8 @@ export function BuildTree({
 					mergedLocks={mergedLocks}
 					containers={containers}
 					containerJumps={containerJumps}
+					draws={draws}
+					containerInfo={containerInfo}
 					orderSourceLocks={orderSourceLocks}
 					phaseLabelForOrderIds={phaseLabelForOrderIds}
 					sourceSystemId={sourceSystemId}

@@ -8,13 +8,12 @@
 // every Order always keeps its own nested tree; F6 live drag reflow feeds a transient order sequence
 // to the SortableContext during a drag.)
 
-import { BomStockPanel, type SsuInventory } from "@/components/BomStockPanel";
 import { ItemIcon } from "@/components/ItemIcon";
 import { facilityNamesFromBlueprintFacilities } from "@/components/buildqueue/FacilityPreferencePanel";
 import { OrderCard } from "@/components/buildqueue/OrderCard";
 import { QueueHeader } from "@/components/buildqueue/QueueHeader";
-import { ScratchPadPanel } from "@/components/buildqueue/ScratchPadPanel";
 import { SourceOverridesPanel } from "@/components/buildqueue/SourceOverridesPanel";
+import { StockPanel, type SsuInventory } from "@/components/buildqueue/StockPanel";
 import {
 	type OrderRef,
 	type QueueBlueprintData,
@@ -25,7 +24,6 @@ import {
 } from "@/components/buildqueue/shared";
 import { ProducibleItemSearch } from "@/components/industry/ProducibleItemSearch";
 import { db } from "@/db";
-import { CHAIN_ENABLED } from "@/featureFlags";
 import {
 	computeDefaultRecipes,
 	findRawMaterials,
@@ -175,7 +173,7 @@ export function BuildQueue() {
 	const activeQueue = useActiveQueue();
 	const queueCount = useLiveQuery(() => db.buildQueues.count());
 
-	// Per-SSU live inventories from the BomStockPanel (plan 41 B5). Each selected on-chain storage unit is
+	// Per-SSU live inventories from the StockPanel (plan 41 B5). Each enabled on-chain storage unit is
 	// its own container in the per-container breakdown -- keeping its real objectId + solar system -- so it
 	// can be a deposit / source target and be distance-ranked individually (no more anonymous aggregate).
 	// Part of the resolver's baseStock (the carry-forward pool is seeded from it). The old flat localStorage
@@ -298,6 +296,16 @@ export function BuildQueue() {
 	const baseContainerLabels = useMemo(() => {
 		const map = new Map<string, string>();
 		for (const e of sortedEntries) map.set(containerRefKey(e.ref), e.label);
+		return map;
+	}, [sortedEntries]);
+	// Container display info (label + solar system) keyed by containerRefKey -- lets the build tree name
+	// the storage an already-held item is sourced FROM, and the system that storage sits in, instead of
+	// the recipe/gather data it would otherwise show for stock-covered rows.
+	const containerInfo = useMemo(() => {
+		const map = new Map<string, { label: string; systemId?: number }>();
+		for (const e of sortedEntries) {
+			map.set(containerRefKey(e.ref), { label: e.label, systemId: e.systemId });
+		}
 		return map;
 	}, [sortedEntries]);
 
@@ -447,10 +455,23 @@ export function BuildQueue() {
 		// selected chain SSU's live inventory (plan 41 B5). Sorted nearest-first by gate distance so the
 		// default spillover order honors the queue location -- the LP only sees the flattened baseStock and
 		// the carry-forward pool is order-independent, so reordering the breakdown is safe.
+		// Unified stock list (plan: unified storage). The queue's persisted stockSources sets each
+		// container's enabled state (a disabled one contributes NO inventory) and its sourcing priority
+		// (list order). Field storage + scratch default enabled; SSUs only reach ssuInventories when
+		// enabled (the panel fetches only ticked units), so they are always included here.
+		const stockOrderIndex = new Map(
+			(activeQueue.stockSources ?? []).map((s, i) => [containerRefKey(s.ref), i] as const),
+		);
+		const stockEnabledByKey = new Map(
+			(activeQueue.stockSources ?? []).map((s) => [containerRefKey(s.ref), s.enabled] as const),
+		);
+		const isStockEnabled = (ref: ContainerRef) =>
+			stockEnabledByKey.get(containerRefKey(ref)) ?? true;
+
 		const scratch = scratchInventory(activeQueue);
 		const breakdown: StockBreakdown = [];
-		for (const c of fieldStorageBreakdown ?? []) breakdown.push(c);
-		if (scratch) breakdown.push(scratch);
+		for (const c of fieldStorageBreakdown ?? []) if (isStockEnabled(c.ref)) breakdown.push(c);
+		if (scratch && isStockEnabled(scratch.ref)) breakdown.push(scratch);
 		for (const ssu of ssuInventories) {
 			breakdown.push({ ref: { kind: "chain", id: ssu.objectId }, items: ssu.items });
 		}
@@ -471,7 +492,12 @@ export function BuildQueue() {
 			present.add(key);
 			breakdown.push({ ref, items: new Map() });
 		}
+		// Priority: the user's explicit stock-list order first; distance from the queue location breaks
+		// ties among containers the user has not manually arranged (unknown-distance ones sort last).
 		breakdown.sort((a, b) => {
+			const ia = stockOrderIndex.get(containerRefKey(a.ref)) ?? Number.POSITIVE_INFINITY;
+			const ib = stockOrderIndex.get(containerRefKey(b.ref)) ?? Number.POSITIVE_INFINITY;
+			if (ia !== ib) return ia - ib;
 			const ja = containerJumps.get(containerRefKey(a.ref));
 			const jb = containerJumps.get(containerRefKey(b.ref));
 			if (ja == null && jb == null) return 0;
@@ -827,7 +853,7 @@ export function BuildQueue() {
 			<div className="border-b border-zinc-800 px-5 py-3">
 				<div className="flex items-center gap-2">
 					<Factory size={18} className="text-violet-500" />
-					<h1 className="text-base font-semibold text-zinc-100">Production Orders</h1>
+					<h1 className="text-base font-semibold text-zinc-100">Industry Calculator</h1>
 				</div>
 			</div>
 
@@ -840,20 +866,16 @@ export function BuildQueue() {
 					recentSystems={recentSystems}
 				/>
 
-				{/* Chain SSU stock -- selected on-chain storage units feed their live inventory into
-				    baseStock. Only rendered when chain features are enabled (the panel is purely
-				    chain-backed now; manual stock moved to field storage + the scratch pad). */}
-				{CHAIN_ENABLED && (
-					<div className="mb-4">
-						<BomStockPanel onBreakdownChange={handleSsuStockChange} />
-					</div>
-				)}
-
-				{/* Queue-local scratch pad -- speculative what-if stock for THIS queue only (plan 39 Phase
-				    6). Folds into the solve as the { kind: "scratch" } container; rank/exclude it under
-				    Container sourcing. Never surfaced in Assets, never selectable by other queues. */}
+				{/* Unified stock -- one card for every source feeding this queue's baseStock: field storage +
+				    ship cargo (auto-included), the on-chain SSUs (selectable; each pick fetches live chain
+				    inventory), and the queue-local scratch pad (what-if stock). */}
 				<div className="mb-4">
-					<ScratchPadPanel queue={activeQueue} typeList={typeList} volumeMap={volumeMap} />
+					<StockPanel
+						queue={activeQueue}
+						typeList={typeList}
+						volumeMap={volumeMap}
+						onSsuStockChange={handleSsuStockChange}
+					/>
 				</div>
 
 				{/* Container sourcing -- queue-level priority + per-item/per-job overrides (greying any
@@ -957,6 +979,7 @@ export function BuildQueue() {
 										sourcingPlan={sourcingPlan?.byOrder.get(order.id)}
 										containers={containerOptions}
 										containerLabels={baseContainerLabels}
+										containerInfo={containerInfo}
 										containerJumps={containerJumps}
 										systems={solarSystems}
 										recentSystems={recentSystems}

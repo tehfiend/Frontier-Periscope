@@ -32,6 +32,11 @@ interface ScratchPadPanelProps {
 	typeList: Array<{ id: number; name: string }>;
 	/** typeID -> unit volume (m3) -- lets the paste parser disambiguate shared names. */
 	volumeMap: Map<number, number>;
+	/**
+	 * Render as a nested subsection of the unified Stock panel: drop the standalone card chrome and use
+	 * a lighter subsection heading, so the scratch pad reads as part of Stock rather than its own card.
+	 */
+	embedded?: boolean;
 }
 
 // ── Any-type search (scratch holds speculative stock of ANY type, not just blueprint outputs) ──
@@ -139,7 +144,7 @@ function ScratchItemSearch({
 
 // ── Panel ──────────────────────────────────────────────────────────────────────
 
-export function ScratchPadPanel({ queue, typeList, volumeMap }: ScratchPadPanelProps) {
+export function ScratchPadPanel({ queue, typeList, volumeMap, embedded }: ScratchPadPanelProps) {
 	const [open, setOpen] = useState(false);
 	const [showPaste, setShowPaste] = useState(false);
 	const [pasteText, setPasteText] = useState("");
@@ -171,11 +176,15 @@ export function ScratchPadPanel({ queue, typeList, volumeMap }: ScratchPadPanelP
 	};
 
 	return (
-		<div className="rounded-lg border border-zinc-800 bg-zinc-900/50">
+		<div className={embedded ? "" : "rounded-lg border border-zinc-800 bg-zinc-900/50"}>
 			<button
 				type="button"
 				onClick={() => setOpen(!open)}
-				className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium text-zinc-300 hover:bg-zinc-800/30"
+				className={
+					embedded
+						? "flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs font-medium text-zinc-400 hover:text-zinc-200"
+						: "flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium text-zinc-300 hover:bg-zinc-800/30"
+				}
 			>
 				{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
 				<FlaskConical size={14} className="text-violet-400" />

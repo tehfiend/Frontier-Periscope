@@ -2,6 +2,7 @@ import { discoverCharacterAndAssemblies } from "@/chain/queries";
 import { buildRenameTx, isRenamableModule } from "@/chain/transactions";
 import { db } from "@/db";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { type RecentSystem, useCharacterRecentSystems } from "@/hooks/useCharacterRecentSystems";
 import { useContacts } from "@/hooks/useContacts";
 import { useExtensionRevoke } from "@/hooks/useExtensionRevoke";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
@@ -13,8 +14,6 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ASSEMBLY_TYPE_IDS, FUEL_TYPES, TENANTS, type TenantId, classifyExtension, getWorldTarget } from "@/chain/config";
-import { ASSEMBLY_MODULE_MAP, getObjectJson } from "@tehfrontier/chain-shared";
-import { Transaction } from "@mysten/sui/transactions";
 import {
 	crossReferenceManifestLocations,
 	crossReferencePrivateMapLocations,
@@ -23,16 +22,19 @@ import type { OwnedAssembly } from "@/chain/queries";
 import { AddToMapDialog } from "@/components/AddToMapDialog";
 import { CopyAddress } from "@/components/CopyAddress";
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
+import { FieldStorageGroup } from "@/components/fieldstorage/FieldStorageGroup";
 import { EditableCell } from "@/components/EditableCell";
 import { StructureDetailCard } from "@/components/StructureDetailCard";
+import { SystemPicker } from "@/components/SystemPicker";
 import { SystemSearch } from "@/components/SystemSearch";
+import { WarpableSelector } from "@/components/WarpableSelector";
 import { DeployExtensionPanel } from "@/components/extensions/DeployExtensionPanel";
-import type { AssemblyStatus, Celestial, DeployableIntel, SolarSystem } from "@/db/types";
-import { PLANET_TYPE_NAMES, ensureCelestialsLoaded } from "@/lib/celestials";
+import type { AssemblyStatus, DeployableIntel, SolarSystem } from "@/db/types";
 import { FUEL_CRITICAL_HOURS, FUEL_WARNING_HOURS } from "@/lib/constants";
 import { type CsvColumn, exportToCsv } from "@/lib/csv";
-import { formatLocation } from "@/lib/format";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
+import { Transaction } from "@mysten/sui/transactions";
+import { ASSEMBLY_MODULE_MAP, getObjectJson } from "@tehfrontier/chain-shared";
 import {
 	AlertTriangle,
 	Fuel,
@@ -68,6 +70,9 @@ function PeriscopeIcon({ size = 16, className = "" }: { size?: number; className
 
 // ── Unified Row Type ────────────────────────────────────────────────────────
 
+/** Group key for structures not attached to any parent node. */
+const UNASSIGNED_GROUP = "__unassigned__";
+
 export interface StructureRow {
 	id: string;
 	objectId: string;
@@ -79,6 +84,8 @@ export interface StructureRow {
 	ownerName?: string;
 	systemId?: number;
 	lPoint?: string;
+	/** User-set closest warpable free-text (replaces the L-point restriction for node locations). */
+	warpable?: string;
 	fuelLevel?: number;
 	fuelExpiresAt?: string;
 	notes?: string;
@@ -296,6 +303,7 @@ export function Deployables() {
 
 	// ── Solar System Lookup ──────────────────────────────────────────────────
 	const systems = useLiveQuery(() => db.solarSystems.toArray()) ?? [];
+	const recentSystems = useCharacterRecentSystems(systems);
 	const systemNames = useMemo(() => {
 		const map = new Map<number, string>();
 		for (const s of systems) {
@@ -489,20 +497,12 @@ export function Deployables() {
 
 	// ── Save Location ───────────────────────────────────────────────────────
 	const handleSaveLocation = useCallback(
-		async (row: StructureRow, systemId: number | undefined, lPoint: string | undefined) => {
+		async (row: StructureRow, systemId: number | undefined, warpable: string | undefined) => {
 			const now = new Date().toISOString();
 			if (row.source === "deployables") {
-				await db.deployables.update(row.id, {
-					systemId,
-					lPoint,
-					updatedAt: now,
-				});
+				await db.deployables.update(row.id, { systemId, warpable, updatedAt: now });
 			} else {
-				await db.assemblies.update(row.id, {
-					systemId,
-					lPoint,
-					updatedAt: now,
-				});
+				await db.assemblies.update(row.id, { systemId, warpable, updatedAt: now });
 			}
 		},
 		[],
@@ -972,13 +972,21 @@ export function Deployables() {
 				id: "location",
 				accessorFn: (d) => {
 					const sysName = d.systemId ? (systemNames.get(d.systemId) ?? "") : "";
-					return formatLocation(sysName || undefined, d.lPoint);
+					return [sysName, d.warpable].filter(Boolean).join(" ");
 				},
 				header: "Location",
 				size: 160,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
+					// Structures under a node inherit its location; the node header owns the setter.
+					if (r.parentId) {
+						return (
+							<span className="text-[10px] text-zinc-600" title="Inherited from parent node">
+								↑ node location
+							</span>
+						);
+					}
 					return (
 						<LocationEditor
 							row={r}
@@ -1093,6 +1101,8 @@ export function Deployables() {
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
+					// Children share the node's owner -- shown on the node header only.
+					if (r.parentId) return <span className="text-zinc-700">—</span>;
 					return (
 						<div className="min-w-0">
 							<span className="text-xs text-zinc-300">{r.ownerName ?? "Unknown"}</span>
@@ -1116,6 +1126,8 @@ export function Deployables() {
 				size: 90,
 				enableColumnFilter: false,
 				cell: ({ row }) => {
+					// Runtime is shown on the node header; child rows stay uncluttered.
+					if (row.original.parentId) return <span className="text-zinc-700">—</span>;
 					const hours = fuelHoursRemaining(row.original);
 					return (
 						<div className={`flex items-center gap-1 text-xs ${fuelColorClass(hours)}`}>
@@ -1171,6 +1183,93 @@ export function Deployables() {
 			assemblyCategoryMap,
 		],
 	);
+
+	// ── Grouping by parent node ───────────────────────────────────────────────
+	// Structures group under their parent network node; the node heads its own group, and
+	// structures with no parent fall into an "Unassigned" bucket.
+	const rowByKey = useMemo(() => {
+		const m = new Map<string, StructureRow>();
+		for (const r of data) {
+			m.set(r.id, r);
+			if (r.objectId) m.set(r.objectId, r);
+		}
+		return m;
+	}, [data]);
+
+	const groupKeyOf = useCallback(
+		(r: StructureRow) => {
+			// parentId may be stored as the parent's id or objectId -- resolve to the canonical id.
+			if (r.parentId) return rowByKey.get(r.parentId)?.id ?? r.parentId;
+			if (r.assemblyType.toLowerCase().includes("node")) return r.id;
+			return UNASSIGNED_GROUP;
+		},
+		[rowByKey],
+	);
+
+	const groupSort = useCallback(
+		(a: string, b: string) => {
+			if (a === UNASSIGNED_GROUP) return 1;
+			if (b === UNASSIGNED_GROUP) return -1;
+			return (rowByKey.get(a)?.label ?? a).localeCompare(rowByKey.get(b)?.label ?? b);
+		},
+		[rowByKey],
+	);
+
+	const renderGroupHeader = useCallback(
+		(key: string, groupRows: StructureRow[]) => {
+			if (key === UNASSIGNED_GROUP) {
+				return (
+					<div className="flex items-center gap-2">
+						<span className="text-sm font-semibold text-zinc-300">Unassigned</span>
+						<span className="text-[10px] text-zinc-600">
+							({groupRows.length} not attached to a node)
+						</span>
+					</div>
+				);
+			}
+			const node = rowByKey.get(key);
+			// The node is the header itself, so exclude it from the attached count.
+			const childCount = groupRows.filter((r) => r.id !== key).length;
+			return (
+				<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+					{node && (
+						<span
+							className={`h-2 w-2 shrink-0 rounded-full ${statusDotClass(node.status)}`}
+							title={node.status}
+						/>
+					)}
+					<span className="text-sm font-semibold text-zinc-100">{node?.label ?? key}</span>
+					<span className="rounded bg-emerald-700/30 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+						Node
+					</span>
+					<span className="text-[10px] text-zinc-600">{childCount} attached</span>
+					{node?.ownerName && <span className="text-[11px] text-zinc-500">{node.ownerName}</span>}
+					{node &&
+						(() => {
+							const hours = fuelHoursRemaining(node);
+							if (hours === null) return null;
+							return (
+								<span className={`flex items-center gap-1 text-[11px] ${fuelColorClass(hours)}`}>
+									<Fuel size={11} />
+									{formatRuntime(hours)}
+								</span>
+							);
+						})()}
+					{node && (
+						<NodeLocationEditor
+							node={node}
+							systems={systems}
+							recentSystems={recentSystems}
+							onSave={handleSaveLocation}
+						/>
+					)}
+				</div>
+			);
+		},
+		[rowByKey, systems, recentSystems, handleSaveLocation],
+	);
+
+	const isGroupAnchorRow = useCallback((r: StructureRow) => groupKeyOf(r) === r.id, [groupKeyOf]);
 
 	// ── No Address State ─────────────────────────────────────────────────────
 	if (!hasAddress) {
@@ -1239,6 +1338,10 @@ export function Deployables() {
 				columns={columns}
 				data={filteredData}
 				keyFn={(d) => d.id}
+				groupBy={groupKeyOf}
+				renderGroupHeader={renderGroupHeader}
+				groupSort={groupSort}
+				isGroupAnchorRow={isGroupAnchorRow}
 				searchPlaceholder="Search structures, owners, notes..."
 				emptyMessage='No structures found. Click "Sync Chain" to discover your on-chain deployables, or add targets in the Watchlist.'
 				selectedRowId={selectedId ?? undefined}
@@ -1276,7 +1379,7 @@ export function Deployables() {
 							header: "Location",
 							accessor: (r) => {
 								const sysName = r.systemId ? (systemNames.get(r.systemId) ?? "") : "";
-								return formatLocation(sysName || undefined, r.lPoint);
+								return [sysName, r.warpable].filter(Boolean).join(" ");
 							},
 						},
 						{
@@ -1356,6 +1459,11 @@ export function Deployables() {
 				}
 			/>
 
+			{/* Field storage -- manually-added storage + ship cargo as their own group (unified storage).
+			    Not on-chain, so they live below the chain grid rather than inside it, but share the same
+			    editable location so the Build Queue can distance-rank them like any node's SSUs. */}
+			<FieldStorageGroup systems={systems} recentSystems={recentSystems} />
+
 			{/* Structure Detail Card */}
 			<StructureDetailCard
 				row={data.find((d) => d.id === selectedId) ?? null}
@@ -1424,6 +1532,53 @@ function structureRowToAssembly(row: StructureRow): OwnedAssembly {
 	};
 }
 
+/**
+ * Node location editor rendered inline on a group header. Always-visible system + closest-warpable
+ * controls (the same shared pickers Field Storage uses), persisting to the node's record on change /
+ * commit -- no popover, so the "set location" affordance is obvious.
+ */
+function NodeLocationEditor({
+	node,
+	systems,
+	recentSystems,
+	onSave,
+}: {
+	node: StructureRow;
+	systems: SolarSystem[];
+	recentSystems: RecentSystem[];
+	onSave: (row: StructureRow, systemId: number | undefined, warpable: string | undefined) => void;
+}) {
+	const [warpDraft, setWarpDraft] = useState(node.warpable ?? "");
+	// Re-seed when the stored warpable changes (e.g. saved elsewhere or node switched).
+	useEffect(() => {
+		setWarpDraft(node.warpable ?? "");
+	}, [node.warpable]);
+	return (
+		<div className="flex items-center gap-2">
+			<span className="text-[10px] uppercase tracking-wide text-zinc-600">loc</span>
+			<div className="w-44">
+				<SystemPicker
+					value={node.systemId ?? null}
+					onChange={(id) => onSave(node, id ?? undefined, node.warpable)}
+					systems={systems}
+					recent={recentSystems}
+					placeholder="System..."
+					compact
+				/>
+			</div>
+			<div className="w-48">
+				<WarpableSelector
+					value={warpDraft}
+					onChange={setWarpDraft}
+					onCommit={(w) => onSave(node, node.systemId, w.trim() || undefined)}
+					systemId={node.systemId ?? null}
+					compact
+				/>
+			</div>
+		</div>
+	);
+}
+
 function LocationEditor({
 	row,
 	systems,
@@ -1434,79 +1589,25 @@ function LocationEditor({
 	row: StructureRow;
 	systems: SolarSystem[];
 	systemNames: Map<number, string>;
-	onSave: (row: StructureRow, systemId: number | undefined, lPoint: string | undefined) => void;
+	onSave: (row: StructureRow, systemId: number | undefined, warpable: string | undefined) => void;
 	onAddToMap?: (row: StructureRow) => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const [selectedSystem, setSelectedSystem] = useState<number | null>(row.systemId ?? null);
-	const [selectedLPoint, setSelectedLPoint] = useState<string | null>(row.lPoint ?? null);
-	const [planets, setPlanets] = useState<Celestial[]>([]);
-	const [selectedPlanet, setSelectedPlanet] = useState<number | null>(() => {
-		// Parse planet index from existing lPoint (e.g. "P2-L3" -> 2)
-		const match = row.lPoint?.match(/^P(\d+)-L[1-5]$/);
-		return match ? Number(match[1]) : null;
-	});
-	const [selectedL, setSelectedL] = useState<number | null>(() => {
-		// Parse L-point number from existing lPoint (e.g. "P2-L3" -> 3, or "L3" -> 3)
-		const matchFull = row.lPoint?.match(/^P\d+-L([1-5])$/);
-		if (matchFull) return Number(matchFull[1]);
-		const matchSimple = row.lPoint?.match(/^L([1-5])$/);
-		return matchSimple ? Number(matchSimple[1]) : null;
-	});
+	const [warpable, setWarpable] = useState(row.warpable ?? "");
 
-	// Load planets when system changes
+	// Re-seed local state when the row's stored location changes underneath us.
 	useEffect(() => {
-		if (!selectedSystem) {
-			setPlanets([]);
-			return;
-		}
-		let cancelled = false;
-		ensureCelestialsLoaded().then(() => {
-			if (cancelled) return;
-			db.celestials
-				.where("systemId")
-				.equals(selectedSystem)
-				.sortBy("index")
-				.then((result) => {
-					if (!cancelled) setPlanets(result);
-				});
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [selectedSystem]);
+		setSelectedSystem(row.systemId ?? null);
+		setWarpable(row.warpable ?? "");
+	}, [row.systemId, row.warpable]);
 
-	// Build display text
+	// Build display text: system name plus the closest-warpable note.
 	const sysName = row.systemId ? (systemNames.get(row.systemId) ?? "") : "";
-	const displayText = formatLocation(sysName || undefined, row.lPoint);
-
-	function handleSystemChange(id: number | null) {
-		setSelectedSystem(id);
-		// Reset planet and L-point when system changes
-		setSelectedPlanet(null);
-		setSelectedL(null);
-		setSelectedLPoint(null);
-	}
-
-	function handlePlanetSelect(planetIndex: number) {
-		setSelectedPlanet(planetIndex);
-		// If L-point already selected, build the combined string
-		if (selectedL) {
-			setSelectedLPoint(`P${planetIndex}-L${selectedL}`);
-		}
-	}
-
-	function handleLPointSelect(l: number) {
-		setSelectedL(l);
-		if (selectedPlanet) {
-			setSelectedLPoint(`P${selectedPlanet}-L${l}`);
-		} else {
-			setSelectedLPoint(`L${l}`);
-		}
-	}
+	const displayText = [sysName, row.warpable].filter(Boolean).join(" -- ");
 
 	function handleSave() {
-		onSave(row, selectedSystem ?? undefined, selectedLPoint ?? undefined);
+		onSave(row, selectedSystem ?? undefined, warpable.trim() || undefined);
 		setOpen(false);
 	}
 
@@ -1514,9 +1615,7 @@ function LocationEditor({
 		onSave(row, undefined, undefined);
 		setOpen(false);
 		setSelectedSystem(null);
-		setSelectedPlanet(null);
-		setSelectedL(null);
-		setSelectedLPoint(null);
+		setWarpable("");
 	}
 
 	if (!open) {
@@ -1567,76 +1666,28 @@ function LocationEditor({
 				{/* System search */}
 				<SystemSearch
 					value={selectedSystem}
-					onChange={handleSystemChange}
+					onChange={setSelectedSystem}
 					systems={systems}
 					placeholder="Search system..."
 					compact
 				/>
 
-				{/* Planet selector */}
-				{selectedSystem && planets.length > 0 && (
-					<div className="mt-2">
-						<label className="mb-1 block text-[10px] font-medium uppercase text-zinc-500">
-							Planet
-						</label>
-						<div className="flex flex-wrap gap-1">
-							{planets.map((p) => {
-								const typeName = PLANET_TYPE_NAMES[p.typeId] ?? "Unknown";
-								return (
-									<button
-										key={p.id}
-										type="button"
-										onClick={() => handlePlanetSelect(p.index)}
-										title={`${typeName} (P${p.index})`}
-										className={`rounded px-2 py-1 text-xs transition-colors ${
-											selectedPlanet === p.index
-												? "bg-cyan-900/50 text-cyan-400"
-												: "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-										}`}
-									>
-										P{p.index}
-									</button>
-								);
-							})}
-						</div>
-					</div>
-				)}
-
-				{/* L-point selector */}
+				{/* Closest warpable -- shared selector; offers the system's warpables once one is set */}
 				<div className="mt-2">
 					<label className="mb-1 block text-[10px] font-medium uppercase text-zinc-500">
-						L-Point
+						Closest warpable
 					</label>
-					<div className="flex gap-1">
-						{[1, 2, 3, 4, 5].map((l) => (
-							<button
-								key={l}
-								type="button"
-								onClick={() => handleLPointSelect(l)}
-								className={`flex-1 rounded px-2 py-1 text-xs transition-colors ${
-									selectedL === l
-										? "bg-cyan-900/50 text-cyan-400"
-										: "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-								}`}
-							>
-								L{l}
-							</button>
-						))}
-					</div>
+					<WarpableSelector
+						value={warpable}
+						onChange={setWarpable}
+						systemId={selectedSystem}
+						compact
+					/>
 				</div>
-
-				{/* Preview */}
-				{(selectedSystem || selectedLPoint) && (
-					<div className="mt-2 rounded bg-zinc-800/50 px-2 py-1 text-xs text-zinc-300">
-						{selectedSystem ? (systemNames.get(selectedSystem) ?? `#${selectedSystem}`) : ""}
-						{selectedSystem && selectedLPoint ? " -- " : ""}
-						{selectedLPoint ?? ""}
-					</div>
-				)}
 
 				{/* Actions */}
 				<div className="mt-2 flex justify-end gap-2">
-					{(row.systemId || row.lPoint) && (
+					{(row.systemId || row.warpable) && (
 						<button
 							type="button"
 							onClick={handleClear}

@@ -15,6 +15,18 @@ export type ContainerRef =
 	| { kind: "scratch" } // the queue-local scratch pad
 	| { kind: "unassigned" }; // reserved default deposit bucket -- the anonymous Option-A pool (plan 41)
 
+/**
+ * One entry in a queue's unified stock list (plan: unified storage). Every storage source -- field
+ * storage, ship cargo, on-chain SSUs, and the scratch pad -- appears here as a single reorderable row.
+ * List POSITION is sourcing priority (earlier = higher). `enabled` gates whether the container's
+ * inventory contributes to the queue's stock at all (a disabled row is dropped from baseStock, not just
+ * de-prioritized). Refs absent from the list fall back to defaults (field/ship/scratch on, SSUs off).
+ */
+export interface StockSourceEntry {
+	ref: ContainerRef;
+	enabled: boolean;
+}
+
 /** Ranked container include list (position = priority) plus scoped exclusions. */
 export interface ContainerSourceConfig {
 	/** Ranked include list -- earlier entries are higher sourcing priority. */
@@ -143,6 +155,13 @@ export interface BuildQueue {
 	 *  queue's baseStock as the `{ kind: "scratch" }` container. Never surfaced in Assets, never
 	 *  selectable by other queues. Optional -- no Dexie bump (lives in the record). */
 	scratch?: ScratchItem[];
+	/**
+	 * Unified stock list (plan: unified storage) -- the user-arranged order + enabled state for every
+	 * storage source feeding this queue. Position is sourcing priority; a disabled entry is excluded from
+	 * baseStock. Undefined = untouched (defaults apply: field/ship/scratch enabled, SSUs disabled, in
+	 * distance order). Optional -- no Dexie bump (lives in the JSON queue record).
+	 */
+	stockSources?: StockSourceEntry[];
 	/** Re-optimization mode (undefined = "perStep"; see ReoptMode). Optional -- no Dexie bump needed. */
 	reoptMode?: ReoptMode;
 	/**
