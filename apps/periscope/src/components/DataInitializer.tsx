@@ -1,5 +1,4 @@
 import { db } from "@/db";
-import { CHAIN_ENABLED } from "@/featureFlags";
 import { useManifestAutoSync } from "@/hooks/useManifestAutoSync";
 import { usePrivateMapAutoDecrypt } from "@/hooks/usePrivateMapAutoDecrypt";
 import { checkCycleReset } from "@/lib/cycleReset";
@@ -72,12 +71,14 @@ export function DataInitializer({ children }: { children: React.ReactNode }) {
 		void loadStellarData();
 		void loadLandscapeData();
 
-		// Background: fetch game types from World API (non-blocking)
+		// Background: import game types from local client data (non-blocking). No longer gated on
+		// CHAIN_ENABLED -- names come from static /data files, not the World API, so they must load
+		// even in chain-disabled builds.
 		const typesMeta = await db.cacheMetadata.get("gameTypes");
-		// Refetch when missing OR when the stored cycle version differs (forces C6 refresh).
-		if (CHAIN_ENABLED && (!typesMeta || typesMeta.version !== GAME_TYPES_VERSION)) {
+		// Re-import when missing OR when the stored version differs (forces a refresh after a bump).
+		if (!typesMeta || typesMeta.version !== GAME_TYPES_VERSION) {
 			fetchAndStoreGameTypes().catch((err) =>
-				console.warn("[DataInitializer] Failed to fetch game types:", err),
+				console.warn("[DataInitializer] Failed to import game types:", err),
 			);
 		}
 	}

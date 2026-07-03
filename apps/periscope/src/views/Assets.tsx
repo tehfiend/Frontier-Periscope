@@ -1,6 +1,7 @@
 import { type AssemblyInventory, fetchAssemblyInventory } from "@/chain/inventory";
 import { CopyAddress } from "@/components/CopyAddress";
 import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
+import { ItemIcon } from "@/components/ItemIcon";
 import { ContainerHistory, type TimelineEntry } from "@/components/fieldstorage/ContainerHistory";
 import { FieldStorageEditor } from "@/components/fieldstorage/FieldStorageEditor";
 import { PasteUpdatePanel } from "@/components/fieldstorage/PasteUpdatePanel";
@@ -8,6 +9,7 @@ import { db } from "@/db";
 import type { FieldStorageSnapshot, FieldStorageUnit, GameType } from "@/db/types";
 import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
+import { useBlueprintData } from "@/hooks/useBlueprintData";
 import { useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { diffSnapshots, ensureShipCargoUnit } from "@/lib/fieldStorage";
@@ -76,9 +78,10 @@ const inventoryColumns: ColumnDef<InventoryRow, unknown>[] = [
 		header: "Item",
 		filterFn: excelFilterFn,
 		cell: ({ row }) => (
-			<div>
+			<div className="flex items-center gap-2">
+				<ItemIcon typeId={row.original.typeId} size={20} />
 				<span className="font-medium text-zinc-100">{row.original.typeName}</span>
-				<span className="ml-2 font-mono text-xs text-zinc-600">#{row.original.typeId}</span>
+				<span className="font-mono text-xs text-zinc-600">#{row.original.typeId}</span>
 			</div>
 		),
 	},
@@ -142,6 +145,10 @@ export function Assets() {
 	const { data: discovery, isLoading: loadingAssemblies } = useOwnedAssemblies();
 
 	const gameTypes = useLiveQuery(() => db.gameTypes.toArray()) ?? [];
+	// Local client-extracted type names (types.json). Offline-safe and comprehensive; the World
+	// API gameTypes cache is empty in Cycle 6 (host down at cutover), so this is the reliable
+	// name source with gameTypes only as a supplementary fallback.
+	const { typeList } = useBlueprintData();
 	const systems = useLiveQuery(() => db.solarSystems.toArray()) ?? [];
 	const allFieldUnits = useLiveQuery(() => db.fieldStorageUnits.orderBy("seq").toArray()) ?? [];
 	const allSnapshots = useLiveQuery(() => db.fieldStorageSnapshots.toArray()) ?? [];
@@ -165,9 +172,10 @@ export function Assets() {
 	// Lookups
 	const typeNameMap = useMemo(() => {
 		const map: Record<number, string> = {};
-		for (const gt of gameTypes) map[gt.id] = gt.name;
+		for (const gt of gameTypes) map[gt.id] = gt.name; // World API cache (may be empty)
+		for (const t of typeList) map[t.id] = t.name; // local types.json overrides / fills gaps
 		return map;
-	}, [gameTypes]);
+	}, [gameTypes, typeList]);
 
 	const systemNameMap = useMemo(() => {
 		const map: Record<number, string> = {};
@@ -226,7 +234,9 @@ export function Assets() {
 			return {
 				kind: "chain",
 				id: a.objectId,
-				label: a.name?.trim() || `${a.objectId.slice(0, 10)}...`,
+				// Prefer the assembly name; when unnamed, label by the in-game item ID rather than
+				// the opaque Sui object address so the SSU is identifiable.
+				label: a.name?.trim() || (a.itemId ? `SSU #${a.itemId}` : `${a.objectId.slice(0, 10)}...`),
 				items,
 			};
 		});

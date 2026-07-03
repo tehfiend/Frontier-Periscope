@@ -1,5 +1,5 @@
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import { getObjectJson, listDynamicFieldsGql } from "@tehfrontier/chain-shared";
+import { listDynamicFieldsGql } from "@tehfrontier/chain-shared";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -135,10 +135,17 @@ export async function fetchAssemblyInventory(
 				const contents = itemsMap?.contents ?? [];
 
 				const items: InventoryItem[] = contents.map((entry) => {
-					const key = Number(entry.key);
-					const val = entry.value as { quantity?: string } | undefined;
+					// items is VecMap<u64, ItemEntry> where ItemEntry = { tenant, type_id, item_id,
+					// volume, quantity }. The real game type_id lives in the value; the map key can
+					// serialize as the item *instance* id, so reading the key alone yields a 7-digit
+					// item_id that resolves to no name/icon. Prefer value.type_id (matches the working
+					// apps/ssu-dapp parseInventory), falling back to the key for older shapes.
+					const val = (entry.value ?? entry) as
+						| { type_id?: string | number; quantity?: string | number }
+						| undefined;
+					const typeId = Number(val?.type_id ?? entry.key ?? 0);
 					const quantity = Number(val?.quantity ?? 0);
-					return { typeId: key, quantity };
+					return { typeId, quantity };
 				});
 
 				const maxCapacity = Number(inv.max_capacity ?? 0);

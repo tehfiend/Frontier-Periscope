@@ -137,13 +137,12 @@ export function Settings() {
 				</div>
 			</section>
 
-			{/* Game Types (World API) */}
-			{CHAIN_ENABLED && (
-				<section className="mt-8">
-					<h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-400">
-						<Database size={16} />
-						Game Types (World API)
-					</h2>
+			{/* Game Types (local client data) */}
+			<section className="mt-8">
+				<h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-zinc-400">
+					<Database size={16} />
+					Game Types (Local Data)
+				</h2>
 					<div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
 						{typesMeta ? (
 							<div className="flex items-center justify-between">
@@ -178,7 +177,7 @@ export function Settings() {
 							</div>
 						) : (
 							<div className="flex items-center justify-between">
-								<p className="text-sm text-zinc-500">Not yet fetched from World API.</p>
+								<p className="text-sm text-zinc-500">Not yet loaded from local data.</p>
 								<button
 									type="button"
 									disabled={fetchingTypes}
@@ -204,7 +203,6 @@ export function Settings() {
 						{typesStatus && <p className="text-xs text-zinc-400">{typesStatus}</p>}
 					</div>
 				</section>
-			)}
 
 			{/* Backup & Restore */}
 			<BackupRestore />
