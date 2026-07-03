@@ -1,3 +1,4 @@
+import { ItemIcon } from "@/components/ItemIcon";
 import type { Blueprint } from "@/lib/bomTypes";
 import { ChevronDown, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -65,6 +66,13 @@ export interface RecipeDropdownProps {
 	onResetFacility?: () => void;
 	/** When provided, shows a "Split..." option in the dropdown. */
 	onSplitRequest?: () => void;
+	/** Raw-leaf mode: the "gather directly" default label (e.g. "Source: Char Ores"). When set, the
+	 *  dropdown gains a top "Gather directly" option and the closed control shows this while gathering. */
+	gatherLabel?: string;
+	/** True when currently gathering (no reprocess pin) -- closed control shows gatherLabel. */
+	gathering?: boolean;
+	/** Reset to gathering (clear the reprocess pin). Required for the gather option to appear. */
+	onGather?: () => void;
 }
 
 function recipeRank(bp: Blueprint, typeId: number) {
@@ -105,6 +113,9 @@ export function RecipeDropdown({
 	pick,
 	onResetFacility,
 	onSplitRequest,
+	gatherLabel,
+	gathering,
+	onGather,
 }: RecipeDropdownProps) {
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
@@ -161,23 +172,46 @@ export function RecipeDropdown({
 
 	if (!currentBp) return null;
 
+	const isGathering = gathering === true && gatherLabel !== undefined;
+	const closedLabel = isGathering
+		? (gatherLabel as string)
+		: facilityRecipeLabel(currentBp, effectiveFacility);
+
 	return (
 		<div ref={ref} className="relative">
 			<button
 				type="button"
 				onClick={() => setOpen(!open)}
-				title={facilityRecipeLabel(currentBp, effectiveFacility)}
+				title={closedLabel}
 				className={`flex items-center gap-1 truncate rounded border px-1.5 py-0.5 text-xs focus:border-violet-600 focus:outline-none ${
 					configured
 						? "border-cyan-600/50 bg-zinc-900 text-cyan-300"
 						: "border-zinc-700 bg-zinc-900 text-zinc-400"
 				}`}
 			>
-				<span className="truncate">{facilityRecipeLabel(currentBp, effectiveFacility)}</span>
+				<span className="truncate">{closedLabel}</span>
 				<ChevronDown size={10} className="shrink-0 text-zinc-600" />
 			</button>
 			{open && (
 				<div className="absolute left-0 top-full z-20 mt-1 min-w-[320px] rounded border border-zinc-700 bg-zinc-900 py-1 shadow-lg">
+					{onGather && gatherLabel !== undefined && (
+						<>
+							<button
+								type="button"
+								onClick={() => {
+									onGather();
+									setOpen(false);
+								}}
+								className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-zinc-800 ${
+									isGathering ? "text-cyan-300" : "text-zinc-400"
+								}`}
+							>
+								<span className="w-3 shrink-0 text-cyan-400">{isGathering ? "●" : ""}</span>
+								<span className="min-w-0 flex-1 truncate">{gatherLabel} (gather directly)</span>
+							</button>
+							<div className="mx-2 my-1 border-t border-zinc-800" />
+						</>
+					)}
 					{pick !== undefined && onResetFacility && (
 						<>
 							<button
@@ -196,7 +230,9 @@ export function RecipeDropdown({
 					)}
 					{options.map((option) => {
 						const isSelected =
-							option.bp.blueprintID === selectedBpId && option.facility === effectiveFacility;
+							!isGathering &&
+							option.bp.blueprintID === selectedBpId &&
+							option.facility === effectiveFacility;
 						const label =
 							option.facility === undefined
 								? formatOptionLabel(option.bp, typeId)
@@ -218,6 +254,11 @@ export function RecipeDropdown({
 								}`}
 							>
 								<span className="w-3 shrink-0 text-cyan-400">{isSelected ? "●" : ""}</span>
+								<span className="flex shrink-0 items-center gap-0.5">
+									{option.bp.inputs.map((input) => (
+										<ItemIcon key={input.typeID} typeId={input.typeID} size={16} />
+									))}
+								</span>
 								<span
 									className={`min-w-0 flex-1 truncate ${
 										option.excluded ? "line-through decoration-red-400/70" : ""

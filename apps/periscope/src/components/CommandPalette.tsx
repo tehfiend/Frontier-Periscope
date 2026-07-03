@@ -62,7 +62,7 @@ const NAV_ITEMS: {
 	},
 	{
 		path: "/industry",
-		label: "Build Queue",
+		label: "Production Orders",
 		icon: ClipboardList,
 		keywords: "bom manufacturing materials production industry calculator build queue steps jobs",
 	},

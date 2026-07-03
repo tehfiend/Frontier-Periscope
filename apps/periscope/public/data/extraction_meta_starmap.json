@@ -1,9 +1,9 @@
 {
   "version": "1.0.0",
   "source": "EVE Frontier Client ResFiles (resolved from resfileindex.txt)",
-  "starmapcacheResfile": "2e/2edadfca55978bdf_2db9b6855a1b12bcfaa1f6a6ae998b08",
-  "localizationResfile": "2c/2c3038b3c38e91a1_7d2cbd6bece5599a845f9ad3f4451b9f",
-  "extractedAt": "2026-07-01T14:58:15Z",
+  "starmapcacheResfile": "2e/2edadfca55978bdf_32e0d5fe6f80164abdde27d01694caed",
+  "localizationResfile": "2c/2c3038b3c38e91a1_d672ab73dd251b02987c8ccae45b56d0",
+  "extractedAt": "2026-07-03T13:58:22Z",
   "counts": {
     "regions": 274,
     "constellations": 2163,

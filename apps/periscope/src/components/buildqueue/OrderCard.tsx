@@ -1,15 +1,17 @@
-// Order card -- plan 36 (industry-build-queue), Phase 6; Queue / Order / Job (plan 39).
-// One card per build order: header (drag handle, collapse, editable label, per-order totals,
-// merge/reorder/delete) and body (jobs, add-job search, per-order materials summary). The card is a
-// sortable item in the orders SortableContext (the DndContext lives in BuildQueue); its jobs are a
-// nested SortableContext so jobs can be dragged within and between orders. Up/down buttons and the
-// per-job move-to-order dropdown remain as the non-DnD (and keyboard-trivial) fallbacks. Every op
-// delegates to the store mutations (reorderOrders / moveJob / mergeOrders / splitOrder / ...).
+// Order group -- plan 36 (industry-build-queue), Phase 6; Queue / Order / Job (plan 39); unified
+// production-order grid (plan 44). Each Order is a full-width GROUP BAND inside the single shared
+// grid (the column header + bordered frame live once in the view): a rich header band (drag handle,
+// collapse, editable label, per-order totals, location, facilities, merge/reorder/delete) followed
+// by the Order's slice of the unified tree (Target jobs as draggable root rows) and a collapsed
+// per-order Details section (sourcing / deposits / upstream / surplus). The band is the sortable
+// item in the orders SortableContext (the DndContext lives in BuildQueue); the tree's Target roots
+// form a nested SortableContext so Targets drag within and between orders. Every op delegates to the
+// store mutations (reorderOrders / moveJob / mergeOrders / ...).
 
-import { SystemSearch } from "@/components/SystemSearch";
+import { SystemPicker } from "@/components/SystemPicker";
+import { BuildTree, GRID_COLS } from "@/components/buildqueue/BuildTree";
 import { EditableText } from "@/components/buildqueue/EditableText";
 import { FacilityPreferencePanel } from "@/components/buildqueue/FacilityPreferencePanel";
-import { JobRow } from "@/components/buildqueue/JobRow";
 import { OrderMaterials } from "@/components/buildqueue/OrderMaterials";
 import {
 	type OrderRef,
@@ -21,6 +23,7 @@ import {
 } from "@/components/buildqueue/shared";
 import { ProducibleItemSearch } from "@/components/industry/ProducibleItemSearch";
 import type { SolarSystem } from "@/db/types";
+import type { RecentSystem } from "@/hooks/useCharacterRecentSystems";
 import type { BuildQueue, Order, RecipeLockEntry } from "@/lib/buildQueueTypes";
 import { type OrderResult, mergeLocks } from "@/lib/queueResolver";
 import type { ContainerOption, MaterialSourcingPlan } from "@/lib/sourcingPlan";
@@ -48,6 +51,7 @@ import {
 	Layers,
 	Trash2,
 } from "lucide-react";
+import { useState } from "react";
 
 interface OrderCardProps {
 	queueId: string;
@@ -60,8 +64,6 @@ interface OrderCardProps {
 	orders: OrderRef[];
 	data: QueueBlueprintData;
 	recipeLocks: RecipeLockEntry[];
-	/** True when the queue is in global re-optimization mode (per-order material lists are empty). */
-	globalMode: boolean;
 	/** Post-solve per-material container allocation for this order (Phase 4b). */
 	sourcingPlan?: MaterialSourcingPlan[];
 	/** Selectable containers for the per-row sourcing overrides. */
@@ -70,8 +72,10 @@ interface OrderCardProps {
 	containerLabels: Map<string, string>;
 	/** Gate-jump distance per container (containerRefKey -> jumps) for the source-priority badges. */
 	containerJumps?: Map<string, number | undefined>;
-	/** Solar systems for the per-order location picker (plan 41 B4 -- reuses the queue SystemSearch). */
+	/** Solar systems for the per-order location picker (plan 41 B4). */
 	systems: SolarSystem[];
+	/** Recently visited systems for the active character -- the location picker's quick-select list. */
+	recentSystems: RecentSystem[];
 	/** Solar system id -> display name for source-site details. */
 	systemNames?: Map<number, string>;
 	/** Per-unit item volume (m3) by typeId -- with haulJumps, costs this order's sourcing-plan haul (B4). */
@@ -90,17 +94,18 @@ export function OrderCard({
 	orders,
 	data,
 	recipeLocks,
-	globalMode,
 	sourcingPlan,
 	containers,
 	containerLabels,
 	containerJumps,
 	systems,
+	recentSystems,
 	systemNames,
 	volumeMap,
 	haulJumps,
 }: OrderCardProps) {
 	const collapsed = order.collapsed ?? false;
+	const [detailsOpen, setDetailsOpen] = useState(false);
 	const label = order.label?.trim() ? order.label : `Order ${index + 1}`;
 	const prevOrderId = index > 0 ? orders[index - 1]?.id : undefined;
 	// Queue location this order inherits when it sets none -- shown as the location picker's placeholder.
@@ -135,6 +140,17 @@ export function OrderCard({
 	// Job sortable ids -- stable per order (blueprintId is unique within an order).
 	const jobIds = order.jobs.map((j) => `job:${order.id}:${j.blueprintId}`);
 
+	// "from phase N" labels for the tree's upstream badges -- N = 1-based position in the queue.
+	const phaseLabelForOrderIds = (orderIds: string[]): string => {
+		const indexes = orderIds
+			.map((id) => queue.batches.findIndex((b) => b.id === id))
+			.filter((i) => i >= 0)
+			.map((i) => i + 1);
+		if (indexes.length === 0) return "earlier phase";
+		if (indexes.length === 1) return `phase ${indexes[0]}`;
+		return `phases ${indexes.join(", ")}`;
+	};
+
 	function handleAddJob(typeId: number) {
 		const bpId = resolveBlueprintForProduct(typeId, data);
 		if (bpId == null) return;
@@ -145,10 +161,10 @@ export function OrderCard({
 		<div
 			ref={setNodeRef}
 			style={style}
-			className={`rounded-lg border bg-zinc-900/50 ${isDragging ? "border-cyan-500/50" : "border-zinc-800"}`}
+			className={`border-t border-zinc-800 ${isDragging ? "bg-cyan-500/5" : ""}`}
 		>
-			{/* Header */}
-			<div className="flex items-center gap-2 px-3 py-2.5">
+			{/* Order group band header (full-width; distinguishes each Order inside the shared grid) */}
+			<div className="flex items-center gap-2 bg-zinc-900/60 px-3 py-2.5">
 				<button
 					type="button"
 					ref={setActivatorNodeRef}
@@ -266,12 +282,14 @@ export function OrderCard({
 					<div className="flex items-center gap-2 border-b border-zinc-800/50 px-4 py-2">
 						<span className="shrink-0 text-[11px] font-medium text-zinc-500">Location</span>
 						<div className="min-w-0 max-w-xs flex-1">
-							<SystemSearch
-								value={order.location?.systemId ?? null}
+							<SystemPicker
+								value={effectiveSystemId}
 								onChange={(id) =>
 									setOrderLocation(queueId, order.id, id == null ? undefined : { systemId: id })
 								}
 								systems={systems}
+								recent={recentSystems}
+								inherited={order.location?.systemId == null && inheritedSystemId != null}
 								placeholder={
 									inheritedSystemName
 										? `Inherits queue: ${inheritedSystemName}`
@@ -289,83 +307,123 @@ export function OrderCard({
 						</span>
 					</div>
 
-					{data.facilityNames.length > 0 && (
-						<div className="flex items-center gap-2 border-b border-zinc-800/50 px-4 py-2">
-							<span className="shrink-0 text-[11px] font-medium text-zinc-500">Facilities</span>
-							<FacilityPreferencePanel
-								facilityNames={data.facilityNames}
-								value={order.facilityExclude}
-								effectiveExcluded={effectiveFacilityExclude}
-								onChange={(excluded) => setOrderFacilityExclude(queueId, order.id, excluded)}
-								scopeLabel="this order"
-								inheritedFromLabel="queue"
-								align="left"
-							/>
-							<span className="shrink-0 text-[11px] text-zinc-600">
-								{order.facilityExclude !== undefined
-									? "order preference set"
-									: "inherits the queue preference"}
-							</span>
+					{/* Column header for THIS order's tree, grid-aligned so the labels sit over their
+					    columns. The Facilities control shares the row (Item + Source/Recipe span) to save
+					    vertical space; the quantity labels sit above the last five columns. */}
+					<div
+						className="grid items-center border-b border-zinc-800 bg-zinc-900/40 text-[11px] text-zinc-500"
+						style={{ gridTemplateColumns: GRID_COLS }}
+					>
+						<div
+							className="px-2 py-1.5 text-right"
+							title="Queue-wide build sequence of the Targets"
+						>
+							Build #
 						</div>
-					)}
-
-					{/* Jobs */}
-					{order.jobs.length > 0 ? (
-						<SortableContext items={jobIds} strategy={verticalListSortingStrategy}>
-							<div>
-								{order.jobs.map((job, i) => (
-									<JobRow
-										key={`job:${order.id}:${job.blueprintId}`}
-										queueId={queueId}
-										queue={queue}
-										order={order}
-										orderId={order.id}
-										job={job}
-										jobIndex={i}
-										jobCount={order.jobs.length}
-										data={data}
-										orders={orders}
-										containers={containers}
-										containerJumps={containerJumps}
+						<div
+							className="whitespace-nowrap px-2 py-1.5 text-right"
+							title="Per-order build sequence -- deepest dependency first"
+						>
+							Prod #
+						</div>
+						<div className="col-span-2 flex flex-wrap items-center gap-2 px-2 py-1.5">
+							{data.facilityNames.length > 0 ? (
+								<>
+									<span className="shrink-0 font-medium text-zinc-500">Facilities</span>
+									<FacilityPreferencePanel
+										facilityNames={data.facilityNames}
+										value={order.facilityExclude}
+										effectiveExcluded={effectiveFacilityExclude}
+										onChange={(excluded) => setOrderFacilityExclude(queueId, order.id, excluded)}
+										scopeLabel="this order"
+										inheritedFromLabel="queue"
+										align="left"
 									/>
-								))}
-							</div>
+									<span className="shrink-0 text-zinc-600">
+										{order.facilityExclude !== undefined ? "order preference" : "inherits queue"}
+									</span>
+								</>
+							) : (
+								<span className="text-zinc-600">Item · Source / Recipe</span>
+							)}
+						</div>
+						<div className="px-2 py-1.5 text-right">Required</div>
+						<div className="px-2 py-1.5 text-right">Have</div>
+						<div className="px-2 py-1.5 text-right" title="Units produced by this order">
+							Built
+						</div>
+						<div className="px-2 py-1.5 text-right">Need</div>
+						<div className="whitespace-nowrap px-2 py-1.5 text-right">Volume (m³)</div>
+					</div>
+
+					{/* Unified production-order tree (plan 44) -- Targets are the draggable root rows,
+					    expandable to their derived/raw build path. */}
+					{order.jobs.length === 0 ? (
+						<div className="px-4 py-3 text-xs text-zinc-600">
+							No Targets yet -- search below to add the first blueprint, or drag a Target here.
+						</div>
+					) : result ? (
+						<SortableContext items={jobIds} strategy={verticalListSortingStrategy}>
+							<BuildTree
+								order={result}
+								data={data}
+								queueId={queueId}
+								orderId={order.id}
+								queue={queue}
+								rawOrder={order}
+								queueLocks={recipeLocks}
+								orderLocks={order.recipeLocks}
+								containers={containers}
+								containerJumps={containerJumps}
+								orderSourceLocks={order.sourceLocks}
+								phaseLabelForOrderIds={phaseLabelForOrderIds}
+								sourceSystemId={effectiveSystemId}
+								systemNames={systemNames}
+								orders={orders}
+								sortableTargets
+								hideHeader
+							/>
 						</SortableContext>
 					) : (
-						<div className="px-4 py-3 text-xs text-zinc-600">
-							No jobs yet -- search below to add the first blueprint, or drag a job here.
-						</div>
+						<div className="px-4 py-3 text-xs text-zinc-600">Resolving...</div>
 					)}
 
-					{/* Add job */}
+					{/* Add Target */}
 					<div className="border-t border-zinc-800/50 px-4 py-3">
 						<ProducibleItemSearch
 							producibleItems={data.producibleItems}
 							onSelect={(typeId) => handleAddJob(typeId)}
-							placeholder="Add a blueprint to this order..."
+							placeholder="Add a Target to this order..."
 						/>
 					</div>
 
-					{/* Materials summary */}
+					{/* Per-order Details (collapsed) -- sourcing plan / deposits / from-upstream / surplus.
+					    The build path itself lives in the unified tree above (plan 44); this holds only the
+					    supporting tables that don't fit the tree's columns. */}
 					{result && (
-						<div className="border-t border-zinc-800/50 pt-3">
-							<OrderMaterials
-								order={result}
-								queueId={queueId}
-								data={data}
-								recipeLocks={recipeLocks}
-								orderLocks={order.recipeLocks}
-								globalMode={globalMode}
-								sourcingPlan={sourcingPlan}
-								containers={containers}
-								containerLabels={containerLabels}
-								containerJumps={containerJumps}
-								orderSourceLocks={order.sourceLocks}
-								volumeMap={volumeMap}
-								haulJumps={haulJumps}
-								sourceSystemId={effectiveSystemId}
-								systemNames={systemNames}
-							/>
+						<div className="border-t border-zinc-800/50">
+							<button
+								type="button"
+								onClick={() => setDetailsOpen((o) => !o)}
+								className="flex w-full items-center gap-2 px-4 py-2 text-[11px] font-medium text-zinc-500 hover:text-zinc-300"
+								aria-expanded={detailsOpen}
+							>
+								{detailsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+								Details
+								<span className="font-normal text-zinc-600">
+									sourcing · deposits · upstream · surplus
+								</span>
+							</button>
+							{detailsOpen && (
+								<OrderMaterials
+									order={result}
+									queueId={queueId}
+									sourcingPlan={sourcingPlan}
+									containerLabels={containerLabels}
+									volumeMap={volumeMap}
+									haulJumps={haulJumps}
+								/>
+							)}
 						</div>
 					)}
 				</div>

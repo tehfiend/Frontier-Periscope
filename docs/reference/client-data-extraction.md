@@ -50,6 +50,44 @@ C:\CCP\EVE Frontier\
 
 ---
 
+## Star Map / Stellar Data Extraction
+
+`scripts/extract_static_data.py` emits `stellar_systems.json`, `stellar_regions.json`,
+`stellar_constellations.json`, `stellar_jumps.json`, and `stellar_labels.json` from
+`starmapcache.pickle` (topology + coords) plus name resolution.
+
+### Solar-system names are stored INLINE in systems.static (gotcha)
+
+Region and constellation names resolve straightforwardly: their `.static` records carry a `nameID`
+(offsets 4 and 8) that indexes `localization_fsd_en-us.pickle`.
+
+Solar systems are the trap -- there are THREE candidate name sources and only one is the real
+in-game display name:
+
+1. `systems.static` `nameID` (offset 24) -> a numeric internal code (e.g. `"30113292"`). WRONG.
+2. `localization_fsd_main.pickle` `labels` `{FullPath: "Map/SolarSystems", label: "solar_system_<id>"}`
+   -> a localized string (e.g. `"I.0S7.8N1"`). ALSO WRONG -- a different, non-display name set.
+3. **A length-prefixed ASCII string stored inline in each `systems.static` record.** This IS the
+   in-game display name (e.g. `"O3S-11J"`), verified against Local-channel travel logs.
+
+`extract_inline_system_names()` reads source 3: `[int32 length][name bytes]` at a near-fixed offset
+within each record (118 for most; shifted +/-4 in a minority -- the bytes just before hold an
+unrelated short code, so candidate offsets start at 114). All 24,026 systems resolve, zero duplicates,
+and every current-cycle system seen in the logs matches.
+
+> Both wrong sources (1 and 2) were shipped in earlier passes and mis-named every system, which made
+> the location search and recent-systems picker fail to resolve systems the player had actually visited.
+
+### Coverage: 24,026 mapped systems; older-cycle names drop out
+
+`starmapcache.pickle` and `systems.static` both cover exactly the 24,026 navigable systems
+(IDs `30000001`-`30024026`). That is the full current-cycle universe -- all systems a player visits
+this cycle resolve. Names seen only in OLD-cycle travel logs (`A.8H9.MN1`, `B:18A8` style) are not in
+the current static data: the universe is re-cut between cycles, so those systemIds/names no longer
+exist. That is expected, not a gap -- only current-cycle systems need to resolve.
+
+---
+
 ## Landscape / Source-Site Extraction
 
 `scripts/extract_landscape.py` mirrors the static/game-data extractor toolchain: it runs under

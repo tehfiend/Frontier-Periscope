@@ -1,40 +1,29 @@
-// Build Queue view -- plan 36 (industry-build-queue); Queue / Order / Job (plan 39).
-// Renders the active build queue as an ordered list of order cards. The queue is solved as a
-// sequential pipeline by resolveQueue (per-order LP solve + carry-forward stock pool); this view
-// assembles the blueprint context + base stock and wires the store mutations to the UI.
-//
-// It reuses the extracted industry / build-queue components (ProducibleItemSearch, RecipeDropdown,
-// SurplusTable, the InputDrillDown tables) and the BomStockPanel for stock. Drag/drop reordering, the
-// either/or recipe drill-down, and the container-sourcing UI are all live here. This view also
-// hosts the queue-level extras: F3 global re-optimization (a single whole-queue solve surfaced via
-// resolved.global) and F6 live drag reflow (a transient order sequence fed to the SortableContext during
-// a drag).
+// Production Orders view -- plan 36 (industry-build-queue); Queue / Order / Job (plan 39); unified
+// production-order grid (plan 44). Renders the active queue as ONE grid: a single shared column
+// header, each Order a draggable group band with its OWN nested build tree, and the Queue BOM as the
+// footer. The queue is solved as a sequential per-order pipeline by resolveQueue (per-order LP solve
+// + carry-forward stock pool); this view assembles the blueprint context + base stock and wires the
+// store mutations to the UI. Drag/drop reordering, the either/or recipe drill-down, and the
+// container-sourcing UI are all live here. (Global re-optimization mode was removed in plan 44 --
+// every Order always keeps its own nested tree; F6 live drag reflow feeds a transient order sequence
+// to the SortableContext during a drag.)
 
 import { BomStockPanel, type SsuInventory } from "@/components/BomStockPanel";
 import { ItemIcon } from "@/components/ItemIcon";
-import { BuildTree } from "@/components/buildqueue/BuildTree";
-import {
-	type DepositRow,
-	DepositsTable,
-	depositRowsFromRecords,
-} from "@/components/buildqueue/DepositsTable";
 import { facilityNamesFromBlueprintFacilities } from "@/components/buildqueue/FacilityPreferencePanel";
 import { OrderCard } from "@/components/buildqueue/OrderCard";
 import { QueueHeader } from "@/components/buildqueue/QueueHeader";
 import { ScratchPadPanel } from "@/components/buildqueue/ScratchPadPanel";
 import { SourceOverridesPanel } from "@/components/buildqueue/SourceOverridesPanel";
-import { SourcingPlanTable } from "@/components/buildqueue/SourcingPlanTable";
 import {
 	type OrderRef,
 	type QueueBlueprintData,
 	formatTime,
 	formatVolume,
-	isRecipeSteered,
 	queueOpenChoiceCount,
 	resolveBlueprintForProduct,
 } from "@/components/buildqueue/shared";
 import { ProducibleItemSearch } from "@/components/industry/ProducibleItemSearch";
-import { SurplusTable } from "@/components/industry/SurplusTable";
 import { db } from "@/db";
 import { CHAIN_ENABLED } from "@/featureFlags";
 import {
@@ -42,9 +31,9 @@ import {
 	findRawMaterials,
 	useBlueprintData,
 } from "@/hooks/useBlueprintData";
+import { useCharacterRecentSystems } from "@/hooks/useCharacterRecentSystems";
 import type { Blueprint } from "@/lib/bomTypes";
 import type { BuildQueue as BuildQueueModel, ContainerRef, Order } from "@/lib/buildQueueTypes";
-import type { BuildTreeOrder } from "@/lib/buildTree";
 import {
 	buildGateGraph,
 	containerJumpDistances,
@@ -102,10 +91,8 @@ import {
 	ChevronRight,
 	Clock,
 	Factory,
-	Info,
 	Layers,
 	Plus,
-	Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -164,30 +151,6 @@ function CollapsibleSection({
 				)}
 			</button>
 			{open && children}
-		</div>
-	);
-}
-
-/**
- * Section frame for the F3 global-plan tables. Mirrors OrderMaterials' (non-exported) Subsection so
- * the queue-level gather / build / from-stock / surplus lists read identically to the per-order ones.
- */
-function PlanSubsection({
-	title,
-	count,
-	children,
-}: {
-	title: string;
-	count: number;
-	children: React.ReactNode;
-}) {
-	return (
-		<div className="overflow-hidden rounded border border-zinc-800 bg-zinc-900/40">
-			<div className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-zinc-400">
-				{title}
-				<span className="text-zinc-600">({count})</span>
-			</div>
-			{children}
 		</div>
 	);
 }
@@ -251,6 +214,9 @@ export function BuildQueue() {
 	// source list can be distance-sorted against the queue location (plan 39 Phase 5).
 	const fieldUnits = useLiveQuery(() => db.fieldStorageUnits.toArray(), []);
 	const solarSystems = useLiveQuery(() => db.solarSystems.toArray(), []) ?? [];
+	// Recently visited systems for the active character -- computed once, shared by the queue and
+	// every order location picker as their quick-select list.
+	const recentSystems = useCharacterRecentSystems(solarSystems);
 	const jumps = useLiveQuery(() => db.jumps.toArray(), []);
 	const systemNames = useMemo(
 		() => new Map(solarSystems.map((system) => [system.id, system.name ?? `#${system.id}`])),
@@ -514,7 +480,10 @@ export function BuildQueue() {
 			return ja - jb;
 		});
 		const baseStock = mergeStockMaps(...breakdown.map((c) => c.items));
-		return resolveQueue(activeQueue, ctx, baseStock, breakdown);
+		// Global re-optimization mode was removed (plan 44) -- always solve per-order so every Order
+		// keeps its own nested build tree. Any queue with a stale persisted `reoptMode: "global"` is
+		// coerced back to per-order here (the field is left untouched; it is simply never honored).
+		return resolveQueue({ ...activeQueue, reoptMode: "perStep" }, ctx, baseStock, breakdown);
 	}, [activeQueue, ctx, ssuInventories, fieldStorageBreakdown, containerJumps]);
 
 	const resultByOrder = useMemo(() => {
@@ -528,15 +497,6 @@ export function BuildQueue() {
 	const sourcingPlan = useMemo<QueueSourcingPlan | null>(() => {
 		if (!resolved) return null;
 		return buildQueueSourcingPlan(resolved);
-	}, [resolved]);
-
-	// Queue-total deposits (plan 41 B1) -- only used in global mode, where the per-order material lists
-	// (and their per-order Deposits tables) are empty. Global mode has no order sequence to route along, so
-	// the resolver deposits everything to the reserved Unassigned bucket (decision 9); this renders those
-	// recorded deposits straight from the global plan.
-	const globalDeposits = useMemo<DepositRow[]>(() => {
-		if (!resolved?.global) return [];
-		return depositRowsFromRecords(resolved.global.deposits);
 	}, [resolved]);
 
 	// Whether any container-sourcing override is configured anywhere (gates the overrides panel so it
@@ -579,26 +539,34 @@ export function BuildQueue() {
 	// Queue-wide count of producible inputs that still have an open either/or choice (on auto pick).
 	const openChoiceCount = useMemo(() => {
 		if (!resolved || !activeQueue) return 0;
-		// Global mode empties the per-order build lists, so count either/or choices from the single
-		// queue-level plan (resolved.global.build) instead -- otherwise the badge would read 0.
-		if (resolved.global) {
-			return resolved.global.build.filter(
-				(b) =>
-					b.alternativeBlueprintIds.length > 1 &&
-					!isRecipeSteered(b.typeId, activeQueue.recipeLocks),
-			).length;
-		}
 		return queueOpenChoiceCount(resolved.orders, activeQueue.recipeLocks);
 	}, [resolved, activeQueue]);
 
-	const globalTreeOrder = useMemo<BuildTreeOrder | null>(() => {
-		if (!resolved?.global) return null;
-		return {
-			jobs: resolved.orders.flatMap((order) => order.jobs),
-			gather: resolved.global.gather,
-			build: resolved.global.build,
-			fromUpstream: resolved.global.fromUpstream,
+	// Queue-level BOM roll-up (plan 44, OQ-3): SUM each order's already-resolved net need (post-stock,
+	// post-carry-forward stillNeed) across the whole queue -- never gross demand, so an intermediate
+	// covered by an earlier order's surplus does not reappear here.
+	const queueRollup = useMemo(() => {
+		if (!resolved) return null;
+		const acc = new Map<number, { typeId: number; typeName: string; qty: number; raw: boolean }>();
+		const add = (item: { typeId: number; typeName: string; stillNeed: number }, raw: boolean) => {
+			if (item.stillNeed <= 0) return;
+			const entry = acc.get(item.typeId) ?? {
+				typeId: item.typeId,
+				typeName: item.typeName,
+				qty: 0,
+				raw,
+			};
+			entry.qty += item.stillNeed;
+			acc.set(item.typeId, entry);
 		};
+		for (const order of resolved.orders) {
+			for (const g of order.gather) add(g, true);
+			for (const b of order.build) add(b, false);
+		}
+		const rows = [...acc.values()].sort(
+			(a, b) => Number(a.raw) - Number(b.raw) || a.typeName.localeCompare(b.typeName),
+		);
+		return rows.length > 0 ? rows : null;
 	}, [resolved]);
 
 	const orderRefs = useMemo<OrderRef[]>(
@@ -639,6 +607,9 @@ export function BuildQueue() {
 	// Minimal info for the drag overlay (no live store mutation during drag; the store stays the
 	// source of truth and commits only on drag end).
 	const [activeDrag, setActiveDrag] = useState<{ type: string; label: string } | null>(null);
+
+	// Queue-level BOM footer band (plan 44) -- collapsed by default.
+	const [queueBomOpen, setQueueBomOpen] = useState(false);
 
 	// F6 -- transient order sequence during a drag. Null except while an order is being dragged; updated in
 	// onDragOver so the orders list opens a gap LIVE (Dexie is only written on drag end). Job reordering
@@ -784,7 +755,71 @@ export function BuildQueue() {
 	}
 
 	const totals = resolved?.totals;
-	const globalPlan = resolved?.global;
+
+	// Queue BOM footer band -- the footer of the single production-order grid (plan 44).
+	const queueBomFooter = queueRollup ? (
+		<div className="border-t border-zinc-800 bg-zinc-900/60">
+			<button
+				type="button"
+				onClick={() => setQueueBomOpen((o) => !o)}
+				className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs font-medium text-zinc-300 hover:bg-zinc-800/30"
+				aria-expanded={queueBomOpen}
+			>
+				{queueBomOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+				Queue BOM (all orders)
+				<span className="text-zinc-500">({queueRollup.length})</span>
+				{!queueBomOpen && (
+					<span className="ml-2 font-normal text-zinc-500">
+						net need summed across every order, post-stock and carry-forward
+					</span>
+				)}
+			</button>
+			{queueBomOpen && (
+				<table className="w-full text-sm">
+					<thead>
+						<tr className="border-t border-zinc-800 text-xs text-zinc-500">
+							<th className="px-4 py-2 text-left">Item</th>
+							<th className="px-4 py-2 text-left">Kind</th>
+							<th className="px-4 py-2 text-right">Need</th>
+							<th className="px-4 py-2 text-right">Volume (m³)</th>
+						</tr>
+					</thead>
+					<tbody>
+						{queueRollup.map((row) => {
+							const unit = volumeMap.get(row.typeId);
+							return (
+								<tr key={row.typeId} className="border-t border-zinc-800/50 hover:bg-zinc-800/30">
+									<td className="px-4 py-2 text-zinc-200">
+										<span className="flex items-center gap-2">
+											<ItemIcon typeId={row.typeId} />
+											{row.typeName}
+										</span>
+									</td>
+									<td className="px-4 py-2">
+										{row.raw ? (
+											<span className="rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-400">
+												Gather
+											</span>
+										) : (
+											<span className="rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-300">
+												Build
+											</span>
+										)}
+									</td>
+									<td className="px-4 py-2 text-right font-mono text-violet-300">
+										{row.qty.toLocaleString()}
+									</td>
+									<td className="px-4 py-2 text-right font-mono text-zinc-400">
+										{unit == null ? "??" : formatVolume(unit * row.qty)}
+									</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
+			)}
+		</div>
+	) : null;
 
 	return (
 		<div className="flex h-full flex-col">
@@ -792,7 +827,7 @@ export function BuildQueue() {
 			<div className="border-b border-zinc-800 px-5 py-3">
 				<div className="flex items-center gap-2">
 					<Factory size={18} className="text-violet-500" />
-					<h1 className="text-base font-semibold text-zinc-100">Build Queue</h1>
+					<h1 className="text-base font-semibold text-zinc-100">Production Orders</h1>
 				</div>
 			</div>
 
@@ -802,6 +837,7 @@ export function BuildQueue() {
 					queues={queues}
 					openChoiceCount={openChoiceCount}
 					systems={solarSystems}
+					recentSystems={recentSystems}
 				/>
 
 				{/* Chain SSU stock -- selected on-chain storage units feed their live inventory into
@@ -860,121 +896,15 @@ export function BuildQueue() {
 						{!totals.feasible && (
 							<span className="ml-auto flex items-center gap-1 text-amber-400">
 								<AlertTriangle size={12} />
-								{globalPlan ? "no clean integer plan" : "some orders need attention"}
+								some orders need attention
 							</span>
 						)}
 					</div>
 				)}
 
-				{/* F3 -- global re-optimization plan. Rendered only in "global" mode: this single
-				    whole-queue plan replaces the per-order material breakdown (orders below still list
-				    their jobs). The totals bar above already reflects globalPlan.time / volume. */}
-				{globalPlan && activeQueue.batches.length > 0 && (
-					<div className="mb-4 space-y-3">
-						<div className="flex items-start gap-2 rounded-lg border border-violet-500/30 bg-violet-500/5 px-4 py-3 text-xs text-violet-200/90">
-							<Info size={14} className="mt-0.5 shrink-0 text-violet-300" />
-							<div className="space-y-1">
-								<div className="flex items-center gap-1.5 font-medium text-violet-200">
-									<Zap size={13} />
-									Global re-optimization
-								</div>
-								<p className="text-violet-200/80">
-									Sourcing is optimized across the whole queue as one solve, so a recipe choice in
-									one order can share a co-product needed by another. Per-Order recipe locks are
-									ignored in this mode and the per-order material breakdown is omitted -- this
-									single queue-level plan (gather / build / surplus) covers the whole queue, while
-									each order below still lists its jobs. Switch back to Per-Order for legible
-									per-order gather/build lists.
-								</p>
-								<p className="text-violet-200/80">
-									This plan assumes free build ordering, so the order sequence listed below may not
-									be executable as written if a later order's co-product feeds an earlier order.
-								</p>
-							</div>
-						</div>
-
-						{globalTreeOrder &&
-							(globalPlan.gather.length > 0 ||
-								globalPlan.build.length > 0 ||
-								globalPlan.fromUpstream.length > 0) && (
-								<PlanSubsection title="Build path" count={globalTreeOrder.jobs.length}>
-									<BuildTree
-										order={globalTreeOrder}
-										data={data}
-										queueId={activeQueue.id}
-										orderId={null}
-										queue={activeQueue}
-										queueLocks={activeQueue.recipeLocks}
-										sourceSystemId={queueSystemId}
-										systemNames={systemNames}
-									/>
-								</PlanSubsection>
-							)}
-
-						{sourcingPlan?.global && sourcingPlan.global.length > 0 && (
-							<PlanSubsection
-								title="Sourcing plan (pull from storage)"
-								count={sourcingPlan.global.length}
-							>
-								<SourcingPlanTable
-									plans={sourcingPlan.global}
-									containerLabels={baseContainerLabels}
-									volumeMap={volumeMap}
-									haulJumps={containerJumps}
-								/>
-							</PlanSubsection>
-						)}
-
-						{globalPlan.fromUpstream.length > 0 && (
-							<PlanSubsection title="From stock" count={globalPlan.fromUpstream.length}>
-								<table className="w-full text-sm">
-									<thead>
-										<tr className="border-t border-zinc-800 text-xs text-zinc-500">
-											<th className="px-4 py-2 text-left">Item</th>
-											<th className="px-4 py-2 text-right">Quantity</th>
-											<th className="px-4 py-2 text-right">Volume (m³)</th>
-										</tr>
-									</thead>
-									<tbody>
-										{globalPlan.fromUpstream.map((item) => (
-											<tr
-												key={item.typeId}
-												className="border-t border-zinc-800/50 hover:bg-zinc-800/30"
-											>
-												<td className="px-4 py-2 text-zinc-200">
-													<span className="flex items-center gap-2">
-														<ItemIcon typeId={item.typeId} />
-														{item.typeName}
-													</span>
-												</td>
-												<td className="px-4 py-2 text-right font-mono text-cyan-400">
-													{item.quantity.toLocaleString()}
-												</td>
-												<td className="px-4 py-2 text-right font-mono text-zinc-400">
-													{item.volume < 0 ? "??" : formatVolume(item.volume)}
-												</td>
-											</tr>
-										))}
-									</tbody>
-								</table>
-							</PlanSubsection>
-						)}
-
-						{globalPlan.surplus.length > 0 && (
-							<PlanSubsection title="Surplus (co-products)" count={globalPlan.surplus.length}>
-								<SurplusTable items={globalPlan.surplus} />
-							</PlanSubsection>
-						)}
-
-						{globalDeposits.length > 0 && (
-							<PlanSubsection title="Deposits (push to storage)" count={globalDeposits.length}>
-								<DepositsTable rows={globalDeposits} containerLabels={baseContainerLabels} />
-							</PlanSubsection>
-						)}
-					</div>
-				)}
-
-				{/* Orders */}
+				{/* Orders -- ONE unified grid in BOTH modes (plan 44). Per-order mode groups Targets under
+				    draggable Order bands; global mode shows the single shared-solve tree (Order-tagged) and
+				    moves order editing into a "Manage orders" settings panel. Empty state is shared. */}
 				{activeQueue.batches.length === 0 ? (
 					<div className="rounded-lg border border-dashed border-zinc-700 bg-zinc-900/30 p-8 text-center">
 						<Factory size={28} className="mx-auto mb-3 text-zinc-600" />
@@ -1008,7 +938,9 @@ export function BuildQueue() {
 						onDragEnd={handleDragEnd}
 						onDragCancel={handleDragCancel}
 					>
-						<div className="space-y-3">
+						{/* Single production-order grid (plan 44): each Order is a draggable group band with
+						    its OWN nested build tree + column header, and the Queue BOM is the footer. */}
+						<div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/40">
 							<SortableContext items={orderIds} strategy={verticalListSortingStrategy}>
 								{orderedOrders.map((order, index) => (
 									<OrderCard
@@ -1022,26 +954,29 @@ export function BuildQueue() {
 										orders={orderRefs}
 										data={data}
 										recipeLocks={activeQueue.recipeLocks}
-										globalMode={!!globalPlan}
 										sourcingPlan={sourcingPlan?.byOrder.get(order.id)}
 										containers={containerOptions}
 										containerLabels={baseContainerLabels}
 										containerJumps={containerJumps}
 										systems={solarSystems}
+										recentSystems={recentSystems}
 										systemNames={systemNames}
 										volumeMap={volumeMap}
 										haulJumps={haulJumpsByOrder.get(order.id)}
 									/>
 								))}
 							</SortableContext>
+
 							<button
 								type="button"
 								onClick={handleAddOrder}
-								className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-700 py-2.5 text-xs text-zinc-500 hover:border-cyan-500/50 hover:text-cyan-300"
+								className="flex w-full items-center justify-center gap-1 border-t border-zinc-800 py-2.5 text-xs text-zinc-500 hover:bg-zinc-800/40 hover:text-cyan-300"
 							>
 								<Plus size={14} />
 								Add order
 							</button>
+
+							{queueBomFooter}
 						</div>
 						<DragOverlay>
 							{activeDrag ? (

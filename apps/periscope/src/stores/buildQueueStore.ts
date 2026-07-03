@@ -16,7 +16,6 @@ import {
 	type Order,
 	type QueueLocation,
 	type RecipeLockEntry,
-	type ReoptMode,
 	type ScratchItem,
 	type SourceLockEntry,
 	createBuildQueue,
@@ -152,9 +151,13 @@ export async function getActiveQueueId(): Promise<string | undefined> {
 /** Append a new empty order. Returns the new order id. */
 export async function addOrder(queueId: string, label?: string): Promise<string> {
 	const orderId = crypto.randomUUID();
-	const order: Order = { id: orderId, jobs: [] };
-	if (label !== undefined) order.label = label;
-	await updateQueue(queueId, (q) => ({ ...q, batches: [...q.batches, order] }));
+	await updateQueue(queueId, (q) => {
+		const order: Order = { id: orderId, jobs: [] };
+		if (label !== undefined) order.label = label;
+		// New orders default their location anchor to the queue location (user can override or clear).
+		if (q.location?.systemId != null) order.location = { systemId: q.location.systemId };
+		return { ...q, batches: [...q.batches, order] };
+	});
 	return orderId;
 }
 
@@ -494,17 +497,6 @@ export async function clearOrderRecipeLock(
 				: b,
 		),
 	}));
-}
-
-// ── Re-optimization mode (F3) ────────────────────────────────────────────────
-
-/**
- * Set the queue's re-optimization mode. "global" collapses the whole queue into ONE solve
- * (cross-order optimality, a single queue-level gather/build plan); "perStep" (the default) keeps the
- * per-order pipeline. See ReoptMode / resolveQueue.
- */
-export async function setReoptMode(queueId: string, mode: ReoptMode): Promise<void> {
-	await updateQueue(queueId, (q) => ({ ...q, reoptMode: mode }));
 }
 
 /** Set whether held raw stock should drive stock-derived split pins. */

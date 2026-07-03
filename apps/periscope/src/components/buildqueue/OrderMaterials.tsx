@@ -1,54 +1,28 @@
-// Per-Order materials summary -- plan 36 (industry-build-queue), Phase 7; Queue / Order / Job (plan 39).
-// Compact gather (raws) / build (intermediates) / from-upstream / surplus lists for one order.
-// Phase 7 makes the build + gather sections interactive: the build list is the either/or recipe
-// drill-down (BuildChoiceTable -> RecipeAlternatives, lock/prefer/eliminate). From-upstream and
-// surplus stay read-only (reused SurplusTable). The build subsection's hint counts the inputs that
-// still have an OPEN either/or choice (more than one recipe, not yet steered). Build rows are the
-// optimizer-DERIVED intermediates (authored Target jobs live in the order card's job rows).
+// Per-Order summaries -- plan 36 (industry-build-queue), Phase 7; Queue / Order / Job (plan 39);
+// unified tree (plan 44). The build path itself now renders as the unified production-order tree in
+// OrderCard -- this component keeps the supporting per-order summaries: sourcing plan (pull from
+// storage), deposits (push to storage), from-upstream, and surplus. All read-only.
 
 import { ItemIcon } from "@/components/ItemIcon";
-import { BuildTree } from "@/components/buildqueue/BuildTree";
 import { DepositsTable, projectOrderDeposits } from "@/components/buildqueue/DepositsTable";
 import { SourcingPlanTable } from "@/components/buildqueue/SourcingPlanTable";
-import {
-	type QueueBlueprintData,
-	formatVolume,
-	orderOpenChoiceCount,
-} from "@/components/buildqueue/shared";
+import { formatVolume } from "@/components/buildqueue/shared";
 import { SurplusTable } from "@/components/industry/SurplusTable";
-import type { RecipeLockEntry, SourceLockEntry } from "@/lib/buildQueueTypes";
-import { type OrderResult, mergeLocks } from "@/lib/queueResolver";
-import type { ContainerOption, MaterialSourcingPlan } from "@/lib/sourcingPlan";
+import type { OrderResult } from "@/lib/queueResolver";
+import type { MaterialSourcingPlan } from "@/lib/sourcingPlan";
 import { useActiveQueue } from "@/stores/buildQueueStore";
 
 interface OrderMaterialsProps {
 	order: OrderResult;
 	queueId: string;
-	data: QueueBlueprintData;
-	/** Queue-global recipe locks (the default lock scope). */
-	recipeLocks: RecipeLockEntry[];
-	/** This order's per-order lock overrides, if any (F2 -- override queue locks per type). */
-	orderLocks: RecipeLockEntry[] | undefined;
-	/** True when the queue is in global re-optimization mode (per-order material lists are empty). */
-	globalMode: boolean;
 	/** Post-solve per-material container allocation for this order (Phase 4b). */
 	sourcingPlan?: MaterialSourcingPlan[];
-	/** Selectable containers for the per-row Derived sourcing override. */
-	containers: ContainerOption[];
 	/** containerRefKey -> display label for the sourcing plan table. */
 	containerLabels: Map<string, string>;
-	/** Gate-jump distance per container (containerRefKey -> jumps) for the Derived source-priority badges. */
-	containerJumps?: Map<string, number | undefined>;
-	/** This order's per-typeId source locks (cascade layer 4 -- written by the Derived row control). */
-	orderSourceLocks?: SourceLockEntry[];
 	/** Per-unit item volume (m3) by typeId -- with haulJumps, costs the sourcing-plan haul (plan 41 B4). */
 	volumeMap?: Map<number, number>;
 	/** Gate-jumps from THIS order's location (else the queue) to each container, for the haul readout. */
 	haulJumps?: Map<string, number | undefined>;
-	/** Effective source-site origin: order location when set, else queue location. */
-	sourceSystemId?: number | null;
-	/** Solar system id -> display name for source-site details. */
-	systemNames?: Map<number, string>;
 }
 
 function Subsection({
@@ -77,41 +51,21 @@ function Subsection({
 export function OrderMaterials({
 	order,
 	queueId,
-	data,
-	recipeLocks,
-	orderLocks,
-	globalMode,
 	sourcingPlan,
-	containers,
 	containerLabels,
-	containerJumps,
-	orderSourceLocks,
 	volumeMap,
 	haulJumps,
-	sourceSystemId,
-	systemNames,
 }: OrderMaterialsProps) {
-	// EFFECTIVE locks (order overrides queue per type) so the open-choice hint reflects order-level steers.
-	const mergedLocks = mergeLocks(recipeLocks, orderLocks);
-	const openChoiceCount = orderOpenChoiceCount(order, mergedLocks);
-	const buildHint =
-		openChoiceCount > 0
-			? `${openChoiceCount} default choice${openChoiceCount === 1 ? "" : "s"} shown; click to change`
-			: undefined;
-
 	// Deposits projection (plan 41 B0): where this order's outputs land (effective outputDest cascade).
 	// OrderMaterials only renders within the active queue's orders, so the active queue IS this order's
 	// queue -- we read it reactively to resolve the cascade (OrderResult alone lacks the queue/job scopes).
-	// Suppressed in global mode (per-order lists are queue-level there; the queue-total summary covers it).
 	const activeQueue = useActiveQueue();
 	const rawOrder =
 		activeQueue?.id === queueId
 			? activeQueue.batches.find((b) => b.id === order.orderId)
 			: undefined;
 	const deposits =
-		!globalMode && activeQueue && rawOrder
-			? projectOrderDeposits(order, activeQueue, rawOrder)
-			: [];
+		activeQueue && rawOrder ? projectOrderDeposits(order, activeQueue, rawOrder) : [];
 	const phaseLabelForOrderIds = (orderIds: string[]): string => {
 		const indexes = orderIds
 			.map((id) => activeQueue?.batches.findIndex((b) => b.id === id) ?? -1)
@@ -135,48 +89,23 @@ export function OrderMaterials({
 
 	const hasSourcingPlan = (sourcingPlan?.length ?? 0) > 0;
 	const hasAnything =
-		order.gather.length > 0 ||
-		order.build.length > 0 ||
 		order.fromUpstream.length > 0 ||
 		order.surplus.length > 0 ||
 		hasSourcingPlan ||
 		deposits.length > 0;
 
+	// The build path (and its materials) render in the unified tree above -- when there is no extra
+	// sourcing/deposit/upstream/surplus detail, say so (the Details section is always expandable).
 	if (!hasAnything) {
-		// In global mode the per-order lists are intentionally empty (the plan is queue-level), so the
-		// "fully covered" wording would be misleading -- point the user to the queue-level plan instead.
 		return (
 			<div className="px-4 py-3 text-xs text-zinc-600">
-				{globalMode
-					? "Materials are shown in the queue-level plan above (global mode)."
-					: "No additional materials -- this order's inputs are fully covered."}
+				No additional sourcing, deposit, or surplus details for this order.
 			</div>
 		);
 	}
 
 	return (
 		<div className="space-y-3 px-4 pb-4">
-			{(order.gather.length > 0 || order.build.length > 0 || order.fromUpstream.length > 0) && (
-				<Subsection title="Build path" count={order.jobs.length} hint={buildHint}>
-					<BuildTree
-						order={order}
-						data={data}
-						queueId={queueId}
-						orderId={order.orderId}
-						queue={activeQueue}
-						rawOrder={rawOrder}
-						queueLocks={recipeLocks}
-						orderLocks={orderLocks}
-						containers={containers}
-						containerJumps={containerJumps}
-						orderSourceLocks={orderSourceLocks}
-						phaseLabelForOrderIds={phaseLabelForOrderIds}
-						sourceSystemId={sourceSystemId}
-						systemNames={systemNames}
-					/>
-				</Subsection>
-			)}
-
 			{hasSourcingPlan && sourcingPlan && (
 				<Subsection
 					title="Sourcing plan (pull from storage)"

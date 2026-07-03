@@ -1,15 +1,20 @@
+// Unified production-order build tree -- plan 44. ONE grid per order: the authored Target jobs are
+// the root rows (draggable between orders, runs/split/move/remove inline), expandable to their full
+// derived/raw build path. Columns: Build # (queue-wide Target sequence) | Production # (per-order
+// build sequence, deepest dependency first) | Item | Source/Recipe | Required | Have | Built | Need
+// | Volume. Rows are CSS-grid divs (not a <table>) so dnd-kit transforms, editable cells, and
+// full-width drill-down sub-rows compose cleanly. The same component renders the global-mode
+// queue-level tree (no drag -- it lives outside the DndContext; Target roots get an "Order N" tag).
+
 import { ItemIcon } from "@/components/ItemIcon";
-import { FacilityAvailabilityBadge } from "@/components/buildqueue/FacilityPreferencePanel";
-import {
-	HaveCell,
-	NeedCell,
-	StillNeedCell,
-	VolumeCell,
-} from "@/components/buildqueue/InputDrillDown";
 import { OutputDestControl } from "@/components/buildqueue/OutputDestControl";
 import { RecipeAlternatives } from "@/components/buildqueue/RecipeAlternatives";
 import { RowSourceControl } from "@/components/buildqueue/RowSourceControl";
-import { type QueueBlueprintData, isRecipeSteered } from "@/components/buildqueue/shared";
+import {
+	type OrderRef,
+	type QueueBlueprintData,
+	isRecipeSteered,
+} from "@/components/buildqueue/shared";
 import {
 	RecipeDropdown,
 	facilityRecipeLabel,
@@ -31,17 +36,32 @@ import { buildOrderTree } from "@/lib/buildTree";
 import type { LandscapeData, LandscapeMaterialSource } from "@/lib/landscapeData";
 import { useLandscapeData } from "@/lib/landscapeData";
 import { nearestSourceSites } from "@/lib/proximity";
-import { mergeLocks } from "@/lib/queueResolver";
+import { mergeLocks, resolveEffectiveOverrides } from "@/lib/queueResolver";
 import type { ContainerOption } from "@/lib/sourcingPlan";
 import {
+	clearOrderRecipeLock,
 	clearOrderSourceLock,
+	clearRecipeLock,
+	moveJob,
+	removeJob,
 	setJobBlueprint,
 	setJobOverrides,
+	setJobRuns,
 	setOrderRecipeLock,
 	setOrderSourceLock,
 	setRecipeLock,
+	splitOrder,
 } from "@/stores/buildQueueStore";
-import { ChevronDown, ChevronRight, GitFork } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+	AlertTriangle,
+	ChevronDown,
+	ChevronRight,
+	GripVertical,
+	Scissors,
+	Trash2,
+} from "lucide-react";
 import { Fragment, memo, useMemo, useState } from "react";
 
 interface BuildTreeProps {
@@ -59,10 +79,126 @@ interface BuildTreeProps {
 	phaseLabelForOrderIds?: (orderIds: string[]) => string;
 	sourceSystemId?: number | null;
 	systemNames?: Map<number, string>;
+	/** Order refs for the Target rows' move-to-order select. */
+	orders?: OrderRef[];
+	/** True when the tree renders inside a jobs SortableContext (per-order mode): Target roots drag. */
+	sortableTargets?: boolean;
+	/** Suppress the built-in column header -- the unified grid renders ONE shared header up top. */
+	hideHeader?: boolean;
+}
+
+/**
+ * Shared column template -- the queue-level header row and every tree row (across every Order in the
+ * single unified grid) use the same fixed template so columns stay aligned without <table> semantics
+ * (which fight dnd-kit transforms and full-width sub-rows). Exported so the view can render ONE
+ * column header above all the Order group bands (plan 44 unified grid).
+ * Build # | Production # | Item | Source/Recipe | Required | Have | Built | Need | Volume.
+ */
+export const GRID_COLS =
+	"3.5rem 5.5rem minmax(15rem,2fr) minmax(13rem,2.5fr) 5.5rem 5rem 5rem 5.5rem 6rem";
+
+/** The single shared column header for the unified production grid (rendered once, at the top). */
+export function ProductionGridHeader() {
+	return (
+		<div
+			className="grid items-center border-b border-zinc-800 bg-zinc-900/60 text-xs text-zinc-500"
+			style={{ gridTemplateColumns: GRID_COLS }}
+		>
+			<div className="px-3 py-2 text-right" title="Queue-wide build sequence of the Target items">
+				Build #
+			</div>
+			<div
+				className="whitespace-nowrap px-3 py-2 text-right"
+				title="Per-order production sequence -- the order jobs must be run, deepest dependency first"
+			>
+				Production #
+			</div>
+			<div className="py-2 pl-2 pr-2 text-left">Item</div>
+			<div className="px-2 py-2 text-left">Source / Recipe</div>
+			<div className="px-2 py-2 text-right">Required</div>
+			<div className="px-2 py-2 text-right">Have</div>
+			<div className="px-2 py-2 text-right" title="Produced by derived jobs, net of stock">
+				Built
+			</div>
+			<div className="px-2 py-2 text-right">Need</div>
+			<div className="whitespace-nowrap px-2 py-2 text-right">Volume (m³)</div>
+		</div>
+	);
 }
 
 function formatQty(value: number): string {
 	return value.toLocaleString();
+}
+
+/** Build # / Production # sequence cell (Plan 44 Decisions 2-3). Blank where unnumbered. */
+function IndexCell({ value, accent }: { value: number | undefined; accent?: boolean }) {
+	return (
+		<div
+			className={`px-3 py-2 text-right font-mono text-xs ${
+				accent ? "text-emerald-300/90" : "text-zinc-400"
+			}`}
+		>
+			{value ?? ""}
+		</div>
+	);
+}
+
+function RequiredCell({ value }: { value: number }) {
+	return <div className="px-2 py-2 text-right font-mono text-zinc-400">{formatQty(value)}</div>;
+}
+
+function HaveQtyCell({ value }: { value: number }) {
+	return (
+		<div className="px-2 py-2 text-right font-mono text-cyan-400">
+			{value > 0 ? formatQty(value) : "--"}
+		</div>
+	);
+}
+
+/** Built column (Plan 44 Decision 12): "--" for Targets, 0 for raws, stillNeed for derived. */
+function BuiltCell({ value }: { value: number | undefined }) {
+	if (value == null) {
+		return <div className="px-2 py-2 text-right font-mono text-zinc-600">--</div>;
+	}
+	return (
+		<div
+			className={`px-2 py-2 text-right font-mono ${value === 0 ? "text-zinc-600" : "text-sky-300"}`}
+		>
+			{formatQty(value)}
+		</div>
+	);
+}
+
+function NeedQtyCell({ value }: { value: number }) {
+	return (
+		<div
+			className={`px-2 py-2 text-right font-mono ${
+				value === 0 ? "text-green-400" : "text-violet-300"
+			}`}
+		>
+			{value === 0 ? "0" : formatQty(value)}
+		</div>
+	);
+}
+
+function VolumeQtyCell({ volume, volumeMissing }: { volume: number; volumeMissing: boolean }) {
+	return (
+		<div className="px-2 py-2 text-right">
+			{volumeMissing ? (
+				<span
+					className="inline-flex items-center gap-1 text-amber-400"
+					title="Volume data missing for this item"
+				>
+					<AlertTriangle size={12} />
+					<span className="text-xs">??</span>
+				</span>
+			) : (
+				<span className="font-mono text-zinc-400">
+					{volume.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+				</span>
+			)}
+		</div>
+	);
 }
 
 function splitSourceLabel(
@@ -176,6 +312,75 @@ function writeExclusiveLock(
 	else setRecipeLock(queueId, entry);
 }
 
+const ROW_CLASS = "grid items-center border-t border-zinc-800/50 hover:bg-zinc-800/30";
+// Target (final-tier) roots headline each Order's subtree -- an emerald left accent + faint tint
+// (matching the "Target" badge) sets them apart from the derived/raw rows beneath them.
+const TARGET_ROW_CLASS =
+	"grid items-center border-t border-zinc-800/50 border-l-2 border-l-emerald-500/60 bg-emerald-500/[0.06] hover:bg-emerald-500/[0.12]";
+
+/**
+ * Sortable shell for a draggable Target root: the row div is the sortable node; the drag handle is
+ * handed to the cell renderer so it can sit inline in the item cell (plan 44 OQ-1). Mounted ONLY
+ * for draggable Targets so useSortable never runs outside a DndContext (the global-mode tree).
+ */
+function SortableTargetRow({
+	sortId,
+	orderId,
+	jobIndex,
+	blueprintId,
+	name,
+	className,
+	children,
+}: {
+	sortId: string;
+	orderId: string;
+	jobIndex: number;
+	blueprintId: number;
+	name: string;
+	className: string;
+	children: (dragHandle: React.ReactNode) => React.ReactNode;
+}) {
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		setActivatorNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({
+		id: sortId,
+		data: { type: "job", orderId, jobIndex, blueprintId, name },
+	});
+	const dragHandle = (
+		<button
+			type="button"
+			ref={setActivatorNodeRef}
+			{...attributes}
+			{...listeners}
+			className="shrink-0 cursor-grab touch-none rounded p-0.5 text-zinc-600 hover:text-zinc-300 active:cursor-grabbing"
+			title="Drag to reorder or move to another order"
+			aria-label={`Drag to move ${name}`}
+		>
+			<GripVertical size={13} />
+		</button>
+	);
+	return (
+		<div
+			ref={setNodeRef}
+			className={className}
+			style={{
+				gridTemplateColumns: GRID_COLS,
+				transform: CSS.Transform.toString(transform),
+				transition,
+				opacity: isDragging ? 0.4 : undefined,
+			}}
+		>
+			{children(dragHandle)}
+		</div>
+	);
+}
+
 interface TreeRowProps {
 	node: BuildTreeNode;
 	depth: number;
@@ -194,6 +399,10 @@ interface TreeRowProps {
 	sourceSystemId?: number | null;
 	systemNames?: Map<number, string>;
 	landscapeData: LandscapeData | null;
+	/** Queue-wide 1-based Build # per authored Target job (Plan 44 Decision 2). */
+	buildIndexByJobId: Map<string, number>;
+	orders?: OrderRef[];
+	sortableTargets?: boolean;
 	collapsedPaths: Set<string>;
 	toggleCollapsed: (path: string) => void;
 	detailPaths: Set<string>;
@@ -218,6 +427,9 @@ const TreeRow = memo(function TreeRow({
 	sourceSystemId,
 	systemNames,
 	landscapeData,
+	buildIndexByJobId,
+	orders,
+	sortableTargets,
 	collapsedPaths,
 	toggleCollapsed,
 	detailPaths,
@@ -236,11 +448,14 @@ const TreeRow = memo(function TreeRow({
 	const queueEntry = queueLocks.find((lock) => lock.typeId === node.typeId);
 	const orderEntry = orderLocks?.find((lock) => lock.typeId === node.typeId);
 	const steered = isRecipeSteered(node.typeId, mergedLocks);
-	const hasAlternatives = producers.length > 1;
 	const isCollapsed = collapsedPaths.has(node.path);
 	const detailsOpen = detailPaths.has(node.path);
 	const canShowRecipe = node.tier !== "raw" && chosenBp != null;
 	const reprocessableRaw = node.tier === "raw" && producers.length > 0;
+	// A raw counts as "reprocessing" ONLY when an actual recipe pin steers it -- a leftover prefer/
+	// exclude does not force reprocessing (the LP still gathers), so the default view stays "gather".
+	const rawReprocessing =
+		reprocessableRaw && mergedLocks.find((lock) => lock.typeId === node.typeId)?.pin != null;
 	// Facility choice is independent of recipe choice -- the SAME blueprint can often run at more than
 	// one facility type, so this is informational (which facilities work), not a selectable control.
 	// Surfaced even for "final" (Target) nodes, whose recipe itself is locked to the authored Job.
@@ -268,11 +483,18 @@ const TreeRow = memo(function TreeRow({
 	const targetPick = targetJob?.overrides?.facilityPick;
 	const pick = node.tier === "final" ? targetPick : derivedPick;
 
-	// A final-tier row is an authored Target job -- changing its recipe goes straight to the Job
-	// (setJobBlueprint), mirroring how a derived row steers via a recipe lock.
-	const canChangeFinalRecipe = node.tier === "final" && targetJob != null && targetJobIndex >= 0;
+	// A final-tier row is an authored Target job -- it carries the full authoring affordances folded
+	// in from the retired JobRow (plan 44 Phase 3): runs, split, move-to-order, remove, drag.
+	const isTarget = node.tier === "final" && targetJob != null && targetOrder != null;
+	const canChangeFinalRecipe = isTarget && targetJobIndex >= 0;
 	const canInlineChange =
 		(node.tier === "intermediate" && optionCount > 1) || (canChangeFinalRecipe && optionCount > 1);
+	// In the queue-level (global-mode) tree, tag each Target root with its owning order.
+	const globalOrderIndex =
+		orderId == null && isTarget && queue && targetOrder
+			? queue.batches.findIndex((b) => b.id === targetOrder.id)
+			: -1;
+	const canDrag = Boolean(sortableTargets) && isTarget && orderId != null;
 
 	function handleSourcesChange(sources: ContainerSourceConfig | undefined) {
 		if (!orderId) return;
@@ -304,11 +526,18 @@ const TreeRow = memo(function TreeRow({
 		if (next.sources || next.outputDest) setOrderSourceLock(queueId, orderId, next);
 		else clearOrderSourceLock(queueId, orderId, node.typeId);
 	}
-	function handleFinalSelect(bpId: number, facility: string | undefined) {
+	// A raw leaf normally gathers directly (Source: <group>). Picking a producer here is an explicit
+	// reprocess pin -- the SAME exclusive lock a derived recipe writes, which the resolver honors (soft
+	// "prefer" in the drill-down did not force it). "Gather directly" clears the pin back to auto.
+	function handleRawSelect(bpId: number) {
+		writeExclusiveLock(queueId, orderId, node.typeId, bpId);
+	}
+	function handleRawGather() {
+		if (orderId) clearOrderRecipeLock(queueId, orderId, node.typeId);
+		else clearRecipeLock(queueId, node.typeId);
+	}
+	function persistJobOverrides(next: JobOverrides) {
 		if (!targetOrder || targetJobIndex < 0) return;
-		if (bpId !== node.blueprintId) setJobBlueprint(queueId, targetOrder.id, targetJobIndex, bpId);
-		const base = targetJob?.overrides ?? {};
-		const next: JobOverrides = { ...base, facilityPick: facility };
 		const hasOverrides =
 			next.sources ||
 			next.outputDest ||
@@ -316,196 +545,336 @@ const TreeRow = memo(function TreeRow({
 			next.facilityPick !== undefined;
 		setJobOverrides(queueId, targetOrder.id, targetJobIndex, hasOverrides ? next : undefined);
 	}
-	function handleFinalFacilityReset() {
+	function handleFinalSelect(bpId: number, facility: string | undefined) {
 		if (!targetOrder || targetJobIndex < 0) return;
-		const base = targetJob?.overrides ?? {};
-		const next: JobOverrides = { ...base, facilityPick: undefined };
-		const hasOverrides = next.sources || next.outputDest || next.facilityExclude !== undefined;
-		setJobOverrides(queueId, targetOrder.id, targetJobIndex, hasOverrides ? next : undefined);
+		if (bpId !== node.blueprintId) setJobBlueprint(queueId, targetOrder.id, targetJobIndex, bpId);
+		persistJobOverrides({ ...targetJob?.overrides, facilityPick: facility });
 	}
+	function handleFinalFacilityReset() {
+		persistJobOverrides({ ...targetJob?.overrides, facilityPick: undefined });
+	}
+	// Per-job sourcing / deposit overrides (cascade layer 5, keyed by the authored Job) -- folded in
+	// from JobRow. Preserve whatever else is already on the job's overrides.
+	function handleTargetSourcesChange(sources: ContainerSourceConfig | undefined) {
+		persistJobOverrides({ ...targetJob?.overrides, sources });
+	}
+	function handleTargetOutputChange(outputDest: ContainerRef | undefined) {
+		persistJobOverrides({ ...targetJob?.overrides, outputDest });
+	}
+
+	// The cascade-resolved deposit destination for this Target (queue/order defaults + per-typeId
+	// locks + the job's own override). Shown as the inherited hint when the job sets nothing itself.
+	const effectiveJobOverrides =
+		isTarget && queue && targetOrder
+			? resolveEffectiveOverrides(queue, targetOrder, node.typeId, targetJob?.overrides)
+			: undefined;
 
 	const phaseLabel =
 		node.sourceOrderIds && node.sourceOrderIds.length > 0
 			? phaseLabelForOrderIds?.(node.sourceOrderIds)
 			: undefined;
 
-	return (
-		<Fragment>
-			<tr className="border-t border-zinc-800/50 hover:bg-zinc-800/30">
-				<td className="py-2 pr-4 text-zinc-200" style={{ paddingLeft: 16 + depth * 18 }}>
-					<span className="flex min-w-0 items-center gap-2">
-						{node.children.length > 0 ? (
+	const buildIndex =
+		node.tier === "final" && node.jobId ? buildIndexByJobId.get(node.jobId) : undefined;
+
+	// The four quantity columns partition Required: Required = Have + Built + Need, where Need is what
+	// still has to be SOURCED/gathered (0 once fully built). Shared intermediates use their order
+	// totals; everything else the per-edge node values.
+	const qtyRequired = node.orderTotals?.required ?? node.needPerEdge;
+	const qtyHave = node.orderTotals?.have ?? node.have;
+	const qtyBuilt = node.orderTotals?.built ?? node.built ?? 0;
+	const qtyNeed = Math.max(0, qtyRequired - qtyHave - qtyBuilt);
+
+	const cells = (dragHandle: React.ReactNode) => (
+		<>
+			<IndexCell value={buildIndex} accent />
+			<IndexCell value={node.productionIndex} />
+
+			{/* Item + (for Targets) the inline authoring affordances (OQ-1) */}
+			<div
+				className="min-w-0 py-2 pr-2 text-sm text-zinc-200"
+				style={{ paddingLeft: 8 + depth * 18 }}
+			>
+				<span className="flex min-w-0 flex-wrap items-center gap-2">
+					{node.children.length > 0 ? (
+						<button
+							type="button"
+							onClick={() => toggleCollapsed(node.path)}
+							className="shrink-0 rounded p-0.5 text-zinc-500 hover:text-zinc-200"
+							title={isCollapsed ? "Expand build path" : "Collapse build path"}
+						>
+							{isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+						</button>
+					) : (
+						<span className="w-[17px] shrink-0" />
+					)}
+					{dragHandle}
+					<ItemIcon typeId={node.typeId} />
+					<span
+						className={`min-w-0 truncate ${
+							node.tier === "final" ? "font-semibold text-zinc-50" : ""
+						}`}
+					>
+						{node.typeName}
+					</span>
+					{node.tier === "final" && (
+						<span className="shrink-0 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+							Target
+						</span>
+					)}
+					{node.tier === "intermediate" && (
+						<span className="shrink-0 rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-300">
+							Derived
+						</span>
+					)}
+					{globalOrderIndex >= 0 && (
+						<span className="shrink-0 rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] text-cyan-300">
+							Order {globalOrderIndex + 1}
+						</span>
+					)}
+					{node.stockShownElsewhere && (
+						<span
+							className="shrink-0 rounded border border-zinc-700 px-1 py-0.5 text-[10px] text-zinc-500"
+							title="This type is also used elsewhere; stock and remaining need are allocated once in tree order."
+						>
+							shared
+						</span>
+					)}
+					{phaseLabel && (
+						<span className="shrink-0 rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] text-cyan-300">
+							from {phaseLabel}
+						</span>
+					)}
+					{isTarget && targetOrder && (
+						<span className="ml-auto flex shrink-0 items-center gap-1.5">
+							<label className="flex items-center gap-1 text-[11px] text-zinc-500">
+								runs
+								<input
+									type="number"
+									min={1}
+									value={targetJob?.runs ?? 1}
+									onChange={(e) =>
+										setJobRuns(
+											queueId,
+											targetOrder.id,
+											targetJobIndex,
+											Number.parseInt(e.target.value) || 1,
+										)
+									}
+									className="w-14 rounded border border-zinc-700 bg-zinc-800 px-1 py-0.5 text-center text-xs text-zinc-100 focus:border-violet-600 focus:outline-none"
+								/>
+							</label>
+							{targetJobIndex < targetOrder.jobs.length - 1 && (
+								<button
+									type="button"
+									onClick={() => splitOrder(queueId, targetOrder.id, targetJobIndex)}
+									className="shrink-0 rounded p-0.5 text-zinc-600 hover:text-cyan-300"
+									title="Split into a new order after this Target"
+									aria-label="Split order after this Target"
+								>
+									<Scissors size={13} />
+								</button>
+							)}
+							{orders && orders.length > 1 && (
+								<select
+									value={targetOrder.id}
+									onChange={(e) =>
+										moveJob(queueId, targetOrder.id, targetJobIndex, e.target.value)
+									}
+									className="max-w-[7rem] rounded border border-zinc-700 bg-zinc-800 px-1 py-0.5 text-[11px] text-zinc-400 focus:border-violet-600 focus:outline-none"
+									title="Move Target to another order"
+								>
+									{orders.map((b) => (
+										<option key={b.id} value={b.id}>
+											{b.label}
+										</option>
+									))}
+								</select>
+							)}
 							<button
 								type="button"
-								onClick={() => toggleCollapsed(node.path)}
-								className="shrink-0 rounded p-0.5 text-zinc-500 hover:text-zinc-200"
-								title={isCollapsed ? "Expand build path" : "Collapse build path"}
+								onClick={() => removeJob(queueId, targetOrder.id, targetJobIndex)}
+								className="shrink-0 rounded p-0.5 text-zinc-600 hover:text-red-400"
+								title="Remove Target"
 							>
-								{isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+								<Trash2 size={13} />
 							</button>
-						) : (
-							<span className="w-[17px] shrink-0" />
-						)}
-						<ItemIcon typeId={node.typeId} />
-						<span className="min-w-0 truncate">{node.typeName}</span>
-						{node.tier === "final" && (
-							<span className="shrink-0 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
-								Target
-							</span>
-						)}
-						{node.tier === "intermediate" && (
-							<span className="shrink-0 rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-300">
-								Derived
-							</span>
-						)}
-						{node.stockShownElsewhere && (
-							<span
-								className="shrink-0 rounded border border-zinc-700 px-1 py-0.5 text-[10px] text-zinc-500"
-								title="This type is also used elsewhere; stock and remaining need are allocated once in tree order."
-							>
-								shared
-							</span>
-						)}
-						{phaseLabel && (
-							<span className="shrink-0 rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] text-cyan-300">
-								from {phaseLabel}
-							</span>
-						)}
-					</span>
-				</td>
-				<td className="px-4 py-2">
-					<div className="flex flex-wrap items-center gap-2">
-						{node.tier === "raw" ? (
-							<span className="flex min-w-0 flex-col">
+						</span>
+					)}
+				</span>
+			</div>
+
+			{/* Source / Recipe */}
+			<div className="min-w-0 px-2 py-2">
+				<div className="flex flex-wrap items-center gap-2">
+					{node.tier === "raw" ? (
+						<span className="flex min-w-0 flex-col gap-1">
+							{reprocessableRaw ? (
+								// A raw with reprocessing producers gets the SAME selector as a build job: the
+								// default is "Source: <group>" (gather), and each option is a reprocess recipe.
+								<RecipeDropdown
+									typeId={node.typeId}
+									producers={producers}
+									currentBpId={rawReprocessing ? selectedBpId : undefined}
+									isOverridden={rawReprocessing}
+									onSelect={(bpId) => handleRawSelect(bpId)}
+									formatOptionLabel={(bp, typeId) =>
+										formatOptionLabel(bp, typeId, data.blueprintFacilities)
+									}
+									getFacilityLabel={(bp) => getFacilityLabel(bp, data.blueprintFacilities)}
+									blueprintFacilities={data.blueprintFacilities}
+									gatherLabel={`Source: ${node.sourceGroup ?? "Other"}`}
+									gathering={!rawReprocessing}
+									onGather={handleRawGather}
+								/>
+							) : (
 								<span
 									className="truncate text-xs text-zinc-500"
 									title={`Source: ${node.sourceGroup ?? "Other"}`}
 								>
 									Source: {node.sourceGroup ?? "Other"}
 								</span>
-								<RawSourceDetail
-									node={node}
-									sourceSystemId={sourceSystemId}
-									systemNames={systemNames}
-									landscapeData={landscapeData}
-								/>
-							</span>
-						) : canInlineChange ? (
-							<RecipeDropdown
-								typeId={node.typeId}
-								producers={producers}
-								currentBpId={selectedBpId}
-								isOverridden={node.tier === "final" ? false : steered}
-								onSelect={node.tier === "final" ? handleFinalSelect : handleDerivedSelect}
-								formatOptionLabel={(bp, typeId) =>
-									formatOptionLabel(bp, typeId, data.blueprintFacilities)
-								}
-								getFacilityLabel={(bp) => getFacilityLabel(bp, data.blueprintFacilities)}
-								blueprintFacilities={data.blueprintFacilities}
-								excludedFacilities={excludedFacilities}
-								pick={pick}
-								onResetFacility={
-									node.tier === "final" ? handleFinalFacilityReset : handleDerivedFacilityReset
-								}
-								onSplitRequest={node.tier === "final" ? undefined : () => toggleDetails(node.path)}
+							)}
+							<RawSourceDetail
+								node={node}
+								sourceSystemId={sourceSystemId}
+								systemNames={systemNames}
+								landscapeData={landscapeData}
 							/>
-						) : canShowRecipe && chosenBp ? (
-							<span
-								className="shrink-0 truncate rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-xs text-zinc-500"
-								title={`Recipe: ${formatOptionLabel(chosenBp, node.typeId, data.blueprintFacilities)}`}
-							>
-								{facilityRecipeLabel(
-									chosenBp,
-									resolveEffectiveFacility(facilityNames, excludedSet, pick),
-								)}
-							</span>
-						) : (
-							<span className="text-xs text-zinc-600">--</span>
-						)}
-
-						<FacilityAvailabilityBadge
-							facilityNames={facilityNames}
-							excludedFacilities={excludedFacilities}
-						/>
-
-						{hasAlternatives && node.tier !== "final" && (
-							<button
-								type="button"
-								onClick={() => toggleDetails(node.path)}
-								className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
-									steered
-										? "border-cyan-600/50 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20"
-										: "border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-amber-500/50 hover:text-amber-300"
-								}`}
-								title={
-									steered
-										? "Recipe is overridden; click to review or change"
-										: "Showing the default recipe; click to change"
-								}
-								aria-expanded={detailsOpen}
-							>
-								<GitFork size={10} />
-								{steered ? "changed" : "default"}
-							</button>
-						)}
-
-						{reprocessableRaw && (
-							<button
-								type="button"
-								onClick={() =>
-									writeExclusiveLock(queueId, orderId, node.typeId, producers[0].blueprintID)
-								}
-								className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[10px] text-zinc-400 hover:border-violet-500/50 hover:text-violet-300"
-								title="Pin this raw leaf to its first reprocessing recipe instead of direct gathering"
-							>
-								also obtainable by reprocessing
-							</button>
-						)}
-
-						{node.tier === "intermediate" && orderId && containers && containers.length > 0 && (
-							<>
-								<RowSourceControl
-									containers={containers}
-									config={sourceLock?.sources}
-									onChange={handleSourcesChange}
-									scopeLabel="this item"
-									jumps={containerJumps}
-									note="Container priority for this item steers which storage it is pulled from when it is sourced from stock. It does not change the optimizer's build-vs-buy math."
-								/>
-								<OutputDestControl
-									containers={containers}
-									value={sourceLock?.outputDest}
-									onChange={handleOutputChange}
-									scopeLabel="this item"
-								/>
-							</>
-						)}
-					</div>
-					<SplitSummary node={node} data={data} />
-				</td>
-				<NeedCell value={node.needPerEdge} />
-				<HaveCell value={node.have} />
-				<StillNeedCell value={node.still} />
-				<VolumeCell item={node} />
-			</tr>
-
-			{detailsOpen && producers.length > 0 && node.tier !== "final" && (
-				<tr className="border-t border-zinc-800/30">
-					<td colSpan={6} className="px-4 py-2">
-						<RecipeAlternatives
-							queueId={queueId}
-							orderId={orderId ?? undefined}
+						</span>
+					) : canInlineChange ? (
+						<RecipeDropdown
 							typeId={node.typeId}
 							producers={producers}
-							chosenBpId={selectedBpId}
-							queueEntry={queueEntry}
-							orderEntry={orderEntry}
-							demandQuantity={node.needPerEdge}
-							currentSplits={node.splits}
+							currentBpId={selectedBpId}
+							isOverridden={node.tier === "final" ? false : steered}
+							onSelect={node.tier === "final" ? handleFinalSelect : handleDerivedSelect}
+							formatOptionLabel={(bp, typeId) =>
+								formatOptionLabel(bp, typeId, data.blueprintFacilities)
+							}
+							getFacilityLabel={(bp) => getFacilityLabel(bp, data.blueprintFacilities)}
 							blueprintFacilities={data.blueprintFacilities}
+							excludedFacilities={excludedFacilities}
+							pick={pick}
+							onResetFacility={
+								node.tier === "final" ? handleFinalFacilityReset : handleDerivedFacilityReset
+							}
+							onSplitRequest={node.tier === "final" ? undefined : () => toggleDetails(node.path)}
 						/>
-					</td>
-				</tr>
+					) : canShowRecipe && chosenBp ? (
+						<span
+							className="shrink-0 truncate rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-xs text-zinc-500"
+							title={`Recipe: ${formatOptionLabel(chosenBp, node.typeId, data.blueprintFacilities)}`}
+						>
+							{facilityRecipeLabel(
+								chosenBp,
+								resolveEffectiveFacility(facilityNames, excludedSet, pick),
+							)}
+						</span>
+					) : (
+						<span className="text-xs text-zinc-600">--</span>
+					)}
+
+					{node.tier === "intermediate" && orderId && containers && containers.length > 0 && (
+						<>
+							<RowSourceControl
+								containers={containers}
+								config={sourceLock?.sources}
+								onChange={handleSourcesChange}
+								scopeLabel="this item"
+								jumps={containerJumps}
+								note="Container priority for this item steers which storage it is pulled from when it is sourced from stock. It does not change the optimizer's build-vs-buy math."
+							/>
+							<OutputDestControl
+								containers={containers}
+								value={sourceLock?.outputDest}
+								onChange={handleOutputChange}
+								scopeLabel="this item"
+							/>
+						</>
+					)}
+
+					{isTarget && containers && containers.length > 0 && (
+						<>
+							<RowSourceControl
+								containers={containers}
+								config={targetJob?.overrides?.sources}
+								onChange={handleTargetSourcesChange}
+								scopeLabel="this job"
+								jumps={containerJumps}
+								note="Per-job source priority is recorded. The live plan still sources raw materials by the queue/order container priority, not per job."
+							/>
+							<OutputDestControl
+								containers={containers}
+								value={targetJob?.overrides?.outputDest}
+								onChange={handleTargetOutputChange}
+								effective={effectiveJobOverrides?.outputDest}
+								scopeLabel="this job"
+							/>
+						</>
+					)}
+				</div>
+				<SplitSummary node={node} data={data} />
+			</div>
+
+			{/* Quantities */}
+			{node.sharedProductionIndex != null ? (
+				// Decision 14: a duplicate occurrence of a shared build intermediate -- quantities are
+				// shown once, at the canonical occurrence (order totals). Reference it instead.
+				<div className="col-span-5 px-3 py-2 text-right text-xs text-zinc-500">
+					shared -- see #{node.sharedProductionIndex}
+				</div>
+			) : (
+				<>
+					<RequiredCell value={qtyRequired} />
+					<HaveQtyCell value={qtyHave} />
+					<BuiltCell value={qtyBuilt} />
+					<NeedQtyCell value={qtyNeed} />
+					<VolumeQtyCell
+						volume={node.orderTotals?.volume ?? node.volume}
+						volumeMissing={node.orderTotals?.volumeMissing ?? node.volumeMissing}
+					/>
+				</>
+			)}
+		</>
+	);
+
+	const rowClass = node.tier === "final" ? TARGET_ROW_CLASS : ROW_CLASS;
+
+	return (
+		<Fragment>
+			{canDrag && orderId && targetJob ? (
+				<SortableTargetRow
+					sortId={`job:${orderId}:${targetJob.blueprintId}`}
+					orderId={orderId}
+					jobIndex={targetJobIndex}
+					blueprintId={targetJob.blueprintId}
+					name={node.typeName}
+					className={rowClass}
+				>
+					{cells}
+				</SortableTargetRow>
+			) : (
+				<div className={rowClass} style={{ gridTemplateColumns: GRID_COLS }}>
+					{cells(null)}
+				</div>
+			)}
+
+			{detailsOpen && producers.length > 0 && node.tier !== "final" && (
+				<div className="border-t border-zinc-800/30 px-4 py-2">
+					<RecipeAlternatives
+						queueId={queueId}
+						orderId={orderId ?? undefined}
+						typeId={node.typeId}
+						producers={producers}
+						chosenBpId={selectedBpId}
+						queueEntry={queueEntry}
+						orderEntry={orderEntry}
+						demandQuantity={node.needPerEdge}
+						currentSplits={node.splits}
+						blueprintFacilities={data.blueprintFacilities}
+					/>
+				</div>
 			)}
 
 			{!isCollapsed &&
@@ -529,6 +898,9 @@ const TreeRow = memo(function TreeRow({
 						sourceSystemId={sourceSystemId}
 						systemNames={systemNames}
 						landscapeData={landscapeData}
+						buildIndexByJobId={buildIndexByJobId}
+						orders={orders}
+						sortableTargets={sortableTargets}
 						collapsedPaths={collapsedPaths}
 						toggleCollapsed={toggleCollapsed}
 						detailPaths={detailPaths}
@@ -554,8 +926,25 @@ export function BuildTree({
 	phaseLabelForOrderIds,
 	sourceSystemId,
 	systemNames,
+	orders,
+	sortableTargets,
+	hideHeader,
 }: BuildTreeProps) {
 	const nodes = useMemo(() => buildOrderTree(order, data), [order, data]);
+	// Build # (Plan 44 Decision 2): queue-wide 1-based sequence over the authored Target jobs in
+	// (order order, target order) sequence. Derived from the raw queue here so BOTH call sites --
+	// the per-order trees and the global-mode tree -- number identically without prop threading.
+	const buildIndexByJobId = useMemo(() => {
+		const map = new Map<string, number>();
+		let next = 1;
+		for (const queueOrder of queue?.batches ?? []) {
+			for (const job of queueOrder.jobs) {
+				map.set(job.id, next);
+				next += 1;
+			}
+		}
+		return map;
+	}, [queue]);
 	const mergedLocks = useMemo(() => mergeLocks(queueLocks, orderLocks), [queueLocks, orderLocks]);
 	const landscapeData = useLandscapeData();
 	const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(() => new Set());
@@ -584,45 +973,37 @@ export function BuildTree({
 	}
 
 	return (
-		<table className="w-full text-sm">
-			<thead>
-				<tr className="border-t border-zinc-800 text-xs text-zinc-500">
-					<th className="px-4 py-2 text-left">Item</th>
-					<th className="px-4 py-2 text-left">Source / Recipe</th>
-					<th className="px-4 py-2 text-right">Need</th>
-					<th className="px-4 py-2 text-right">Have</th>
-					<th className="px-4 py-2 text-right">Still Need</th>
-					<th className="px-4 py-2 text-right">Volume (m³)</th>
-				</tr>
-			</thead>
-			<tbody>
-				{nodes.map((node) => (
-					<TreeRow
-						key={node.path}
-						node={node}
-						depth={0}
-						data={data}
-						queueId={queueId}
-						orderId={orderId}
-						queue={queue}
-						rawOrder={rawOrder}
-						queueLocks={queueLocks}
-						orderLocks={orderLocks}
-						mergedLocks={mergedLocks}
-						containers={containers}
-						containerJumps={containerJumps}
-						orderSourceLocks={orderSourceLocks}
-						phaseLabelForOrderIds={phaseLabelForOrderIds}
-						sourceSystemId={sourceSystemId}
-						systemNames={systemNames}
-						landscapeData={landscapeData}
-						collapsedPaths={collapsedPaths}
-						toggleCollapsed={toggleCollapsed}
-						detailPaths={detailPaths}
-						toggleDetails={toggleDetails}
-					/>
-				))}
-			</tbody>
-		</table>
+		<div className="w-full text-sm">
+			{!hideHeader && <ProductionGridHeader />}
+			{nodes.map((node) => (
+				<TreeRow
+					key={node.path}
+					node={node}
+					depth={0}
+					data={data}
+					queueId={queueId}
+					orderId={orderId}
+					queue={queue}
+					rawOrder={rawOrder}
+					queueLocks={queueLocks}
+					orderLocks={orderLocks}
+					mergedLocks={mergedLocks}
+					containers={containers}
+					containerJumps={containerJumps}
+					orderSourceLocks={orderSourceLocks}
+					phaseLabelForOrderIds={phaseLabelForOrderIds}
+					sourceSystemId={sourceSystemId}
+					systemNames={systemNames}
+					landscapeData={landscapeData}
+					buildIndexByJobId={buildIndexByJobId}
+					orders={orders}
+					sortableTargets={sortableTargets}
+					collapsedPaths={collapsedPaths}
+					toggleCollapsed={toggleCollapsed}
+					detailPaths={detailPaths}
+					toggleDetails={toggleDetails}
+				/>
+			))}
+		</div>
 	);
 }

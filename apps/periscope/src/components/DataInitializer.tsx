@@ -9,7 +9,11 @@ import { useAppStore } from "@/stores/appStore";
 import { Loader2, Telescope } from "lucide-react";
 import { useEffect, useState } from "react";
 
-const STELLAR_DATA_VERSION = "3.1.0";
+// 3.3.0: solar-system names now read from the inline display-name string in systems.static (the real
+// in-game name, e.g. "O3S-11J"). Earlier passes shipped numeric codes then wrong localization-label
+// names under 3.2.0, so bump again to force a clean re-import of the corrected names for anyone who
+// cached an intermediate build. Feeds the location search + recent-systems picker.
+const STELLAR_DATA_VERSION = "3.3.0";
 
 export function DataInitializer({ children }: { children: React.ReactNode }) {
 	const [ready, setReady] = useState(false);

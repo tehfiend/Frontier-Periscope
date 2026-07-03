@@ -23,6 +23,7 @@ Usage:
 
 import pickle
 import json
+import re
 import struct
 import sys
 import time
@@ -261,6 +262,79 @@ def extract_starmap(resfiles_dir: Path) -> dict:
     }
 
 
+def extract_inline_system_names(path: Path) -> dict[int, str]:
+    """Extract solar-system DISPLAY names from systems.static.
+
+    Each system record stores its in-game name as a length-prefixed ASCII string
+    ([int32 length][bytes]) at a near-fixed offset -- 118 for most records, shifted a few bytes in a
+    minority. This is the name the game actually shows (e.g. "O3S-11J"). It is NOT reachable via the
+    nameID->localization path (that resolves to a numeric internal code) and is DIFFERENT from the
+    Map/SolarSystems localization labels (a separate, non-display name set), so neither of those can
+    be used. See docs/reference/client-data-extraction.md.
+
+    Returns: {systemID: name}
+    """
+    import mmap
+
+    name_re = re.compile(rb"^[A-Za-z0-9][A-Za-z0-9.:|_ -]{1,19}$")
+    result: dict[int, str] = {}
+    file_size = path.stat().st_size
+    if file_size < 8:
+        return result
+
+    with open(path, "rb") as f:
+        mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+        try:
+            footer_size = struct.unpack_from("<I", mm, file_size - 4)[0]
+            footer_start = file_size - footer_size
+            entry_count = (footer_size - 4) // 8
+            if entry_count <= 0 or footer_start < 4:
+                return result
+
+            # (systemID, dataOffset) sorted by offset, so each record ends where the next begins.
+            recs = []
+            for i in range(entry_count):
+                pos = footer_start + i * 8
+                key = struct.unpack_from("<I", mm, pos)[0]
+                off = 4 + struct.unpack_from("<I", mm, pos + 4)[0]
+                recs.append((key, off))
+            recs.sort(key=lambda r: r[1])
+            bounds = [off for _, off in recs] + [footer_start]
+
+            def read_name(pos: int, end: int) -> str | None:
+                if pos + 4 > end:
+                    return None
+                length = struct.unpack_from("<i", mm, pos)[0]
+                if length < 2 or length > 19 or pos + 4 + length > end:
+                    return None
+                raw = mm[pos + 4 : pos + 4 + length]
+                return raw.decode("ascii") if name_re.match(raw) else None
+
+            for i, (system_id, off) in enumerate(recs):
+                end = bounds[i + 1]
+                name = None
+                # Name field is at offset 118, shifted +/-4 bytes in a minority of records. The bytes
+                # just before it hold an unrelated short code (e.g. "D1") -- start candidates at 114.
+                for cand in (118, 122, 114, 126):
+                    name = read_name(off + cand, end)
+                    if name:
+                        break
+                if name is None:
+                    # Last resort: first length-prefixed name-charset string past the fixed header.
+                    p = off + 110
+                    while p + 4 <= end:
+                        name = read_name(p, end)
+                        if name:
+                            break
+                        p += 1
+                if name:
+                    result[system_id] = name
+        finally:
+            mm.close()
+
+    return result
+
+
 def resolve_names(resfiles_dir: Path, locale: dict[int, str], starmap: dict) -> dict[int, str]:
     """Resolve names for all entities from FSD .static files + locale."""
     labels = {}
@@ -289,19 +363,15 @@ def resolve_names(resfiles_dir: Path, locale: dict[int, str], starmap: dict) -> 
             labels[entity_id] = locale[name_id]
     print(f"    {len(con_name_ids):,} constellation names resolved")
 
-    # Solar systems: from systems.static (4.9MB, 24,426 entries)
-    # Schema: {solarSystemID: 0, securityStatus: 4, frostLine: 8, potential: 12,
-    #          constellationID: 16, regionID: 20, nameID: 24, center: 28, pseudoSecurity: 52}
-    print("  Parsing systems.static...")
-    sys_name_ids = extract_name_ids_from_static(
-        resfile_path(resfiles_dir, "systems_static"),
-        name_id_offset=24,
-    )
-    for entity_id, name_id in sys_name_ids.items():
-        if name_id in locale:
-            labels[entity_id] = locale[name_id]
-    sys_resolved = sum(1 for s_id in starmap["systems"] if s_id in labels)
-    print(f"    {len(sys_name_ids):,} entries parsed, {sys_resolved:,} system names resolved")
+    # Solar systems: the DISPLAY name (e.g. "O3S-11J") is stored inline in each systems.static
+    # record. It is NOT the systems.static nameID (offset 24 -> a numeric internal code) and NOT the
+    # Map/SolarSystems localization labels (a different, non-display name set); both mis-name systems.
+    print("  Extracting solar system names inline from systems.static...")
+    sys_names = extract_inline_system_names(resfile_path(resfiles_dir, "systems_static"))
+    for system_id, name in sys_names.items():
+        labels[system_id] = name
+    sys_resolved = sum(1 for s_id in starmap["systems"] if s_id in sys_names)
+    print(f"    {len(sys_names):,} inline names read, {sys_resolved:,} starmap systems named")
 
     return labels
 

@@ -30,6 +30,36 @@ export interface BuildTreeNode {
 	needPerEdge: number;
 	have: number;
 	still: number;
+	/**
+	 * Units of this type this order produces on this edge = `needPerEdge - have` (demand net of
+	 * stock). 0 for raw leaves (gathered) and for from-upstream items (fully stock-covered); the
+	 * batch quantity for a Target root; the shortfall for a derived intermediate. SHARED
+	 * intermediates carry the order total in `orderTotals` instead. Plan 44 Decision 12.
+	 */
+	built?: number;
+	/**
+	 * Per-order 1-based build-sequence index (dependency order, deepest first) over build jobs --
+	 * derived intermediates AND Targets -- deduped by typeId to the canonical occurrence.
+	 * Undefined on raw rows and on items not built this order. Plan 44 Decision 3.
+	 */
+	productionIndex?: number;
+	/**
+	 * Set on duplicate occurrences of a shared build intermediate: the canonical occurrence's
+	 * productionIndex, so the row can render as a "shared -- see #N" reference (Decision 14).
+	 */
+	sharedProductionIndex?: number;
+	/**
+	 * Order-total quantities for the canonical occurrence of a SHARED build intermediate -- the
+	 * node's own need/have/still only cover this edge's slice (Decision 14).
+	 */
+	orderTotals?: {
+		required: number;
+		have: number;
+		built: number;
+		need: number;
+		volume: number;
+		volumeMissing: boolean;
+	};
 	volume: number;
 	volumeMissing: boolean;
 	isGatherableLeaf: boolean;
@@ -233,6 +263,68 @@ function assertReconciled(roots: BuildTreeNode[], reconcileLines: Map<number, Fl
 	}
 }
 
+/**
+ * Assign per-order Production #s (Plan 44 Decisions 3 + 14): a post-order walk (children before
+ * parents, roots in order) numbers every build job 1..m in the order it must be built -- so the
+ * deepest dependency gets #1 and the Targets get the last numbers. Build jobs are Targets
+ * (tier "final") and derived intermediates present in the order's build list; raws and
+ * upstream-covered types stay unnumbered. A typeId is numbered ONCE at its first (canonical)
+ * occurrence -- the tree duplicates a shared subtree under every consumer, and construction order
+ * matches walk order, so first-seen here is the `stockShownElsewhere === false` occurrence.
+ * Duplicates get `sharedProductionIndex` (reference rows); when a shared build item occurs more
+ * than once, the canonical node also gets `orderTotals` (its per-edge numbers only cover one
+ * consumer's slice).
+ */
+function assignProductionIndices(
+	roots: BuildTreeNode[],
+	buildByType: Map<number, OrderBuildItem>,
+	data: BuildTreeData,
+) {
+	const occurrences = new Map<number, number>();
+	const count = (node: BuildTreeNode) => {
+		if (node.tier !== "raw" && buildByType.has(node.typeId)) {
+			occurrences.set(node.typeId, (occurrences.get(node.typeId) ?? 0) + 1);
+		}
+		for (const child of node.children) count(child);
+	};
+	for (const root of roots) count(root);
+
+	let next = 1;
+	const assigned = new Map<number, number>();
+	const visit = (node: BuildTreeNode) => {
+		for (const child of node.children) visit(child);
+		const isBuildJob =
+			node.tier === "final" || (node.tier === "intermediate" && buildByType.has(node.typeId));
+		if (!isBuildJob) return;
+
+		const existing = assigned.get(node.typeId);
+		if (existing != null) {
+			// Same-type Targets share the type-level number; shared derived duplicates become
+			// "see #N" reference rows.
+			if (node.tier === "final") node.productionIndex = existing;
+			else node.sharedProductionIndex = existing;
+			return;
+		}
+		node.productionIndex = next;
+		assigned.set(node.typeId, next);
+		next += 1;
+
+		const buildItem = buildByType.get(node.typeId);
+		if (node.tier === "intermediate" && buildItem && (occurrences.get(node.typeId) ?? 0) > 1) {
+			const { volume, volumeMissing } = volumeFor(node.typeId, buildItem.quantity, data);
+			node.orderTotals = {
+				required: buildItem.quantity,
+				have: buildItem.stockQty,
+				built: buildItem.stillNeed,
+				need: buildItem.stillNeed,
+				volume,
+				volumeMissing,
+			};
+		}
+	};
+	for (const root of roots) visit(root);
+}
+
 export function buildOrderTree(order: OrderResult, data: BuildTreeData): BuildTreeNode[];
 export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): BuildTreeNode[];
 export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): BuildTreeNode[] {
@@ -276,6 +368,12 @@ export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): Buil
 		const nodeName = nameForType(typeId, typeName ?? line?.typeName ?? buildItem?.typeName, data);
 		const sourceGroup = data.typeGroups.get(typeId);
 
+		// Only the shortfall we actually BUILD on this edge consumes sub-materials -- stock-covered
+		// units (allocation.have) do not. Expanding children from gross needPerEdge double-counts the
+		// sub-tree for stock we already hold (e.g. 10 Printed Circuits in the scratch pad should pull
+		// none of their inputs). Targets force have=0, so they still build their full authored output.
+		const buildQty = rawLike ? 0 : Math.max(0, needPerEdge - allocation.have);
+
 		let children: BuildTreeNode[] = [];
 		// A producible child can need recursion even when its type isn't in `order.build` -- e.g. an
 		// intermediate that's ALSO an authored Job's own primary output gets merged out of
@@ -286,6 +384,7 @@ export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): Buil
 		// subtree (dropping nested demand, e.g. for a byproduct-masked raw leaf several levels down).
 		const canRecurse =
 			!rawLike &&
+			buildQty > 0 &&
 			selectedBlueprint != null &&
 			!ancestorTypes.has(typeId) &&
 			ancestorTypes.size < MAX_TREE_DEPTH;
@@ -314,7 +413,7 @@ export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): Buil
 			if (splitChildren) {
 				children = splitChildren;
 			} else {
-				const runs = Math.ceil(needPerEdge / outputQuantity(selectedBlueprint, typeId));
+				const runs = Math.ceil(buildQty / outputQuantity(selectedBlueprint, typeId));
 				children = selectedBlueprint.inputs.map((input, index) =>
 					makeNode(
 						input.typeID,
@@ -339,6 +438,13 @@ export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): Buil
 			needPerEdge,
 			have: allocation.have,
 			still: allocation.still,
+			// Built = how many this order produces on this edge = demand minus stock. Raws are gathered
+			// (0); everything producible builds the shortfall (needPerEdge - have) -- a Target builds its
+			// full authored output (have is 0), a from-upstream item builds 0 (fully covered by stock).
+			// Derived rows read straight from this; SHARED intermediates override it with the order total
+			// below. Deriving from the tree (not the build map) keeps producible intermediates that never
+			// landed in order.build -- e.g. a single Printed Circuit under a Target -- from showing "--".
+			built: buildQty,
 			volume,
 			volumeMissing,
 			isGatherableLeaf,
@@ -371,6 +477,7 @@ export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): Buil
 		);
 	}
 
+	assignProductionIndices(roots, buildByType, data);
 	assertReconciled(roots, reconcileLines);
 	return roots;
 }

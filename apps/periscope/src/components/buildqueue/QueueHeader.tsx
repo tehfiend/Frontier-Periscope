@@ -1,20 +1,19 @@
 // Queue header -- plan 36 (industry-build-queue).
-// Editable queue name + description for the active queue, the F3 per-order / global re-optimization
-// toggle, plus the QueueSwitcher dropdown (select, new, duplicate, delete). Rename and description
-// editing live here (inline EditableText); the list/select/new/duplicate/delete actions live in
-// QueueSwitcher.
+// Editable queue name + description for the active queue, the prefer-stock toggle, plus the
+// QueueSwitcher dropdown (select, new, duplicate, delete). Rename and description editing live here
+// (inline EditableText); the list/select/new/duplicate/delete actions live in QueueSwitcher.
 
-import { SystemSearch } from "@/components/SystemSearch";
+import { SystemPicker } from "@/components/SystemPicker";
 import { EditableText } from "@/components/buildqueue/EditableText";
 import { QueueSwitcher } from "@/components/buildqueue/QueueSwitcher";
 import type { SolarSystem } from "@/db/types";
-import type { BuildQueue, QueueLocation, ReoptMode } from "@/lib/buildQueueTypes";
+import type { RecentSystem } from "@/hooks/useCharacterRecentSystems";
+import type { BuildQueue, QueueLocation } from "@/lib/buildQueueTypes";
 import {
 	renameQueue,
 	setPreferStock,
 	setQueueDescription,
 	setQueueLocation,
-	setReoptMode,
 } from "@/stores/buildQueueStore";
 import { GitFork } from "lucide-react";
 
@@ -23,17 +22,27 @@ interface QueueHeaderProps {
 	queues: BuildQueue[];
 	/** Distinct producible inputs across the queue showing a changeable deterministic default. */
 	openChoiceCount?: number;
-	/** Solar systems for the location picker (plan 39 Phase 5 -- reuses the Phase 2 SystemSearch). */
+	/** Solar systems for the location picker (plan 39 Phase 5). */
 	systems: SolarSystem[];
+	/** Recently visited systems for the active character -- the location picker's quick-select list. */
+	recentSystems: RecentSystem[];
 }
 
 /**
  * Queue location (plan 39 Phase 5, decisions 10/11). One structured location per queue: the system is
  * the distance anchor (containers are gate-jump sorted against it), with optional free-text warpable +
- * note. Setting a system creates the location; clearing it removes the whole location. Reuses the
- * Phase 2 SystemSearch picker.
+ * note. Setting a system creates the location; clearing it removes the whole location. The SystemPicker
+ * dropdown lists recently visited systems for one-click selection.
  */
-function QueueLocationRow({ queue, systems }: { queue: BuildQueue; systems: SolarSystem[] }) {
+function QueueLocationRow({
+	queue,
+	systems,
+	recentSystems,
+}: {
+	queue: BuildQueue;
+	systems: SolarSystem[];
+	recentSystems: RecentSystem[];
+}) {
 	const loc = queue.location;
 	const setLoc = (next: QueueLocation | undefined) => setQueueLocation(queue.id, next);
 	return (
@@ -41,7 +50,7 @@ function QueueLocationRow({ queue, systems }: { queue: BuildQueue; systems: Sola
 			<div className="flex items-center gap-2">
 				<span className="shrink-0 text-xs font-medium text-zinc-500">Location</span>
 				<div className="min-w-0 max-w-xs flex-1">
-					<SystemSearch
+					<SystemPicker
 						value={loc?.systemId ?? null}
 						onChange={(id) =>
 							setLoc(
@@ -49,6 +58,7 @@ function QueueLocationRow({ queue, systems }: { queue: BuildQueue; systems: Sola
 							)
 						}
 						systems={systems}
+						recent={recentSystems}
 						placeholder="Set location for container distance..."
 						compact
 					/>
@@ -89,56 +99,6 @@ function QueueLocationRow({ queue, systems }: { queue: BuildQueue; systems: Sola
 	);
 }
 
-/**
- * F3 -- the per-order / global re-optimization toggle. "Per-Order" (default) solves each order on its
- * own with earlier outputs carried forward as stock; "Global" collapses the whole queue into one
- * solve for cross-order optimality at the cost of per-order legibility (per-order recipe locks are
- * ignored and the per-order material breakdown is replaced by a single queue-level plan). The mode
- * value stays "perStep" (persisted string); only the label reads "Per-Order".
- */
-function ReoptModeToggle({ queueId, mode }: { queueId: string; mode: ReoptMode }) {
-	const options: Array<{ value: ReoptMode; label: string; title: string }> = [
-		{
-			value: "perStep",
-			label: "Per-Order",
-			title:
-				"Solve each order on its own, carrying earlier outputs forward as stock -- legible per-order plans that respect the build order.",
-		},
-		{
-			value: "global",
-			label: "Global",
-			title:
-				"Collapse the whole queue into one solve for cross-order optimality. Per-Order recipe locks are ignored and the per-order material breakdown is replaced by a single queue-level plan.",
-		},
-	];
-	return (
-		<fieldset
-			className="m-0 inline-flex min-w-0 shrink-0 overflow-hidden rounded border border-zinc-700 p-0"
-			aria-label="Re-optimization mode"
-		>
-			{options.map((opt) => {
-				const active = mode === opt.value;
-				return (
-					<button
-						key={opt.value}
-						type="button"
-						onClick={() => setReoptMode(queueId, opt.value)}
-						title={opt.title}
-						aria-pressed={active}
-						className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
-							active
-								? "bg-violet-600/30 text-violet-200"
-								: "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
-						}`}
-					>
-						{opt.label}
-					</button>
-				);
-			})}
-		</fieldset>
-	);
-}
-
 function PreferStockToggle({ queueId, value }: { queueId: string; value: boolean }) {
 	return (
 		<button
@@ -161,7 +121,13 @@ function PreferStockToggle({ queueId, value }: { queueId: string; value: boolean
 	);
 }
 
-export function QueueHeader({ queue, queues, openChoiceCount = 0, systems }: QueueHeaderProps) {
+export function QueueHeader({
+	queue,
+	queues,
+	openChoiceCount = 0,
+	systems,
+	recentSystems,
+}: QueueHeaderProps) {
 	return (
 		<div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
 			<div className="flex items-start justify-between gap-3">
@@ -198,11 +164,10 @@ export function QueueHeader({ queue, queues, openChoiceCount = 0, systems }: Que
 				</div>
 				<div className="flex shrink-0 items-center gap-2">
 					<PreferStockToggle queueId={queue.id} value={queue.preferStock ?? true} />
-					<ReoptModeToggle queueId={queue.id} mode={queue.reoptMode ?? "perStep"} />
 					<QueueSwitcher queue={queue} queues={queues} />
 				</div>
 			</div>
-			<QueueLocationRow queue={queue} systems={systems} />
+			<QueueLocationRow queue={queue} systems={systems} recentSystems={recentSystems} />
 		</div>
 	);
 }
