@@ -874,6 +874,8 @@ export function BuildQueue() {
 						queue={activeQueue}
 						typeList={typeList}
 						volumeMap={volumeMap}
+						systemNames={systemNames}
+						recentSystems={recentSystems}
 						onSsuStockChange={handleSsuStockChange}
 					/>
 				</div>

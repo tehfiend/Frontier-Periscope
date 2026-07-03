@@ -13,6 +13,7 @@ import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import type { RecentSystem } from "@/hooks/useCharacterRecentSystems";
 import { ensureShipCargoUnit } from "@/lib/fieldStorage";
 import type { BuildQueue, ContainerRef, StockSourceEntry } from "@/lib/buildQueueTypes";
 import { containerRefKey } from "@/lib/queueResolver";
@@ -50,6 +51,10 @@ interface StockPanelProps {
 	typeList: Array<{ id: number; name: string }>;
 	/** typeID -> unit volume (m3) for the scratch pad paste parser. */
 	volumeMap: Map<number, number>;
+	/** Solar-system id -> name, for labelling each storage's location. */
+	systemNames?: Map<number, string>;
+	/** Recently visited systems (newest first) -- the ship cargo hold's location is the current one. */
+	recentSystems?: RecentSystem[];
 	/** Live SSU inventories from the enabled on-chain rows, lifted to the view for the resolver. */
 	onSsuStockChange: (ssus: SsuInventory[]) => void;
 }
@@ -94,7 +99,14 @@ function defaultKindRank(kind: StockKind): number {
 	}
 }
 
-export function StockPanel({ queue, typeList, volumeMap, onSsuStockChange }: StockPanelProps) {
+export function StockPanel({
+	queue,
+	typeList,
+	volumeMap,
+	systemNames,
+	recentSystems,
+	onSsuStockChange,
+}: StockPanelProps) {
 	const [open, setOpen] = useState(false);
 	const [scratchExpanded, setScratchExpanded] = useState(false);
 	const account = useCurrentAccount();
@@ -108,12 +120,6 @@ export function StockPanel({ queue, typeList, volumeMap, onSsuStockChange }: Sto
 	// it). Ensure it exists so it always appears in the stock list here, even before it holds anything.
 	useEffect(() => {
 		ensureShipCargoUnit();
-	}, []);
-
-	// Solar-system id -> name, for labelling each storage's location (SSUs resolve their system below).
-	const systemNames = useLiveQuery(async () => {
-		const systems = await db.solarSystems.toArray();
-		return new Map(systems.map((s) => [s.id, s.name ?? `#${s.id}`]));
 	}, []);
 
 	// ── Local storages (field units + ship cargo) and their contents ──────────────
@@ -181,11 +187,13 @@ export function StockPanel({ queue, typeList, volumeMap, onSsuStockChange }: Sto
 		refetchInterval: 120_000,
 	});
 
-	// Resolve each enabled SSU's solar system, inheriting a parent node's system when the unit has none
-	// (parentId references a node by id or objectId). Structures are few, so load them all.
+	// Resolve EVERY discovered SSU's solar system from synced structure intel (independent of whether it
+	// is enabled/fetched), inheriting a parent node's system when the unit itself has none (parentId
+	// references a node by id or objectId). This is what lets a row show its location before it's ticked.
+	const ssuObjectIds = useMemo(() => storageAssemblies.map((a) => a.objectId), [storageAssemblies]);
 	const ssuSystemById = useLiveQuery(async () => {
 		const map = new Map<string, number>();
-		if (enabledChainIds.length === 0) return map;
+		if (ssuObjectIds.length === 0) return map;
 		const [deps, asms] = await Promise.all([db.deployables.toArray(), db.assemblies.toArray()]);
 		const byKey = new Map<string, { systemId?: number; parentId?: string }>();
 		for (const rec of [...deps, ...asms]) {
@@ -198,12 +206,12 @@ export function StockPanel({ queue, typeList, volumeMap, onSsuStockChange }: Sto
 			if (rec.systemId != null) return rec.systemId;
 			return rec.parentId ? resolve(rec.parentId, depth + 1) : undefined;
 		};
-		for (const objectId of enabledChainIds) {
+		for (const objectId of ssuObjectIds) {
 			const sys = resolve(objectId);
 			if (sys != null) map.set(objectId, sys);
 		}
 		return map;
-	}, [enabledChainIds]);
+	}, [ssuObjectIds]);
 
 	// One SsuInventory per enabled unit (aggregating its owner + extension inventories), carrying its
 	// name + resolved system. Lifted to the view (baseStock) via the effect below.
@@ -257,14 +265,14 @@ export function StockPanel({ queue, typeList, volumeMap, onSsuStockChange }: Sto
 			const objectId = a.objectId;
 			const inv = ssuInvByObjectId.get(objectId);
 			const isEnabled = enabledChainIds.includes(objectId);
+			const sysId = ssuSystemById?.get(objectId);
 			candidates.push({
 				key: containerRefKey({ kind: "chain", id: objectId }),
 				ref: { kind: "chain", id: objectId },
 				kind: "chain",
 				label: ssuLabel(a.name, a.itemId, objectId),
-				systemId: inv?.systemId,
-				systemName:
-					inv?.systemId != null ? (systemNames?.get(inv.systemId) ?? `#${inv.systemId}`) : null,
+				systemId: sysId,
+				systemName: sysId != null ? (systemNames?.get(sysId) ?? `#${sysId}`) : null,
 				itemTypes: inv ? inv.items.size : 0,
 				sampleTypeIds: inv ? [...inv.items.keys()].slice(0, 5) : [],
 				loading: isEnabled && loadingInventory && !inv,
@@ -283,8 +291,15 @@ export function StockPanel({ queue, typeList, volumeMap, onSsuStockChange }: Sto
 		const orderIndex = new Map((stockSources ?? []).map((s, i) => [containerRefKey(s.ref), i]));
 		const enabledByKey = new Map((stockSources ?? []).map((s) => [containerRefKey(s.ref), s.enabled]));
 
+		// The Ship Cargo Hold follows the character -- its location is the current (most recent) system.
+		const currentSystem = recentSystems?.[0]?.name ?? null;
+
 		return candidates
-			.map((c) => ({ ...c, enabled: enabledByKey.get(c.key) ?? defaultEnabled(c.kind) }))
+			.map((c) => ({
+				...c,
+				systemName: c.kind === "ship" && !c.systemName ? currentSystem : c.systemName,
+				enabled: enabledByKey.get(c.key) ?? defaultEnabled(c.kind),
+			}))
 			.sort((a, b) => {
 				const ia = orderIndex.get(a.key) ?? Number.POSITIVE_INFINITY;
 				const ib = orderIndex.get(b.key) ?? Number.POSITIVE_INFINITY;
@@ -297,12 +312,14 @@ export function StockPanel({ queue, typeList, volumeMap, onSsuStockChange }: Sto
 		fieldRows,
 		storageAssemblies,
 		ssuInvByObjectId,
+		ssuSystemById,
 		enabledChainIds,
 		loadingInventory,
 		scratchCount,
 		queue.scratch,
 		stockSources,
 		systemNames,
+		recentSystems,
 	]);
 
 	const persist = useCallback(
