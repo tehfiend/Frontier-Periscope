@@ -157,6 +157,17 @@ function flatLineMaps(order: BuildTreeOrder) {
 	return { lines, reconcileLines };
 }
 
+/**
+ * Order a node's children so gathered raw materials list before built intermediates, each group
+ * keeping its original blueprint-input order (stable partition). Lets a build's BOM read "gather
+ * these leaves, then assemble these sub-parts" top-down at every level.
+ */
+function sortGatherFirst(children: BuildTreeNode[]): BuildTreeNode[] {
+	const gather = children.filter((child) => child.tier === "raw");
+	const build = children.filter((child) => child.tier !== "raw");
+	return gather.length === 0 || build.length === 0 ? children : [...gather, ...build];
+}
+
 function sortedSplits(splits: ProductionSplit[] | undefined): ProductionSplit[] | undefined {
 	if (!splits || splits.length === 0) return undefined;
 	return [...splits].sort((a, b) => {
@@ -170,9 +181,15 @@ function getSelectedBlueprint(
 	data: BuildTreeData,
 	line: FlatLine | undefined,
 	rootBlueprint: Blueprint | undefined,
+	lockedRecipes?: Map<number, number>,
 ): Blueprint | undefined {
 	if (rootBlueprint) return rootBlueprint;
-	const bpId = line?.blueprintId ?? data.defaultRecipes.get(typeId);
+	// Honor an explicit recipe lock BEFORE the game default. A producible type that is a DIRECT input of
+	// an authored job is a top-level demand, not a `build` intermediate, so it has no resolved `line`
+	// here -- without this it would silently expand the default recipe and the user's recipe override
+	// (which the LP does honor) would never show in the tree. The line's own blueprintId still wins when
+	// present (it already reflects the solved recipe for genuine intermediates).
+	const bpId = line?.blueprintId ?? lockedRecipes?.get(typeId) ?? data.defaultRecipes.get(typeId);
 	if (bpId != null) {
 		const bp = data.blueprints[String(bpId)];
 		if (bp?.outputs.some((out) => out.typeID === typeId)) return bp;
@@ -325,9 +342,21 @@ function assignProductionIndices(
 	for (const root of roots) visit(root);
 }
 
-export function buildOrderTree(order: OrderResult, data: BuildTreeData): BuildTreeNode[];
-export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): BuildTreeNode[];
-export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): BuildTreeNode[] {
+export function buildOrderTree(
+	order: OrderResult,
+	data: BuildTreeData,
+	lockedRecipes?: Map<number, number>,
+): BuildTreeNode[];
+export function buildOrderTree(
+	order: BuildTreeOrder,
+	data: BuildTreeData,
+	lockedRecipes?: Map<number, number>,
+): BuildTreeNode[];
+export function buildOrderTree(
+	order: BuildTreeOrder,
+	data: BuildTreeData,
+	lockedRecipes?: Map<number, number>,
+): BuildTreeNode[] {
 	const buildByType = new Map<number, OrderBuildItem>();
 	for (const item of order.build) buildByType.set(item.typeId, item);
 
@@ -357,7 +386,7 @@ export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): Buil
 		const isGatherableLeaf = rawLike;
 		const selectedBlueprint = rawLike
 			? undefined
-			: getSelectedBlueprint(typeId, data, line ?? buildItem, rootBlueprint);
+			: getSelectedBlueprint(typeId, data, line ?? buildItem, rootBlueprint, lockedRecipes);
 		const splits = sortedSplits(line?.splits ?? buildItem?.splits);
 		const producers = data.outputToBlueprints.get(typeId) ?? [];
 		const allocation =
@@ -424,6 +453,7 @@ export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): Buil
 					),
 				);
 			}
+			children = sortGatherFirst(children);
 		}
 
 		return {
@@ -431,7 +461,11 @@ export function buildOrderTree(order: BuildTreeOrder, data: BuildTreeData): Buil
 			typeId,
 			typeName: nodeName,
 			tier,
-			blueprintId: rootBlueprint?.blueprintID ?? line?.blueprintId ?? buildItem?.blueprintId,
+			blueprintId:
+				rootBlueprint?.blueprintID ??
+				line?.blueprintId ??
+				buildItem?.blueprintId ??
+				lockedRecipes?.get(typeId),
 			splits,
 			alternativeBlueprintIds: producers.map((bp) => bp.blueprintID),
 			excludedFacilities: rootExcludedFacilities ?? buildItem?.excludedFacilities,

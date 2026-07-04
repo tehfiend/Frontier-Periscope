@@ -33,14 +33,25 @@ const ACTIVE_QUEUE_KEY = "activeBuildQueueId";
  * with a refreshed updatedAt. No-op if the queue does not exist. The producer must NOT mutate
  * its argument -- it returns a new object with replaced arrays.
  */
+// Serialize every queue mutation through one promise chain. `updateQueue` is a read-modify-write, so
+// two calls fired without an await between them (common: a single UI action writes a recipe lock AND a
+// source/facility lock) would both read the SAME base record and the second `put` would clobber the
+// first -- a lost update. Chaining makes each mutation read only after the previous one has committed.
+let writeChain: Promise<unknown> = Promise.resolve();
+
 async function updateQueue(
 	queueId: string,
 	produce: (queue: BuildQueue) => BuildQueue,
 ): Promise<void> {
-	const queue = await db.buildQueues.get(queueId);
-	if (!queue) return;
-	const next = produce(queue);
-	await db.buildQueues.put({ ...next, updatedAt: Date.now() });
+	const run = writeChain.then(async () => {
+		const queue = await db.buildQueues.get(queueId);
+		if (!queue) return;
+		const next = produce(queue);
+		await db.buildQueues.put({ ...next, updatedAt: Date.now() });
+	});
+	// Keep the chain alive even if one mutation throws, so a single failure can't wedge all later writes.
+	writeChain = run.catch(() => {});
+	return run;
 }
 
 /**

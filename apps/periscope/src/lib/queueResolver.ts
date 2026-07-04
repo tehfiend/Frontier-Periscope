@@ -934,7 +934,15 @@ function buildStockDrivenPins(
 
 	for (const candidate of candidates) {
 		const demand = typeDemand.get(candidate.typeId) ?? 0;
-		if (demand <= 0) {
+		// Net of the candidate's OWN stock. `typeDemand` is GROSS downstream consumption from the first
+		// solve (it does not subtract this type's holdings), so a stock-driven reprocess must be bounded
+		// by what actually still has to be PRODUCED -- demand minus stock on hand. Otherwise idle raw
+		// stock (e.g. Hydrated Sulfide Matrix) gets reprocessed into an output (Hydrocarbon Residue) the
+		// player already holds in full, needlessly dragging that raw back into the plan as a spurious
+		// "need". Everything below bounds forced production by netDemand instead of gross demand.
+		const ownStock = pool.get(candidate.typeId) ?? 0;
+		const netDemand = Math.max(0, demand - ownStock);
+		if (netDemand <= 0) {
 			if (!candidate.rawDefault && candidate.defaultBpId != null) {
 				pins.push({
 					typeId: candidate.typeId,
@@ -999,7 +1007,7 @@ function buildStockDrivenPins(
 			if (uncapped || !Number.isFinite(supportedRuns) || supportedRuns <= 0) continue;
 
 			const stockSupported = Math.min(
-				demand,
+				netDemand,
 				supportedRuns * outputQuantity(alt, candidate.typeId),
 			);
 			if (stockSupported <= 0) continue;
@@ -1027,7 +1035,7 @@ function buildStockDrivenPins(
 			const held = pool.get(rawId) ?? 0;
 			if (held > 0) stockCaps.set(rawId, held);
 		}
-		const remainder = Math.max(0, demand - best.stockSupported);
+		const remainder = Math.max(0, netDemand - best.stockSupported);
 		const splits = [{ blueprintId: best.bp.blueprintID, quantity: best.stockSupported }];
 		if (!candidate.rawDefault && candidate.defaultBpId != null && remainder > 0) {
 			splits.push({ blueprintId: candidate.defaultBpId, quantity: remainder });

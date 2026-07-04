@@ -61,6 +61,27 @@ export function PasteUpdatePanel({
 		}
 	}
 
+	// Record an EMPTY snapshot -- the storage now holds nothing. A paste never produces this (an empty
+	// paste has nothing to apply), so it is the only way to zero out a container without deleting it.
+	async function handleEmpty() {
+		if (saving) return;
+		if (!window.confirm("Empty this storage? This records a snapshot showing it now holds nothing."))
+			return;
+		setSaving(true);
+		try {
+			const id = ensureContainerId ? await ensureContainerId() : containerId;
+			if (!id) return;
+			const snapshot = createSnapshot(id, { items: [], unresolved: [] });
+			await db.fieldStorageSnapshots.add(snapshot);
+			await db.fieldStorageUnits.update(id, { updatedAt: snapshot.timestamp });
+			setText("");
+			setLastApplied({ matched: 0, unresolved: 0 });
+			onSnapshot?.(id);
+		} finally {
+			setSaving(false);
+		}
+	}
+
 	return (
 		<div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
 			<div className="flex items-center gap-2">
@@ -100,15 +121,26 @@ export function PasteUpdatePanel({
 						"Awaiting paste"
 					)}
 				</div>
-				<button
-					type="button"
-					onClick={handleApply}
-					disabled={saving || matchedCount + unresolvedCount === 0}
-					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
-				>
-					{saving && <Loader2 size={12} className="animate-spin" />}
-					Apply snapshot
-				</button>
+				<div className="flex items-center gap-2">
+					<button
+						type="button"
+						onClick={handleEmpty}
+						disabled={saving}
+						className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-red-500/60 hover:text-red-300 disabled:opacity-50"
+						title="Record that this storage is now empty"
+					>
+						Empty
+					</button>
+					<button
+						type="button"
+						onClick={handleApply}
+						disabled={saving || matchedCount + unresolvedCount === 0}
+						className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+					>
+						{saving && <Loader2 size={12} className="animate-spin" />}
+						Apply snapshot
+					</button>
+				</div>
 			</div>
 			{preview && unresolvedCount > 0 && (
 				<div className="rounded border border-amber-900/40 bg-amber-950/20 px-2 py-1.5 text-[11px] text-amber-300/80">

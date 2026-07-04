@@ -201,6 +201,47 @@ export function OrderCard({
 					inputClassName="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-sm font-medium text-zinc-100 focus:border-cyan-500 focus:outline-none"
 				/>
 
+				{/* Per-Order location + facilities -- inline in the main row (plan 41 B4). Location is the
+				    distance anchor for this order's haul readout (inherits the queue location); facilities is
+				    the availability filter for this order (inherits the queue). */}
+				<div className="flex shrink-0 items-center gap-2">
+					<div
+						className="w-44"
+						title={
+							order.location?.systemId != null
+								? "Haul is costed from this system"
+								: inheritedSystemName
+									? `Inherits the queue location (${inheritedSystemName})`
+									: "Set the queue location to cost haul"
+						}
+					>
+						<SystemPicker
+							value={effectiveSystemId}
+							onChange={(id) =>
+								setOrderLocation(queueId, order.id, id == null ? undefined : { systemId: id })
+							}
+							systems={systems}
+							recent={recentSystems}
+							inherited={order.location?.systemId == null && inheritedSystemId != null}
+							placeholder={
+								inheritedSystemName ? `Queue: ${inheritedSystemName}` : "Set location..."
+							}
+							compact
+						/>
+					</div>
+					{data.facilityNames.length > 0 && (
+						<FacilityPreferencePanel
+							facilityNames={data.facilityNames}
+							value={order.facilityExclude}
+							effectiveExcluded={effectiveFacilityExclude}
+							onChange={(excluded) => setOrderFacilityExclude(queueId, order.id, excluded)}
+							scopeLabel="this order"
+							inheritedFromLabel="queue"
+							align="left"
+						/>
+					)}
+				</div>
+
 				{/* Per-Order totals */}
 				<div className="flex shrink-0 items-center gap-3 text-xs text-zinc-500">
 					{openChoices > 0 && (
@@ -280,39 +321,8 @@ export function OrderCard({
 
 			{!collapsed && (
 				<div className="border-t border-zinc-800">
-					{/* Per-Order location (plan 41 B4) -- overrides the queue location as the distance anchor for
-					    this order's costed haul readout. Inherits the queue location when unset. */}
-					<div className="flex items-center gap-2 border-b border-zinc-800/50 px-4 py-2">
-						<span className="shrink-0 text-[11px] font-medium text-zinc-500">Location</span>
-						<div className="min-w-0 max-w-xs flex-1">
-							<SystemPicker
-								value={effectiveSystemId}
-								onChange={(id) =>
-									setOrderLocation(queueId, order.id, id == null ? undefined : { systemId: id })
-								}
-								systems={systems}
-								recent={recentSystems}
-								inherited={order.location?.systemId == null && inheritedSystemId != null}
-								placeholder={
-									inheritedSystemName
-										? `Inherits queue: ${inheritedSystemName}`
-										: "Set a location for this order..."
-								}
-								compact
-							/>
-						</div>
-						<span className="shrink-0 text-[11px] text-zinc-600">
-							{order.location?.systemId != null
-								? "haul costed from here"
-								: inheritedSystemName
-									? "inherits the queue location"
-									: "set the queue location to cost haul"}
-						</span>
-					</div>
-
-					{/* Column header for THIS order's tree, grid-aligned so the labels sit over their
-					    columns. The Facilities control shares the row (Item + Source/Recipe span) to save
-					    vertical space; the quantity labels sit above the last five columns. */}
+					{/* Column header for THIS order's tree, grid-aligned so the labels sit over their columns.
+					    Location + facilities now live inline in the order's header row above. */}
 					<div
 						className="grid items-center border-b border-zinc-800 bg-zinc-900/40 text-[11px] text-zinc-500"
 						style={{ gridTemplateColumns: GRID_COLS }}
@@ -323,33 +333,8 @@ export function OrderCard({
 						>
 							Build #
 						</div>
-						<div
-							className="whitespace-nowrap px-2 py-1.5 text-right"
-							title="Per-order build sequence -- deepest dependency first"
-						>
-							Prod #
-						</div>
-						<div className="col-span-2 flex flex-wrap items-center gap-2 px-2 py-1.5">
-							{data.facilityNames.length > 0 ? (
-								<>
-									<span className="shrink-0 font-medium text-zinc-500">Facilities</span>
-									<FacilityPreferencePanel
-										facilityNames={data.facilityNames}
-										value={order.facilityExclude}
-										effectiveExcluded={effectiveFacilityExclude}
-										onChange={(excluded) => setOrderFacilityExclude(queueId, order.id, excluded)}
-										scopeLabel="this order"
-										inheritedFromLabel="queue"
-										align="left"
-									/>
-									<span className="shrink-0 text-zinc-600">
-										{order.facilityExclude !== undefined ? "order preference" : "inherits queue"}
-									</span>
-								</>
-							) : (
-								<span className="text-zinc-600">Item · Source / Recipe</span>
-							)}
-						</div>
+						<div className="px-2 py-1.5 text-left">Item</div>
+						<div className="px-2 py-1.5 text-left">Source</div>
 						<div className="px-2 py-1.5 text-right">Required</div>
 						<div className="px-2 py-1.5 text-right">Have</div>
 						<div className="px-2 py-1.5 text-right" title="Units produced by this order">

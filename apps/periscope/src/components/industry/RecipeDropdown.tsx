@@ -50,6 +50,35 @@ export function facilityRecipeLabel(bp: Blueprint, facility: string | undefined)
 	return inputs ? `${fac} · ${inputs}` : fac;
 }
 
+/**
+ * Compact recipe label: the facility name followed by the recipe's input ICONS (no names) -- the
+ * shortened form of `facilityRecipeLabel` for the build-tree Source cell. The caller keeps the full
+ * "<facility> · <input names>" text as the element's hover title.
+ */
+export function RecipeIconLabel({
+	bp,
+	facility,
+	size = 14,
+}: {
+	bp: Blueprint;
+	facility: string | undefined;
+	size?: number;
+}) {
+	const fac = facility ?? `BP #${bp.blueprintID}`;
+	return (
+		<span className="inline-flex min-w-0 items-center gap-1">
+			<span className="shrink-0">{bp.inputs.length > 0 ? `${fac} ·` : fac}</span>
+			{bp.inputs.length > 0 && (
+				<span className="inline-flex shrink-0 items-center gap-0.5">
+					{bp.inputs.map((input) => (
+						<ItemIcon key={input.typeID} typeId={input.typeID} size={size} />
+					))}
+				</span>
+			)}
+		</span>
+	);
+}
+
 // ── Recipe dropdown (shows recipe + facility closed, full combos in dropdown) ────
 
 export interface RecipeDropdownProps {
@@ -189,7 +218,11 @@ export function RecipeDropdown({
 						: "border-zinc-700 bg-zinc-900 text-zinc-400"
 				}`}
 			>
-				<span className="truncate">{closedLabel}</span>
+				{isGathering ? (
+					<span className="truncate">{closedLabel}</span>
+				) : (
+					<RecipeIconLabel bp={currentBp} facility={effectiveFacility} />
+				)}
 				<ChevronDown size={10} className="shrink-0 text-zinc-600" />
 			</button>
 			{open && (

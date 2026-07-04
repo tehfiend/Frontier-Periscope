@@ -10,6 +10,7 @@ import { ItemIcon } from "@/components/ItemIcon";
 import { OutputDestControl } from "@/components/buildqueue/OutputDestControl";
 import { RecipeAlternatives } from "@/components/buildqueue/RecipeAlternatives";
 import { RowSourceControl } from "@/components/buildqueue/RowSourceControl";
+import { SourceSitesPopover } from "@/components/buildqueue/SourceSitesPopover";
 import {
 	type OrderRef,
 	type QueueBlueprintData,
@@ -17,7 +18,7 @@ import {
 } from "@/components/buildqueue/shared";
 import {
 	RecipeDropdown,
-	facilityRecipeLabel,
+	RecipeIconLabel,
 	formatOptionLabel,
 	getFacilityLabel,
 	resolveEffectiveFacility,
@@ -102,10 +103,10 @@ interface BuildTreeProps {
  * single unified grid) use the same fixed template so columns stay aligned without <table> semantics
  * (which fight dnd-kit transforms and full-width sub-rows). Exported so the view can render ONE
  * column header above all the Order group bands (plan 44 unified grid).
- * Build # | Production # | Item | Source/Recipe | Required | Have | Built | Need | Volume.
+ * Build # | Item | Source | Required | Have | Built | Need | Volume.
  */
 export const GRID_COLS =
-	"3.5rem 5.5rem minmax(15rem,2fr) minmax(13rem,2.5fr) 5.5rem 5rem 5rem 5.5rem 6rem";
+	"3.5rem minmax(15rem,2fr) minmax(13rem,2.5fr) 5.5rem 5rem 5rem 5.5rem 6rem";
 
 /** The single shared column header for the unified production grid (rendered once, at the top). */
 export function ProductionGridHeader() {
@@ -117,14 +118,8 @@ export function ProductionGridHeader() {
 			<div className="px-3 py-2 text-right" title="Queue-wide build sequence of the Target items">
 				Build #
 			</div>
-			<div
-				className="whitespace-nowrap px-3 py-2 text-right"
-				title="Per-order production sequence -- the order jobs must be run, deepest dependency first"
-			>
-				Production #
-			</div>
 			<div className="py-2 pl-2 pr-2 text-left">Item</div>
-			<div className="px-2 py-2 text-left">Source / Recipe</div>
+			<div className="px-2 py-2 text-left">Source</div>
 			<div className="px-2 py-2 text-right">Required</div>
 			<div className="px-2 py-2 text-right">Have</div>
 			<div className="px-2 py-2 text-right" title="Produced by derived jobs, net of stock">
@@ -183,7 +178,7 @@ function NeedQtyCell({ value }: { value: number }) {
 	return (
 		<div
 			className={`px-2 py-2 text-right font-mono ${
-				value === 0 ? "text-green-400" : "text-violet-300"
+				value === 0 ? "text-green-400" : "text-amber-400"
 			}`}
 		>
 			{value === 0 ? "0" : formatQty(value)}
@@ -655,7 +650,6 @@ const TreeRow = memo(function TreeRow({
 	const cells = (dragHandle: React.ReactNode) => (
 		<>
 			<IndexCell value={buildIndex} accent />
-			<IndexCell value={node.productionIndex} />
 
 			{/* Item + (for Targets) the inline authoring affordances (OQ-1) */}
 			<div
@@ -813,12 +807,20 @@ const TreeRow = memo(function TreeRow({
 									Source: {node.sourceGroup ?? "Other"}
 								</span>
 							)}
-							<RawSourceDetail
-								node={node}
-								sourceSystemId={sourceSystemId}
-								systemNames={systemNames}
-								landscapeData={landscapeData}
-							/>
+							<div className="flex flex-wrap items-center gap-2">
+								<RawSourceDetail
+									node={node}
+									sourceSystemId={sourceSystemId}
+									systemNames={systemNames}
+									landscapeData={landscapeData}
+								/>
+								<SourceSitesPopover
+									typeId={node.siteSourceTypeId ?? node.typeId}
+									resourceName={node.typeName}
+									sourceSystemId={sourceSystemId}
+									systemNames={systemNames}
+								/>
+							</div>
 						</span>
 					) : canInlineChange ? (
 						<RecipeDropdown
@@ -844,10 +846,10 @@ const TreeRow = memo(function TreeRow({
 							className="shrink-0 truncate rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-xs text-zinc-500"
 							title={`Recipe: ${formatOptionLabel(chosenBp, node.typeId, data.blueprintFacilities)}`}
 						>
-							{facilityRecipeLabel(
-								chosenBp,
-								resolveEffectiveFacility(facilityNames, excludedSet, pick),
-							)}
+							<RecipeIconLabel
+								bp={chosenBp}
+								facility={resolveEffectiveFacility(facilityNames, excludedSet, pick)}
+							/>
 						</span>
 					) : (
 						<span className="text-xs text-zinc-600">--</span>
@@ -901,7 +903,7 @@ const TreeRow = memo(function TreeRow({
 				// Decision 14: a duplicate occurrence of a shared build intermediate -- quantities are
 				// shown once, at the canonical occurrence (order totals). Reference it instead.
 				<div className="col-span-5 px-3 py-2 text-right text-xs text-zinc-500">
-					shared -- see #{node.sharedProductionIndex}
+					shared -- counted once above
 				</div>
 			) : (
 				<>
@@ -1013,7 +1015,21 @@ export function BuildTree({
 	sortableTargets,
 	hideHeader,
 }: BuildTreeProps) {
-	const nodes = useMemo(() => buildOrderTree(order, data), [order, data]);
+	const mergedLocks = useMemo(() => mergeLocks(queueLocks, orderLocks), [queueLocks, orderLocks]);
+	// typeId -> the exclusively-pinned recipe, so the tree can honor a recipe override on a producible
+	// type that never lands in `order.build` (e.g. a direct input of an authored job, which is top-level
+	// demand rather than a Derived intermediate). Without this the tree falls back to the game default.
+	const lockedRecipes = useMemo(() => {
+		const map = new Map<number, number>();
+		for (const lock of mergedLocks) {
+			if (lock.pin?.kind === "exclusive") map.set(lock.pin.typeId, lock.pin.blueprintId);
+		}
+		return map;
+	}, [mergedLocks]);
+	const nodes = useMemo(
+		() => buildOrderTree(order, data, lockedRecipes),
+		[order, data, lockedRecipes],
+	);
 	// Build # (Plan 44 Decision 2): queue-wide 1-based sequence over the authored Target jobs in
 	// (order order, target order) sequence. Derived from the raw queue here so BOTH call sites --
 	// the per-order trees and the global-mode tree -- number identically without prop threading.
@@ -1028,7 +1044,6 @@ export function BuildTree({
 		}
 		return map;
 	}, [queue]);
-	const mergedLocks = useMemo(() => mergeLocks(queueLocks, orderLocks), [queueLocks, orderLocks]);
 	const landscapeData = useLandscapeData();
 	const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(() => new Set());
 	const [detailPaths, setDetailPaths] = useState<Set<string>>(() => new Set());

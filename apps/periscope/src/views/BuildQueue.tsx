@@ -11,6 +11,7 @@
 import { ItemIcon } from "@/components/ItemIcon";
 import { facilityNamesFromBlueprintFacilities } from "@/components/buildqueue/FacilityPreferencePanel";
 import { OrderCard } from "@/components/buildqueue/OrderCard";
+import { SourceSitesPopover } from "@/components/buildqueue/SourceSitesPopover";
 import { QueueHeader } from "@/components/buildqueue/QueueHeader";
 import { SourceOverridesPanel } from "@/components/buildqueue/SourceOverridesPanel";
 import { StockPanel, type SsuInventory } from "@/components/buildqueue/StockPanel";
@@ -23,6 +24,7 @@ import {
 	resolveBlueprintForProduct,
 } from "@/components/buildqueue/shared";
 import { ProducibleItemSearch } from "@/components/industry/ProducibleItemSearch";
+import { facilityRecipeLabel, getFacilityLabel } from "@/components/industry/RecipeDropdown";
 import { db } from "@/db";
 import {
 	computeDefaultRecipes,
@@ -573,7 +575,33 @@ export function BuildQueue() {
 	// covered by an earlier order's surplus does not reappear here.
 	const queueRollup = useMemo(() => {
 		if (!resolved) return null;
-		const acc = new Map<number, { typeId: number; typeName: string; qty: number; raw: boolean }>();
+		// The source cell: a gather item shows its source group ("Char Ores"); a build item shows its
+		// default recipe -- the facility it runs at, then each recipe input with its own icon in front of
+		// the name ("<facility> · <icon> A, <icon> B"). `facility`/`inputs` drive that inline rendering;
+		// `source` is the flat-text equivalent used for the hover title (and the whole gather label).
+		type RollupSource = {
+			source: string;
+			facility: string;
+			inputs: { typeId: number; typeName: string }[];
+		};
+		const sourceInfo = (typeId: number, raw: boolean): RollupSource => {
+			if (raw) {
+				return { source: `Source: ${typeGroups.get(typeId) ?? "Other"}`, facility: "", inputs: [] };
+			}
+			const bpId = filteredDefaultRecipes.get(typeId);
+			const bp = bpId != null ? blueprints[String(bpId)] : undefined;
+			if (!bp) return { source: "--", facility: "", inputs: [] };
+			const facility = getFacilityLabel(bp, blueprintFacilities);
+			return {
+				source: facilityRecipeLabel(bp, facility),
+				facility,
+				inputs: bp.inputs.map((input) => ({ typeId: input.typeID, typeName: input.typeName })),
+			};
+		};
+		const acc = new Map<
+			number,
+			{ typeId: number; typeName: string; qty: number; raw: boolean } & RollupSource
+		>();
 		const add = (item: { typeId: number; typeName: string; stillNeed: number }, raw: boolean) => {
 			if (item.stillNeed <= 0) return;
 			const entry = acc.get(item.typeId) ?? {
@@ -581,6 +609,7 @@ export function BuildQueue() {
 				typeName: item.typeName,
 				qty: 0,
 				raw,
+				...sourceInfo(item.typeId, raw),
 			};
 			entry.qty += item.stillNeed;
 			acc.set(item.typeId, entry);
@@ -589,11 +618,12 @@ export function BuildQueue() {
 			for (const g of order.gather) add(g, true);
 			for (const b of order.build) add(b, false);
 		}
+		// Gather (raw) materials list first, then built items; alphabetical within each group.
 		const rows = [...acc.values()].sort(
-			(a, b) => Number(a.raw) - Number(b.raw) || a.typeName.localeCompare(b.typeName),
+			(a, b) => Number(b.raw) - Number(a.raw) || a.typeName.localeCompare(b.typeName),
 		);
 		return rows.length > 0 ? rows : null;
-	}, [resolved]);
+	}, [resolved, typeGroups, filteredDefaultRecipes, blueprints, blueprintFacilities]);
 
 	const orderRefs = useMemo<OrderRef[]>(
 		() =>
@@ -806,6 +836,7 @@ export function BuildQueue() {
 						<tr className="border-t border-zinc-800 text-xs text-zinc-500">
 							<th className="px-4 py-2 text-left">Item</th>
 							<th className="px-4 py-2 text-left">Kind</th>
+							<th className="px-4 py-2 text-left">Source</th>
 							<th className="px-4 py-2 text-right">Need</th>
 							<th className="px-4 py-2 text-right">Volume (m³)</th>
 						</tr>
@@ -832,7 +863,29 @@ export function BuildQueue() {
 											</span>
 										)}
 									</td>
-									<td className="px-4 py-2 text-right font-mono text-violet-300">
+									<td className="whitespace-nowrap px-4 py-2 text-xs text-zinc-400">
+										{row.inputs.length > 0 ? (
+											<span className="inline-flex items-center gap-x-1.5" title={row.source}>
+												<span className="text-zinc-500">{row.facility} ·</span>
+												<span className="inline-flex items-center gap-1">
+													{row.inputs.map((input) => (
+														<ItemIcon key={input.typeId} typeId={input.typeId} size={16} />
+													))}
+												</span>
+											</span>
+										) : (
+											<span className="inline-flex items-center gap-2">
+												<span title={row.source}>{row.source}</span>
+												<SourceSitesPopover
+													typeId={row.typeId}
+													resourceName={row.typeName}
+													sourceSystemId={queueSystemId}
+													systemNames={systemNames}
+												/>
+											</span>
+										)}
+									</td>
+									<td className="px-4 py-2 text-right font-mono text-amber-400">
 										{row.qty.toLocaleString()}
 									</td>
 									<td className="px-4 py-2 text-right font-mono text-zinc-400">
