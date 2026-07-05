@@ -1,7 +1,7 @@
 // Version and changelog -- pure module (no browser APIs, no app imports).
 // Imported by vite.config.ts at build time in a Node context.
 
-export const APP_VERSION = "4.26.06.26";
+export const APP_VERSION = "4.26.07.05";
 
 export interface ChangelogEntry {
 	version: string;
@@ -14,6 +14,68 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+	{
+		version: "4.26.07.05",
+		date: "2026-07-05",
+		highlights:
+			"The Industry Calculator is now a Build Queue -- organize your production into named queues and orders, see exactly how every item gets built down to raw materials, and pick the recipe and facility for each one. You can also power your structures on and off right from Periscope, see your EVE balance in the Wallet, and your on-chain storage now shows real item names and icons.",
+		changes: [
+			{
+				category: "added",
+				description:
+					"The Industry Calculator is now a Build Queue. Group your production into named queues and orders, and get a full build tree for each item that shows how it gets made all the way down to raw materials.",
+			},
+			{
+				category: "added",
+				description:
+					"Every item in the build tree has its own recipe and facility picker. You can see all the facilities that can make something, choose the one you want, and set which facilities you have available so plans only use what you can actually run.",
+			},
+			{
+				category: "added",
+				description:
+					"Queues and orders now have a location. Click the location box to pick from the systems you have recently visited, and new orders start at the queue's location by default.",
+			},
+			{
+				category: "added",
+				description:
+					"Power your structures on and off from the Structures page. A node and the structures connected to it turn on and off together the same way they do in the game, with no gas thanks to EVE Vault's sponsored transactions.",
+			},
+			{
+				category: "added",
+				description: "Your Wallet now shows your EVE balance next to SUI.",
+			},
+			{
+				category: "changed",
+				description:
+					"Your on-chain storage now shows real item names and icons instead of Type numbers. Names come from local game data so they work even while the world API is down, and storage units without a name are labeled by their in-game id instead of a long address.",
+			},
+			{
+				category: "changed",
+				description:
+					"Stock and Assets now label each storage the same clear way -- its type, a number that is unique per system, and the system name, like Mini Storage #5 O3S-11J.",
+			},
+			{
+				category: "changed",
+				description:
+					"The Open dApp link on a structure now takes you to the official EVE Frontier dApp, unless that structure's dApp URL was actually changed to point somewhere else.",
+			},
+			{
+				category: "fixed",
+				description:
+					"The star map and system search now show the real Cycle 6 system names (like O3S-11J), pulled straight from the game client instead of internal codes.",
+			},
+			{
+				category: "fixed",
+				description:
+					"Materials you already have now correctly reduce what you need to build. If you are holding some of a component, the tree stops asking you to build the things that go into it.",
+			},
+			{
+				category: "fixed",
+				description:
+					"The Structures page now shows the correct type for each structure -- Mini Printer, Refinery, and Mini Storage instead of a generic 'assembly' or 'Storage Unit'.",
+			},
+		],
+	},
 	{
 		version: "4.26.06.26",
 		date: "2026-06-26",
