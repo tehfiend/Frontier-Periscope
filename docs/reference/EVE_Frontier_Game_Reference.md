@@ -1,7 +1,7 @@
 # EVE Frontier Game Reference
 
-**Last Updated:** 2026-03-08
-**Status:** Public Alpha | **Current:** Cycle 5 launching | **Next:** Cycle 6 (June 2026)
+**Last Updated:** 2026-07-04
+**Status:** Public Alpha | **Current:** Cycle 6 "Sanctuary" (launched June 25, 2026) | **Next:** Cycle 7 (TBD)
 
 ---
 
@@ -180,6 +180,49 @@ Hackathon Kickoff Stream: **March 11, 18:00 UTC**
 
 ---
 
+## Cycle 6 — "Sanctuary" (June 2026)
+
+**Patch:** 0.6.0.0 (+ hotfixes 0.6.1.0, 0.6.1.1, 0.6.1.2)
+**Launch:** June 25, 2026
+**Server:** "Stillness"
+
+*Compiled from official CCP/dev statements in the EVE Frontier Discord (announcements, patch-notes, stillness-updates channels, and dev posts) as of 2026-07-04 — excludes player speculation.*
+
+### Major Features
+- **Modular ship building** — ships assembled from modules rather than fixed pre-built hulls
+- **Manual/skillshot weapon aiming** added alongside existing automated weapons (auto retained, expected to be weaker than manual)
+- Removed the requirement to build Network Nodes at Anchor Points
+- Clone-shell crafting via the "Nursery" disabled for this cycle, limiting Nest functionality (Roaming Traders may stock shells instead)
+- Jump drives intentionally disabled this cycle to force reliance on proximity-based scanning/topology mechanics — not a bug
+
+### Launch-Week Issues & Hotfixes
+- Dormant gates visually reset to 0 after downtime — cosmetic/UI bug, not real progress loss
+- Resources failed to spawn correctly in the starting creche, causing early-game softlocks — fixed
+- Cross-node jumps were wiping ship fuel — hotfixed same day; players advised to carry spare fuel in the meantime
+- Field Storages were getting destroyed by NPCs while owners were offline — hotfixed July 1, 2026
+- A crude-lens $EVE pricing bug — fixed
+- New **Recycled Lens** item added (cheaper, burns out faster); Synthetic Mining Lens build requirements adjusted; existing Synthetic Mining Lenses were converted to the Recycled Lens type
+- Cinderwrack containers must be fully emptied (including printed circuits) for their contents to respawn
+
+### Community & Program Announcements
+- **Conclave of Luminaries** — new CCP-run player-representation program; applications opening soon (as of July 1, 2026)
+- Regular "Frontier Friday" dev streams covering ship modularity, maps, and the Cycle 6 patch notes reveal
+- Fanfest 2026 included a panel on world-building
+- Bi-weekly community content challenge "When the Shroud Lifts" concluded, winners announced
+- PayPal payment processing delays acknowledged as a known issue outside CCP's control
+
+### Dev/CCP Clarifications (from Discord)
+- **Funding:** Frontier is entirely self-funded and does not divert budget from EVE Online
+- **Roadmap:** Tribal/shared bases are not in Cycle 6 — modular ship building was prioritized first; tribal bases are likely Cycle 7+ (per an FC roadmap update)
+- **Netcode:** Multi-crew/shared-ship networking is a "next year" problem — CCP is prioritizing core flying/survival foundations first (confirmed by CCP dev davidvbowman.)
+- **Blockchain infrastructure:** CCP can moderate/remove illicit content on FC-controlled surfaces, but not on the underlying Sui/Walrus infrastructure itself; Sui supports sponsored transactions (the server can pay a player's gas) and storage rebates when on-chain objects are deleted
+- **Stillness migration:** A 6-8 hour outage (~June 9-10, 2026) for a major server migration; a dev confirmed a follow-up fix for assemblies not working post-downtime (recommended offline/online-ing affected structures) and asked players to file F12 bug reports for remaining intermittent issues
+
+### TribeCoin (Beta)
+Tribe-run currency, not on-chain — lives inside a tribe's own internal economy but can be exchanged to/from EVE (requires a 1 EVE minimum deposit to bootstrap). Minting/burning requires Superadmin/Owner approval plus a mandatory 24-hour waiting period to prevent abuse; all mints/burns are logged in tribe finance news. Explicitly flagged as experimental/beta.
+
+---
+
 ## Previous Cycles
 
 | Cycle | Name | Date | Key Features |
@@ -265,8 +308,8 @@ Hackathon Kickoff Stream: **March 11, 18:00 UTC**
 
 | Cycle | Timing | Focus |
 |-------|--------|-------|
-| **6** | June 2026 | Details TBD; builds on Cycle 5 |
-| **Long-term** | Ongoing | Full community economic control; open-source client/engine; modular ship construction; expanded tribal/faction systems |
+| **7** | TBD | Tribal/shared bases (deprioritized in Cycle 6 in favor of modular ship building, per FC roadmap update) |
+| **Long-term** | Ongoing | Full community economic control; open-source client/engine; expanded tribal/faction systems |
 
 **Roadmap Pillars:**
 1. **Core Gameplay** — Manual turret control, active scanning, modular ship assembly, collision improvements

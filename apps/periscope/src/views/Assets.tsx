@@ -1,3 +1,4 @@
+import { getStorageUnitBuildTimes } from "@/chain/client";
 import { type AssemblyInventory, fetchAssemblyInventory } from "@/chain/inventory";
 import { ContainerHistory, type TimelineEntry } from "@/components/fieldstorage/ContainerHistory";
 import { FieldStorageEditor } from "@/components/fieldstorage/FieldStorageEditor";
@@ -13,9 +14,11 @@ import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
 import { useBlueprintData } from "@/hooks/useBlueprintData";
 import { useCharacterRecentSystems } from "@/hooks/useCharacterRecentSystems";
-import { useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
+import { useActiveTenant, useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
+import { useSsuSystemMap } from "@/hooks/useSsuSystemMap";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { diffSnapshots, ensureShipCargoUnit } from "@/lib/fieldStorage";
+import { type StorageForNumbering, assignStorageNumbers } from "@/lib/storageLabels";
 import type { InventoryTypeInfo } from "@/lib/inventoryParser";
 import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -44,6 +47,9 @@ interface ChainContainer {
 	id: string;
 	label: string;
 	items: ItemQty[];
+	/** Game type id (resolves "Mini Storage" etc.) and in-game item id (age tiebreak). */
+	typeId: number;
+	itemId?: string;
 }
 
 /** Base (undecorated) group data before header actions / inline panels are attached. */
@@ -132,6 +138,8 @@ export function Assets() {
 	const { activeCharacter } = useActiveCharacter();
 	const client = useSuiClient();
 	const { data: discovery, isLoading: loadingAssemblies } = useOwnedAssemblies();
+	const tenant = useActiveTenant();
+	const buildAddress = activeCharacter?.suiAddress ?? null;
 
 	const gameTypes = useLiveQuery(() => db.gameTypes.toArray()) ?? [];
 	// Local client-extracted type names / volumes (types.json). Offline-safe and comprehensive; the
@@ -201,6 +209,16 @@ export function Assets() {
 		[discovery],
 	);
 
+	// Each SSU's solar system + on-chain build time, for the "<Type> #<N> <System>" labelling.
+	const ssuObjectIds = useMemo(() => storageAssemblies.map((a) => a.objectId), [storageAssemblies]);
+	const ssuSystemById = useSsuSystemMap(ssuObjectIds);
+	const { data: ssuBuildTimes } = useQuery({
+		queryKey: ["ssuBuildTimes", buildAddress, tenant],
+		queryFn: () => getStorageUnitBuildTimes(buildAddress as string, tenant),
+		enabled: CHAIN_ENABLED && !!buildAddress,
+		staleTime: 10 * 60_000,
+	});
+
 	const {
 		data: inventories,
 		isLoading: loadingInventory,
@@ -235,12 +253,39 @@ export function Assets() {
 			return {
 				id: a.objectId,
 				// Prefer the assembly name; when unnamed, label by the in-game item ID rather than the
-				// opaque Sui object address so the SSU is identifiable.
+				// opaque Sui object address so the SSU is identifiable. (Overridden below by the numbered
+				// "<Type> #<N> <System>" label when a game type resolves.)
 				label: a.name?.trim() || (a.itemId ? `SSU #${a.itemId}` : `${a.objectId.slice(0, 10)}...`),
 				items,
+				typeId: a.typeId,
+				itemId: a.itemId,
 			};
 		});
 	}, [storageAssemblies, inventories]);
+
+	// Per-(system, type) build-age numbering across local field units + on-chain SSUs.
+	const storageNumbers = useMemo(() => {
+		const rows: StorageForNumbering[] = [];
+		for (const unit of fieldUnits) {
+			rows.push({
+				key: unit.id,
+				typeName: "Field Storage",
+				systemId: unit.systemId,
+				ageMs: unit.createdAt,
+				buildTie: unit.seq,
+			});
+		}
+		for (const a of storageAssemblies) {
+			rows.push({
+				key: a.objectId,
+				typeName: typeNameMap[a.typeId] ?? "Storage",
+				systemId: ssuSystemById?.get(a.objectId),
+				ageMs: ssuBuildTimes?.get(a.objectId),
+				buildTie: Number(a.itemId ?? 0),
+			});
+		}
+		return assignStorageNumbers(rows);
+	}, [fieldUnits, storageAssemblies, ssuSystemById, ssuBuildTimes, typeNameMap]);
 
 	// ── Summary stats (chain + field) ──────────────────────────────────────────
 	const summary = useMemo(() => {
@@ -318,7 +363,7 @@ export function Assets() {
 			);
 			out.push({
 				id: unit.id,
-				name: `#${unit.seq} ${unit.name?.trim() || "(unnamed)"}`,
+				name: `Field Storage #${storageNumbers.get(unit.id) ?? 0}`,
 				kind: "field",
 				system: unit.systemId
 					? (systemNameMap[unit.systemId] ?? `System #${unit.systemId}`)
@@ -346,11 +391,15 @@ export function Assets() {
 		});
 
 		for (const c of chainContainers) {
+			const typeName = typeNameMap[c.typeId];
+			const num = storageNumbers.get(c.id) ?? 0;
+			const sysId = ssuSystemById?.get(c.id);
 			out.push({
 				id: c.id,
-				name: c.label,
+				// Numbered "<Type> #<N>" when the game type resolves, else keep the identifiable name.
+				name: typeName ? `${typeName} #${num}` : c.label,
 				kind: "chain",
-				system: "",
+				system: sysId != null ? (systemNameMap[sysId] ?? `System #${sysId}`) : "",
 				warpable: "",
 				// SSU inventories all refresh together, so the query's last-updated time applies to each.
 				updatedAt: chainUpdatedAt || undefined,
@@ -366,22 +415,28 @@ export function Assets() {
 		chainUpdatedAt,
 		recentSystems,
 		snapshotsByContainer,
+		storageNumbers,
+		ssuSystemById,
 		systemNameMap,
 		typeNameMap,
 		volumeMap,
 	]);
 
 	// ── Actions ──────────────────────────────────────────────────────────────
+	// "Field Storage #<N> <System>" -- matches the group header so Copy/Delete never show a stale #seq.
+	function fieldLabel(unit: FieldStorageUnit): string {
+		const sys = unit.systemId ? ` ${systemNameMap[unit.systemId] ?? `System #${unit.systemId}`}` : "";
+		return `Field Storage #${storageNumbers.get(unit.id) ?? 0}${sys}`;
+	}
+
 	function handleCopy(unit: FieldStorageUnit) {
-		const text = unit.name?.trim() ? `#${unit.seq} ${unit.name.trim()}` : `#${unit.seq}`;
-		navigator.clipboard.writeText(text);
+		navigator.clipboard.writeText(fieldLabel(unit));
 		setCopiedId(unit.id);
 		setTimeout(() => setCopiedId((c) => (c === unit.id ? null : c)), 1500);
 	}
 
 	async function handleDelete(unit: FieldStorageUnit) {
-		const label = unit.name?.trim() ? `#${unit.seq} ${unit.name.trim()}` : `#${unit.seq}`;
-		if (!window.confirm(`Delete field storage container ${label} and its history?`)) return;
+		if (!window.confirm(`Delete field storage container ${fieldLabel(unit)} and its history?`)) return;
 		await db.fieldStorageSnapshots.where("containerId").equals(unit.id).delete();
 		await db.fieldStorageUnits.delete(unit.id);
 		setActivePanel((p) => (p?.containerId === unit.id ? null : p));
@@ -421,7 +476,7 @@ export function Assets() {
 					<HeaderBtn title="History" onClick={() => togglePanel(g.id, "history")} active={isPanel(g.id, "history")}>
 						<History size={13} />
 					</HeaderBtn>
-					<HeaderBtn title={copiedId === unit.id ? "Copied" : "Copy #id + name"} onClick={() => handleCopy(unit)}>
+					<HeaderBtn title={copiedId === unit.id ? "Copied" : "Copy label"} onClick={() => handleCopy(unit)}>
 						{copiedId === unit.id ? <Check size={13} className="text-teal-400" /> : <Copy size={13} />}
 					</HeaderBtn>
 					<HeaderBtn

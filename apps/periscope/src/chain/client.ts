@@ -356,6 +356,61 @@ export async function getRecentKillmails(
 	});
 }
 
+/**
+ * On-chain build time (epoch ms) per storage unit the given owner built, keyed by the storage's
+ * object id. Reads `StorageUnitCreatedEvent`s filtered by sender (the builder), so #1-per-system
+ * numbering can order units by true build age. Missing ids simply have no entry (caller falls back).
+ */
+export async function getStorageUnitBuildTimes(
+	address: string,
+	tenant: TenantId = "stillness",
+): Promise<Map<string, number>> {
+	const c = getSuiClient();
+	const eventType = getEventTypes(tenant).StorageUnitCreated;
+	const gqlQuery = `
+		query($type: String!, $sender: SuiAddress!, $first: Int, $after: String) {
+			events(filter: { type: $type, sender: $sender }, first: $first, after: $after) {
+				nodes { contents { json } timestamp }
+				pageInfo { hasNextPage endCursor }
+			}
+		}
+	`;
+	type EventsResult = {
+		events?: {
+			nodes: Array<{ contents?: { json?: GqlJson }; timestamp?: string }>;
+			pageInfo: { hasNextPage: boolean; endCursor: string | null };
+		};
+	};
+
+	const times = new Map<string, number>();
+	let cursor: string | null = null;
+	for (let page = 0; page < 20; page++) {
+		let result: { data?: EventsResult | null };
+		try {
+			result = await c.query<EventsResult>({
+				query: gqlQuery,
+				variables: { type: eventType, sender: address, first: 50, after: cursor },
+			});
+		} catch {
+			break;
+		}
+		const events = result.data?.events;
+		if (!events) break;
+		for (const node of events.nodes) {
+			const id = node.contents?.json?.storage_unit_id as string | undefined;
+			if (!id || !node.timestamp) continue;
+			const ts = new Date(node.timestamp).getTime();
+			if (Number.isNaN(ts)) continue;
+			const prev = times.get(id);
+			// Keep the earliest timestamp seen for an id (defensive against duplicate events).
+			if (prev == null || ts < prev) times.set(id, ts);
+		}
+		if (!events.pageInfo.hasNextPage) break;
+		cursor = events.pageInfo.endCursor;
+	}
+	return times;
+}
+
 // ── Object Field Extraction ─────────────────────────────────────────────────
 
 /** Extract typed fields from a normalized SuiObjectData.

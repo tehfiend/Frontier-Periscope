@@ -123,6 +123,46 @@ function facilityOptionLabel(bp: Blueprint, typeId: number, facility: string | u
 	return `${facilityRecipeLabel(bp, facility)} · eff ${eff}`;
 }
 
+/**
+ * Dropdown option content with each input's icon rendered directly in front of its name (rather than
+ * all icons grouped at the start). `title` on the caller keeps the full plain-text label for hover.
+ */
+function RecipeOptionInline({
+	bp,
+	typeId,
+	facility,
+	excluded,
+}: {
+	bp: Blueprint;
+	typeId: number;
+	facility: string | undefined;
+	excluded: boolean;
+}) {
+	const outputQty = bp.outputs.find((o) => o.typeID === typeId)?.quantity ?? 1;
+	const totalInputQty = bp.inputs.reduce((s, i) => s + i.quantity, 0);
+	const rawEff = totalInputQty / outputQty;
+	const eff = rawEff < 1 ? rawEff.toPrecision(2) : rawEff.toFixed(1);
+	const fac = facility ?? `BP #${bp.blueprintID}`;
+	const strike = excluded ? "line-through decoration-red-400/70" : "";
+	return (
+		<span className="flex min-w-0 flex-1 items-center gap-1 truncate">
+			<span className={`shrink-0 ${strike}`}>{fac}</span>
+			{bp.inputs.map((input) => (
+				<span
+					key={input.typeID}
+					className={`inline-flex shrink-0 items-center gap-1 ${strike}`}
+				>
+					<span className="text-zinc-600">·</span>
+					<ItemIcon typeId={input.typeID} size={16} />
+					<span>{input.typeName}</span>
+				</span>
+			))}
+			<span className="shrink-0 text-zinc-600">·</span>
+			<span className="shrink-0 text-zinc-500">eff {eff}</span>
+		</span>
+	);
+}
+
 interface RecipeOption {
 	bp: Blueprint;
 	facility: string | undefined;
@@ -287,18 +327,13 @@ export function RecipeDropdown({
 								}`}
 							>
 								<span className="w-3 shrink-0 text-cyan-400">{isSelected ? "●" : ""}</span>
-								<span className="flex shrink-0 items-center gap-0.5">
-									{option.bp.inputs.map((input) => (
-										<ItemIcon key={input.typeID} typeId={input.typeID} size={16} />
-									))}
-								</span>
-								<span
-									className={`min-w-0 flex-1 truncate ${
-										option.excluded ? "line-through decoration-red-400/70" : ""
-									}`}
-									title={label}
-								>
-									{label}
+								<span className="min-w-0 flex-1" title={label}>
+									<RecipeOptionInline
+										bp={option.bp}
+										typeId={typeId}
+										facility={option.facility}
+										excluded={option.excluded}
+									/>
 								</span>
 								{option.excluded && (
 									<span className="ml-auto shrink-0 text-[10px] text-red-300/80">excluded</span>

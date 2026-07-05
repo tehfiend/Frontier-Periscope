@@ -13,7 +13,7 @@ import { useCurrentAccount, useDAppKit, useWallets } from "@mysten/dapp-kit-reac
 import { useLiveQuery } from "dexie-react-hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ASSEMBLY_TYPE_IDS, FUEL_TYPES, TENANTS, type TenantId, classifyExtension, getWorldTarget } from "@/chain/config";
+import { ASSEMBLY_TYPE_IDS, type AssemblyKind, FUEL_TYPES, TENANTS, type TenantId, classifyExtension, getTemplatesForAssemblyType } from "@/chain/config";
 import {
 	crossReferenceManifestLocations,
 	crossReferencePrivateMapLocations,
@@ -25,6 +25,7 @@ import { type ColumnDef, DataGrid, excelFilterFn } from "@/components/DataGrid";
 import { FieldStorageGroup } from "@/components/fieldstorage/FieldStorageGroup";
 import { EditableCell } from "@/components/EditableCell";
 import { StructureDetailCard } from "@/components/StructureDetailCard";
+import { connectEveVault } from "@/components/WalletConnect";
 import { SystemPicker } from "@/components/SystemPicker";
 import { SystemSearch } from "@/components/SystemSearch";
 import { WarpableSelector } from "@/components/WarpableSelector";
@@ -33,8 +34,7 @@ import type { AssemblyStatus, DeployableIntel, SolarSystem } from "@/db/types";
 import { FUEL_CRITICAL_HOURS, FUEL_WARNING_HOURS } from "@/lib/constants";
 import { type CsvColumn, exportToCsv } from "@/lib/csv";
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import { Transaction } from "@mysten/sui/transactions";
-import { ASSEMBLY_MODULE_MAP, getObjectJson } from "@tehfrontier/chain-shared";
+import { getWalletFeature } from "@wallet-standard/ui-features";
 import {
 	AlertTriangle,
 	Fuel,
@@ -184,6 +184,41 @@ const AUTO_TYPE_NAMES = new Set([
 	"storage unit",
 ]);
 
+/**
+ * EVE Vault's custom wallet-standard feature for gasless, relayer-built assembly transactions --
+ * the exact path the official client/dApp uses to power structures on/off. The relayer composes,
+ * sponsors, and signs the PTB server-side (including the Friend-visibility disconnect calls a plain
+ * user PTB can't make), so a node powering off cascades its connected structures the same as in-game.
+ * See docs/reference/sponsored-transactions.md.
+ */
+const SPONSORED_TX_FEATURE = "evefrontier:sponsoredTransaction";
+type SponsoredTransactionInput = {
+	txAction: "online" | "offline";
+	/** The assembly's in-game item_id as a non-negative integer (not the Sui object id). */
+	assembly: number;
+	/** Assembly type API string: network-nodes | storage-units | turrets | gates | assemblies. */
+	assemblyType: string;
+	tenant: string;
+};
+/** The relayer resolves + submits the tx and returns its effects; a MoveAbort comes back as
+ *  status.success === false rather than throwing, so callers must check it. */
+type SponsoredTransactionResult = {
+	digest?: string;
+	status?: { success: boolean; error?: { message?: string; $kind?: string } | null };
+};
+type SponsoredTransactionFeature = {
+	signSponsoredTransaction: (input: SponsoredTransactionInput) => Promise<SponsoredTransactionResult>;
+};
+
+/** Map assemblyModule to the sponsored-transaction API string the relayer expects. */
+const SPONSORED_ASSEMBLY_API: Record<string, string> = {
+	network_node: "network-nodes",
+	storage_unit: "storage-units",
+	turret: "turrets",
+	gate: "gates",
+	assembly: "assemblies",
+};
+
 /** Map OwnedAssembly.type to Move module name for rename PTB */
 function assemblyKindToModule(
 	kind: string,
@@ -202,6 +237,13 @@ function assemblyKindToModule(
 		default:
 			return "assembly";
 	}
+}
+
+/** Whether a structure type can take a Periscope extension (SSU / gate / turret). The Extension
+ *  column's Deploy/Configure action is limited to these -- nodes, printers, and refineries cannot. */
+function structureCanExtend(row: StructureRow): boolean {
+	const kind = (row.assemblyModule ?? "assembly") as AssemblyKind;
+	return getTemplatesForAssemblyType(kind).length > 0;
 }
 
 // ── Fuel Data Fetch ─────────────────────────────────────────────────────────
@@ -378,7 +420,11 @@ export function Deployables() {
 
 			for (const assembly of discovery.assemblies) {
 				const typeIdNum = assembly.typeId;
+				// Prefer the live game-data name (Cycle 6) over the stale hardcoded ASSEMBLY_TYPE_IDS
+				// map, so specific types like "Mini Storage" / "Mini Printer" / "Refinery" resolve.
+				const gameType = typeIdNum ? await db.gameTypes.get(typeIdNum) : undefined;
 				const typeName =
+					gameType?.name ??
 					ASSEMBLY_TYPE_IDS[typeIdNum] ??
 					ASSEMBLY_KIND_NAMES[assembly.type] ??
 					assembly.type.replace("_", " ");
@@ -632,97 +678,111 @@ export function Deployables() {
 
 	const handlePowerToggle = useCallback(
 		async (row: StructureRow) => {
-			if (!account || !row.ownerCapId || !row.characterObjectId || !row.parentId) {
-				setSyncStatus("Missing data for power toggle -- try re-syncing first");
-				return;
-			}
-			if (!isValidTenant) return;
-
-			if (!row.assemblyModule) {
-				setSyncStatus("Cannot toggle power: assembly module unknown -- try re-syncing first");
-				return;
-			}
-			const assemblyModule = row.assemblyModule;
-			const moduleEntry = ASSEMBLY_MODULE_MAP[assemblyModule as keyof typeof ASSEMBLY_MODULE_MAP];
-			if (!moduleEntry) {
-				setSyncStatus(`Unsupported assembly type for power toggle: ${assemblyModule}`);
+			// Power on/off goes through EVE Vault's sponsored-transaction feature -- the same gasless,
+			// relayer-built path the official client uses. We hand it a small high-level payload
+			// (action, item_id, type, tenant) and the relayer composes + sponsors + signs the PTB,
+			// including disconnecting a node's connected structures. This replaces the hand-built PTB,
+			// which hit a Friend-visibility wall (only the relayer can call the internal disconnects).
+			const eveVault = wallets.find(
+				(w) => w.name === "Eve Vault" || w.name.includes("Eve Frontier"),
+			);
+			if (!eveVault) {
+				setSyncStatus(
+					"EVE Vault extension not found. Install it from https://github.com/evefrontier/evevault/releases",
+				);
 				return;
 			}
 
+			// Auto-connect (silent-first, matches the sidebar button) rather than bailing when disconnected.
+			if (!account?.address) {
+				try {
+					await connectEveVault(connectWallet, eveVault);
+				} catch {
+					setSyncStatus("Wallet connection failed -- connect EVE Vault and try again");
+					return;
+				}
+			}
+
+			if (!isValidTenant) {
+				setSyncStatus(`Unknown tenant "${tenant}" -- cannot toggle power`);
+				return;
+			}
+
+			// The relayer resolves the on-chain object from the item_id (an integer) + tenant.
+			const assemblyId = Number.parseInt(row.itemId ?? "", 10);
+			if (!Number.isInteger(assemblyId) || assemblyId < 0) {
+				setSyncStatus("Missing item id for power toggle -- try re-syncing first");
+				return;
+			}
+			const assemblyType = SPONSORED_ASSEMBLY_API[row.assemblyModule ?? "assembly"] ?? "assemblies";
+
+			if (!eveVault.features.includes(SPONSORED_TX_FEATURE)) {
+				setSyncStatus("Connected wallet does not support sponsored transactions -- use EVE Vault");
+				return;
+			}
+			let feature: SponsoredTransactionFeature | undefined;
+			try {
+				feature = getWalletFeature(eveVault, SPONSORED_TX_FEATURE) as SponsoredTransactionFeature;
+			} catch {
+				feature = undefined;
+			}
+			if (!feature?.signSponsoredTransaction) {
+				setSyncStatus("Connected wallet does not support sponsored transactions -- use EVE Vault");
+				return;
+			}
+
+			const isNode = row.assemblyModule === "network_node";
+			const goingOffline = row.status === "online";
 			setPowerTogglingId(row.objectId);
 			try {
-				const worldPkg = TENANTS[tenant as TenantId].worldPackageId;
-				const worldTarget = getWorldTarget(tenant as TenantId);
-
-				// Resolve actual on-chain type -- some assemblies use assembly::Assembly
-				// instead of the specific module type (e.g. turret::Turret)
-				const objResult = await getObjectJson(client, row.objectId);
-				const onChainType = objResult.type ?? "";
-				const resolvedModule = onChainType.includes("::assembly::Assembly")
-					? { module: "assembly", type: "Assembly" }
-					: moduleEntry;
-				const fullType = `${worldPkg}::${resolvedModule.module}::${resolvedModule.type}`;
-
-				// Discover EnergyConfig singleton
-				const ecResult: {
-					data?: { objects?: { nodes: Array<{ address: string }> } } | null;
-				} = await client.query({
-					query: `query($type: String!) { objects(filter: { type: $type }, first: 1) { nodes { address } } }`,
-					variables: { type: `${worldPkg}::energy::EnergyConfig` },
+				const result = await feature.signSponsoredTransaction({
+					txAction: goingOffline ? "offline" : "online",
+					assembly: assemblyId,
+					assemblyType,
+					tenant,
 				});
-				const energyConfigId = ecResult.data?.objects?.nodes?.[0]?.address;
-				if (!energyConfigId) {
-					setSyncStatus("Could not find EnergyConfig on chain");
+				// The relayer returns the executed tx's effects; a revert (MoveAbort, unresolved
+				// assembly id, etc.) is reported here rather than thrown. Bail before the optimistic
+				// update so the UI doesn't claim success on a reverted tx.
+				console.info("[power-toggle] sponsored transaction result", result);
+				if (result?.status && result.status.success === false) {
+					const err = result.status.error;
+					const errText = err?.message ?? err?.$kind ?? JSON.stringify(err ?? "unknown error");
+					const digest = result.digest ? ` (${result.digest.slice(0, 10)}…)` : "";
+					setSyncStatus(`Power toggle reverted on-chain${digest}: ${errText}`);
 					return;
 				}
 
-				const tx = new Transaction();
-				tx.setSender(account.address);
-
-				const [borrowedCap, receipt] = tx.moveCall({
-					target: `${worldTarget}::character::borrow_owner_cap`,
-					typeArguments: [fullType],
-					arguments: [tx.object(row.characterObjectId), tx.object(row.ownerCapId)],
-				});
-
-				const target = row.status === "online"
-					? `${worldTarget}::${resolvedModule.module}::offline`
-					: `${worldTarget}::${resolvedModule.module}::online`;
-
-				tx.moveCall({
-					target,
-					arguments: [
-						tx.object(row.objectId),
-						tx.object(row.parentId),
-						tx.object(energyConfigId),
-						borrowedCap,
-					],
-				});
-
-				tx.moveCall({
-					target: `${worldTarget}::character::return_owner_cap`,
-					typeArguments: [fullType],
-					arguments: [tx.object(row.characterObjectId), borrowedCap, receipt],
-				});
-
-				await signAndExecute({ transaction: tx });
-
-				// Update local status
-				const newStatus = row.status === "online" ? "offline" : "online";
+				const newStatus: AssemblyStatus = goingOffline ? "offline" : "online";
 				const now = new Date().toISOString();
 				if (row.source === "deployables") {
-					await db.deployables.update(row.id, { status: newStatus as AssemblyStatus, updatedAt: now });
+					await db.deployables.update(row.id, { status: newStatus, updatedAt: now });
 				} else {
-					await db.assemblies.update(row.id, { status: newStatus as AssemblyStatus, updatedAt: now });
+					await db.assemblies.update(row.id, { status: newStatus, updatedAt: now });
 				}
-				setSyncStatus(`Structure ${newStatus === "online" ? "powered on" : "powered off"}`);
+				// Powering a node off drops its connected structures too -- reflect that locally.
+				if (isNode && goingOffline) {
+					const children = data.filter(
+						(d) => d.parentId === row.id || d.parentId === row.objectId,
+					);
+					for (const child of children) {
+						if (child.source === "deployables") {
+							await db.deployables.update(child.id, { status: "offline", updatedAt: now });
+						} else {
+							await db.assemblies.update(child.id, { status: "offline", updatedAt: now });
+						}
+					}
+				}
+				const digest = result?.digest ? ` (${result.digest.slice(0, 10)}…)` : "";
+				setSyncStatus(`Structure ${goingOffline ? "powered off" : "powered on"}${digest}`);
 			} catch (e) {
-				setSyncStatus(`Power toggle failed: ${e instanceof Error ? e.message : String(e)}`);
+				const msg = e instanceof Error ? e.message : String(e);
+				setSyncStatus(`Power toggle failed: ${msg}`);
 			} finally {
 				setPowerTogglingId(null);
 			}
 		},
-		[account, tenant, isValidTenant, client, signAndExecute],
+		[account, tenant, isValidTenant, data, wallets, connectWallet],
 	);
 
 	// ── Stats ────────────────────────────────────────────────────────────────
@@ -737,6 +797,26 @@ export function Deployables() {
 		}).length;
 		return { total: data.length, mine, watched, online, offline, warnings };
 	}, [data]);
+
+	// O(1) lookups for the columns so per-row cells/accessors never scan `data` (avoids O(n^2)
+	// render cost on large structure lists): parent row by id/objectId, and child count per node.
+	const rowIndex = useMemo(() => {
+		const m = new Map<string, StructureRow>();
+		for (const r of data) {
+			m.set(r.id, r);
+			if (r.objectId) m.set(r.objectId, r);
+		}
+		return m;
+	}, [data]);
+	const childCountByNode = useMemo(() => {
+		const m = new Map<string, number>();
+		for (const r of data) {
+			if (!r.parentId) continue;
+			const key = rowIndex.get(r.parentId)?.id ?? r.parentId;
+			m.set(key, (m.get(key) ?? 0) + 1);
+		}
+		return m;
+	}, [data, rowIndex]);
 
 	// ── Columns ──────────────────────────────────────────────────────────────
 	const columns: ColumnDef<StructureRow, unknown>[] = useMemo(
@@ -838,6 +918,7 @@ export function Deployables() {
 			{
 				id: "extension",
 				accessorFn: (d) => {
+					if (!structureCanExtend(d)) return "";
 					const extConfig = extensionConfigMap.get(d.objectId);
 					const info = classifyExtension(
 						d.extensionType,
@@ -860,6 +941,10 @@ export function Deployables() {
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
+					// Only SSUs, gates, and turrets can take a Periscope extension -- no link otherwise.
+					if (!structureCanExtend(r)) {
+						return <span className="text-xs text-zinc-600">{"—"}</span>;
+					}
 					const extConfig = extensionConfigMap.get(r.objectId);
 					const info = classifyExtension(
 						r.extensionType,
@@ -971,19 +1056,35 @@ export function Deployables() {
 			{
 				id: "location",
 				accessorFn: (d) => {
-					const sysName = d.systemId ? (systemNames.get(d.systemId) ?? "") : "";
-					return [sysName, d.warpable].filter(Boolean).join(" ");
+					// Children mirror their parent node's location so search / sort match what's displayed.
+					const loc = d.parentId ? (rowIndex.get(d.parentId) ?? d) : d;
+					const sysName = loc.systemId ? (systemNames.get(loc.systemId) ?? "") : "";
+					return [sysName, loc.warpable].filter(Boolean).join(" ");
 				},
 				header: "Location",
 				size: 160,
 				filterFn: excelFilterFn,
 				cell: ({ row }) => {
 					const r = row.original;
-					// Structures under a node inherit its location; the node header owns the setter.
+					// Structures under a node mirror its location (read-only); the node owns the setter.
 					if (r.parentId) {
-						return (
-							<span className="text-[10px] text-zinc-600" title="Inherited from parent node">
-								↑ node location
+						const parent = rowIndex.get(r.parentId);
+						const sysName = parent?.systemId ? (systemNames.get(parent.systemId) ?? "") : "";
+						const text = [sysName, parent?.warpable].filter(Boolean).join(" -- ");
+						return text ? (
+							<span
+								className="flex items-center gap-1.5 text-xs text-zinc-500"
+								title="Mirrors the parent node's location"
+							>
+								<MapPin size={12} className="shrink-0 text-zinc-600" />
+								<span className="truncate">{text}</span>
+							</span>
+						) : (
+							<span
+								className="text-[10px] text-zinc-600"
+								title="Mirrors the parent node's location"
+							>
+								{"—"}
 							</span>
 						);
 					}
@@ -1016,9 +1117,16 @@ export function Deployables() {
 				cell: ({ row }) => {
 					const r = row.original;
 					if (!r.parentId && r.assemblyType.toLowerCase().includes("node")) {
+						const childCount = childCountByNode.get(r.id) ?? 0;
 						return (
 							<span className="text-xs">
-								<span className="block text-zinc-400">{r.label}</span>
+								<span className="flex items-center gap-1.5">
+									<span className="truncate text-zinc-400">{r.label}</span>
+									<span className="shrink-0 rounded bg-emerald-700/30 px-1 py-0.5 text-[10px] font-medium text-emerald-300">
+										Node
+									</span>
+									<span className="shrink-0 text-[10px] text-zinc-600">{childCount} attached</span>
+								</span>
 								{r.itemId && (
 									<span className="block font-mono text-[10px] text-zinc-600">{r.itemId}</span>
 								)}
@@ -1177,6 +1285,8 @@ export function Deployables() {
 			extensionConfigMap,
 			currencyByMarketId,
 			data,
+			rowIndex,
+			childCountByNode,
 			systems,
 			systemNames,
 			standingByName,
@@ -1342,6 +1452,7 @@ export function Deployables() {
 				renderGroupHeader={renderGroupHeader}
 				groupSort={groupSort}
 				isGroupAnchorRow={isGroupAnchorRow}
+				renderGroupHeaderAsAnchorRow
 				searchPlaceholder="Search structures, owners, notes..."
 				emptyMessage='No structures found. Click "Sync Chain" to discover your on-chain deployables, or add targets in the Watchlist.'
 				selectedRowId={selectedId ?? undefined}

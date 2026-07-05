@@ -83,8 +83,11 @@ export function StructureDetailCard({
 		extConfig?.publishedPackageId,
 	);
 
-	const tenantDapp =
-		TENANTS[tenant]?.dappUrl ?? `https://dapp.frontierperiscope.com/?tenant=${tenant}`;
+	// The "Open dApp" link defaults to the official EVE Frontier dApp (deep-linked by item id +
+	// tenant). We only point elsewhere when the assembly's on-chain metadata URL was explicitly set
+	// -- e.g. an owner who pointed it at the Periscope dApp. Nodes have no metadata URL, so they get
+	// the official dApp rather than falling through to Periscope.
+	const officialDapp = TENANTS[tenant]?.ccpDappUrl ?? "https://dapps.evefrontier.com";
 	const dappHref = (() => {
 		if (row.dappUrl) {
 			try {
@@ -93,11 +96,17 @@ export function StructureDetailCard({
 			} catch { /* invalid URL, fall through */ }
 		}
 		if (row.itemId) {
-			const url = new URL(tenantDapp);
+			const url = new URL(officialDapp);
+			url.searchParams.set("tenant", tenant);
 			url.searchParams.set("itemId", row.itemId);
 			return url.toString();
 		}
-		return row.ownership === "mine" ? tenantDapp : null;
+		if (row.ownership === "mine") {
+			const url = new URL(officialDapp);
+			url.searchParams.set("tenant", tenant);
+			return url.toString();
+		}
+		return null;
 	})();
 
 	return (
@@ -105,7 +114,10 @@ export function StructureDetailCard({
 			<div className="mb-3 flex items-center justify-between">
 				<h3 className="text-sm font-medium text-zinc-200">{row.label}</h3>
 				<div className="flex items-center gap-2">
-					{onPowerToggle && row.ownership === "mine" && row.parentId && (
+					{/* Nodes toggle their own energy production; children toggle against their parent node. */}
+					{onPowerToggle &&
+						row.ownership === "mine" &&
+						(row.assemblyType.toLowerCase().includes("node") || row.parentId) && (
 						<button
 							type="button"
 							onClick={() => onPowerToggle(row)}

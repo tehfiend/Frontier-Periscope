@@ -98,13 +98,16 @@ export async function syncOwnedAssemblies(
 		const moveType = extractType(obj);
 		if (!objectId || !fields) continue;
 
-		const assemblyType = moveType ? classifyAssemblyType(moveType) : "Assembly";
+		// Prefer the live game-data name (Cycle 6) via the on-chain type_id, so specific types like
+		// "Mini Storage" / "Mini Printer" / "Refinery" resolve instead of a generic kind label.
+		const kindLabel = moveType ? classifyAssemblyType(moveType) : "Assembly";
+		const typeIdNum = Number(fields.type_id ?? 0);
+		const gameType = typeIdNum ? await db.gameTypes.get(typeIdNum) : undefined;
+		const assemblyType = gameType?.name ?? ASSEMBLY_TYPE_IDS[typeIdNum] ?? kindLabel;
 		const status = parseAssemblyStatus(fields);
 		const fuelData = parseFuelData(fields);
 
-		// Extract in-game type ID if available
-		const itemId = fields.item_id as number | undefined;
-		const label = itemId ? (ASSEMBLY_TYPE_IDS[itemId] ?? assemblyType) : assemblyType;
+		const label = assemblyType;
 
 		const existing = await db.deployables.where("objectId").equals(objectId).first();
 

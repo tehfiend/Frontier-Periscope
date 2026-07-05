@@ -59,6 +59,9 @@ importers:
       '@tehfrontier/sui-client':
         specifier: workspace:*
         version: link:../../packages/sui-client
+      '@wallet-standard/ui-features':
+        specifier: ^1.0.1
+        version: 1.0.1
       dexie:
         specifier: ^4.0.11
         version: 4.3.0

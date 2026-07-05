@@ -5,6 +5,7 @@
 // persisted per queue (queue.stockSources) so it survives reloads. SSUs are fetched from chain only while
 // enabled (each toggle triggers/drops a live inventory read); everything else is local.
 
+import { getStorageUnitBuildTimes } from "@/chain/client";
 import { type AssemblyInventory, fetchAssemblyInventory } from "@/chain/inventory";
 import { ItemIcon } from "@/components/ItemIcon";
 import { ScratchPadPanel } from "@/components/buildqueue/ScratchPadPanel";
@@ -12,8 +13,10 @@ import { PasteUpdatePanel } from "@/components/fieldstorage/PasteUpdatePanel";
 import { db } from "@/db";
 import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveCharacter } from "@/hooks/useActiveCharacter";
-import { useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
+import { useActiveTenant, useOwnedAssemblies } from "@/hooks/useOwnedAssemblies";
+import { useSsuSystemMap } from "@/hooks/useSsuSystemMap";
 import { useSuiClient } from "@/hooks/useSuiClient";
+import { assignStorageNumbers } from "@/lib/storageLabels";
 import type { RecentSystem } from "@/hooks/useCharacterRecentSystems";
 import { ensureShipCargoUnit } from "@/lib/fieldStorage";
 import type { BuildQueue, ContainerRef, StockSourceEntry } from "@/lib/buildQueueTypes";
@@ -77,6 +80,46 @@ interface StockCandidate {
 	sampleTypeIds: number[];
 	/** Chain rows only: fetching live inventory right now. */
 	loading?: boolean;
+	/** Chain rows: the storage's game type id (resolves the "Mini Storage"/"Field Storage" name). */
+	typeId?: number;
+	/** Build/creation age (epoch ms) -- drives the per-(system, type) "#N" numbering. */
+	ageMs?: number;
+	/** Secondary age tiebreak when ageMs is equal/absent (SSU in-game item id, else local seq). */
+	buildTie?: number;
+}
+
+/**
+ * Rewrite the label of every real-storage row (on-chain SSU + local field unit) to
+ * "<Type> #<N> <System>", where N is unique per (system, type) ordered by build age -- #1 is the
+ * oldest. Ship cargo hold and scratch pad are left untouched. Mutates the passed rows in place.
+ */
+function applyStorageNumbering(
+	rows: Array<StockCandidate & { enabled: boolean }>,
+	typeNameById: Map<number, string>,
+): void {
+	const typeOf = (r: StockCandidate): string =>
+		r.kind === "chain" ? (typeNameById.get(r.typeId ?? -1) ?? "Storage") : "Field Storage";
+
+	const storages = rows.filter((r) => r.kind === "chain" || r.kind === "field");
+	const numbers = assignStorageNumbers(
+		storages.map((r) => ({
+			key: r.key,
+			typeName: typeOf(r),
+			systemId: r.systemId,
+			ageMs: r.ageMs,
+			buildTie: r.buildTie,
+		})),
+	);
+	for (const r of storages) {
+		const typeName = typeOf(r);
+		const n = numbers.get(r.key) ?? 0;
+		const sys = r.systemName ? ` ${r.systemName}` : "";
+		const warp = r.warpable ? ` · ${r.warpable}` : "";
+		r.label = `${typeName} #${n}${sys}${warp}`;
+		// The system (and warpable) are now folded into the label -- suppress the separate span.
+		r.systemName = null;
+		r.warpable = undefined;
+	}
 }
 
 /** SSU display label: structure name, else its in-game id, else a truncated address (never raw). */
@@ -124,6 +167,14 @@ export function StockPanel({
 	const { activeCharacter } = useActiveCharacter();
 	const client = useSuiClient();
 	const { data: discovery } = useOwnedAssemblies();
+	const tenant = useActiveTenant();
+	const buildAddress = activeCharacter?.suiAddress ?? account?.address ?? null;
+
+	// typeID -> game type name, for labelling SSUs as "Mini Storage", "Field Storage", etc.
+	const typeNameById = useMemo(
+		() => new Map(typeList.map((t) => [t.id, t.name])),
+		[typeList],
+	);
 
 	const stockSources = queue.stockSources;
 
@@ -163,6 +214,8 @@ export function StockPanel({
 				warpable: unit.warpable,
 				itemTypes: items.length,
 				sampleTypeIds: items.slice(0, 5).map((it) => it.typeId),
+				ageMs: unit.createdAt,
+				buildTie: unit.seq,
 			});
 		}
 		return rows;
@@ -173,6 +226,15 @@ export function StockPanel({
 		() => discovery?.assemblies.filter((a) => a.type === "storage_unit") ?? [],
 		[discovery],
 	);
+
+	// On-chain build time per SSU (from StorageUnitCreatedEvent), for the per-system "#N" numbering.
+	// Stable per owner, so keyed on address+tenant only; independent of which units are enabled.
+	const { data: ssuBuildTimes } = useQuery({
+		queryKey: ["ssuBuildTimes", buildAddress, tenant],
+		queryFn: () => getStorageUnitBuildTimes(buildAddress as string, tenant),
+		enabled: CHAIN_ENABLED && !!buildAddress,
+		staleTime: 10 * 60_000,
+	});
 
 	// Only fetch SSUs the user has explicitly enabled (chain default is off). Depends solely on the
 	// discovered units + persisted arrangement, so inventory loads never re-trigger the fetch.
@@ -204,30 +266,9 @@ export function StockPanel({
 	});
 
 	// Resolve EVERY discovered SSU's solar system from synced structure intel (independent of whether it
-	// is enabled/fetched), inheriting a parent node's system when the unit itself has none (parentId
-	// references a node by id or objectId). This is what lets a row show its location before it's ticked.
+	// is enabled/fetched), so a row can show its location before it's ticked.
 	const ssuObjectIds = useMemo(() => storageAssemblies.map((a) => a.objectId), [storageAssemblies]);
-	const ssuSystemById = useLiveQuery(async () => {
-		const map = new Map<string, number>();
-		if (ssuObjectIds.length === 0) return map;
-		const [deps, asms] = await Promise.all([db.deployables.toArray(), db.assemblies.toArray()]);
-		const byKey = new Map<string, { systemId?: number; parentId?: string }>();
-		for (const rec of [...deps, ...asms]) {
-			if (!byKey.has(rec.id)) byKey.set(rec.id, rec);
-			if (!byKey.has(rec.objectId)) byKey.set(rec.objectId, rec);
-		}
-		const resolve = (k: string, depth = 0): number | undefined => {
-			const rec = byKey.get(k);
-			if (!rec || depth > 4) return undefined;
-			if (rec.systemId != null) return rec.systemId;
-			return rec.parentId ? resolve(rec.parentId, depth + 1) : undefined;
-		};
-		for (const objectId of ssuObjectIds) {
-			const sys = resolve(objectId);
-			if (sys != null) map.set(objectId, sys);
-		}
-		return map;
-	}, [ssuObjectIds]);
+	const ssuSystemById = useSsuSystemMap(ssuObjectIds);
 
 	// One SsuInventory per enabled unit (aggregating its owner + extension inventories), carrying its
 	// name + resolved system. Lifted to the view (baseStock) via the effect below.
@@ -292,6 +333,9 @@ export function StockPanel({
 				itemTypes: inv ? inv.items.size : 0,
 				sampleTypeIds: inv ? [...inv.items.keys()].slice(0, 5) : [],
 				loading: isEnabled && loadingInventory && !inv,
+				typeId: a.typeId,
+				ageMs: ssuBuildTimes?.get(objectId),
+				buildTie: Number(a.itemId ?? 0),
 			});
 		}
 		// Scratch pad -- always listed as a single storage row.
@@ -310,25 +354,30 @@ export function StockPanel({
 		// The Ship Cargo Hold follows the character -- its location is the current (most recent) system.
 		const currentSystem = recentSystems?.[0]?.name ?? null;
 
-		return candidates
-			.map((c) => ({
-				...c,
-				systemName: c.kind === "ship" && !c.systemName ? currentSystem : c.systemName,
-				enabled: enabledByKey.get(c.key) ?? defaultEnabled(c.kind),
-			}))
-			.sort((a, b) => {
-				const ia = orderIndex.get(a.key) ?? Number.POSITIVE_INFINITY;
-				const ib = orderIndex.get(b.key) ?? Number.POSITIVE_INFINITY;
-				if (ia !== ib) return ia - ib;
-				const rk = defaultKindRank(a.kind) - defaultKindRank(b.kind);
-				if (rk !== 0) return rk;
-				return a.label.localeCompare(b.label, undefined, { numeric: true });
-			});
+		const mapped = candidates.map((c) => ({
+			...c,
+			systemName: c.kind === "ship" && !c.systemName ? currentSystem : c.systemName,
+			enabled: enabledByKey.get(c.key) ?? defaultEnabled(c.kind),
+		}));
+
+		// Relabel real storages to "<Type> #<N> <System>" (SSUs + local field units) before sorting.
+		applyStorageNumbering(mapped, typeNameById);
+
+		return mapped.sort((a, b) => {
+			const ia = orderIndex.get(a.key) ?? Number.POSITIVE_INFINITY;
+			const ib = orderIndex.get(b.key) ?? Number.POSITIVE_INFINITY;
+			if (ia !== ib) return ia - ib;
+			const rk = defaultKindRank(a.kind) - defaultKindRank(b.kind);
+			if (rk !== 0) return rk;
+			return a.label.localeCompare(b.label, undefined, { numeric: true });
+		});
 	}, [
 		fieldRows,
 		storageAssemblies,
 		ssuInvByObjectId,
 		ssuSystemById,
+		ssuBuildTimes,
+		typeNameById,
 		enabledChainIds,
 		loadingInventory,
 		scratchCount,

@@ -317,6 +317,13 @@ interface DataGridProps<T> {
 	 * row. Used to promote a parent node into its group header instead of duplicating it as a row.
 	 */
 	isGroupAnchorRow?: (row: T) => boolean;
+	/**
+	 * When true, a group's anchor row is rendered as a normal columned row (with the collapse toggle
+	 * injected into its first cell) instead of the full-width `renderGroupHeader` banner, so the anchor
+	 * lines up with the same columns as its children. Groups without an anchor row (e.g. an
+	 * "Unassigned" bucket) still fall back to `renderGroupHeader`.
+	 */
+	renderGroupHeaderAsAnchorRow?: boolean;
 }
 
 export function DataGrid<T>({
@@ -340,6 +347,7 @@ export function DataGrid<T>({
 	renderGroupHeader,
 	groupSort,
 	isGroupAnchorRow,
+	renderGroupHeaderAsAnchorRow,
 }: DataGridProps<T>) {
 	const [sorting, setSorting] = useState<SortingState>(initialSorting ?? []);
 	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
@@ -433,6 +441,52 @@ export function DataGrid<T>({
 							className={`px-1.5 py-1.5 text-zinc-300 ${hasSize ? "whitespace-nowrap" : "max-w-0 overflow-hidden"}`}
 						>
 							{flexRender(cell.column.columnDef.cell, cell.getContext())}
+						</td>
+					);
+				})}
+			</tr>
+		);
+	};
+
+	// A group's anchor rendered as a normal columned row, with the collapse toggle prepended into its
+	// first cell -- so the header lines up with the same columns as the body rows beneath it.
+	const renderAnchorHeaderRow = (row: (typeof rows)[number], key: string, collapsed: boolean) => {
+		const isSelected = selectedRowId != null && row.id === selectedRowId;
+		return (
+			<tr
+				key={`${key}-anchor`}
+				data-row-id={row.id}
+				onClick={onRowClick ? () => onRowClick(row.id) : undefined}
+				className={`border-b border-zinc-800 bg-zinc-900/70 transition-colors hover:bg-zinc-800/40 ${
+					onRowClick ? "cursor-pointer" : ""
+				} ${isSelected ? "border-l-2 border-l-cyan-500" : ""}`}
+			>
+				{row.getVisibleCells().map((cell, i) => {
+					const hasSize = cell.column.columnDef.size != null;
+					const content = flexRender(cell.column.columnDef.cell, cell.getContext());
+					return (
+						<td
+							key={cell.id}
+							className={`px-1.5 py-2 font-medium text-zinc-200 ${hasSize ? "whitespace-nowrap" : "max-w-0 overflow-hidden"}`}
+						>
+							{i === 0 ? (
+								<div className="flex items-center gap-2">
+									<button
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											toggleGroup(key);
+										}}
+										className="shrink-0 text-zinc-500 hover:text-zinc-200"
+										aria-label={collapsed ? "Expand group" : "Collapse group"}
+									>
+										{collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+									</button>
+									<div className="min-w-0 flex-1">{content}</div>
+								</div>
+							) : (
+								content
+							)}
 						</td>
 					);
 				})}
@@ -574,28 +628,35 @@ export function DataGrid<T>({
 						) : groupedRows ? (
 							groupedRows.map(({ key, rows: groupRows }) => {
 								const collapsed = collapsedGroups.has(key);
+								const anchorRow = isGroupAnchorRow
+									? groupRows.find((r) => isGroupAnchorRow(r.original))
+									: undefined;
 								const bodyRows = isGroupAnchorRow
 									? groupRows.filter((r) => !isGroupAnchorRow(r.original))
 									: groupRows;
 								return (
 									<Fragment key={key}>
-										<tr className="border-b border-zinc-800 bg-zinc-900/70">
-											<td colSpan={leafColumnCount} className="px-2 py-2">
-												<div className="flex items-center gap-2">
-													<button
-														type="button"
-														onClick={() => toggleGroup(key)}
-														className="shrink-0 text-zinc-500 hover:text-zinc-200"
-														aria-label={collapsed ? "Expand group" : "Collapse group"}
-													>
-														{collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
-													</button>
-													<div className="min-w-0 flex-1">
-														{renderGroupHeader?.(key, groupRows.map((r) => r.original))}
+										{renderGroupHeaderAsAnchorRow && anchorRow ? (
+											renderAnchorHeaderRow(anchorRow, key, collapsed)
+										) : (
+											<tr className="border-b border-zinc-800 bg-zinc-900/70">
+												<td colSpan={leafColumnCount} className="px-2 py-2">
+													<div className="flex items-center gap-2">
+														<button
+															type="button"
+															onClick={() => toggleGroup(key)}
+															className="shrink-0 text-zinc-500 hover:text-zinc-200"
+															aria-label={collapsed ? "Expand group" : "Collapse group"}
+														>
+															{collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+														</button>
+														<div className="min-w-0 flex-1">
+															{renderGroupHeader?.(key, groupRows.map((r) => r.original))}
+														</div>
 													</div>
-												</div>
-											</td>
-										</tr>
+												</td>
+											</tr>
+										)}
 										{!collapsed && bodyRows.map(renderDataRow)}
 									</Fragment>
 								);

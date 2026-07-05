@@ -12,6 +12,7 @@ import {
 	queryDecommissionedMarkets,
 	queryWalletTransactions,
 } from "@tehfrontier/chain-shared";
+import { TENANTS } from "@/chain/config";
 import { db } from "@/db";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import {
@@ -69,6 +70,13 @@ function extractTokenName(coinType: string): string {
 
 function isSuiCoin(coinType: string): boolean {
 	return /^0x0*2::sui::SUI$/.test(coinType);
+}
+
+/** The EVE token coin type for a tenant (the native Cycle 6 on-chain currency), e.g.
+ *  "0xac361...::EVE::EVE". Derived from the tenant's evePackageId in config. */
+function eveCoinTypeFor(tenant: TenantId | string | undefined): string | null {
+	const pkg = TENANTS[tenant as TenantId]?.evePackageId;
+	return pkg ? `${pkg}::EVE::EVE` : null;
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -320,6 +328,15 @@ export function Wallet() {
 	const suiHuman = formatBalance(suiMist, 9);
 	const tokenCount = visibleBalances.length;
 
+	// EVE -- the native Cycle 6 on-chain currency (bought with off-chain LUX at ~100:1).
+	const eveCoinType = eveCoinTypeFor(tenant);
+	const eveBalanceRow = eveCoinType
+		? visibleBalances.find((b) => b.coinType === eveCoinType)
+		: undefined;
+	const eveDecimals = (eveCoinType && coinMeta[eveCoinType]?.decimals) || 9;
+	const eveRaw = eveBalanceRow?.totalBalance ?? "0";
+	const eveHuman = formatBalance(eveRaw, eveDecimals);
+
 	return (
 		<div className="mx-auto max-w-3xl p-6">
 			{/* Header */}
@@ -399,22 +416,26 @@ export function Wallet() {
 							<p className="mt-1 font-mono text-xs text-zinc-600">
 								{BigInt(suiMist).toLocaleString()} MIST
 							</p>
-						</div>
-
-						<div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-							<p className="text-xs text-zinc-500">Need testnet SUI?</p>
-							<p className="mt-1 text-sm text-zinc-400">
-								Get free SUI tokens for testing on the Sui testnet faucet.
-							</p>
 							<a
 								href={`https://faucet.sui.io/?address=${suiAddress}`}
 								target="_blank"
 								rel="noopener noreferrer"
-								className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-cyan-400 transition-colors hover:text-cyan-300"
+								className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-cyan-400 transition-colors hover:text-cyan-300"
 							>
-								Get from Faucet
-								<ExternalLink size={14} />
+								Need testnet SUI? Get from Faucet
+								<ExternalLink size={12} />
 							</a>
+						</div>
+
+						<div className="rounded-lg border border-cyan-900/40 bg-zinc-900/50 p-4">
+							<p className="text-xs text-zinc-500">EVE Balance</p>
+							<p className="mt-1 text-2xl font-bold text-cyan-100">{eveHuman} EVE</p>
+							<p className="mt-1 font-mono text-xs text-zinc-600">
+								{BigInt(eveRaw).toLocaleString()} base units
+							</p>
+							<p className="mt-2 text-[11px] text-zinc-600">
+								Native on-chain token (Cycle 6). Bought with LUX in-game.
+							</p>
 						</div>
 					</div>
 

@@ -23,6 +23,7 @@
     "@tanstack/react-virtual": "^3.13.22",
     "@tehfrontier/chain-shared": "workspace:*",
     "@tehfrontier/sui-client": "workspace:*",
+    "@wallet-standard/ui-features": "^1.0.1",
     "dexie": "^4.0.11",
     "dexie-react-hooks": "^1.1.7",
     "javascript-lp-solver": "^1.0.3",
