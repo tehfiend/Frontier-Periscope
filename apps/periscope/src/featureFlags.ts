@@ -10,3 +10,7 @@
 //   unset   -> true  (normal, chain-enabled build)
 //   "false" -> false (interim Cycle-6 build)
 export const CHAIN_ENABLED: boolean = import.meta.env.VITE_CHAIN_ENABLED !== "false";
+
+// Navigation features (Star Map, Jump Planner) are hidden from the sidebar until they are ready
+// for use. Flip to true to re-enable the whole section.
+export const NAV_ENABLED = false;

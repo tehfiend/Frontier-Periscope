@@ -1,4 +1,4 @@
-import { CHAIN_ENABLED } from "@/featureFlags";
+import { CHAIN_ENABLED, NAV_ENABLED } from "@/featureFlags";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useAppStore } from "@/stores/appStore";
 import { useSonarStore } from "@/stores/sonarStore";
@@ -42,6 +42,8 @@ interface NavItem {
 interface NavGroup {
 	title: string;
 	items: NavItem[];
+	/** When false, the whole group is hidden (feature not ready). Defaults to shown. */
+	enabled?: boolean;
 }
 
 const navGroups: NavGroup[] = [
@@ -66,6 +68,7 @@ const navGroups: NavGroup[] = [
 	},
 	{
 		title: "Navigation",
+		enabled: NAV_ENABLED,
 		items: [
 			{ to: "/map", icon: MapIcon, label: "Star Map" },
 			{ to: "/jump-planner", icon: Route, label: "Jump Planner" },
@@ -153,6 +156,7 @@ export function Sidebar() {
 	const tenant = useActiveTenant();
 
 	const visibleGroups = navGroups
+		.filter((g) => g.enabled !== false)
 		.map((g) => ({ ...g, items: g.items.filter((i) => CHAIN_ENABLED || !i.chain) }))
 		.filter((g) => g.items.length > 0);
 

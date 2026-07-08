@@ -1,5 +1,5 @@
 import { db, notDeleted } from "@/db";
-import { CHAIN_ENABLED } from "@/featureFlags";
+import { CHAIN_ENABLED, NAV_ENABLED } from "@/featureFlags";
 import { useNavigate } from "@tanstack/react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -31,8 +31,10 @@ const NAV_ITEMS: {
 	icon: LucideIcon;
 	keywords: string;
 	chain?: boolean;
+	/** Navigation-section feature, hidden while NAV_ENABLED is false. */
+	nav?: boolean;
 }[] = [
-	{ path: "/map", label: "Star Map", icon: Map, keywords: "systems route 3d" },
+	{ path: "/map", label: "Star Map", icon: Map, keywords: "systems route 3d", nav: true },
 	{
 		path: "/killmails",
 		label: "Killmails",
@@ -85,7 +87,10 @@ export function CommandPalette() {
 
 	// Hide chain-contract-dependent pages when the chain is disabled (Cycle-6 interim build).
 	// CHAIN_ENABLED is a build-time constant, so this is computed once.
-	const navItems = useMemo(() => NAV_ITEMS.filter((i) => CHAIN_ENABLED || !i.chain), []);
+	const navItems = useMemo(
+		() => NAV_ITEMS.filter((i) => (CHAIN_ENABLED || !i.chain) && (NAV_ENABLED || !i.nav)),
+		[],
+	);
 
 	// Load searchable data
 	const systems = useLiveQuery(() => db.solarSystems.toArray());
