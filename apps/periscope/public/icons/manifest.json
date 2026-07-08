@@ -719,6 +719,12 @@
       "item": "items/91379.png"
     }
   },
+  "95659": {
+    "name": "Emergency Container",
+    "icons": {
+      "item": "items/95659.png"
+    }
+  },
   "95302": {
     "name": "Emergency Printer",
     "icons": {
@@ -1715,14 +1721,6 @@
     "name": "Navigational Artefact",
     "icons": {
       "item": "items/83978.png"
-    }
-  },
-  "88092": {
-    "name": "Network Node",
-    "icons": {
-      "item": "items/88092.png",
-      "128": "renders/88092_128.png",
-      "64": "renders/88092_64.png"
     }
   },
   "83982": {
@@ -3937,6 +3935,14 @@
       "item": "items/92166.png",
       "128": "renders/92166_128.png",
       "64": "renders/92166_64.png"
+    }
+  },
+  "88092": {
+    "name": "Network Node",
+    "icons": {
+      "item": "items/88092.png",
+      "128": "renders/88092_128.png",
+      "64": "renders/88092_64.png"
     }
   },
   "30391": {

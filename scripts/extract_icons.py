@@ -38,6 +38,10 @@ TYPES_JSON = PROJECT_ROOT / "apps/periscope/public/data/types.json"
 DEFAULT_GAME_ROOT = Path("C:/CCP/EVE Frontier")
 WORLD_API_TEMPLATE = "https://world-api-{server}.live.tech.evefrontier.com/v2/types"
 
+# Res paths for the game's generic "?" placeholder icon. iconIDs resolving here are treated as
+# "no icon" so items fall through to their render/CDN instead of showing a placeholder.
+PLACEHOLDER_ICON_PATHS = {"res:/ui/texture/icons/9_64_10.png"}
+
 # Manual overrides: typeID -> res:/ path for items where the iconIDsLoader still
 # resolves to a wrong/legacy iconID. CCP assigned legacy EVE iconIDs to these
 # Frontier materials even though Frontier-specific artwork exists; the loader
@@ -540,6 +544,16 @@ def main():
     fallback_only = set(byte_scan_map) - set(loader_map)
     print(f"iconID -> path mappings: {len(icon_to_respath)} "
           f"({len(loader_map)} loader, {len(fallback_only)} byte-scan fallback)")
+
+    # Some iconIDs resolve to the game's generic "?" placeholder texture (e.g. iconID 1001 ->
+    # res:/ui/texture/icons/9_64_10.png, used by the Network Node structure). A placeholder counts
+    # as a real item icon and would suppress the render fallback, leaving a "?" in the UI. Drop those
+    # paths so affected items fall through to their 3D render (or CDN) instead.
+    dropped_placeholders = {k for k, v in icon_to_respath.items() if str(v).lower() in PLACEHOLDER_ICON_PATHS}
+    for k in dropped_placeholders:
+        del icon_to_respath[k]
+    if dropped_placeholders:
+        print(f"Dropped {len(dropped_placeholders)} placeholder iconID(s): {sorted(dropped_placeholders)}")
 
     print("\nExtracting item icons (iconID)...")
     item_extracted, item_missing = extract_iconid_icons(items, icon_to_respath, resfile_lookup, output_dir)
