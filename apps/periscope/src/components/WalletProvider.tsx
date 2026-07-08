@@ -10,14 +10,12 @@ const dAppKit = createDAppKit({
 			url: `https://graphql.${network}.sui.io/graphql`,
 			network: network as "testnet",
 		}),
-	// Passive reconnect on load, exactly like the official EVE Frontier dApp. dapp-kit's autoConnect
-	// only restores the connection from local storage (it looks up the saved account on the already-
-	// injected wallet); it never calls the wallet's connect(), so it opens NO PIN or approval window
-	// on its own. This is what lets the official dApp stay connected across reloads without popping
-	// the approval window every time -- the window only appears on a genuine first connect(). If EVE
-	// Vault has locked itself, the passive restore simply finds no account and does nothing (you then
-	// connect manually); any PIN you see on reload is the vault auto-unlocking, not this setting.
-	autoConnect: true,
+	// Do NOT auto-restore the session on load. In practice EVE Vault prompts its unlock (PIN) window
+	// during dapp-kit's passive `autoConnect` restore -- it ignores the wallet-standard `silent` flag --
+	// so `autoConnect: true` pops a PIN on every page load. We want the PIN to appear only on a genuine
+	// user-initiated connect (the "Connect EVE Vault" button), so we start disconnected each load. The
+	// tradeoff is the user reconnects once per session instead of persisting across reloads.
+	autoConnect: false,
 });
 
 export function WalletProvider({ children }: { children: ReactNode }) {
