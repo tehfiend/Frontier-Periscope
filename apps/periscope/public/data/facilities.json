@@ -290,87 +290,57 @@
       {
         "blueprintID": 1100,
         "maxInputRuns": 8,
-        "maxOutputRuns": 1
+        "maxOutputRuns": 8
       },
       {
         "blueprintID": 1495,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 8,
+        "maxOutputRuns": 8
       },
       {
         "blueprintID": 1497,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1498,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1499,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1500,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1522,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1523,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1501,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1502,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1503,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1504,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1505,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1506,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1507,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1508,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1509,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1510,
@@ -399,16 +369,36 @@
       },
       {
         "blueprintID": 1516,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1517,
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1518,
+        "maxInputRuns": 50,
+        "maxOutputRuns": 50
+      },
+      {
+        "blueprintID": 1558,
         "maxInputRuns": 1,
         "maxOutputRuns": 1
       },
       {
-        "blueprintID": 1518,
+        "blueprintID": 1559,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1561,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1562,
         "maxInputRuns": 1,
         "maxOutputRuns": 1
       }
@@ -1304,28 +1294,23 @@
       },
       {
         "blueprintID": 1502,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1503,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1504,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1507,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1007,
-        "maxInputRuns": 15,
-        "maxOutputRuns": 15
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1003,
@@ -1334,28 +1319,28 @@
       },
       {
         "blueprintID": 1181,
-        "maxInputRuns": 10,
-        "maxOutputRuns": 10
-      },
-      {
-        "blueprintID": 1016,
         "maxInputRuns": 5,
         "maxOutputRuns": 5
       },
       {
+        "blueprintID": 1016,
+        "maxInputRuns": 5,
+        "maxOutputRuns": 55
+      },
+      {
         "blueprintID": 1517,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1518,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1516,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1193,
@@ -1399,23 +1384,58 @@
       },
       {
         "blueprintID": 1501,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1508,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1506,
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
+      },
+      {
+        "blueprintID": 1180,
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
+      },
+      {
+        "blueprintID": 1553,
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
+      },
+      {
+        "blueprintID": 1558,
         "maxInputRuns": 1,
         "maxOutputRuns": 1
       },
       {
-        "blueprintID": 1180,
-        "maxInputRuns": 9,
-        "maxOutputRuns": 500
+        "blueprintID": 1559,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1560,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1561,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1562,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1563,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
       }
     ]
   },
@@ -1424,108 +1444,113 @@
     "blueprints": [
       {
         "blueprintID": 1497,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1498,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1499,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1500,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
-        "blueprintID": 1522,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "blueprintID": 1179,
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1523,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1185,
-        "maxInputRuns": 15,
-        "maxOutputRuns": 15
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1182,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1184,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1183,
-        "maxInputRuns": 10,
-        "maxOutputRuns": 10
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1197,
-        "maxInputRuns": 10,
-        "maxOutputRuns": 10
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1198,
-        "maxInputRuns": 10,
-        "maxOutputRuns": 10
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1199,
-        "maxInputRuns": 10,
-        "maxOutputRuns": 10
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1200,
-        "maxInputRuns": 10,
-        "maxOutputRuns": 10
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
+      },
+      {
+        "blueprintID": 1204,
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1481,
-        "maxInputRuns": 25,
-        "maxOutputRuns": 25
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1480,
-        "maxInputRuns": 25,
-        "maxOutputRuns": 25
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1195,
-        "maxInputRuns": 25,
-        "maxOutputRuns": 25
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1196,
-        "maxInputRuns": 25,
-        "maxOutputRuns": 25
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1190,
-        "maxInputRuns": 10,
-        "maxOutputRuns": 10
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1192,
-        "maxInputRuns": 10,
-        "maxOutputRuns": 10
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       },
       {
         "blueprintID": 1186,
-        "maxInputRuns": 10,
-        "maxOutputRuns": 10
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
       }
     ]
   },
@@ -1629,83 +1654,53 @@
       },
       {
         "blueprintID": 1495,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 45,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1497,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 45,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1498,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 45,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1499,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 45,
+        "maxOutputRuns": 50
       },
       {
         "blueprintID": 1500,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1522,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 100,
+        "maxOutputRuns": 100
       },
       {
         "blueprintID": 1523,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 45,
+        "maxOutputRuns": 45
       },
       {
         "blueprintID": 1501,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 45,
+        "maxOutputRuns": 45
       },
       {
         "blueprintID": 1502,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1503,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1504,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1505,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 45,
+        "maxOutputRuns": 45
       },
       {
         "blueprintID": 1506,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1507,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 45,
+        "maxOutputRuns": 45
       },
       {
         "blueprintID": 1508,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
-      },
-      {
-        "blueprintID": 1509,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 45,
+        "maxOutputRuns": 45
       },
       {
         "blueprintID": 1510,
@@ -1734,16 +1729,81 @@
       },
       {
         "blueprintID": 1516,
-        "maxInputRuns": 1,
-        "maxOutputRuns": 1
+        "maxInputRuns": 45,
+        "maxOutputRuns": 45
       },
       {
         "blueprintID": 1517,
+        "maxInputRuns": 45,
+        "maxOutputRuns": 45
+      },
+      {
+        "blueprintID": 1518,
+        "maxInputRuns": 45,
+        "maxOutputRuns": 45
+      },
+      {
+        "blueprintID": 1521,
         "maxInputRuns": 1,
         "maxOutputRuns": 1
       },
       {
-        "blueprintID": 1518,
+        "blueprintID": 1525,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1526,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1529,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1530,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1553,
+        "maxInputRuns": 5,
+        "maxOutputRuns": 5
+      },
+      {
+        "blueprintID": 1115,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1558,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1559,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1560,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1561,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1562,
+        "maxInputRuns": 1,
+        "maxOutputRuns": 1
+      },
+      {
+        "blueprintID": 1563,
         "maxInputRuns": 1,
         "maxOutputRuns": 1
       }
@@ -1789,6 +1849,16 @@
       },
       {
         "blueprintID": 1193,
+        "maxInputRuns": 400,
+        "maxOutputRuns": 24
+      },
+      {
+        "blueprintID": 1033,
+        "maxInputRuns": 400,
+        "maxOutputRuns": 24
+      },
+      {
+        "blueprintID": 1056,
         "maxInputRuns": 400,
         "maxOutputRuns": 24
       },

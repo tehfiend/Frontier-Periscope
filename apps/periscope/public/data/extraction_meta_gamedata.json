@@ -1,12 +1,12 @@
 {
-  "extractedAt": "2026-06-28T20:04:22Z",
-  "extractionTimeSeconds": 1.17,
+  "extractedAt": "2026-07-08T19:04:18Z",
+  "extractionTimeSeconds": 1.28,
   "gameRoot": "C:\\CCP\\EVE Frontier",
   "pythonVersion": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
   "filesExtracted": [
     {
       "filename": "blueprints.json",
-      "sizeBytes": 187047
+      "sizeBytes": 192124
     },
     {
       "filename": "categories.json",
@@ -18,7 +18,11 @@
     },
     {
       "filename": "facilities.json",
-      "sizeBytes": 39725
+      "sizeBytes": 41222
+    },
+    {
+      "filename": "gatherable_nodes.json",
+      "sizeBytes": 277
     },
     {
       "filename": "groups.json",
@@ -29,12 +33,16 @@
       "sizeBytes": 275583
     },
     {
+      "filename": "material_sources.json",
+      "sizeBytes": 11632
+    },
+    {
       "filename": "spacecomponents.json",
-      "sizeBytes": 2519577
+      "sizeBytes": 2521424
     },
     {
       "filename": "stellar_constellations.json",
-      "sizeBytes": 647893
+      "sizeBytes": 647873
     },
     {
       "filename": "stellar_jumps.json",
@@ -42,7 +50,7 @@
     },
     {
       "filename": "stellar_labels.json",
-      "sizeBytes": 634732
+      "sizeBytes": 612458
     },
     {
       "filename": "stellar_regions.json",
@@ -50,7 +58,19 @@
     },
     {
       "filename": "stellar_systems.json",
-      "sizeBytes": 5122274
+      "sizeBytes": 5100020
+    },
+    {
+      "filename": "structures.json",
+      "sizeBytes": 22652
+    },
+    {
+      "filename": "system_resources.json",
+      "sizeBytes": 947330
+    },
+    {
+      "filename": "system_warpables.json",
+      "sizeBytes": 688903
     },
     {
       "filename": "typematerials.json",
@@ -58,7 +78,7 @@
     },
     {
       "filename": "types.json",
-      "sizeBytes": 11659240
+      "sizeBytes": 11666319
     }
   ]
 }

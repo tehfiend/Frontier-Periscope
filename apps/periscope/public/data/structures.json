@@ -206,6 +206,37 @@
       ]
     },
     {
+      "structureID": 95677,
+      "structureName": "Heavy Catapult",
+      "buildTime": 2880,
+      "constructionSite": 95717,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 88783,
+          "typeName": "Kerogen Tar",
+          "quantity": 1050
+        },
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 225
+        },
+        {
+          "typeID": 92483,
+          "typeName": "Still Kernel",
+          "quantity": 42
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 180
+        }
+      ]
+    },
+    {
       "structureID": 84955,
       "structureName": "Heavy Gate",
       "buildTime": 51840,
@@ -213,16 +244,26 @@
       "createOnChain": 1,
       "inputs": [
         {
+          "typeID": 88783,
+          "typeName": "Kerogen Tar",
+          "quantity": 1050
+        },
+        {
           "typeID": 89089,
           "typeName": "Building Foam",
-          "quantity": 4300
+          "quantity": 225
+        },
+        {
+          "typeID": 92483,
+          "typeName": "Still Kernel",
+          "quantity": 42
         }
       ],
       "recoveryCost": [
         {
           "typeID": 89089,
           "typeName": "Building Foam",
-          "quantity": 860
+          "quantity": 180
         }
       ]
     },
@@ -373,6 +414,37 @@
       ]
     },
     {
+      "structureID": 95627,
+      "structureName": "Mini Catapult",
+      "buildTime": 2880,
+      "constructionSite": 95628,
+      "createOnChain": 1,
+      "inputs": [
+        {
+          "typeID": 88783,
+          "typeName": "Kerogen Tar",
+          "quantity": 300
+        },
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 65
+        },
+        {
+          "typeID": 92483,
+          "typeName": "Still Kernel",
+          "quantity": 12
+        }
+      ],
+      "recoveryCost": [
+        {
+          "typeID": 89089,
+          "typeName": "Building Foam",
+          "quantity": 52
+        }
+      ]
+    },
+    {
       "structureID": 88086,
       "structureName": "Mini Gate",
       "buildTime": 2880,
@@ -380,16 +452,26 @@
       "createOnChain": 1,
       "inputs": [
         {
+          "typeID": 88783,
+          "typeName": "Kerogen Tar",
+          "quantity": 300
+        },
+        {
           "typeID": 89089,
           "typeName": "Building Foam",
-          "quantity": 430
+          "quantity": 65
+        },
+        {
+          "typeID": 92483,
+          "typeName": "Still Kernel",
+          "quantity": 12
         }
       ],
       "recoveryCost": [
         {
           "typeID": 89089,
           "typeName": "Building Foam",
-          "quantity": 86
+          "quantity": 52
         }
       ]
     },
@@ -920,7 +1002,7 @@
     }
   ],
   "stats": {
-    "totalStructures": 38,
+    "totalStructures": 40,
     "generatedFrom": "spacecomponentsbytype.smartDeployable.constructionCost"
   }
 }

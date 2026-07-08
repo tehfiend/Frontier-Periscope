@@ -119,6 +119,12 @@
       "item": "items/79011.png"
     }
   },
+  "95663": {
+    "name": "Attitude Controller",
+    "icons": {
+      "item": "items/95663.png"
+    }
+  },
   "82653": {
     "name": "Attuned Shield Generator II",
     "icons": {
@@ -542,15 +548,13 @@
   "88335": {
     "name": "D1 Fuel",
     "icons": {
-      "item": "items/88335.png",
-      "cdn": "cdn/88335.png"
+      "item": "items/88335.png"
     }
   },
   "88319": {
     "name": "D2 Fuel",
     "icons": {
-      "item": "items/88319.png",
-      "cdn": "cdn/88319.png"
+      "item": "items/88319.png"
     }
   },
   "99014": {
@@ -676,15 +680,13 @@
   "78516": {
     "name": "EU-40 Fuel",
     "icons": {
-      "item": "items/78516.png",
-      "cdn": "cdn/78516.png"
+      "item": "items/78516.png"
     }
   },
   "78437": {
     "name": "EU-90 Fuel",
     "icons": {
-      "item": "items/78437.png",
-      "cdn": "cdn/78437.png"
+      "item": "items/78437.png"
     }
   },
   "88780": {
@@ -715,6 +717,12 @@
     "name": "Ember",
     "icons": {
       "item": "items/91379.png"
+    }
+  },
+  "95302": {
+    "name": "Emergency Printer",
+    "icons": {
+      "item": "items/95302.png"
     }
   },
   "3424": {
@@ -919,6 +927,12 @@
     "name": "Feral Echo",
     "icons": {
       "item": "items/88564.png"
+    }
+  },
+  "95662": {
+    "name": "Feral Rapid Plasma (M)",
+    "icons": {
+      "item": "items/95662.png"
     }
   },
   "95347": {
@@ -1137,6 +1151,18 @@
       "item": "items/83896.png"
     }
   },
+  "95680": {
+    "name": "Gravity Chamber",
+    "icons": {
+      "item": "items/95680.png"
+    }
+  },
+  "95718": {
+    "name": "Gravity Sensor",
+    "icons": {
+      "item": "items/95718.png"
+    }
+  },
   "3300": {
     "name": "Gunnery",
     "icons": {
@@ -1243,6 +1269,18 @@
     "name": "Ingot",
     "icons": {
       "item": "items/91376.png"
+    }
+  },
+  "95321": {
+    "name": "Ion Sensor",
+    "icons": {
+      "item": "items/95321.png"
+    }
+  },
+  "95678": {
+    "name": "Ion Tube",
+    "icons": {
+      "item": "items/95678.png"
     }
   },
   "78426": {
@@ -1467,12 +1505,6 @@
       "item": "items/83981.png"
     }
   },
-  "95302": {
-    "name": "Mini Printer",
-    "icons": {
-      "item": "items/95302.png"
-    }
-  },
   "3386": {
     "name": "Mining",
     "icons": {
@@ -1690,8 +1722,7 @@
     "icons": {
       "item": "items/88092.png",
       "128": "renders/88092_128.png",
-      "64": "renders/88092_64.png",
-      "cdn": "cdn/88092.png"
+      "64": "renders/88092_64.png"
     }
   },
   "83982": {
@@ -1802,12 +1833,6 @@
     "name": "Palladium",
     "icons": {
       "item": "items/99001.png"
-    }
-  },
-  "95321": {
-    "name": "Passive Gravity Scanner",
-    "icons": {
-      "item": "items/95321.png"
     }
   },
   "77805": {
@@ -1942,6 +1967,12 @@
       "item": "items/91749.png"
     }
   },
+  "83463": {
+    "name": "Recycled Mining Lens",
+    "icons": {
+      "item": "items/83463.png"
+    }
+  },
   "91205": {
     "name": "Redundant Module",
     "icons": {
@@ -1978,6 +2009,12 @@
       "item": "items/3393.png"
     }
   },
+  "95679": {
+    "name": "Repeater",
+    "icons": {
+      "item": "items/95679.png"
+    }
+  },
   "3389": {
     "name": "Reprocessing Efficiency",
     "icons": {
@@ -2011,15 +2048,13 @@
   "84868": {
     "name": "SOF-40 Fuel",
     "icons": {
-      "item": "items/84868.png",
-      "cdn": "cdn/84868.png"
+      "item": "items/84868.png"
     }
   },
   "78515": {
     "name": "SOF-80 Fuel",
     "icons": {
-      "item": "items/78515.png",
-      "cdn": "cdn/78515.png"
+      "item": "items/78515.png"
     }
   },
   "83839": {
@@ -2402,10 +2437,10 @@
       "item": "items/89087.png"
     }
   },
-  "83463": {
+  "95639": {
     "name": "Synthetic Mining Lens",
     "icons": {
-      "item": "items/83463.png"
+      "item": "items/95639.png"
     }
   },
   "82651": {
@@ -3608,13 +3643,28 @@
       "64": "renders/91725_64.png"
     }
   },
+  "95677": {
+    "name": "Heavy Catapult",
+    "icons": {
+      "item": "items/95677.png",
+      "128": "renders/95677_128.png",
+      "64": "renders/95677_64.png"
+    }
+  },
+  "95717": {
+    "name": "Heavy Catapult",
+    "icons": {
+      "item": "items/95717.png",
+      "128": "renders/95717_128.png",
+      "64": "renders/95717_64.png"
+    }
+  },
   "84955": {
     "name": "Heavy Gate",
     "icons": {
       "item": "items/84955.png",
       "128": "renders/84955_128.png",
-      "64": "renders/84955_64.png",
-      "cdn": "cdn/84955.png"
+      "64": "renders/84955_64.png"
     }
   },
   "91712": {
@@ -3630,8 +3680,7 @@
     "icons": {
       "item": "items/87120.png",
       "128": "renders/87120_128.png",
-      "64": "renders/87120_64.png",
-      "cdn": "cdn/87120.png"
+      "64": "renders/87120_64.png"
     }
   },
   "91702": {
@@ -3647,8 +3696,7 @@
     "icons": {
       "item": "items/88064.png",
       "128": "renders/88064_128.png",
-      "64": "renders/88064_64.png",
-      "cdn": "cdn/88064.png"
+      "64": "renders/88064_64.png"
     }
   },
   "91704": {
@@ -3664,8 +3712,7 @@
     "icons": {
       "item": "items/77917.png",
       "128": "renders/77917_128.png",
-      "64": "renders/77917_64.png",
-      "cdn": "cdn/77917.png"
+      "64": "renders/77917_64.png"
     }
   },
   "91715": {
@@ -3772,13 +3819,28 @@
       "64": "renders/81904_64.png"
     }
   },
+  "95627": {
+    "name": "Mini Catapult",
+    "icons": {
+      "item": "items/95627.png",
+      "128": "renders/95627_128.png",
+      "64": "renders/95627_64.png"
+    }
+  },
+  "95628": {
+    "name": "Mini Catapult",
+    "icons": {
+      "item": "items/95628.png",
+      "128": "renders/95628_128.png",
+      "64": "renders/95628_64.png"
+    }
+  },
   "88086": {
     "name": "Mini Gate",
     "icons": {
       "item": "items/88086.png",
       "128": "renders/88086_128.png",
-      "64": "renders/88086_64.png",
-      "cdn": "cdn/88086.png"
+      "64": "renders/88086_64.png"
     }
   },
   "91711": {
@@ -3794,8 +3856,7 @@
     "icons": {
       "item": "items/87119.png",
       "128": "renders/87119_128.png",
-      "64": "renders/87119_64.png",
-      "cdn": "cdn/87119.png"
+      "64": "renders/87119_64.png"
     }
   },
   "91700": {
@@ -3811,8 +3872,7 @@
     "icons": {
       "item": "items/88082.png",
       "128": "renders/88082_128.png",
-      "64": "renders/88082_64.png",
-      "cdn": "cdn/88082.png"
+      "64": "renders/88082_64.png"
     }
   },
   "91713": {
@@ -3828,8 +3888,7 @@
     "icons": {
       "item": "items/88098.png",
       "128": "renders/88098_128.png",
-      "64": "renders/88098_64.png",
-      "cdn": "cdn/88098.png"
+      "64": "renders/88098_64.png"
     }
   },
   "91718": {
@@ -3845,8 +3904,7 @@
     "icons": {
       "item": "items/88099.png",
       "128": "renders/88099_128.png",
-      "64": "renders/88099_64.png",
-      "cdn": "cdn/88099.png"
+      "64": "renders/88099_64.png"
     }
   },
   "91719": {
@@ -3870,8 +3928,7 @@
     "icons": {
       "item": "items/91871.png",
       "128": "renders/91871_128.png",
-      "64": "renders/91871_64.png",
-      "cdn": "cdn/91871.png"
+      "64": "renders/91871_64.png"
     }
   },
   "92166": {
@@ -3895,8 +3952,7 @@
     "icons": {
       "item": "items/88067.png",
       "128": "renders/88067_128.png",
-      "64": "renders/88067_64.png",
-      "cdn": "cdn/88067.png"
+      "64": "renders/88067_64.png"
     }
   },
   "91701": {
@@ -3952,8 +4008,7 @@
     "icons": {
       "item": "items/88063.png",
       "128": "renders/88063_128.png",
-      "64": "renders/88063_64.png",
-      "cdn": "cdn/88063.png"
+      "64": "renders/88063_64.png"
     }
   },
   "91703": {
@@ -3977,8 +4032,7 @@
     "icons": {
       "item": "items/87160.png",
       "128": "renders/87160_128.png",
-      "64": "renders/87160_64.png",
-      "cdn": "cdn/87160.png"
+      "64": "renders/87160_64.png"
     }
   },
   "91751": {
@@ -3987,6 +4041,14 @@
       "item": "items/91751.png",
       "128": "renders/91751_128.png",
       "64": "renders/91751_64.png"
+    }
+  },
+  "95735": {
+    "name": "Refuge Ship",
+    "icons": {
+      "item": "items/95735.png",
+      "128": "renders/95735_128.png",
+      "64": "renders/95735_64.png"
     }
   },
   "87848": {
@@ -4002,8 +4064,7 @@
     "icons": {
       "item": "items/90184.png",
       "128": "renders/90184_128.png",
-      "64": "renders/90184_64.png",
-      "cdn": "cdn/90184.png"
+      "64": "renders/90184_64.png"
     }
   },
   "91717": {
@@ -4099,8 +4160,7 @@
     "icons": {
       "item": "items/88083.png",
       "128": "renders/88083_128.png",
-      "64": "renders/88083_64.png",
-      "cdn": "cdn/88083.png"
+      "64": "renders/88083_64.png"
     }
   },
   "91714": {
@@ -4244,8 +4304,7 @@
     "icons": {
       "item": "items/88100.png",
       "128": "renders/88100_128.png",
-      "64": "renders/88100_64.png",
-      "cdn": "cdn/88100.png"
+      "64": "renders/88100_64.png"
     }
   },
   "91720": {
@@ -4261,8 +4320,7 @@
     "icons": {
       "item": "items/88101.png",
       "128": "renders/88101_128.png",
-      "64": "renders/88101_64.png",
-      "cdn": "cdn/88101.png"
+      "64": "renders/88101_64.png"
     }
   },
   "91721": {
@@ -4479,90 +4537,6 @@
       "item": "items/82967.png",
       "128": "renders/82967_128.png",
       "64": "renders/82967_64.png"
-    }
-  },
-  "84556": {
-    "name": "Type_84556",
-    "icons": {
-      "cdn": "cdn/84556.png",
-      "item": "items/84556.png"
-    }
-  },
-  "87162": {
-    "name": "Type_87162",
-    "icons": {
-      "cdn": "cdn/87162.png",
-      "item": "items/87162.png"
-    }
-  },
-  "88068": {
-    "name": "Type_88068",
-    "icons": {
-      "cdn": "cdn/88068.png",
-      "item": "items/88068.png"
-    }
-  },
-  "88069": {
-    "name": "Type_88069",
-    "icons": {
-      "cdn": "cdn/88069.png",
-      "item": "items/88069.png"
-    }
-  },
-  "88070": {
-    "name": "Type_88070",
-    "icons": {
-      "cdn": "cdn/88070.png",
-      "item": "items/88070.png"
-    }
-  },
-  "88071": {
-    "name": "Type_88071",
-    "icons": {
-      "cdn": "cdn/88071.png",
-      "item": "items/88071.png"
-    }
-  },
-  "88093": {
-    "name": "Type_88093",
-    "icons": {
-      "cdn": "cdn/88093.png",
-      "item": "items/88093.png"
-    }
-  },
-  "88094": {
-    "name": "Type_88094",
-    "icons": {
-      "cdn": "cdn/88094.png",
-      "item": "items/88094.png"
-    }
-  },
-  "91978": {
-    "name": "Type_91978",
-    "icons": {
-      "cdn": "cdn/91978.png",
-      "item": "items/91978.png"
-    }
-  },
-  "92279": {
-    "name": "Type_92279",
-    "icons": {
-      "cdn": "cdn/92279.png",
-      "item": "items/92279.png"
-    }
-  },
-  "92401": {
-    "name": "Type_92401",
-    "icons": {
-      "cdn": "cdn/92401.png",
-      "item": "items/92401.png"
-    }
-  },
-  "92404": {
-    "name": "Type_92404",
-    "icons": {
-      "cdn": "cdn/92404.png",
-      "item": "items/92404.png"
     }
   }
 }
