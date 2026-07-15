@@ -215,7 +215,7 @@ full coordinator/implementation session, source edits are allowed per the phase 
   -- industry/blueprint data dependencies.
 - `docs/cloudflare-pages-setup.md` -- deploy model (push `main` -> prod, PR -> preview).
 - Config + sync source (see the location table in Section 6).
-- `apps/periscope/public/data/extraction_meta.json` -- records the client build the current
+- `apps/periscope/public/data/extraction_meta_starmap.json` -- records the client build the current
   static data was extracted from; compare against the new client build.
 
 **Search strings to re-locate config each cycle** (paths drift):
@@ -244,7 +244,7 @@ Each phase ends with a verification step. `STOP` markers are mandatory human-app
 Goal: determine whether the new cycle's static data can be extracted with parity to the prior
 cycle, and what (if anything) breaks. Write all probe output to `tmp/cycleN-static-audit/`.
 
-1. Read `apps/periscope/public/data/extraction_meta.json` -- note the old client build number.
+1. Read `apps/periscope/public/data/extraction_meta_starmap.json` -- note the old client build number.
    Find the new client build number from the patched install.
 2. Inspect the patched client static sources used by extraction:
    - `resfileindex.txt`, `iconids.fsdbinary`, FSDBinary type/blueprint data, `mapObjects.db`.
@@ -319,7 +319,7 @@ Only after Phase 1 parity review and Phase 2 snapshot:
 
 1. Promote the temp-dir extraction outputs into `apps/periscope/public/data/*.json` and
    `apps/periscope/public/icons/*`.
-2. Update `extraction_meta.json` with the new client build number and extraction date.
+2. Update `extraction_meta_starmap.json` with the new client build number and extraction date.
 3. Refresh `scripts/extra_type_ids.json` if unpublished items changed.
 4. Re-run any code changes the parity table flagged (field renames, new category handling).
 
@@ -398,7 +398,7 @@ Verify: in a clean browser profile, app drops old data and re-syncs against the 
 | `data/stellar_regions.json` / `constellations.json` / `jumps.json` / `labels.json` | -- | same | `extract_static_data.py` | High |
 | `data/celestials.json` | 6.7 MB | client `mapObjects.db` (SQLite) | `extract_celestials.py` | High |
 | `icons/items/*`, `icons/renders/*`, `icons/cdn/*`, `icons/manifest.json` | -- | client ResFiles + World API CDN | `extract_icons.py` (in tree) | Med-High |
-| `data/extraction_meta.json` | tiny | written by `extract_static_data.py` | -- | -- |
+| `data/extraction_meta_starmap.json` | tiny | written by `extract_static_data.py` | -- | -- |
 
 ---
 
@@ -411,7 +411,7 @@ from git, then update for the new client:
 | Script | Lines | Restore from | Produces | Per-cycle update needed |
 |--------|-------|--------------|----------|-------------------------|
 | `scripts/extract_game_data.py` | 527 | `git show 59df905:scripts/extract_game_data.py` | types, blueprints, facilities, groups, categories, typematerials, spacecomponents | **`RESFILE_MAP`** holds Cycle-5 resfile hash paths (e.g. `types -> 3c/3cc5bf8f...`) -- refresh each entry from the new client's `resfileindex.txt`. Needs Python 3.12 matching the client's `python312.dll`; uses the game's own `.pyd` FSD loader from `stillness/bin64`. |
-| `scripts/extract_static_data.py` | 376 | `git show 59df905:scripts/extract_static_data.py` | stellar_systems/regions/constellations/jumps/labels + `extraction_meta.json` | Reads `starmapcache.pickle`, `localization_fsd_en-us.pickle`, `regions/constellations/solarsystemcontent.static` -- verify these paths/formats in the patched client. |
+| `scripts/extract_static_data.py` | 376 | `git show 59df905:scripts/extract_static_data.py` | stellar_systems/regions/constellations/jumps/labels + `extraction_meta_starmap.json` | Reads `starmapcache.pickle`, `localization_fsd_en-us.pickle`, `regions/constellations/solarsystemcontent.static` -- verify these paths/formats in the patched client. |
 | `scripts/extract_celestials.py` | 188 | `git show 0124215:scripts/extract_celestials.py` | celestials.json (planet/moon/gate positions) | Hardcodes `{gameRoot}/utopia/bin64/staticdata/mapObjects.db` -- change `utopia` -> `stillness`. Flags `--include-moons --include-stargates`. |
 | `scripts/extract_icons.py` | (in tree) | already present | item / render / CDN icons + `manifest.json` | Refresh `ICON_OVERRIDES`; verify `iconids.fsdbinary` parser + World API `/v2/types` pagination. |
 

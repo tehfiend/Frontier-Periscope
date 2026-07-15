@@ -212,7 +212,7 @@ export async function reorderOrders(
 		const [moved] = orders.splice(fromIndex, 1);
 		const target = Math.max(0, Math.min(toIndex, orders.length));
 		orders.splice(target, 0, moved);
-		return { ...q, orders };
+		return { ...q, batches: orders };
 	});
 }
 
@@ -235,7 +235,7 @@ export async function mergeOrders(
 		const orders = q.batches
 			.filter((b) => b.id !== orderIdB)
 			.map((b) => (b.id === orderIdA ? { ...b, jobs: mergedJobs } : b));
-		return { ...q, orders };
+		return { ...q, batches: orders };
 	});
 }
 
@@ -261,7 +261,7 @@ export async function splitOrder(
 		const orders = [...q.batches];
 		orders[idx] = { ...order, jobs: keep };
 		orders.splice(idx + 1, 0, newOrder);
-		return { ...q, orders };
+		return { ...q, batches: orders };
 	});
 	return newOrderId;
 }

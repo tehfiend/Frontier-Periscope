@@ -44,6 +44,20 @@ import { useCallback, useMemo, useState } from "react";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Normalize a player-set URL to a safe http(s) href, or null if it is not a valid web URL.
+ * Guards against `javascript:`, `data:`, and other non-web schemes so a tribe-supplied string is
+ * never rendered as a raw, clickable href (phishing / script-injection surface).
+ */
+function safeWebHref(raw: string): string | null {
+	try {
+		const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+		return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+	} catch {
+		return null;
+	}
+}
+
 function formatAge(cachedAt: string): string {
 	const ms = Date.now() - new Date(cachedAt).getTime();
 	const mins = Math.floor(ms / 60000);
@@ -222,20 +236,30 @@ const tribeColumns: ColumnDef<ManifestTribe, unknown>[] = [
 		header: "URL",
 		size: 80,
 		enableColumnFilter: false,
-		cell: ({ row }) =>
-			row.original.tribeUrl ? (
-				<a
-					href={row.original.tribeUrl}
-					target="_blank"
-					rel="noopener noreferrer"
-					className="flex items-center gap-1 text-xs text-cyan-500 hover:text-cyan-400"
-					onClick={(e) => e.stopPropagation()}
-				>
-					<ExternalLink size={10} /> Link
-				</a>
+		cell: ({ row }) => {
+			const safeHref = row.original.tribeUrl ? safeWebHref(row.original.tribeUrl) : null;
+			if (safeHref) {
+				return (
+					<a
+						href={safeHref}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="flex items-center gap-1 text-xs text-cyan-500 hover:text-cyan-400"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<ExternalLink size={10} /> Link
+					</a>
+				);
+			}
+			// Present but not a safe web URL -> show inert text, never a clickable raw href.
+			return row.original.tribeUrl ? (
+				<span className="text-xs text-zinc-500" title={row.original.tribeUrl}>
+					--
+				</span>
 			) : (
 				<span className="text-xs text-zinc-700">--</span>
-			),
+			);
+		},
 	},
 	{
 		id: "createdOnChain",
@@ -434,7 +458,9 @@ function makeMarketColumns(
 			enableColumnFilter: false,
 			cell: ({ row }) => (
 				<span className="font-mono text-xs text-zinc-400">
-					{row.original.totalSupply != null ? row.original.totalSupply.toLocaleString() : "--"}
+					{row.original.totalSupply != null
+						? Number(row.original.totalSupply).toLocaleString()
+						: "--"}
 				</span>
 			),
 		},

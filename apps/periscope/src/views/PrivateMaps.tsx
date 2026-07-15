@@ -49,7 +49,6 @@ import {
 	bytesToHex,
 	generateEphemeralX25519Keypair,
 	getContractAddresses,
-	getPublicKeyForAddress,
 	hexToBytes,
 	sealForRecipient,
 	unsealWithKey,
@@ -291,6 +290,26 @@ export function PrivateMaps() {
 				onToggleArchived={() => setShowArchived(!showArchived)}
 			/>
 
+			{/* Your invite key -- share this with a map owner so they can invite you. A sender cannot
+			    derive it from your address (it comes from your own wallet signature), so key exchange
+			    is manual. Shown independent of map selection so a not-yet-a-member can copy it. */}
+			{walletAddress && keyPair && (
+				<div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2">
+					<div className="min-w-0">
+						<p className="text-xs font-medium text-zinc-300">Your invite key</p>
+						<p className="text-[11px] text-zinc-500">
+							Share with a map owner so they can invite you -- it's your public key, safe to share.
+						</p>
+					</div>
+					<CopyAddress
+						address={bytesToHex(keyPair.publicKey)}
+						sliceStart={8}
+						sliceEnd={8}
+						className="shrink-0 text-xs text-cyan-300"
+					/>
+				</div>
+			)}
+
 			{/* Map List */}
 			{totalMaps === 0 ? (
 				<EmptyState
@@ -401,14 +420,19 @@ export function PrivateMaps() {
 									Invite Member
 								</button>
 							)}
-							<button
-								type="button"
-								onClick={() => setShowAddLocationDialog(true)}
-								className="flex items-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
-							>
-								<Plus size={14} />
-								Add Location
-							</button>
+							{/* Add Location for V2 mode=1 (standings-registry) maps needs
+							    registryId/tribeId/characterId that AddLocationDialog does not yet
+							    collect -- hide the button until that flow exists (mode=0 unaffected). */}
+							{selectedMapV2.mode === 0 && (
+								<button
+									type="button"
+									onClick={() => setShowAddLocationDialog(true)}
+									className="flex items-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
+								>
+									<Plus size={14} />
+									Add Location
+								</button>
+							)}
 						</div>
 					)}
 
@@ -803,7 +827,6 @@ function LocationsTable({
 }) {
 	const [decrypting, setDecrypting] = useState(false);
 	const [decryptError, setDecryptError] = useState<string | null>(null);
-	const hasEncrypted = locations.some((l) => !!l.encryptedData);
 
 	async function handleDecrypt() {
 		if (decrypting) return;
@@ -1270,9 +1293,9 @@ function InviteMemberDialog({
 	onClose: () => void;
 }) {
 	const dAppKit = useDAppKit();
-	const client = useSuiClient();
 	const [recipientAddress, setRecipientAddress] = useState("");
 	const [recipientName, setRecipientName] = useState("");
+	const [recipientKeyHex, setRecipientKeyHex] = useState("");
 	const [isPending, setIsPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -1282,9 +1305,15 @@ function InviteMemberDialog({
 		setError(null);
 
 		try {
-			// Get recipient's Ed25519 public key from their tx signatures,
-			// then convert to X25519
-			const recipientX25519PubKey = await getPublicKeyForAddress(client, recipientAddress.trim());
+			// The recipient shares their map key (X25519 public key) out-of-band and pastes it here.
+			// A sender cannot derive it from chain -- it comes from the recipient's own wallet signature.
+			const keyHex = recipientKeyHex.trim().replace(/^0x/, "");
+			if (!/^[0-9a-fA-F]{64}$/.test(keyHex)) {
+				throw new Error(
+					"Enter the recipient's 64-character map key (they copy it from their Private Maps page).",
+				);
+			}
+			const recipientX25519PubKey = hexToBytes(keyHex);
 
 			// Decrypt our own map key, then re-encrypt for the recipient
 			if (!map.decryptedMapKey) throw new Error("Map key not yet decrypted. Connect wallet first.");
@@ -1351,6 +1380,20 @@ function InviteMemberDialog({
 				)}
 			</div>
 
+			<div className="mb-4">
+				<span className="mb-1 block text-xs text-zinc-400">Recipient's map key</span>
+				<textarea
+					value={recipientKeyHex}
+					onChange={(e) => setRecipientKeyHex(e.target.value)}
+					placeholder="Paste the 64-character key the recipient copied from their Private Maps page"
+					rows={2}
+					className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 font-mono text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-cyan-600 focus:outline-none"
+				/>
+				<p className="mt-1 text-[11px] text-zinc-500">
+					The recipient sends you this key -- it can't be looked up from their address.
+				</p>
+			</div>
+
 			{error && (
 				<div className="mb-4 flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2 text-xs text-red-300">
 					<AlertCircle size={14} />
@@ -1369,7 +1412,7 @@ function InviteMemberDialog({
 				<button
 					type="button"
 					onClick={handleInvite}
-					disabled={!recipientAddress || isPending}
+					disabled={!recipientAddress || !recipientKeyHex.trim() || isPending}
 					className="flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
 				>
 					{isPending && <Loader2 size={14} className="animate-spin" />}

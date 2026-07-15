@@ -55,7 +55,7 @@ export function BuyFromListingDialog({
 
 	const qty = Number(quantity) || 0;
 	const maxQty = listing.quantity;
-	const totalPrice = listing.pricePerUnit * BigInt(qty);
+	const totalPrice = listing.pricePerUnit * BigInt(Number.isFinite(qty) ? Math.floor(qty) : 0);
 
 	async function handleBuy() {
 		if (!account?.address || !ssuConfig.marketId) return;

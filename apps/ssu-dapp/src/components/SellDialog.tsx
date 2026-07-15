@@ -66,7 +66,7 @@ export function SellDialog({
 
 	const qty = Number(quantity) || 0;
 	const priceBase = parseDisplayPrice(pricePerUnit || "0", decimals);
-	const totalValue = priceBase * BigInt(qty);
+	const totalValue = priceBase * BigInt(Number.isFinite(qty) ? Math.floor(qty) : 0);
 	const maxQty = item.quantity;
 
 	async function handleSell() {

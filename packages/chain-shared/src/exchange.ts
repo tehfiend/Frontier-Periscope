@@ -38,7 +38,12 @@ export interface PlaceOrderParams {
 
 /**
  * Build a TX to place a bid order on an exchange OrderBook.
- * Bids deposit coinTypeB (totalAmount = price * amount).
+ *
+ * The on-chain `exchange::place_bid` escrows the WHOLE `Coin<Ty1>` (coinTypeB) it is handed and
+ * only asserts `amount > 0` -- it does NOT recompute or validate price*amount, so the deposit is
+ * entirely caller-determined. `totalAmount` must therefore be the bid's true cost in coinTypeB
+ * BASE units: price_display * amount_display * 10^decimalsB (see PlaceOrderDialog, which divides the
+ * base-unit product by 10^decimalsA to undo `amount` being passed in coinTypeA base units).
  * Uses merge+split pattern for multiple coin objects.
  */
 export function buildPlaceBid(params: PlaceOrderParams): Transaction {

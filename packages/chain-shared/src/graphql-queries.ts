@@ -269,6 +269,35 @@ const QUERY_EVENTS = `
 	}
 `;
 
+/** Cursor pointing at the NEWEST event of a type, for first-run skip-to-latest. */
+const QUERY_LATEST_EVENT_CURSOR = `
+	query($type: String!) {
+		events(filter: { type: $type }, last: 1) {
+			pageInfo { endCursor }
+		}
+	}
+`;
+
+/**
+ * Return an opaque forward cursor positioned at the NEWEST event of `eventType`, or null if the
+ * type has no events yet. Feeding this as the `after` cursor to {@link queryEventsGql} yields only
+ * events that arrive AFTER it -- used to skip historical replay on a fresh install (the `events`
+ * connection supports `last`/`before` backward pagination, verified against the testnet schema).
+ */
+export async function queryLatestEventCursor(
+	client: SuiGraphQLClient,
+	eventType: string,
+): Promise<string | null> {
+	const result = await client.query<
+		{ events: { pageInfo: { endCursor: string | null } } },
+		{ type: string }
+	>({
+		query: QUERY_LATEST_EVENT_CURSOR,
+		variables: { type: eventType },
+	});
+	return result.data?.events?.pageInfo?.endCursor ?? null;
+}
+
 interface GqlEventNode {
 	sender: { address: string };
 	contents: { json: Record<string, unknown>; type: { repr: string } };
@@ -501,7 +530,10 @@ export async function queryWalletTransactions(
 			digest: node.digest,
 			timestampMs: new Date(node.effects.timestamp).getTime(),
 			balanceChanges: node.effects.balanceChanges.nodes
-				.filter((bc) => bc.owner?.address)
+				// Only the queried wallet's OWN legs -- a multi-party tx (market fill, transfer)
+				// also carries the counterparty's balance change, which would otherwise render as a
+				// phantom inflow/outflow in this wallet's history. (owner.address is canonical hex.)
+				.filter((bc) => bc.owner?.address?.toLowerCase() === address.toLowerCase())
 				.map((bc) => ({
 					coinType: bc.coinType.repr,
 					amount: bc.amount,

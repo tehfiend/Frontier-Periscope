@@ -15,7 +15,7 @@ Outputs (to apps/periscope/public/data/):
   - stellar_constellations.json → constellations with names, coords, member systems
   - stellar_jumps.json      → jump connections (directed edges for pathfinding)
   - stellar_labels.json     → combined id→name lookup for all entities
-  - extraction_meta.json    → version, source, timestamp
+  - extraction_meta_starmap.json → version, source, timestamp
 
 Usage:
   python scripts/extract_static_data.py [--resfiles PATH] [--output PATH]

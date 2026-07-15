@@ -59,7 +59,7 @@ export function FillBuyOrderDialog({
 
 	const qty = Number(quantity) || 0;
 	const maxQty = order.quantity;
-	const totalPayment = order.pricePerUnit * BigInt(qty);
+	const totalPayment = order.pricePerUnit * BigInt(Number.isFinite(qty) ? Math.floor(qty) : 0);
 
 	const isSsuAuthorized =
 		!!account?.address &&

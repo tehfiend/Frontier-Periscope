@@ -570,9 +570,11 @@ const PING_CATEGORIES: PingCategory[] = [
 function PingSettingsPanel({
 	pingEventTypes,
 	onToggle,
+	onSetTypes,
 }: {
 	pingEventTypes: Set<SonarEventType>;
 	onToggle: (type: SonarEventType) => void;
+	onSetTypes: (types: Set<SonarEventType>) => void;
 }) {
 	const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
 		() => new Set(["Log Events", "Inventory", "Combat / Intel"]),
@@ -590,13 +592,15 @@ function PingSettingsPanel({
 	function toggleAllInCategory(cat: PingCategory) {
 		const types = Object.keys(cat.types) as SonarEventType[];
 		const allChecked = types.every((t) => pingEventTypes.has(t));
+		// Build the whole next set and commit ONCE. Calling onToggle per type fired several
+		// value-based setState updates each derived from the same stale snapshot, so only the last
+		// type in the category actually toggled.
+		const next = new Set(pingEventTypes);
 		for (const t of types) {
-			if (allChecked) {
-				if (pingEventTypes.has(t)) onToggle(t);
-			} else {
-				if (!pingEventTypes.has(t)) onToggle(t);
-			}
+			if (allChecked) next.delete(t);
+			else next.add(t);
 		}
+		onSetTypes(next);
 	}
 
 	return (
@@ -1042,7 +1046,11 @@ function PingsTab() {
 
 			{/* Collapsible settings panel with categories */}
 			{showSettings && (
-				<PingSettingsPanel pingEventTypes={pingEventTypes} onToggle={toggleEventType} />
+				<PingSettingsPanel
+					pingEventTypes={pingEventTypes}
+					onToggle={toggleEventType}
+					onSetTypes={setPingEventTypes}
+				/>
 			)}
 
 			{/* Filtered DataGrid */}
@@ -1309,7 +1317,11 @@ function WatchItemPingSettings({ item }: { item: SonarWatchItem }) {
 			</label>
 			{!useGlobalDefaults && (
 				<div className="mt-2">
-					<PingSettingsPanel pingEventTypes={localTypes} onToggle={handleToggleType} />
+					<PingSettingsPanel
+						pingEventTypes={localTypes}
+						onToggle={handleToggleType}
+						onSetTypes={(next) => updateWatchItem(item.id, { pingEventTypes: [...next] })}
+					/>
 				</div>
 			)}
 		</div>
@@ -1372,7 +1384,7 @@ function WatchlistTab() {
 		}
 
 		// Single query: load recent events that have a matching characterId or tribeId.
-		// We load a reasonable window (last 2000 events) and group in memory.
+		// We load a reasonable window (last 500 events, newest first) and group in memory.
 		const recentEvents = await db.sonarEvents.orderBy("id").reverse().limit(500).toArray();
 
 		// Build latest-timestamp maps

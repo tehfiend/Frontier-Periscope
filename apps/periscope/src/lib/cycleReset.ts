@@ -98,11 +98,15 @@ export async function clearCycleData(): Promise<void> {
 	await db.transaction("rw", [...clearable, "sonarState", "settings"], async () => {
 		await Promise.all(clearable.map((t) => db.table(t).clear()));
 
-		// sonarState is NOT a cycle-bound table; overwrite its two cursor rows back to a clean state
-		// (mirrors the db/index.ts on("ready") seed, which only fires on a fresh open).
+		// sonarState is NOT a cycle-bound table; reset only the transient `status` back to "off" while
+		// PRESERVING the user's per-channel `enabled` preference -- channel on/off is a user setting,
+		// not cycle data, and should survive a reset. Fall back to enabled:true if a row is absent.
+		const priorSonar = await db.sonarState.toArray();
+		const wasEnabled = (channel: string) =>
+			priorSonar.find((s) => s.channel === channel)?.enabled ?? true;
 		await db.sonarState.bulkPut([
-			{ channel: "local", enabled: true, status: "off" },
-			{ channel: "chain", enabled: true, status: "off" },
+			{ channel: "local", enabled: wasEnabled("local"), status: "off" },
+			{ channel: "chain", enabled: wasEnabled("chain"), status: "off" },
 		]);
 
 		// The active character / default map now point at deleted ids.

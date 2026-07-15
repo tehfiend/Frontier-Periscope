@@ -52,10 +52,13 @@ export function Killmails() {
 	const columns: ColumnDef<KillmailIntel, unknown>[] = useMemo(() => [
 		{
 			id: "timestamp",
-			accessorFn: (km) => new Date(km.timestamp).toLocaleString(),
+			// Sort on the raw timestamp (ISO / epoch-ms string, both chronological), not the locale
+			// string it renders as -- toLocaleString() output sorts alphabetically, scrambling the order.
+			accessorFn: (km) => km.timestamp,
 			header: "Time",
 			size: 170,
 			enableColumnFilter: false,
+			cell: ({ row }) => new Date(row.original.timestamp).toLocaleString(),
 		},
 		{
 			id: "victim",

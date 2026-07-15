@@ -540,7 +540,7 @@ export function StockPanel({
 															type="button"
 															onClick={() => refetchInventories()}
 															className="ml-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-zinc-500 hover:text-cyan-300"
-															title="Refresh this SSU's inventory from chain"
+															title="Refresh all SSU inventories from chain"
 														>
 															<RefreshCw
 																size={11}

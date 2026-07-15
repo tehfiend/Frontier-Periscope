@@ -793,7 +793,9 @@ export function Deployables() {
 		const offline = data.filter((d) => d.status === "offline").length;
 		const warnings = data.filter((d) => {
 			const h = fuelHoursRemaining(d);
-			return h !== null && h > 0 && h < FUEL_WARNING_HOURS;
+			// Include depleted (h <= 0) -- a structure that has run out is the MOST critical, and the
+			// Dashboard already counts it. Only "no fuel data" (h === null) stays excluded.
+			return h !== null && h < FUEL_WARNING_HOURS;
 		}).length;
 		return { total: data.length, mine, watched, online, offline, warnings };
 	}, [data]);

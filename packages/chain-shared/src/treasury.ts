@@ -299,11 +299,13 @@ export async function discoverTreasuries(
 	treasuryPackageId: string,
 	ownerAddress: string,
 ): Promise<Array<{ treasuryId: string; name: string }>> {
+	// Current Sui GraphQL schema: events are filtered by `type` (not `eventType`) and the payload is
+	// under `contents { json }` (not a top-level `json`). Matches QUERY_EVENTS in graphql-queries.ts.
 	const QUERY = `
 		query($eventType: String!, $first: Int, $after: String) {
-			events(filter: { eventType: $eventType }, first: $first, after: $after) {
+			events(filter: { type: $eventType }, first: $first, after: $after) {
 				nodes {
-					json
+					contents { json }
 				}
 				pageInfo { hasNextPage endCursor }
 			}
@@ -312,7 +314,7 @@ export async function discoverTreasuries(
 
 	interface Resp {
 		events: {
-			nodes: Array<{ json: Record<string, unknown> }>;
+			nodes: Array<{ contents: { json: Record<string, unknown> } | null }>;
 			pageInfo: { hasNextPage: boolean; endCursor: string | null };
 		};
 	}
@@ -332,8 +334,8 @@ export async function discoverTreasuries(
 			if (!events) break;
 
 			for (const node of events.nodes) {
-				const j = node.json;
-				if (String(j.owner ?? "") === ownerAddress) {
+				const j = node.contents?.json;
+				if (j && String(j.owner ?? "") === ownerAddress) {
 					const nameBytes = j.name;
 					let name = "";
 					if (Array.isArray(nameBytes)) {

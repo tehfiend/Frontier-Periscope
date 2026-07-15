@@ -318,11 +318,9 @@ export function resolveBom(
 			if (intermediateNeed > 0) {
 				newCredits.set(typeId, Math.min(yieldQty, intermediateNeed));
 			}
-			// Also credit against raw totals
-			const rawNeed = result.rawTotals.get(typeId) ?? 0;
-			if (rawNeed > 0) {
-				result.rawTotals.set(typeId, Math.max(0, rawNeed - yieldQty));
-			}
+			// (A co-product typeId is by construction an output, so it can never appear in
+			// rawTotals -- raw = never any blueprint's output. The old "credit against raw totals"
+			// branch here was therefore unreachable and has been removed.)
 		}
 
 		const currentTotalRaw = sumValues(result.rawTotals);

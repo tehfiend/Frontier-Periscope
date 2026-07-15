@@ -56,10 +56,7 @@ import {
 	queryMarketListings,
 	queryMarkets,
 	queryOwnedCoins,
-	queryTreasuryBalances,
 	queryTreasuryCap,
-	queryTreasuryDetails,
-	discoverTreasuries,
 } from "@tehfrontier/chain-shared";
 import type {
 	MarketBuyOrder,
@@ -69,6 +66,7 @@ import type {
 	TreasuryBalance,
 	TreasuryInfo,
 } from "@tehfrontier/chain-shared";
+import { syncTreasuriesForOwner, syncTreasury } from "@/chain/treasury-queries";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -532,6 +530,9 @@ export function Currencies() {
 				name: tokenName.trim(),
 				description: description.trim() || `${tokenName.trim()} token`,
 				decimals,
+				// Retain the UpgradeCap: prefer the connected wallet (the signer), fall back to the
+				// character's linked address. Both are user-controlled.
+				owner: account?.address ?? suiAddress ?? "",
 			});
 
 			// Append treasury creation to the same PTB (single wallet prompt)
@@ -1289,27 +1290,20 @@ function CurrencyDetail({
 	async function loadTreasuryData() {
 		let tid = treasuryId ?? row.treasuryId;
 
-		// Discover treasury on-chain if not found locally
+		// Discover treasury on-chain if not found locally, matching the "SYMBOL Treasury" convention.
+		// syncTreasuriesForOwner caches a skeleton record for each discovered treasury.
 		if (!tid && addresses.treasury?.packageId && suiAddress) {
 			try {
-				const discovered = await discoverTreasuries(suiClient, addresses.treasury.packageId, suiAddress);
-				for (const t of discovered) {
-					// Match by name convention: "SYMBOL Treasury"
-					if (t.name.startsWith(row.symbol)) {
-						tid = t.treasuryId;
-						// Persist for future lookups
-						if (row.currencyRecordId) {
-							await db.currencies.update(row.currencyRecordId, { treasuryId: tid });
-						}
-						await db.treasuries.put({
-							id: tid,
-							name: t.name,
-							owner: suiAddress,
-							admins: [],
-							balances: [],
-							coinType: row.coinType,
-						});
-						break;
+				const discovered = await syncTreasuriesForOwner(
+					suiClient,
+					addresses.treasury.packageId,
+					suiAddress,
+				);
+				const match = discovered.find((t) => t.name.startsWith(row.symbol));
+				if (match) {
+					tid = match.treasuryId;
+					if (row.currencyRecordId) {
+						await db.currencies.update(row.currencyRecordId, { treasuryId: tid });
 					}
 				}
 			} catch {
@@ -1320,27 +1314,12 @@ function CurrencyDetail({
 		if (!tid) return;
 		setLoadingTreasury(true);
 		try {
-			const [info, balances] = await Promise.all([
-				queryTreasuryDetails(suiClient, tid),
-				queryTreasuryBalances(suiClient, tid),
-			]);
-			setTreasuryInfo(info);
-			setTreasuryBalances(balances);
+			// syncTreasury reads details + balances from chain and upserts the cache (balances +
+			// coinType), so the currency list picks them up via the db.treasuries live query.
+			const result = await syncTreasury(suiClient, tid, row.coinType);
+			setTreasuryInfo(result?.info ?? null);
+			setTreasuryBalances(result?.balances ?? []);
 			setTreasuryId(tid);
-
-			// Persist balances to IndexedDB so the currency list shows them
-			if (balances.length > 0) {
-				const existing = await db.treasuries.get(tid);
-				if (existing) {
-					await db.treasuries.update(tid, {
-						balances: balances.map((b) => ({
-							coinType: b.coinType,
-							symbol: b.coinType.split("::").pop()?.replace(/_TOKEN$/, "") ?? "?",
-							amount: String(b.amount),
-						})),
-					});
-				}
-			}
 		} catch {
 			setTreasuryInfo(null);
 			setTreasuryBalances([]);

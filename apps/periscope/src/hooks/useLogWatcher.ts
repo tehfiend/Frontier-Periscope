@@ -35,7 +35,12 @@ export function useLogWatcher() {
 	const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const isPollerRef = useRef(false);
-	const { setHasAccess, setIsWatching, setActiveSessionId, setLiveStats } = useLogStore();
+	// Select each setter individually (stable refs) instead of subscribing to the whole store --
+	// a bare useLogStore() re-renders this hook's host (Layout) on every liveStats update (~1/s).
+	const setHasAccess = useLogStore((s) => s.setHasAccess);
+	const setIsWatching = useLogStore((s) => s.setIsWatching);
+	const setActiveSessionId = useLogStore((s) => s.setActiveSessionId);
+	const setLiveStats = useLogStore((s) => s.setLiveStats);
 
 	const stopWatching = useCallback(() => {
 		if (intervalRef.current) {
@@ -474,9 +479,10 @@ export function useLogWatcher() {
 						const gp = parseLogFilename(gf.name);
 						return gp?.characterId === parsed.characterId;
 					});
-					const sessionId = matchingGameFile
-						? matchingGameFile.name.replace(".txt", "")
-						: latestSessionId;
+					// Skip chat lines with no matching game-log session -- attributing them to
+					// another character's latest session would mis-attribute the chat.
+					if (!matchingGameFile) continue;
+					const sessionId = matchingGameFile.name.replace(".txt", "");
 
 					await processChatLog(name, entry as FileSystemFileHandle, sessionId, parsed.channel);
 				}
@@ -515,8 +521,14 @@ export function useLogWatcher() {
 		if (intervalRef.current) return;
 		// Only one instance should poll at a time
 		if (activePollerCount > 0 && !isPollerRef.current) return;
-		activePollerCount++;
-		isPollerRef.current = true;
+		// Acquire the poller slot at most once per instance. stopWatching() leaves isPollerRef set
+		// (the slot is released only in the effect cleanup), so a stop/start cycle must NOT
+		// re-increment -- otherwise activePollerCount leaks upward and permanently blocks every
+		// future watcher instance via the guard above.
+		if (!isPollerRef.current) {
+			activePollerCount++;
+			isPollerRef.current = true;
+		}
 		consecutiveErrors = 0;
 		setIsWatching(true);
 		pollLogs();

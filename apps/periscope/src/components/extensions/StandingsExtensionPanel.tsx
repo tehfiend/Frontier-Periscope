@@ -602,7 +602,16 @@ function StandingsExtensionPanelInner({
 					senderAddress,
 					tollCoinType: gateConfig.tollCoinType,
 				});
-				appendMetadataUpdates(tx);
+
+				// Mirror the SSU branch: a first-time gate config must authorize the extension
+				// on-chain (authorize_extension is gate-aware and folds in name/url metadata), else
+				// recordExtension below never finds the extension and the config "silently" never
+				// takes effect. Reconfigures (extension already present) only push metadata updates.
+				if (needsAuthorize) {
+					appendAuthorizeExtension(tx);
+				} else {
+					appendMetadataUpdates(tx);
+				}
 			} else if (registryId) {
 				tx = buildConfigureSsuStandings({
 					tenant,
@@ -656,16 +665,26 @@ function StandingsExtensionPanelInner({
 					}
 				}
 			} else {
-				// SSU market-only -- no standings TX needed
-				// But if there are metadata updates (name/url), we still need an on-chain TX
-				if (newName || newUrl) {
+				// SSU market-only -- no standings config. Authorize the ssu_unified extension
+				// on-chain if it isn't already (authorize_extension also folds in any name/url
+				// metadata); otherwise fall back to a metadata-only TX. Only verify the on-chain
+				// extension when one is actually expected, so market-only linking doesn't falsely
+				// fail on a fresh SSU that never authorized an extension.
+				if (needsAuthorize) {
+					const authTx = new Transaction();
+					appendAuthorizeExtension(authTx);
+					setStatus("signing");
+					await signAndExecute({ transaction: authTx });
+				} else if (newName || newUrl) {
 					const metaTx = new Transaction();
 					appendMetadataUpdates(metaTx);
 					setStatus("signing");
 					await signAndExecute({ transaction: metaTx });
 				}
 				await saveConfigToDb();
-				await recordExtension(senderAddress);
+				if (needsAuthorize || currentExtension) {
+					await recordExtension(senderAddress);
+				}
 				setStatus("done");
 				onConfigured?.();
 				return;

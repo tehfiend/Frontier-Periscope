@@ -79,7 +79,7 @@ export function PlaceOrderDialog({
 	// For bids: deposit = price * amount (in coinTypeB base units)
 	// For asks: deposit = amount (in coinTypeA base units)
 	const totalDeposit = side === "bid"
-		? (priceBaseUnits * amountBaseUnits) / BigInt(10 ** decimalsA)
+		? (priceBaseUnits * amountBaseUnits) / 10n ** BigInt(decimalsA)
 		: amountBaseUnits;
 
 	const totalBalance = ownedCoins?.reduce((sum, c) => sum + c.balance, 0n) ?? 0n;

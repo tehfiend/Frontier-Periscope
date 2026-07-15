@@ -235,7 +235,7 @@ export function Wallet() {
 		const types = new Set<string>();
 		for (const tx of rawTxs) {
 			for (const bc of tx.balanceChanges) {
-				if (decomCoinTypes.has(bc.coinType)) continue;
+				if (!showDecommissioned && decomCoinTypes.has(bc.coinType)) continue;
 				types.add(bc.coinType);
 				flat.push({
 					digest: tx.digest,
@@ -246,7 +246,7 @@ export function Wallet() {
 			}
 		}
 		return { flatTxs: flat, txCoinTypes: Array.from(types).sort() };
-	}, [rawTxs]);
+	}, [rawTxs, decomCoinTypes, showDecommissioned]);
 
 	// ── Filter + sort ────────────────────────────────────────────────────────
 

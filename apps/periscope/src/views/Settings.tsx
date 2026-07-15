@@ -111,14 +111,11 @@ export function Settings() {
 								</span>
 								{meta.counts &&
 									Object.entries(meta.counts).map(([key, val]) => (
-										<>
-											<span key={`${key}-label`} className="text-zinc-500 capitalize">
-												{key}
-											</span>
-											<span key={`${key}-val`} className="text-zinc-300">
-												{val.toLocaleString()}
-											</span>
-										</>
+										// `contents` keeps both spans in the parent grid while giving the list a keyed child.
+										<div key={key} className="contents">
+											<span className="text-zinc-500 capitalize">{key}</span>
+											<span className="text-zinc-300">{val.toLocaleString()}</span>
+										</div>
 									))}
 							</div>
 							<button

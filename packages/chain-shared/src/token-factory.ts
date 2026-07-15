@@ -42,6 +42,8 @@ export interface CreateTokenParams {
 	description: string;
 	/** Decimal places (default 9) */
 	decimals?: number;
+	/** Address that receives the package UpgradeCap so the publisher retains upgrade rights. */
+	owner: string;
 }
 
 export interface PublishTokenResult {
@@ -59,7 +61,8 @@ export interface PublishTokenResult {
  * The user signs with their wallet — no server needed.
  */
 export async function buildPublishToken(params: CreateTokenParams): Promise<Transaction> {
-	const { symbol, name, description, decimals = 9 } = params;
+	const { symbol, name, description, decimals = 9, owner } = params;
+	if (!owner) throw new Error("buildPublishToken: owner (UpgradeCap recipient) address is required");
 
 	const mod = await ensureWasmReady();
 
@@ -113,12 +116,17 @@ export async function buildPublishToken(params: CreateTokenParams): Promise<Tran
 		dependencies: [
 			"0x1", // Move stdlib
 			"0x2", // Sui framework
-			"0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a", // market
+			// market: this is the ORIGINAL (v1) package id of the market upgrade lineage. Move type
+			// identity uses the original id across upgrades, so Market<T> minted here IS the type the
+			// current v6 market (config `market.packageId`, 0xae423b77...) operates on. Do NOT "update"
+			// this to the latest upgrade id -- that would break type identity. (Verified on-chain 2026-07.)
+			"0xf9c4151434bc6158c21b7ba7d2860c8ce168dcd8ed39815a4c4c71108a5a311a",
 		],
 	});
 
-	// Transfer UpgradeCap to sender (they can discard it later if desired)
-	tx.transferObjects([upgradeCap], tx.pure.address("0x0")); // placeholder, replaced by sender
+	// Transfer the UpgradeCap to the publishing wallet so it retains upgrade rights (they can
+	// make the package immutable later by burning it if they want a trustless token).
+	tx.transferObjects([upgradeCap], tx.pure.address(owner));
 
 	return tx;
 }

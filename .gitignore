@@ -46,6 +46,10 @@ deploy_out.txt
 deploy_err.txt
 tmp/
 
+# Python bytecode (scripts/ extractors)
+__pycache__/
+*.pyc
+
 # Claude Code
 .claude/
 CLAUDE.md

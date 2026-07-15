@@ -261,7 +261,6 @@ export async function queryMapInvitesForUser(
 	}
 
 	const inviteType = `${packageId}::private_map::MapInvite`;
-	console.log("[queryMapInvites] type:", inviteType, "owner:", userAddress);
 	const invites: MapInviteInfo[] = [];
 	let cursor: string | null = null;
 	let hasMore = true;
@@ -274,7 +273,6 @@ export async function queryMapInvitesForUser(
 			});
 
 			const objects = result.data?.objects;
-			console.log("[queryMapInvites] response:", JSON.stringify(result.data, null, 2)?.slice(0, 500));
 			if (!objects) break;
 
 			for (const node of objects.nodes) {

@@ -33,8 +33,7 @@ export interface BuildTreeNode {
 	/**
 	 * Units of this type this order produces on this edge = `needPerEdge - have` (demand net of
 	 * stock). 0 for raw leaves (gathered) and for from-upstream items (fully stock-covered); the
-	 * batch quantity for a Target root; the shortfall for a derived intermediate. SHARED
-	 * intermediates carry the order total in `orderTotals` instead. Plan 44 Decision 12.
+	 * batch quantity for a Target root; the shortfall for a derived intermediate. Plan 44 Decision 12.
 	 */
 	built?: number;
 	/**
@@ -44,19 +43,17 @@ export interface BuildTreeNode {
 	 */
 	productionIndex?: number;
 	/**
-	 * Set on duplicate occurrences of a shared build intermediate: the canonical occurrence's
-	 * productionIndex, so the row can render as a "shared -- see #N" reference (Decision 14).
+	 * Display quantities reconciled to the flat plan totals: this occurrence's proportional share of
+	 * the type's LP-planned required/have/built, largest-remainder rounded so all occurrences of a
+	 * type sum EXACTLY to its BOM line. The tree expands each occurrence with its edge's naive recipe
+	 * ratio, so raw per-edge sums can exceed what the LP actually plans (recipe splits, co-product
+	 * credits, pooled run rounding); the flat gather/build/from-upstream lines are the source of
+	 * truth. Absent when the type has no flat line (e.g. an intermediate never in order.build).
 	 */
-	sharedProductionIndex?: number;
-	/**
-	 * Order-total quantities for the canonical occurrence of a SHARED build intermediate -- the
-	 * node's own need/have/still only cover this edge's slice (Decision 14).
-	 */
-	orderTotals?: {
+	reconciled?: {
 		required: number;
 		have: number;
 		built: number;
-		need: number;
 		volume: number;
 		volumeMissing: boolean;
 	};
@@ -250,6 +247,73 @@ function buildAllocationStates(lines: Map<number, FlatLine>): Map<number, Alloca
 	return states;
 }
 
+/**
+ * Split an integer total across weights proportionally (largest-remainder method). The result sums
+ * exactly to `total`; ties in fractional part break by index so the split is deterministic.
+ */
+function apportion(total: number, weights: number[]): number[] {
+	const sum = weights.reduce((a, b) => a + b, 0);
+	if (sum <= 0 || weights.length === 0) return weights.map(() => 0);
+	const exact = weights.map((w) => (total * w) / sum);
+	const result = exact.map(Math.floor);
+	let remainder = total - result.reduce((a, b) => a + b, 0);
+	const order = exact
+		.map((value, index) => ({ frac: value - Math.floor(value), index }))
+		.sort((a, b) => b.frac - a.frac || a.index - b.index);
+	for (let i = 0; i < order.length && remainder > 0; i++, remainder--) {
+		result[order[i].index] += 1;
+	}
+	return result;
+}
+
+/**
+ * Reconcile display quantities to the flat plan totals. The tree duplicates a shared type's subtree
+ * under every consumer and expands each occurrence with that edge's naive single-recipe ratio, so
+ * summed per-edge demand can exceed what the LP actually plans -- the optimizer meets demand through
+ * recipe splits, co-product credits, and pooled run rounding the local walk cannot see (e.g. a
+ * Network Node's residue built partly from a silica co-product leaves the tree overcounting the
+ * residue ore 700 vs the BOM's 640). The flat gather/build/from-upstream lines ARE the plan, so each
+ * line's totals are apportioned across the type's occurrences proportionally to per-edge demand;
+ * every row then shows its share and the rows sum exactly to the BOM tables.
+ *
+ * Targets are skipped (their quantities are authored job outputs, not flat lines), as are types
+ * with no flat line (their naive per-edge numbers stand -- nothing authoritative to reconcile to).
+ */
+function reconcileTreeToFlatTotals(
+	roots: BuildTreeNode[],
+	lines: Map<number, FlatLine>,
+	data: BuildTreeData,
+) {
+	const byType = new Map<number, BuildTreeNode[]>();
+	const collect = (node: BuildTreeNode) => {
+		if (node.tier !== "final" && lines.has(node.typeId)) {
+			const list = byType.get(node.typeId);
+			if (list) list.push(node);
+			else byType.set(node.typeId, [node]);
+		}
+		for (const child of node.children) collect(child);
+	};
+	for (const root of roots) collect(root);
+
+	for (const [typeId, nodes] of byType) {
+		const line = lines.get(typeId);
+		if (!line) continue;
+		const weights = nodes.map((n) => n.needPerEdge);
+		if (weights.reduce((a, b) => a + b, 0) <= 0) continue;
+		const required = apportion(line.quantity, weights);
+		const have = apportion(line.stockQty, weights);
+		const isRaw = nodes[0].tier === "raw";
+		nodes.forEach((node, i) => {
+			// Raws are gathered, not built; producibles build the post-stock shortfall. Need (the
+			// display's fourth column) falls out as required - have - built per row, and sums across
+			// rows to the line's stillNeed for raws / 0 for build items -- matching the BOM.
+			const built = isRaw ? 0 : Math.max(0, required[i] - have[i]);
+			const { volume, volumeMissing } = volumeFor(typeId, required[i], data);
+			node.reconciled = { required: required[i], have: have[i], built, volume, volumeMissing };
+		});
+	}
+}
+
 function assertReconciled(roots: BuildTreeNode[], reconcileLines: Map<number, FlatLine>) {
 	if (!import.meta.env.DEV) return;
 
@@ -286,26 +350,14 @@ function assertReconciled(roots: BuildTreeNode[], reconcileLines: Map<number, Fl
  * deepest dependency gets #1 and the Targets get the last numbers. Build jobs are Targets
  * (tier "final") and derived intermediates present in the order's build list; raws and
  * upstream-covered types stay unnumbered. A typeId is numbered ONCE at its first (canonical)
- * occurrence -- the tree duplicates a shared subtree under every consumer, and construction order
- * matches walk order, so first-seen here is the `stockShownElsewhere === false` occurrence.
- * Duplicates get `sharedProductionIndex` (reference rows); when a shared build item occurs more
- * than once, the canonical node also gets `orderTotals` (its per-edge numbers only cover one
- * consumer's slice).
+ * occurrence; a shared subtree is duplicated under every consumer, but each duplicate is the same
+ * build job, so it is not renumbered -- it just keeps showing its own per-edge quantities in the
+ * tree (the order total lives in the BOM tables).
  */
 function assignProductionIndices(
 	roots: BuildTreeNode[],
 	buildByType: Map<number, OrderBuildItem>,
-	data: BuildTreeData,
 ) {
-	const occurrences = new Map<number, number>();
-	const count = (node: BuildTreeNode) => {
-		if (node.tier !== "raw" && buildByType.has(node.typeId)) {
-			occurrences.set(node.typeId, (occurrences.get(node.typeId) ?? 0) + 1);
-		}
-		for (const child of node.children) count(child);
-	};
-	for (const root of roots) count(root);
-
 	let next = 1;
 	const assigned = new Map<number, number>();
 	const visit = (node: BuildTreeNode) => {
@@ -316,28 +368,14 @@ function assignProductionIndices(
 
 		const existing = assigned.get(node.typeId);
 		if (existing != null) {
-			// Same-type Targets share the type-level number; shared derived duplicates become
-			// "see #N" reference rows.
+			// Same-type Targets share the type-level number; a duplicate derived occurrence is the
+			// same build job, so it is not renumbered -- it keeps its own per-edge quantities.
 			if (node.tier === "final") node.productionIndex = existing;
-			else node.sharedProductionIndex = existing;
 			return;
 		}
 		node.productionIndex = next;
 		assigned.set(node.typeId, next);
 		next += 1;
-
-		const buildItem = buildByType.get(node.typeId);
-		if (node.tier === "intermediate" && buildItem && (occurrences.get(node.typeId) ?? 0) > 1) {
-			const { volume, volumeMissing } = volumeFor(node.typeId, buildItem.quantity, data);
-			node.orderTotals = {
-				required: buildItem.quantity,
-				have: buildItem.stockQty,
-				built: buildItem.stillNeed,
-				need: buildItem.stillNeed,
-				volume,
-				volumeMissing,
-			};
-		}
 	};
 	for (const root of roots) visit(root);
 }
@@ -511,7 +549,8 @@ export function buildOrderTree(
 		);
 	}
 
-	assignProductionIndices(roots, buildByType, data);
+	assignProductionIndices(roots, buildByType);
+	reconcileTreeToFlatTotals(roots, lines, data);
 	assertReconciled(roots, reconcileLines);
 	return roots;
 }

@@ -633,17 +633,17 @@ const TreeRow = memo(function TreeRow({
 		node.tier === "final" && node.jobId ? buildIndexByJobId.get(node.jobId) : undefined;
 
 	// The four quantity columns partition Required: Required = Have + Built + Need, where Need is what
-	// still has to be SOURCED/gathered (0 once fully built). Shared intermediates use their order
-	// totals; everything else the per-edge node values.
-	const qtyRequired = node.orderTotals?.required ?? node.needPerEdge;
-	const qtyHave = node.orderTotals?.have ?? node.have;
-	const qtyBuilt = node.orderTotals?.built ?? node.built ?? 0;
+	// still has to be SOURCED/gathered (0 once fully built). Every occurrence -- including a shared
+	// type reached from more than one consumer -- shows its reconciled share of the plan totals
+	// (see reconcileTreeToFlatTotals), so the rows for a type sum exactly to its BOM line below.
+	const qtyRequired = node.reconciled?.required ?? node.needPerEdge;
+	const qtyHave = node.reconciled?.have ?? node.have;
+	const qtyBuilt = node.reconciled?.built ?? node.built ?? 0;
 	const qtyNeed = Math.max(0, qtyRequired - qtyHave - qtyBuilt);
 
 	// This row draws (some of) its need from a named storage container -- show that storage instead of
 	// (fully covered) or alongside (partial) the recipe/gather label. `fullyFromStock` means the whole
-	// edge is on hand, so no recipe/gather is needed at all. Duplicate occurrences of a shared item
-	// (sharedProductionIndex) reference the canonical row's numbers, so they skip the storage line too.
+	// edge is on hand, so no recipe/gather is needed at all.
 	const hasStorageDraw = node.have > 0 && (draws?.get(node.typeId)?.length ?? 0) > 0;
 	const fullyFromStock = hasStorageDraw && node.have >= node.needPerEdge;
 
@@ -696,7 +696,7 @@ const TreeRow = memo(function TreeRow({
 					{node.stockShownElsewhere && (
 						<span
 							className="shrink-0 rounded border border-zinc-700 px-1 py-0.5 text-[10px] text-zinc-500"
-							title="This type is also used elsewhere; stock and remaining need are allocated once in tree order."
+							title="This type is also used elsewhere; the quantities shown are this row's share of the order totals."
 						>
 							shared
 						</span>
@@ -898,25 +898,15 @@ const TreeRow = memo(function TreeRow({
 				<SplitSummary node={node} data={data} />
 			</div>
 
-			{/* Quantities */}
-			{node.sharedProductionIndex != null ? (
-				// Decision 14: a duplicate occurrence of a shared build intermediate -- quantities are
-				// shown once, at the canonical occurrence (order totals). Reference it instead.
-				<div className="col-span-5 px-3 py-2 text-right text-xs text-zinc-500">
-					shared -- counted once above
-				</div>
-			) : (
-				<>
-					<RequiredCell value={qtyRequired} />
-					<HaveQtyCell value={qtyHave} />
-					<BuiltCell value={qtyBuilt} />
-					<NeedQtyCell value={qtyNeed} />
-					<VolumeQtyCell
-						volume={node.orderTotals?.volume ?? node.volume}
-						volumeMissing={node.orderTotals?.volumeMissing ?? node.volumeMissing}
-					/>
-				</>
-			)}
+			{/* Quantities -- each occurrence shows its reconciled share; rows sum to the BOM below. */}
+			<RequiredCell value={qtyRequired} />
+			<HaveQtyCell value={qtyHave} />
+			<BuiltCell value={qtyBuilt} />
+			<NeedQtyCell value={qtyNeed} />
+			<VolumeQtyCell
+				volume={node.reconciled?.volume ?? node.volume}
+				volumeMissing={node.reconciled?.volumeMissing ?? node.volumeMissing}
+			/>
 		</>
 	);
 

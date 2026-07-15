@@ -545,9 +545,12 @@ function formatTimePerUnit(batchSeconds: number, primaryQty: number): string {
 	const spu = batchSeconds / primaryQty;
 	if (spu < 1) return `${(spu * 1000).toFixed(0)}ms`;
 	if (spu < 60) return `${spu.toFixed(1)}s`;
-	const h = Math.floor(spu / 3600);
-	const m = Math.floor((spu % 3600) / 60);
-	const s = Math.round(spu % 60);
+	// Round to whole seconds FIRST, then split, so a value like 59.7s carries into the next minute
+	// instead of rendering an out-of-range "1m 60s".
+	const total = Math.round(spu);
+	const h = Math.floor(total / 3600);
+	const m = Math.floor((total % 3600) / 60);
+	const s = total % 60;
 	const parts = [];
 	if (h > 0) parts.push(`${h}h`);
 	if (m > 0) parts.push(`${m}m`);

@@ -113,7 +113,7 @@ export function QueueSwitcher({ queue, queues }: QueueSwitcherProps) {
 										<span className="flex min-w-0 flex-1 flex-col">
 											<span className="truncate leading-tight">{q.name}</span>
 											<span className="truncate text-[10px] leading-tight text-zinc-600">
-												{q.batches.length} order{q.batches.length === 1 ? "" : "es"} ·{" "}
+												{q.batches.length} order{q.batches.length === 1 ? "" : "s"} ·{" "}
 												{formatRelativeMs(q.updatedAt)}
 											</span>
 										</span>

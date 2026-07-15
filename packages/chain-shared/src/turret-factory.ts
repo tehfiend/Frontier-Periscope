@@ -107,6 +107,8 @@ export interface TurretWeightsParams {
 	classBonus: number;
 	/** Ship class group IDs this turret is effective against (0 = disabled) */
 	effectiveClasses: [number, number];
+	/** Address that receives the package UpgradeCap so the publisher retains upgrade rights. */
+	owner: string;
 }
 
 export interface PublishTurretResult {
@@ -139,7 +141,9 @@ export async function buildPublishTurret(
 		lowHpThreshold,
 		classBonus,
 		effectiveClasses,
+		owner,
 	} = params;
+	if (!owner) throw new Error("buildPublishTurret: owner (UpgradeCap recipient) address is required");
 
 	const mod = await ensureWasmReady();
 
@@ -237,8 +241,9 @@ export async function buildPublishTurret(
 		],
 	});
 
-	// Transfer UpgradeCap to sender (they can discard it later if desired)
-	tx.transferObjects([upgradeCap], tx.pure.address("0x0")); // placeholder, replaced by sender
+	// Transfer the UpgradeCap to the publishing wallet so it retains upgrade rights (they can
+	// make the package immutable later by burning it if they want a trustless turret package).
+	tx.transferObjects([upgradeCap], tx.pure.address(owner));
 
 	return { tx, moduleName };
 }

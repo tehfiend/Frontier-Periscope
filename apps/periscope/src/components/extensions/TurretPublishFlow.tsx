@@ -148,6 +148,8 @@ export function TurretPublishFlow({
 					lowHpThreshold,
 					classBonus,
 					effectiveClasses: [effectiveClass0, effectiveClass1],
+					// Retain the UpgradeCap on the publishing wallet (guarded non-null above).
+					owner: account.address,
 				},
 				worldPackageId,
 			);

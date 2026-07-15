@@ -19,6 +19,10 @@ export function parseDisplayPrice(input: string, decimals: number): bigint {
 	if (!trimmed || trimmed === "." || trimmed === "-") return 0n;
 
 	const parts = trimmed.replace(/,/g, "").split(".");
+	// Reject anything BigInt() can't parse (exponent notation like "1e5", stray letters). Callers
+	// treat 0n as "invalid, block submit", so this degrades to a validation error instead of a
+	// render-time throw that white-screens the dialog.
+	if (!/^-?\d*$/.test(parts[0]) || (parts[1] != null && !/^\d*$/.test(parts[1]))) return 0n;
 	const whole = BigInt(parts[0] || "0");
 	const fracStr = (parts[1] || "").padEnd(decimals, "0").slice(0, decimals);
 	const frac = BigInt(fracStr);
@@ -34,11 +38,15 @@ export function parseDisplayPrice(input: string, decimals: number): bigint {
  *   1_000_000n       -> "0.001"
  */
 export function formatBaseUnits(baseUnits: number | bigint, decimals: number): string {
-	const b = BigInt(baseUnits);
+	let b = BigInt(baseUnits);
+	// Handle the sign once, up front: bigint / and % both truncate toward zero and keep the operand's
+	// sign, so formatting the magnitude and re-attaching "-" avoids garbage like "-1.-5" or a dropped sign.
+	const sign = b < 0n ? "-" : "";
+	if (b < 0n) b = -b;
 	const divisor = 10n ** BigInt(decimals);
 	const whole = b / divisor;
 	const frac = b % divisor;
-	if (frac === 0n) return whole.toString();
+	if (frac === 0n) return `${sign}${whole}`;
 	const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
-	return `${whole}.${fracStr}`;
+	return `${sign}${whole}.${fracStr}`;
 }

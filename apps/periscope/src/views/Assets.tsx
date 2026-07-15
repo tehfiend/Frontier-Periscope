@@ -307,9 +307,9 @@ export function Assets() {
 		return {
 			totalItems,
 			uniqueTypes: typeSet.size,
-			containers: chainContainers.length + allFieldUnits.length,
+			containers: chainContainers.length + fieldUnits.length,
 		};
-	}, [chainContainers, allFieldUnits, snapshotsByContainer]);
+	}, [chainContainers, allFieldUnits, fieldUnits, snapshotsByContainer]);
 
 	// Chain SSU history -- reuse Sonar deposit/withdraw events -- only for the open history panel.
 	const chainEvents = useLiveQuery(async () => {

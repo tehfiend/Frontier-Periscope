@@ -7,14 +7,13 @@
  *
  * Dependencies:
  * - @noble/hashes/sha2 -- SHA-256 for key derivation
- * - @noble/curves/ed25519 -- x25519 keygen, ed25519->x25519 conversion
+ * - @noble/curves/ed25519 -- x25519 keygen
  * - tweetnacl + tweetnacl-sealedbox-js -- NaCl sealed boxes
  * - @mysten/sui/cryptography -- parse Sui transaction signatures
  */
 
 import { parseSerializedSignature } from "@mysten/sui/cryptography";
-import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import { ed25519, x25519 } from "@noble/curves/ed25519.js";
+import { x25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 // @ts-ignore -- consumers can't resolve src/types/tweetnacl-sealedbox-js.d.ts
 import { open, seal } from "tweetnacl-sealedbox-js";
@@ -91,78 +90,6 @@ export function unsealWithKey(
 		throw new Error("Sealed box decryption failed -- invalid key or corrupted ciphertext");
 	}
 	return result;
-}
-
-// ── Public Key Extraction ───────────────────────────────────────────────────
-
-/**
- * GraphQL query to fetch a transaction signature for an address.
- * We only need one transaction -- any will do, since all contain the
- * signer's public key in the signature.
- */
-const QUERY_TX_SIGNATURES = `
-	query($addr: SuiAddress!, $first: Int) {
-		address(address: $addr) {
-			transactionBlocks(first: $first) {
-				nodes {
-					signatures
-				}
-			}
-		}
-	}
-`;
-
-interface GqlTxSignaturesResponse {
-	address: {
-		transactionBlocks: {
-			nodes: Array<{
-				signatures: string[];
-			}>;
-		};
-	} | null;
-}
-
-/**
- * Extract the Ed25519 public key for a Sui address from their on-chain
- * transaction signatures, then convert it to X25519.
- *
- * Every Sui transaction contains the signer's public key in the serialized
- * signature. Any active player has at least one transaction (character creation).
- *
- * Throws if no transactions found or if the wallet uses a non-Ed25519 scheme.
- */
-export async function getPublicKeyForAddress(
-	client: SuiGraphQLClient,
-	address: string,
-): Promise<Uint8Array> {
-	const result = await client.query<GqlTxSignaturesResponse, { addr: string; first: number }>({
-		query: QUERY_TX_SIGNATURES,
-		variables: { addr: address, first: 5 },
-	});
-
-	const txBlocks = result.data?.address?.transactionBlocks?.nodes ?? [];
-	if (txBlocks.length === 0) {
-		throw new Error(`No transactions found for address ${address}`);
-	}
-
-	// Try each transaction until we find an Ed25519 signature
-	for (const tx of txBlocks) {
-		for (const sigBase64 of tx.signatures ?? []) {
-			try {
-				const parsed = parseSerializedSignature(sigBase64);
-				if (parsed.signatureScheme === "ED25519") {
-					// Convert Ed25519 public key to X25519 using Montgomery form
-					const ed25519PubKeyBytes = parsed.publicKey;
-					const x25519PubKey = ed25519.utils.toMontgomery(ed25519PubKeyBytes);
-					return x25519PubKey;
-				}
-			} catch {}
-		}
-	}
-
-	throw new Error(
-		`No Ed25519 signature found for address ${address}. Only Ed25519 wallets are supported for private maps.`,
-	);
 }
 
 // ── Location Data Encoding ──────────────────────────────────────────────────

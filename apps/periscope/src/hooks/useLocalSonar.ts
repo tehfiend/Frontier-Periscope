@@ -691,7 +691,9 @@ export function useLocalSonar() {
 
 			// Update HWM to max logEvent id in this batch.
 			// Persisted in settings table to avoid sonarStore put() conflicts.
-			const maxLogId = Math.max(...newLogEvents.map((e) => e.id ?? 0));
+			// reduce, not Math.max(...spread): a large first-import backlog can exceed the argument
+			// count limit and throw RangeError, which would loop-reinsert the same events forever.
+			const maxLogId = newLogEvents.reduce((m, e) => Math.max(m, e.id ?? 0), 0);
 			hwmRef.current = maxLogId;
 			await db.settings.put({ key: "localSonarHWM", value: maxLogId });
 

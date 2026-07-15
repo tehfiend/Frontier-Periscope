@@ -76,7 +76,7 @@ export function CreateBuyOrderDialog({
 
 	const priceBaseUnits = parseDisplayPrice(pricePerUnit || "0", decimals);
 	const qtyNum = Number(quantity || 0);
-	const totalBaseUnits = priceBaseUnits * BigInt(qtyNum || 0);
+	const totalBaseUnits = priceBaseUnits * BigInt(Number.isFinite(qtyNum) ? Math.floor(qtyNum) : 0);
 	const totalBalance = ownedCoins?.reduce((sum, c) => sum + c.balance, 0n) ?? 0n;
 
 	function handleSelectItem(id: number, name: string) {

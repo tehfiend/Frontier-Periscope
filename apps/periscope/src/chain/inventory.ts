@@ -1,5 +1,4 @@
 import type { SuiGraphQLClient } from "@mysten/sui/graphql";
-import { listDynamicFieldsGql } from "@tehfrontier/chain-shared";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -39,9 +38,6 @@ export async function fetchAssemblyInventory(
 	const inventories: AssemblyInventory[] = [];
 
 	try {
-		// Get dynamic fields on the assembly
-		const dfs = await listDynamicFieldsGql(client, assemblyId, { limit: 50 });
-
 		// For each dynamic field that looks like an inventory, we need to fetch
 		// the object and parse it. Since listDynamicFieldsGql only returns name info,
 		// we use a custom GraphQL query to get the full object at each dynamic field.

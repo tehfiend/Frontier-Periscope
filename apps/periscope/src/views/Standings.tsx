@@ -883,7 +883,6 @@ function MyRegistriesTab({
 			{showCreateDialog && packageId && (
 				<CreateRegistryDialog
 					packageId={packageId}
-					senderAddress={walletAddress ?? ""}
 					tenant={tenant}
 					onClose={() => setShowCreateDialog(false)}
 					onCreated={handleRefresh}
@@ -894,7 +893,6 @@ function MyRegistriesTab({
 				<SetRegistryStandingDialog
 					packageId={packageId}
 					registry={selectedRegistry}
-					senderAddress={walletAddress ?? chainAddress ?? ""}
 					tenant={tenant}
 					onClose={() => setShowSetStandingDialog(false)}
 					onSet={handleRefresh}
@@ -1515,13 +1513,11 @@ function EditContactDialog({
 
 function CreateRegistryDialog({
 	packageId,
-	senderAddress,
 	tenant,
 	onClose,
 	onCreated,
 }: {
 	packageId: string;
-	senderAddress: string;
 	tenant: string;
 	onClose: () => void;
 	onCreated: () => void;
@@ -1696,14 +1692,12 @@ function CreateRegistryDialog({
 function SetRegistryStandingDialog({
 	packageId,
 	registry,
-	senderAddress,
 	tenant,
 	onClose,
 	onSet,
 }: {
 	packageId: string;
 	registry: StandingsRegistryInfo;
-	senderAddress: string;
 	tenant: string;
 	onClose: () => void;
 	onSet: () => void;

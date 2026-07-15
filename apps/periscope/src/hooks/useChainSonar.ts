@@ -7,7 +7,7 @@ import { CHAIN_ENABLED } from "@/featureFlags";
 import { useActiveTenant } from "@/hooks/useOwnedAssemblies";
 import { useSuiClient } from "@/hooks/useSuiClient";
 import { useSonarStore } from "@/stores/sonarStore";
-import { queryEventsGql } from "@tehfrontier/chain-shared";
+import { queryEventsGql, queryLatestEventCursor } from "@tehfrontier/chain-shared";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -40,6 +40,9 @@ export function useChainSonar() {
 	const pingChain = useSonarStore((s) => s.pingChain);
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const cursorsRef = useRef<Record<string, string | null>>({});
+	// True when there were no persisted cursors at enable time -- triggers a one-time
+	// skip-to-latest prime on the first poll so a fresh install doesn't replay history as pings.
+	const freshInstallRef = useRef(false);
 	const [cursorsReady, setCursorsReady] = useState(false);
 
 	const poll = useCallback(async () => {
@@ -47,8 +50,8 @@ export function useChainSonar() {
 			// ── Manifest: CharacterCreated events (no ownership filter) ──
 			try {
 				const charCursorKey = `CharacterCreated:${tenant}`;
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual @mysten/sui versions
 				const charResult = await pollCharacterEvents(
+					// biome-ignore lint/suspicious/noExplicitAny: dual @mysten/sui versions at the SDK boundary
 					client as any,
 					tenant,
 					cursorsRef.current[charCursorKey] ?? null,
@@ -175,6 +178,28 @@ export function useChainSonar() {
 				pollTasks.push({ key, moveEventType });
 			}
 
+			// ── First-run skip-to-latest ───────────────────────────────
+			// On a fresh install (no persisted cursors) prime each global event stream's cursor to
+			// its NEWEST event and emit nothing this cycle. The next poll then fetches only events
+			// that arrive AFTER now, instead of replaying weeks of history as "live" pings. Owned
+			// and manifest/rift streams are low-volume and left to resume normally.
+			if (freshInstallRef.current) {
+				freshInstallRef.current = false;
+				for (const { key, moveEventType } of pollTasks) {
+					const cursorKey = `${key}:${tenant}`;
+					if (cursorsRef.current[cursorKey] != null) continue;
+					try {
+						// biome-ignore lint/suspicious/noExplicitAny: dual @mysten/sui versions at the SDK boundary
+						const latest = await queryLatestEventCursor(client as any, moveEventType);
+						if (latest) cursorsRef.current[cursorKey] = latest;
+					} catch (err) {
+						console.error(`[ChainSonar] skip-to-latest prime failed for ${key}:`, err);
+					}
+				}
+				await persistCursors(cursorsRef, setChainStatus);
+				return;
+			}
+
 			// ── Poll in parallel batches of CONCURRENCY ────────────────
 			const sonarEntries: Omit<SonarEvent, "id">[] = [];
 
@@ -188,7 +213,7 @@ export function useChainSonar() {
 						const cursor = cursorsRef.current[cursorKey] ?? null;
 						const handler = EVENT_HANDLER_REGISTRY[key];
 
-						// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual @mysten/sui versions
+						// biome-ignore lint/suspicious/noExplicitAny: dual @mysten/sui versions at the SDK boundary
 						const result = await queryEventsGql(client as any, moveEventType, {
 							cursor,
 							limit: 50,
@@ -236,7 +261,7 @@ export function useChainSonar() {
 				const spawnedKey = `RiftSpawned:${tenant}`;
 				const broadcastKey = `RiftLocationBroadcast:${tenant}`;
 				const riftResult = await pollRiftEvents(
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual @mysten/sui versions
+					// biome-ignore lint/suspicious/noExplicitAny: dual @mysten/sui versions at the SDK boundary
 					client as any,
 					tenant,
 					{
@@ -276,9 +301,16 @@ export function useChainSonar() {
 					for (const e of novel) {
 						if (e.txDigest) knownDigests.add(e.txDigest);
 					}
-					// Reset cache when it grows too large
+					// Trim the OLDEST entries when the cache grows too large (Set preserves insertion
+					// order) instead of clearing it wholesale -- a full clear briefly drops every recent
+					// digest and lets an in-flight re-poll re-insert duplicates. FIFO trim keeps the most
+					// recent KNOWN_DIGESTS_MAX digests deduped across the boundary.
 					if (knownDigests.size > KNOWN_DIGESTS_MAX) {
-						knownDigests.clear();
+						let toRemove = knownDigests.size - KNOWN_DIGESTS_MAX;
+						for (const digest of knownDigests) {
+							if (toRemove-- <= 0) break;
+							knownDigests.delete(digest);
+						}
 					}
 				}
 			}
@@ -309,8 +341,12 @@ export function useChainSonar() {
 		(async () => {
 			try {
 				const state = await db.sonarState.get("chain");
-				if (state?.cursors) {
+				if (state?.cursors && Object.keys(state.cursors).length > 0) {
 					cursorsRef.current = { ...state.cursors };
+				} else {
+					// No persisted cursors -> fresh install: prime to latest on the first poll
+					// so we don't replay the entire event history as "live" pings.
+					freshInstallRef.current = true;
 				}
 			} catch (err) {
 				console.error("[ChainSonar] Failed to load persisted cursors:", err);
