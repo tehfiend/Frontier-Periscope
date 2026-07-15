@@ -1,12 +1,12 @@
 {
-  "extractedAt": "2026-07-08T19:04:18Z",
-  "extractionTimeSeconds": 1.28,
+  "extractedAt": "2026-07-15T00:55:52Z",
+  "extractionTimeSeconds": 1.24,
   "gameRoot": "C:\\CCP\\EVE Frontier",
   "pythonVersion": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
   "filesExtracted": [
     {
       "filename": "blueprints.json",
-      "sizeBytes": 192124
+      "sizeBytes": 196848
     },
     {
       "filename": "categories.json",
@@ -18,7 +18,7 @@
     },
     {
       "filename": "facilities.json",
-      "sizeBytes": 41222
+      "sizeBytes": 42482
     },
     {
       "filename": "gatherable_nodes.json",
@@ -78,7 +78,7 @@
     },
     {
       "filename": "types.json",
-      "sizeBytes": 11666319
+      "sizeBytes": 11669960
     }
   ]
 }

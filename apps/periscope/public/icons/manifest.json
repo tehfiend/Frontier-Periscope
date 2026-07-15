@@ -11,12 +11,6 @@
       "item": "items/82126.png"
     }
   },
-  "82127": {
-    "name": "AC Gyrojet Ammo 3 (S)",
-    "icons": {
-      "item": "items/82127.png"
-    }
-  },
   "83441": {
     "name": "Adaptive Nanitic Armor Weave II",
     "icons": {
@@ -141,6 +135,18 @@
     "name": "Attuned Shield Generator IV",
     "icons": {
       "item": "items/83451.png"
+    }
+  },
+  "95753": {
+    "name": "Autocannon",
+    "icons": {
+      "item": "items/95753.png"
+    }
+  },
+  "95767": {
+    "name": "Autohelm",
+    "icons": {
+      "item": "items/95767.png"
     }
   },
   "81974": {
@@ -545,6 +551,18 @@
       "item": "items/78451.png"
     }
   },
+  "77852": {
+    "name": "Cutting Laser",
+    "icons": {
+      "item": "items/77852.png"
+    }
+  },
+  "95317": {
+    "name": "Cutting Laser",
+    "icons": {
+      "item": "items/95317.png"
+    }
+  },
   "88335": {
     "name": "D1 Fuel",
     "icons": {
@@ -675,6 +693,12 @@
     "name": "EM Nanite Sequencer",
     "icons": {
       "item": "items/82411.png"
+    }
+  },
+  "95763": {
+    "name": "EM Scrambler",
+    "icons": {
+      "item": "items/95763.png"
     }
   },
   "78516": {
@@ -1723,6 +1747,18 @@
       "item": "items/83978.png"
     }
   },
+  "95778": {
+    "name": "Needle",
+    "icons": {
+      "item": "items/95778.png"
+    }
+  },
+  "95779": {
+    "name": "Needle Lens",
+    "icons": {
+      "item": "items/95779.png"
+    }
+  },
   "83982": {
     "name": "Network Pollinator",
     "icons": {
@@ -2207,18 +2243,6 @@
       "item": "items/91375.png"
     }
   },
-  "77852": {
-    "name": "Small Cutting Laser",
-    "icons": {
-      "item": "items/77852.png"
-    }
-  },
-  "95317": {
-    "name": "Small Cutting Laser",
-    "icons": {
-      "item": "items/95317.png"
-    }
-  },
   "3302": {
     "name": "Small Projectile Turret",
     "icons": {
@@ -2655,6 +2679,12 @@
     "name": "Trade",
     "icons": {
       "item": "items/3443.png"
+    }
+  },
+  "95754": {
+    "name": "Transfuser",
+    "icons": {
+      "item": "items/95754.png"
     }
   },
   "86686": {
