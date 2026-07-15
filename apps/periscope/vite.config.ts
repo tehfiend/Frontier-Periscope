@@ -50,7 +50,7 @@ export default defineConfig({
 						urlPattern: /\/data\/.*\.json$/,
 						handler: "CacheFirst",
 						options: {
-							cacheName: "static-data-cycle6-patch0621",
+							cacheName: "static-data-cycle6-patch0630",
 							expiration: { maxAgeSeconds: 7 * 24 * 60 * 60 },
 						},
 					},
