@@ -1,7 +1,7 @@
 // Version and changelog -- pure module (no browser APIs, no app imports).
 // Imported by vite.config.ts at build time in a Node context.
 
-export const APP_VERSION = "4.26.07.05";
+export const APP_VERSION = "4.26.07.14";
 
 export interface ChangelogEntry {
 	version: string;
@@ -14,6 +14,49 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+	{
+		version: "4.26.07.14",
+		date: "2026-07-14",
+		highlights:
+			"Support for the new 0.6.3.0 items and rebalanced recipes, plus a batch of fixes. Your Wallet history is more accurate now, the low fuel count matches the dashboard, and a fresh install no longer replays old chain events.",
+		changes: [
+			{
+				category: "added",
+				description:
+					"The Blueprint Library and Build Queue now have the new 0.6.3.0 gear. That's Autocannon, Transfuser, EM Scrambler, Autohelm, Needle, Needle Lens, and Structural Brace, all with their recipes and icons pulled straight from the updated game client.",
+			},
+			{
+				category: "changed",
+				description:
+					"Picked up the rebalanced 0.6.3.0 recipes. Gravity Sensor and Ion Sensor take Silicon Dust now instead of Printed Circuits, Leap uses Printed Circuits, and the Small Cutting Laser is now just the Cutting Laser.",
+			},
+			{
+				category: "fixed",
+				description:
+					"Your Wallet transaction history shows only your own balance changes now. A trade or transfer no longer looks like money left your wallet when it didn't.",
+			},
+			{
+				category: "fixed",
+				description:
+					"The low fuel count on the Structures page now counts structures that have already run dry, so it matches the number on the dashboard.",
+			},
+			{
+				category: "fixed",
+				description:
+					"A fresh install no longer replays weeks of old chain events like they just happened. Sonar starts from the latest events now.",
+			},
+			{
+				category: "fixed",
+				description:
+					"Deploying a gate extension, or linking a market to a storage unit without a standings registry, now authorizes on-chain instead of quietly doing nothing.",
+			},
+			{
+				category: "fixed",
+				description:
+					"Tribe links in the Manifest get checked now, so only real web links are clickable.",
+			},
+		],
+	},
 	{
 		version: "4.26.07.05",
 		date: "2026-07-05",
